@@ -202,7 +202,6 @@
         source: `mem-${link.source_memory_id}`,
         target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
         type: 'sharing',
-        zIndex: 1000,
         data: {
           linkType: link.link_type,
           direction: link.direction,
