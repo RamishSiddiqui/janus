@@ -34,8 +34,19 @@
     padding: 10px 16px 10px 10px;
     min-width: 160px;
     max-width: 240px;
-    backdrop-filter: blur(8px);
     cursor: grab;
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* Opaque dark base so edges behind the node are hidden */
+  .conv-node::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: #0a0a1a;
+    z-index: -1;
   }
 
   .conv-icon {

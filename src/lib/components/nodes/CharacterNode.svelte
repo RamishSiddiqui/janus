@@ -29,7 +29,7 @@
   .char-node {
     display: flex;
     align-items: stretch;
-    background: linear-gradient(135deg, rgba(14, 14, 30, 0.95), rgba(20, 16, 40, 0.9));
+    background: linear-gradient(135deg, #0e0e1e, #141028);
     border: 1.5px solid rgba(139, 92, 246, 0.3);
     border-radius: 16px;
     overflow: hidden;

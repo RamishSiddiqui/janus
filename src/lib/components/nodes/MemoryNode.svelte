@@ -68,8 +68,19 @@
     padding: 8px 12px;
     max-width: 210px;
     min-width: 160px;
-    backdrop-filter: blur(4px);
     cursor: grab;
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* Opaque dark base so edges behind the node are hidden */
+  .mem-node::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: #0a0a1a;
+    z-index: -1;
   }
 
   .mem-header {
