@@ -50,6 +50,7 @@
 | **Streaming Toggle** | ✅ | Backend supports both `generate` and `generate_stream` |
 | **Message Search** | ✅ | FTS5 full-text search with highlighted snippets in sidebar overlay |
 | **Local Storage Only** | ✅ | Privacy guard with confirmation dialog, `isLocalOnly()` utility for feature gating |
+| **Lorebook Search/Filter** | ✅ | Client-side filter by name, keywords, and content with match count |
 
 
 ## 🔴 Not Implemented
@@ -58,7 +59,7 @@
 |---|---|
 | **Video Generation** | Provider type `video` in schema, **no adapter** in Rust |
 | **Image Provider Adapters** | `ImageProvider` trait defined, **no concrete adapter** (SiliconFlow/ComfyUI) |
-| **Lorebook Search/Filter** | No search within lorebook entries |
+
 | **Character Export** | No export-to-PNG/JSON feature |
 | **Multi-character Chat** | No group/multi-char support |
 | **Auto-save Memories** | Toggle exists, **no extraction pipeline** |

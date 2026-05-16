@@ -36,6 +36,19 @@
   let newLoreContent = $state('');
   let isSavingLore = $state(false);
 
+  // Lorebook search/filter
+  let loreSearch = $state('');
+  let loreSearchFocused = $state(false);
+  const filteredLorebook = $derived.by(() => {
+    const q = loreSearch.trim().toLowerCase();
+    if (!q) return lorebookEntries;
+    return lorebookEntries.filter(e =>
+      e.title.toLowerCase().includes(q) ||
+      e.keys.some(k => k.toLowerCase().includes(q)) ||
+      e.content?.toLowerCase().includes(q)
+    );
+  });
+
   // Memories — persisted via backend
   interface MemoryItem { id: string; content: string; source: string; created_at: string; }
   let memories: MemoryItem[] = $state([]);
@@ -281,7 +294,7 @@
     <div class="ctx-section-header">
       <span class="ctx-section-title" id="lorebook-title">LOREBOOK</span>
       <div class="lore-header-actions">
-        <span class="ctx-section-meta">{lorebookEntries.length} entries</span>
+        <span class="ctx-section-meta">{loreSearch ? `${filteredLorebook.length}/${lorebookEntries.length}` : `${lorebookEntries.length} entries`}</span>
         <button
           class="lore-add-btn"
           title="Add lorebook entry"
@@ -292,6 +305,26 @@
         </button>
       </div>
     </div>
+
+    <!-- Search/Filter -->
+    {#if lorebookEntries.length > 2}
+      <div class="lore-search" class:focused={loreSearchFocused}>
+        <Icon name="search" size={11} color={loreSearchFocused ? '#c4a1ff' : '#6b6b8a'} />
+        <input
+          type="text"
+          placeholder="Filter entries..."
+          bind:value={loreSearch}
+          onfocus={() => loreSearchFocused = true}
+          onblur={() => loreSearchFocused = false}
+          aria-label="Search lorebook entries"
+        />
+        {#if loreSearch}
+          <button class="lore-search-clear" onclick={() => loreSearch = ''} aria-label="Clear search">
+            <Icon name="x" size={10} color="#6b6b8a" />
+          </button>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Add Entry Form -->
     {#if showAddLore}
@@ -336,8 +369,13 @@
         <Icon name="book-open" size={16} color="var(--fg-muted)" />
         <span>No lorebook entries</span>
       </div>
+    {:else if filteredLorebook.length === 0}
+      <div class="lore-empty">
+        <Icon name="search" size={16} color="var(--fg-muted)" />
+        <span>No matches for "{loreSearch}"</span>
+      </div>
     {:else}
-      {#each lorebookEntries as entry (entry.id)}
+      {#each filteredLorebook as entry (entry.id)}
         <div class="lore-entry" class:inactive={!entry.isActive}>
           <button
             class="lore-toggle"
@@ -525,6 +563,30 @@
     transition: all 150ms;
   }
   .lore-add-btn:hover { border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.06); }
+
+  .lore-search {
+    display: flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 10px; border-radius: 8px;
+    background: rgba(9,9,26,0.5);
+    border: 1px solid rgba(139,92,246,0.06);
+    transition: all 200ms;
+  }
+  .lore-search.focused {
+    border-color: rgba(139,92,246,0.25);
+    background: rgba(14,14,30,0.7);
+    box-shadow: 0 0 0 3px rgba(139,92,246,0.04);
+  }
+  .lore-search input {
+    flex: 1; background: none; border: none; outline: none;
+    color: #c8c8e0; font-size: 11px; font-family: var(--font-body);
+    min-width: 0;
+  }
+  .lore-search input::placeholder { color: #4a4a6a; }
+  .lore-search-clear {
+    background: none; border: none; padding: 2px; cursor: pointer;
+    display: flex; opacity: 0.5; transition: opacity 150ms;
+  }
+  .lore-search-clear:hover { opacity: 1; }
 
   .lore-form {
     display: flex; flex-direction: column; gap: 6px;
