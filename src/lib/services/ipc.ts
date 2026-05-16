@@ -442,3 +442,22 @@ export async function createMemory(
 export async function deleteMemory(memoryId: string): Promise<void> {
   return safeInvoke<void>('delete_memory', { memory_id: memoryId });
 }
+
+// --- Search ---
+
+export interface SearchResult {
+  message_id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  /** FTS5 snippet with <mark> tags around matched terms */
+  snippet: string;
+  conversation_title: string;
+  character_name: string | null;
+  created_at: string;
+}
+
+/** Searches message content using FTS5 full-text search. */
+export async function searchMessages(query: string, limit?: number): Promise<SearchResult[]> {
+  return safeInvoke<SearchResult[]>('search_messages', { query, limit: limit ?? null });
+}

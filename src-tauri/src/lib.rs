@@ -164,6 +164,8 @@ pub fn run() {
             commands::memories::list_memories,
             commands::memories::create_memory,
             commands::memories::delete_memory,
+            // Search
+            commands::conversations::search_messages,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Mythic");

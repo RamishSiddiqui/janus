@@ -34,6 +34,23 @@ pub struct Message {
     pub created_at: DateTime<Utc>,
 }
 
+/// A search result from full-text message search.
+///
+/// Contains the matched message plus context about the conversation
+/// and character it belongs to, along with an FTS5-highlighted snippet.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub message_id: String,
+    pub conversation_id: String,
+    pub role: MessageRole,
+    pub content: String,
+    /// FTS5 snippet with `<mark>` tags around matched terms
+    pub snippet: String,
+    pub conversation_title: String,
+    pub character_name: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 /// A conversation session between the user and a character.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {
