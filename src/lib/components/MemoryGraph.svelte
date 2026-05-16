@@ -4,6 +4,8 @@
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
   import CharacterNode from './nodes/CharacterNode.svelte';
+  import ConversationNode from './nodes/ConversationNode.svelte';
+  import MemoryNode from './nodes/MemoryNode.svelte';
 
   let { data, avatars = {}, onRefresh }: {
     data: MemoryGraphData;
@@ -11,7 +13,11 @@
     onRefresh: () => void;
   } = $props();
 
-  const nodeTypes = { character: CharacterNode };
+  const nodeTypes = {
+    character: CharacterNode,
+    conversation: ConversationNode,
+    memory: MemoryNode,
+  };
 
   /* ── Palette ── */
   const PALETTE = [
@@ -45,11 +51,19 @@
     const convColorMap = new Map<string, typeof PALETTE[0]>();
     g.conversations.forEach((c, i) => convColorMap.set(c.id, pal(i)));
 
+    // Count memories per conversation
+    const memCountMap = new Map<string, number>();
+    g.memories.forEach(m => {
+      if (m.conversation_id) {
+        memCountMap.set(m.conversation_id, (memCountMap.get(m.conversation_id) ?? 0) + 1);
+      }
+    });
+
     const centerX = 400;
     const convSpread = 360;
     const startX = centerX - ((g.conversations.length - 1) * convSpread) / 2;
 
-    // ── Row 0: Character root (custom node with avatar) ──
+    // ── Row 0: Character root ──
     nodes.push({
       id: `char-${g.character_id}`,
       type: 'character',
@@ -61,46 +75,57 @@
       },
     });
 
-    // ── Row 1: Canon memories (below root, spread horizontally) ──
+    // ── Row 1: Canon memories ──
     const canon = g.memories.filter(m => m.is_canon);
-    const canonSpread = 240;
+    const canonSpread = 250;
     const canonStartX = centerX - ((canon.length - 1) * canonSpread) / 2;
     const canonY = 120;
 
     canon.forEach((m, i) => {
       const x = canonStartX + i * canonSpread - 90;
-      const trunc = m.content.length > 50 ? m.content.slice(0, 47) + '…' : m.content;
-      const badge = m.source === 'auto' ? '🤖' : '📌';
-      const ver = m.version > 1 ? `  v${m.version}` : '';
+      const p = CANON;
 
       nodes.push({
         id: `mem-${m.id}`,
-        type: 'default',
+        type: 'memory',
         position: { x, y: canonY },
-        data: { label: `${badge} ${trunc}${ver}` },
-        style: `background: ${CANON.bg}; color: ${CANON.text}; border: 1px solid ${CANON.border}; border-radius: 10px; padding: 8px 14px; font-size: 10px; max-width: 200px; line-height: 1.4; font-family: Inter, sans-serif; backdrop-filter: blur(4px);`,
+        data: {
+          content: m.content,
+          source: m.source,
+          version: m.version,
+          isCanon: true,
+          parentId: m.parent_id,
+          color: p.text,
+          colorBg: p.bg,
+          colorBorder: p.border,
+        },
       });
       edges.push({
         id: `e-canon-${m.id}`,
         source: `char-${g.character_id}`,
         target: `mem-${m.id}`,
-        style: `stroke: ${CANON.edge}; stroke-width: 1.5px;`,
+        style: `stroke: ${p.edge}; stroke-width: 1.5px;`,
         type: 'smoothstep',
       });
     });
 
     // ── Row 2: Conversation branches ──
-    const convY = canon.length > 0 ? canonY + 140 : 120;
+    const convY = canon.length > 0 ? canonY + 160 : 120;
 
     g.conversations.forEach((conv, i) => {
       const x = startX + i * convSpread - 60;
       const p = convColorMap.get(conv.id)!;
       nodes.push({
         id: `conv-${conv.id}`,
-        type: 'default',
+        type: 'conversation',
         position: { x, y: convY },
-        data: { label: `💬  ${conv.title}` },
-        style: `background: ${p.bg}; color: ${p.text}; border: 1.5px solid ${p.border}; border-radius: 12px; padding: 10px 18px; font-size: 12px; font-weight: 600; font-family: Inter, sans-serif; backdrop-filter: blur(4px);`,
+        data: {
+          label: conv.title,
+          memoryCount: memCountMap.get(conv.id) ?? 0,
+          color: p.text,
+          colorBg: p.bg,
+          colorBorder: p.border,
+        },
       });
       edges.push({
         id: `e-root-${conv.id}`,
@@ -111,7 +136,7 @@
       });
     });
 
-    // ── Row 3+: Conversation-scoped memories (vertical stack under each branch) ──
+    // ── Row 3+: Scoped memories ──
     const scoped = g.memories.filter(m => !m.is_canon);
     const convMems = new Map<string | null, typeof g.memories>();
     for (const m of scoped) {
@@ -120,7 +145,7 @@
       convMems.get(k)!.push(m);
     }
 
-    const memStartY = convY + 100;
+    const memStartY = convY + 110;
 
     g.conversations.forEach((conv, ci) => {
       const mems = convMems.get(conv.id) ?? [];
@@ -129,20 +154,24 @@
 
       mems.forEach((m, mi) => {
         const x = baseX;
-        const y = memStartY + mi * 90;
-        const trunc = m.content.length > 50 ? m.content.slice(0, 47) + '…' : m.content;
-        const badge = m.source === 'auto' ? '🤖' : '📌';
-        const ver = m.version > 1 ? `  v${m.version}` : '';
+        const y = memStartY + mi * 110;
 
         nodes.push({
           id: `mem-${m.id}`,
-          type: 'default',
+          type: 'memory',
           position: { x, y },
-          data: { label: `${badge} ${trunc}${ver}` },
-          style: `background: ${p.bg}; color: ${p.text}; border: 1px solid ${p.border}; border-radius: 10px; padding: 8px 14px; font-size: 10px; max-width: 200px; line-height: 1.4; font-family: Inter, sans-serif; opacity: 0.92;`,
+          data: {
+            content: m.content,
+            source: m.source,
+            version: m.version,
+            isCanon: false,
+            parentId: m.parent_id,
+            color: p.text,
+            colorBg: p.bg,
+            colorBorder: p.border,
+          },
         });
 
-        // Connect to parent memory or conversation
         const parentId = m.parent_id ? `mem-${m.parent_id}` : `conv-${conv.id}`;
         edges.push({
           id: `e-mem-${m.id}`,
@@ -250,29 +279,31 @@
     outline: none !important;
   }
 
-  /* Character custom node wrapper — strip all defaults */
-  .graph-wrap :global(.svelte-flow__node-character) {
+  /* Custom node wrappers — strip SvelteFlow defaults */
+  .graph-wrap :global(.svelte-flow__node-character),
+  .graph-wrap :global(.svelte-flow__node-conversation),
+  .graph-wrap :global(.svelte-flow__node-memory) {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
-    border-radius: 16px !important;
   }
 
-  .graph-wrap :global(.svelte-flow__node-character.selected) {
+  .graph-wrap :global(.svelte-flow__node-character) { border-radius: 16px !important; }
+  .graph-wrap :global(.svelte-flow__node-conversation) { border-radius: 12px !important; }
+  .graph-wrap :global(.svelte-flow__node-memory) { border-radius: 10px !important; }
+
+  .graph-wrap :global(.svelte-flow__node-character.selected),
+  .graph-wrap :global(.svelte-flow__node-conversation.selected),
+  .graph-wrap :global(.svelte-flow__node-memory.selected) {
     background: transparent !important;
     border: none !important;
     box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;
-    border-radius: 16px !important;
     outline: none !important;
   }
 
   .graph-wrap :global(.svelte-flow__node:hover) {
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.15) !important;
-  }
-
-  .graph-wrap :global(.svelte-flow__node-character:hover) {
-    box-shadow: 0 0 24px rgba(139, 92, 246, 0.12) !important;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.12) !important;
   }
 
   .graph-wrap :global(.svelte-flow__node.selected) {
