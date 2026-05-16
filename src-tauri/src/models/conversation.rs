@@ -63,8 +63,19 @@ pub struct Conversation {
     /// ID of the active (latest) message in the current branch
     pub active_message_id: Option<String>,
 
+    /// Controls how auto-extracted memories are scoped:
+    /// - "character"    — shared across all conversations with this character (default)
+    /// - "conversation" — isolated to this specific conversation only
+    /// - "none"         — auto-save disabled for this conversation
+    #[serde(default = "default_memory_scope")]
+    pub memory_scope: String,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_memory_scope() -> String {
+    "character".to_string()
 }
 
 /// Parameters controlling LLM text generation.

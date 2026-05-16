@@ -54,7 +54,7 @@ pub async fn list_conversations(
     let offset = offset.unwrap_or(0);
 
     let rows = sqlx::query_as::<_, ConversationRow>(
-        "SELECT id, title, character_id, active_message_id, created_at, updated_at
+        "SELECT id, title, character_id, active_message_id, memory_scope, created_at, updated_at
          FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?"
     )
     .bind(limit)
@@ -158,6 +158,32 @@ pub async fn update_conversation(
     info!("Updated conversation title: {} -> {}", id, title);
     get_conversation_by_id(&state.db, &id).await
 }
+
+/// Updates the memory scope for a conversation.
+#[tauri::command]
+pub async fn set_memory_scope(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+    scope: String,
+) -> Result<(), MythicError> {
+    // Validate scope value
+    if !matches!(scope.as_str(), "character" | "conversation" | "none") {
+        return Err(MythicError::Config(format!(
+            "Invalid memory scope '{}'. Must be 'character', 'conversation', or 'none'", scope
+        )));
+    }
+
+    let state = state.read().await;
+    sqlx::query("UPDATE conversations SET memory_scope = ? WHERE id = ?")
+        .bind(&scope)
+        .bind(&conversation_id)
+        .execute(&state.db)
+        .await?;
+
+    info!("Set memory scope for conversation {} to '{}'", conversation_id, scope);
+    Ok(())
+}
+
 // --- Internal helpers ---
 
 #[derive(sqlx::FromRow)]
@@ -166,6 +192,7 @@ struct ConversationRow {
     title: String,
     character_id: Option<String>,
     active_message_id: Option<String>,
+    memory_scope: String,
     created_at: String,
     updated_at: String,
 }
@@ -177,6 +204,7 @@ impl From<ConversationRow> for Conversation {
             title: row.title,
             character_id: row.character_id,
             active_message_id: row.active_message_id,
+            memory_scope: row.memory_scope,
             created_at: parse_datetime(&row.created_at),
             updated_at: parse_datetime(&row.updated_at),
         }
@@ -229,7 +257,7 @@ pub(crate) async fn get_conversation_by_id(
     id: &str,
 ) -> Result<Conversation, MythicError> {
     let row = sqlx::query_as::<_, ConversationRow>(
-        "SELECT id, title, character_id, active_message_id, created_at, updated_at
+        "SELECT id, title, character_id, active_message_id, memory_scope, created_at, updated_at
          FROM conversations WHERE id = ?"
     )
     .bind(id)

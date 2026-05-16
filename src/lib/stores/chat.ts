@@ -273,15 +273,20 @@ export async function sendMessage(conversationId: string, content: string, model
             try {
               const { shouldExtract, extractAndSaveMemories } = await import('$lib/services/memory-extractor');
               if (!shouldExtract()) return;
-              const conv = get(activeConversation);
+
+              // Check per-conversation memory scope
+              const ipcMod = await import('$lib/services/ipc');
+              const conv = await ipcMod.getConversation(conversationId);
+              if (conv.memory_scope === 'none') return; // Auto-save disabled for this chat
+
               const saved = await extractAndSaveMemories(
                 conversationId,
-                conv?.characterId,
+                conv.memory_scope === 'character' ? (conv.character_id ?? undefined) : undefined,
                 content,           // user's message
                 event.content,     // assistant's response
               );
               if (saved > 0) {
-                console.debug(`[Mythic] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'}`);
+                console.debug(`[Mythic] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'} (scope: ${conv.memory_scope})`);
               }
             } catch (err) {
               console.warn('[Mythic] Auto-memory extraction failed:', err);

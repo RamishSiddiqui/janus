@@ -46,6 +46,8 @@ export interface Conversation {
   title: string;
   character_id: string | null;
   active_message_id: string | null;
+  /** 'character' (shared) | 'conversation' (isolated) | 'none' (disabled) */
+  memory_scope: 'character' | 'conversation' | 'none';
   created_at: string;
   updated_at: string;
 }
@@ -173,6 +175,11 @@ export async function setActiveMessage(conversationId: string, messageId: string
     conversationId,
     messageId,
   });
+}
+
+/** Set per-conversation memory scope: 'character' (shared), 'conversation' (isolated), or 'none' (disabled). */
+export async function setMemoryScope(conversationId: string, scope: 'character' | 'conversation' | 'none'): Promise<void> {
+  return safeInvoke<void>('set_memory_scope', { conversationId, scope });
 }
 
 // --- Messages ---
