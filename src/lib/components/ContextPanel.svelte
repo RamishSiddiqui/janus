@@ -462,7 +462,7 @@
 
   .ctx-header { display: flex; justify-content: space-between; align-items: center; }
   .ctx-title {
-    font-size: 10px; font-weight: 700; color: #5a5a7a;
+    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
     font-family: var(--font-mono); letter-spacing: 1.8px;
   }
   .ctx-close {
@@ -493,8 +493,8 @@
     box-shadow: 0 0 20px rgba(139,92,246,0.25);
   }
   .ctx-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
-  .char-name-lg { font-size: 18px; font-weight: 700; color: #e8e0ff; }
-  .char-tagline { font-size: 12px; color: #6b6b8a; text-align: center; line-height: 1.5; }
+  .char-name-lg { font-size: var(--text-xl); font-weight: 700; color: #e8e0ff; }
+  .char-tagline { font-size: var(--text-sm); color: #6b6b8a; text-align: center; line-height: 1.5; }
 
   .char-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
   .tag {
@@ -561,7 +561,7 @@
 
   .lore-toggle { background: none; border: none; padding: 2px; cursor: pointer; flex-shrink: 0; display: flex; }
   .lore-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .lore-text { font-size: 12px; color: #8b8ba7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lore-text { font-size: var(--text-sm); color: #8b8ba7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lore-keys { font-size: 9px; color: #4a4a6a; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lore-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
   .lore-dot.active { background: #10B981; box-shadow: 0 0 6px rgba(16,185,129,0.3); }
@@ -590,7 +590,7 @@
     transition: all 150ms;
   }
   .memory-entry:hover { background: rgba(139,92,246,0.04); border-color: rgba(139,92,246,0.1); }
-  .memory-text { font-size: 11px; color: #8b8ba7; line-height: 1.5; }
+  .memory-text { font-size: var(--text-sm); color: #8b8ba7; line-height: 1.5; }
   .memory-footer {
     display: flex; align-items: center; gap: 8px; margin-top: 2px;
   }

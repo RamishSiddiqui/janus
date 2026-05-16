@@ -241,7 +241,7 @@
   @keyframes brandPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
 
   .brand-name {
-    font-size: 21px; font-weight: 800; letter-spacing: -0.5px; white-space: nowrap;
+    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px; white-space: nowrap;
     background: linear-gradient(135deg, #fff 10%, #c4a1ff 60%, #bf40ff 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
@@ -271,7 +271,7 @@
     display: flex; align-items: center; gap: 11px;
     padding: 10px 14px; border-radius: 10px;
     border: 1px solid transparent; background: transparent;
-    color: #8b8ba7; font-size: 13.5px; font-weight: 500;
+      color: #8b8ba7; font-size: var(--text-md); font-weight: 500;
     font-family: var(--font-body); width: 100%; text-align: left;
     cursor: pointer; position: relative; overflow: hidden;
     transition: all 180ms var(--ease-out);
@@ -351,12 +351,12 @@
     padding: 6px 6px 2px; flex-shrink: 0; z-index: 1; position: relative;
   }
   .section-tag {
-    font-size: 10px; font-weight: 700; letter-spacing: 1.8px;
+    font-size: var(--text-xs); font-weight: 700; letter-spacing: 1.8px;
     text-transform: uppercase; color: #5a5a7a;
     font-family: var(--font-mono);
   }
   .section-count {
-    font-size: 10px; font-weight: 600; color: #8B5CF6;
+    font-size: var(--text-xs); font-weight: 600; color: #8B5CF6;
     background: rgba(139,92,246,0.1); padding: 1px 7px;
     border-radius: 99px; font-family: var(--font-mono);
   }
@@ -419,14 +419,14 @@
 
   .conv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .conv-title {
-    font-size: 13px; font-weight: 600; color: #c8c8e0;
+    font-size: var(--text-md); font-weight: 600; color: #c8c8e0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .conv-card.active .conv-title { color: #e8e0ff; }
   .conv-card:not(.active) .conv-title { font-weight: 500; color: #8b8ba7; }
 
   .conv-sub {
-    font-size: 11px; color: #5a5a7a;
+    font-size: var(--text-sm); color: #5a5a7a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .conv-meta {

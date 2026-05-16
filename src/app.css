@@ -53,6 +53,16 @@
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Geist Mono', 'SF Mono', 'Fira Code', monospace;
 
+  /* Font-size scale (relative to --app-font-size, default 14px) */
+  --text-xs: calc(10 / 14 * var(--app-font-size, 14px));
+  --text-sm: calc(11 / 14 * var(--app-font-size, 14px));
+  --text-md: calc(13 / 14 * var(--app-font-size, 14px));
+  --text-base: var(--app-font-size, 14px);
+  --text-lg: calc(15 / 14 * var(--app-font-size, 14px));
+  --text-xl: calc(18 / 14 * var(--app-font-size, 14px));
+  --text-2xl: calc(24 / 14 * var(--app-font-size, 14px));
+  --text-3xl: calc(28 / 14 * var(--app-font-size, 14px));
+
   /* Spacing scale */
   --space-1: 4px;
   --space-2: 8px;

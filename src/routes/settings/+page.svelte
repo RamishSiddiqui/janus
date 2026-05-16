@@ -375,11 +375,11 @@
     background: linear-gradient(90deg, transparent, rgba(139,92,246,0.15), transparent);
   }
   .settings-title {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .settings-subtitle { font-size: 11px; color: #5a5a7a; letter-spacing: 0.3px; }
+  .settings-subtitle { font-size: var(--text-sm); color: #5a5a7a; letter-spacing: 0.3px; }
 
   /* ── Grid ── */
   .settings-grid {
@@ -405,7 +405,7 @@
 
   .section-header { display: flex; align-items: center; gap: 10px; }
   .section-header-left { display: flex; align-items: center; gap: 10px; flex: 1; }
-  .section-title { font-size: 15px; font-weight: 700; color: #e8e0ff; }
+  .section-title { font-size: var(--text-lg); font-weight: 700; color: #e8e0ff; }
 
   /* ── Setting Row ── */
   .setting-row {
@@ -413,8 +413,8 @@
     padding: 8px 0;
   }
   .setting-label { display: flex; flex-direction: column; gap: 2px; }
-  .setting-name { font-size: 13px; color: #c8c8e0; font-weight: 500; }
-  .setting-desc { font-size: 11px; color: #5a5a7a; }
+  .setting-name { font-size: var(--text-md); color: #c8c8e0; font-weight: 500; }
+  .setting-desc { font-size: var(--text-sm); color: #5a5a7a; }
 
   /* ── Theme Toggle ── */
   .theme-toggle {

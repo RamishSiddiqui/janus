@@ -417,7 +417,7 @@
   }
 
   .landing-title {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
     color: var(--fg-primary);
     margin-bottom: 12px;
@@ -429,7 +429,7 @@
   }
 
   .landing-subtitle {
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--fg-muted);
     line-height: 1.7;
     margin-bottom: 32px;
@@ -554,7 +554,7 @@
   }
 
   .empty-title {
-    font-size: 18px;
+    font-size: var(--text-xl);
     font-weight: 600;
     color: var(--fg-secondary);
   }

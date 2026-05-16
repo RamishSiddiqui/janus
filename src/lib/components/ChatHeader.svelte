@@ -69,7 +69,7 @@
   }
 
   .ch-info { display: flex; flex-direction: column; gap: 2px; }
-  .ch-name { font-size: 15px; font-weight: 650; color: #e8e0ff; letter-spacing: -0.2px; }
+  .ch-name { font-size: var(--text-lg); font-weight: 650; color: #e8e0ff; letter-spacing: -0.2px; }
 
   .ch-status { display: flex; align-items: center; gap: 5px; }
   .ch-dot {
@@ -78,7 +78,7 @@
     animation: dotPulse 2.5s ease-in-out infinite;
   }
   @keyframes dotPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; } }
-  .ch-model { font-size: 11px; color: #5a5a7a; font-family: var(--font-mono); }
+  .ch-model { font-size: var(--text-sm); color: #5a5a7a; font-family: var(--font-mono); }
 
   .ch-right { display: flex; align-items: center; gap: 6px; }
   .ch-btn {

@@ -284,7 +284,7 @@
     box-shadow: 0 4px 20px rgba(139,92,246,0.2);
   }
 
-  .msg-text { font-size: 14px; color: #e0e0f0; word-wrap: break-word; }
+  .msg-text { font-size: var(--text-base); color: #e0e0f0; word-wrap: break-word; }
   .msg-text :global(.rp-action) { color: #8b8ba7; font-style: italic; }
   .streaming-cursor { color: #c4a1ff; font-weight: 700; }
 

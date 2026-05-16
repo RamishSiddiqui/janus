@@ -554,11 +554,11 @@
   }
   .models-header-left { display: flex; flex-direction: column; gap: 3px; }
   .models-title {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .models-subtitle { font-size: 11px; color: #5a5a7a; letter-spacing: 0.3px; }
+  .models-subtitle { font-size: var(--text-sm); color: #5a5a7a; letter-spacing: 0.3px; }
 
   .add-provider-btn {
     display: flex; align-items: center; gap: 6px;
@@ -587,7 +587,7 @@
     width: 32px; height: 32px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
   }
-  .column-title { font-size: 16px; font-weight: 700; color: #e8e0ff; letter-spacing: -0.2px; }
+  .column-title { font-size: var(--text-lg); font-weight: 700; color: #e8e0ff; letter-spacing: -0.2px; }
 
   /* ── Provider Card ── */
   .provider-card {
@@ -615,7 +615,7 @@
     transition: background 200ms, box-shadow 200ms;
   }
   .provider-dot.connected { background: #10B981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
-  .provider-name { font-size: 14px; font-weight: 500; color: #8b8ba7; }
+  .provider-name { font-size: var(--text-base); font-weight: 500; color: #8b8ba7; }
   .provider-name.active { font-weight: 700; color: #e8e0ff; }
 
   .provider-badge {

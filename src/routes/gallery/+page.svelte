@@ -495,13 +495,13 @@
   }
   .gallery-header-left { display: flex; flex-direction: column; gap: 3px; }
   .gallery-title {
-    font-size: 24px; font-weight: 800; color: #e8e0ff;
+    font-size: var(--text-2xl); font-weight: 800; color: #e8e0ff;
     letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
   .gallery-subtitle {
-    font-size: 11px; color: #5a5a7a; font-family: var(--font-mono);
+    font-size: var(--text-sm); color: #5a5a7a; font-family: var(--font-mono);
     letter-spacing: 0.5px;
   }
 
@@ -597,10 +597,10 @@
   }
   .card-top { display: flex; flex-direction: column; gap: 4px; }
   .card-name {
-    font-size: 15px; font-weight: 700; color: #e8e0ff; letter-spacing: -0.2px;
+    font-size: var(--text-lg); font-weight: 700; color: #e8e0ff; letter-spacing: -0.2px;
   }
   .card-desc {
-    font-size: 11px; color: #6b6b8a; line-height: 1.5;
+    font-size: var(--text-sm); color: #6b6b8a; line-height: 1.5;
     display: -webkit-box; -webkit-line-clamp: 2;
     -webkit-box-orient: vertical; overflow: hidden;
   }
@@ -684,7 +684,7 @@
   }
   .editor-field { display: flex; flex-direction: column; gap: 6px; }
   .editor-label {
-    font-size: 10px; font-weight: 700; color: #5a5a7a;
+    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
     text-transform: uppercase; letter-spacing: 1.2px;
     font-family: var(--font-mono);
   }

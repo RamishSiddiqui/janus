@@ -169,7 +169,7 @@
 
   .ci-field textarea {
     width: 100%; background: none; border: none; outline: none;
-    color: #e0e0f0; font-size: 14px; font-family: var(--font-body);
+    color: #e0e0f0; font-size: var(--text-base); font-family: var(--font-body);
     line-height: 1.6; resize: none; max-height: 160px;
   }
   .ci-field textarea::placeholder { color: #4a4a6a; }
@@ -205,7 +205,7 @@
 
   .ci-hints {
     display: flex; justify-content: space-between; align-items: center;
-    font-size: 10px; color: #4a4a6a; font-family: var(--font-mono);
+    font-size: var(--text-xs); color: #4a4a6a; font-family: var(--font-mono);
     padding: 0 4px;
   }
 
