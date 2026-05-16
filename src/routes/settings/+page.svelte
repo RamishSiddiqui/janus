@@ -16,6 +16,7 @@
   let systemPrompt = $state($settings.systemPrompt);
 
   let showFontDropdown = $state(false);
+  let dropdownStyle = $state('');
   let showClearConfirm = $state(false);
   let isExporting = $state(false);
   let isImporting = $state(false);
@@ -39,6 +40,24 @@
     settings.reset();
     systemPrompt = $settings.systemPrompt;
     success('System prompt reset to default');
+  }
+
+  function toggleDropdown(e: MouseEvent) {
+    showFontDropdown = !showFontDropdown;
+    if (showFontDropdown) {
+      const btn = e.currentTarget as HTMLElement;
+      const rect = btn.getBoundingClientRect();
+      dropdownStyle = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;width:120px;`;
+    }
+  }
+
+  function handleGlobalClick(e: MouseEvent) {
+    if (showFontDropdown) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.font-dropdown-wrapper')) {
+        showFontDropdown = false;
+      }
+    }
   }
 
   function selectFontSize(size: string) {
@@ -140,6 +159,8 @@
   }
 </script>
 
+<svelte:window onclick={handleGlobalClick} />
+
 <svelte:head>
   <title>Settings — Mythic</title>
 </svelte:head>
@@ -189,12 +210,12 @@
         <div class="setting-row">
           <span class="setting-name">Font Size</span>
           <div class="font-dropdown-wrapper">
-            <button class="setting-dropdown" onclick={() => showFontDropdown = !showFontDropdown}>
+            <button class="setting-dropdown" onclick={toggleDropdown}>
               <span>{fontSize}</span>
               <Icon name="chevron-down" size={12} color="var(--fg-muted)" />
             </button>
             {#if showFontDropdown}
-              <div class="dropdown-menu">
+              <div class="dropdown-menu" style={dropdownStyle}>
                 {#each fontSizes as size}
                   <button class="dropdown-item" class:active={fontSize === size} onclick={() => selectFontSize(size)}>{size}</button>
                 {/each}
@@ -446,7 +467,6 @@
   }
   .setting-dropdown:hover { border-color: rgba(139,92,246,0.25); }
   .dropdown-menu {
-    position: absolute; top: 100%; right: 0; margin-top: 6px; width: 120px;
     background: linear-gradient(175deg, #12122a, #0a0a1a);
     border: 1px solid rgba(139,92,246,0.12); border-radius: 12px;
     box-shadow: 0 12px 36px rgba(0,0,0,0.5); z-index: 50; padding: 4px;
