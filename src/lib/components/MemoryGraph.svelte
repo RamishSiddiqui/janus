@@ -7,6 +7,7 @@
   import CharacterNode from './nodes/CharacterNode.svelte';
   import ConversationNode from './nodes/ConversationNode.svelte';
   import MemoryNode from './nodes/MemoryNode.svelte';
+  import SharingEdge from './edges/SharingEdge.svelte';
 
   let { data, avatars = {}, onRefresh }: {
     data: MemoryGraphData;
@@ -19,6 +20,8 @@
     conversation: ConversationNode,
     memory: MemoryNode,
   };
+
+  const edgeTypes = { sharing: SharingEdge };
 
   /* ── Palette ── */
   const PALETTE = [
@@ -188,24 +191,22 @@
       });
     });
 
-    // ── Sharing links (visual only — not in dagre layout) ──
+    // ── Sharing links (custom animated edge) ──
     g.links.forEach((link) => {
       const isSync = link.link_type === 'sync';
       const isTwoWay = link.direction === 'two_way';
-      const arrow = isTwoWay ? '↔' : '→';
-      const lbl = isSync ? `sync ${arrow}` : `copy ${arrow}`;
+      const lbl = isSync ? 'sync' : 'copy';
 
       extraEdges.push({
         id: `link-${link.id}`,
         source: `mem-${link.source_memory_id}`,
         target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
-        style: `stroke: rgba(0,242,255,0.35); stroke-width: 1.5px; stroke-dasharray: ${isSync ? '4 3' : '8 5'};`,
-        type: 'smoothstep',
-        animated: isSync,
-        label: lbl,
-        labelStyle: 'font-size: 9px; fill: #5a5a7a; font-family: Inter, sans-serif;',
-        labelBgStyle: 'fill: rgba(7,7,26,0.85); rx: 4; ry: 4;',
-        labelBgPadding: [4, 6] as [number, number],
+        type: 'sharing',
+        data: {
+          linkType: link.link_type,
+          direction: link.direction,
+          label: lbl,
+        },
       });
     });
 
@@ -234,6 +235,7 @@
     minZoom={0.15}
     maxZoom={2.5}
     defaultEdgeOptions={{ type: 'smoothstep' }}
+    {edgeTypes}
   >
     <Controls position="bottom-left" />
     <Background variant="dots" gap={24} size={0.6} color="rgba(139,92,246,0.06)" />
