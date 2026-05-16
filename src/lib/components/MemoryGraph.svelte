@@ -237,6 +237,7 @@
     minZoom={0.15}
     maxZoom={2.5}
     defaultEdgeOptions={{ type: 'smoothstep' }}
+    elevateEdgesOnSelect={false}
     {edgeTypes}
   >
     <Controls position="bottom-left" />
