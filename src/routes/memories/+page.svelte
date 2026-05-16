@@ -96,7 +96,24 @@
   function handleRefresh() {
     if (selectedCharId) loadGraph(selectedCharId);
   }
+
+  // Custom dropdown state
+  let dropdownOpen = $state(false);
+  let dropdownEl: HTMLDivElement | undefined = $state();
+
+  function selectChar(id: string) {
+    selectedCharId = id;
+    dropdownOpen = false;
+  }
+
+  function handleClickOutside(e: MouseEvent) {
+    if (dropdownEl && !dropdownEl.contains(e.target as Node)) {
+      dropdownOpen = false;
+    }
+  }
 </script>
+
+<svelte:window on:mousedown={handleClickOutside} />
 
 <svelte:head>
   <title>Memory Management — Mythic</title>
@@ -117,32 +134,56 @@
 
     <div class="topbar-right">
       <!-- Character selector (custom) -->
-      <div class="char-picker">
-        {#if selectedChar?.avatarPath}
-          <img
-            class="char-avatar"
-            src="/avatars/{selectedChar.avatarPath.split('/').pop()}"
-            alt={selectedChar.name}
-          />
-        {:else}
-          <div class="char-avatar placeholder">
-            <Icon name="user" size={14} />
-          </div>
-        {/if}
-        <select
-          class="char-select"
-          bind:value={selectedCharId}
+      <div class="char-picker" bind:this={dropdownEl}>
+        <button
+          class="picker-trigger"
+          onclick={() => dropdownOpen = !dropdownOpen}
           disabled={isLoading || characters.length === 0}
         >
-          {#if characters.length === 0}
-            <option value={null}>No characters</option>
+          {#if selectedChar?.avatarPath}
+            <img
+              class="char-avatar"
+              src="/avatars/{selectedChar.avatarPath.split('/').pop()}"
+              alt={selectedChar.name}
+            />
           {:else}
-            {#each characters as char}
-              <option value={char.id}>{char.name}</option>
-            {/each}
+            <div class="char-avatar placeholder">
+              <Icon name="user" size={14} />
+            </div>
           {/if}
-        </select>
-        <Icon name="chevron-down" size={14} />
+          <span class="picker-label">{selectedChar?.name ?? 'Select character'}</span>
+          <span class="picker-chevron" class:open={dropdownOpen}>
+            <Icon name="chevron-down" size={13} />
+          </span>
+        </button>
+
+        {#if dropdownOpen && characters.length > 0}
+          <div class="picker-dropdown">
+            {#each characters as char}
+              <button
+                class="picker-option"
+                class:selected={char.id === selectedCharId}
+                onclick={() => selectChar(char.id)}
+              >
+                {#if char.avatarPath}
+                  <img
+                    class="option-avatar"
+                    src="/avatars/{char.avatarPath.split('/').pop()}"
+                    alt={char.name}
+                  />
+                {:else}
+                  <div class="option-avatar placeholder">
+                    <Icon name="user" size={10} />
+                  </div>
+                {/if}
+                <span>{char.name}</span>
+                {#if char.id === selectedCharId}
+                  <Icon name="check" size={13} />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
 
       <!-- View switch -->
@@ -296,6 +337,10 @@
 
   /* ── Character Picker ── */
   .char-picker {
+    position: relative;
+  }
+
+  .picker-trigger {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -304,12 +349,19 @@
     border: 1px solid rgba(139, 92, 246, 0.1);
     border-radius: 10px;
     cursor: pointer;
-    position: relative;
-    transition: border-color 200ms;
+    transition: all 200ms;
+    font-family: var(--font-body);
   }
-  .char-picker:hover,
-  .char-picker:focus-within {
+
+  .picker-trigger:hover,
+  .picker-trigger:focus {
     border-color: rgba(139, 92, 246, 0.25);
+    background: rgba(14, 14, 30, 0.8);
+  }
+
+  .picker-trigger:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .char-avatar {
@@ -328,23 +380,100 @@
     color: #fff;
   }
 
-  .char-select {
-    background: none;
-    border: none;
-    outline: none;
+  .picker-label {
     font-size: 13px;
     font-weight: 600;
     color: #e8e0ff;
-    cursor: pointer;
-    min-width: 120px;
-    appearance: none;
-    -webkit-appearance: none;
-    font-family: var(--font-body);
+    min-width: 100px;
+    text-align: left;
   }
 
-  .char-picker :global(svg:last-child) {
+  .picker-chevron {
+    display: flex;
     color: #5a5a7a;
+    transition: transform 200ms;
+  }
+
+  .picker-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  /* ── Dropdown Menu ── */
+  .picker-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: rgba(12, 12, 28, 0.96);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    border-radius: 12px;
+    padding: 4px;
+    z-index: 100;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.06);
+    animation: dropIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .picker-dropdown::-webkit-scrollbar { width: 3px; }
+  .picker-dropdown::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.15);
+    border-radius: 3px;
+  }
+
+  @keyframes dropIn {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .picker-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #8b8ba7;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 150ms;
+    font-family: var(--font-body);
+    text-align: left;
+  }
+
+  .picker-option:hover {
+    background: rgba(139, 92, 246, 0.08);
+    color: #e8e0ff;
+  }
+
+  .picker-option.selected {
+    background: rgba(139, 92, 246, 0.12);
+    color: #c4a1ff;
+  }
+
+  .picker-option :global(svg) {
+    margin-left: auto;
+    color: #8B5CF6;
+  }
+
+  .option-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    object-fit: cover;
     flex-shrink: 0;
+  }
+
+  .option-avatar.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(139, 92, 246, 0.15);
+    color: #8b8ba7;
   }
 
   /* ── View Switch (segmented control) ── */
