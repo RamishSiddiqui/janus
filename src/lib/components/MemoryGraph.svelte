@@ -164,6 +164,15 @@
       });
     });
 
+    // ── Build set of node pairs that have sharing links ──
+    const sharingPairs = new Set<string>();
+    g.links.forEach(link => {
+      const src = `mem-${link.source_memory_id}`;
+      const tgt = link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`;
+      sharingPairs.add(`${src}->${tgt}`);
+      sharingPairs.add(`${tgt}->${src}`);
+    });
+
     // ── Scoped memories ──
     g.memories.filter(m => !m.is_canon).forEach(m => {
       const convId = m.conversation_id;
@@ -182,13 +191,18 @@
       });
 
       const parentId = m.parent_id ? `mem-${m.parent_id}` : (convId ? `conv-${convId}` : rootId);
-      treeEdges.push({
-        id: `e-mem-${m.id}`,
-        source: parentId,
-        target: `mem-${m.id}`,
-        style: `stroke: ${p.edge}; stroke-width: 1px;`,
-        type: 'smoothstep',
-      });
+      const pairKey = `${parentId}->${`mem-${m.id}`}`;
+
+      // Skip tree edge if a sharing link already connects these nodes
+      if (!sharingPairs.has(pairKey)) {
+        treeEdges.push({
+          id: `e-mem-${m.id}`,
+          source: parentId,
+          target: `mem-${m.id}`,
+          style: `stroke: ${p.edge}; stroke-width: 1px;`,
+          type: 'smoothstep',
+        });
+      }
     });
 
     // ── Sharing links (custom animated edge) ──
@@ -210,8 +224,7 @@
       });
     });
 
-    // Include ALL edges in dagre layout so it positions nodes
-    // to avoid sharing links crossing through other nodes
+    // Include ALL edges in dagre layout
     const allLayoutEdges = [...treeEdges, ...extraEdges];
     const layoutNodes = applyLayout(nodes, allLayoutEdges);
     return { nodes: layoutNodes, edges: [...treeEdges, ...extraEdges] };
