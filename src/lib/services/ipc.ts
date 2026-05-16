@@ -419,7 +419,35 @@ export interface Memory {
   conversation_id: string | null;
   content: string;
   source: string;
+  parent_id: string | null;
+  version: number;
+  is_canon: boolean;
   created_at: string;
+}
+
+export interface MemoryLink {
+  id: string;
+  source_memory_id: string;
+  target_conversation_id: string;
+  link_type: 'copy' | 'sync';
+  direction: 'one_way' | 'two_way';
+  sync_mode: 'auto' | 'manual';
+  linked_memory_id: string | null;
+  created_at: string;
+}
+
+export interface MemoryGraphConversation {
+  id: string;
+  title: string;
+  memory_count: number;
+}
+
+export interface MemoryGraph {
+  character_id: string;
+  character_name: string;
+  memories: Memory[];
+  links: MemoryLink[];
+  conversations: MemoryGraphConversation[];
 }
 
 export async function listMemories(
@@ -446,8 +474,40 @@ export async function createMemory(
   });
 }
 
+export async function updateMemory(memoryId: string, content: string): Promise<Memory> {
+  return safeInvoke<Memory>('update_memory', { memoryId, content });
+}
+
 export async function deleteMemory(memoryId: string): Promise<void> {
   return safeInvoke<void>('delete_memory', { memoryId });
+}
+
+export async function promoteToCanon(memoryId: string): Promise<Memory> {
+  return safeInvoke<Memory>('promote_to_canon', { memoryId });
+}
+
+export async function shareMemory(
+  sourceMemoryId: string,
+  targetConversationId: string,
+  linkType?: 'copy' | 'sync',
+  direction?: 'one_way' | 'two_way',
+  syncMode?: 'auto' | 'manual',
+): Promise<MemoryLink> {
+  return safeInvoke<MemoryLink>('share_memory', {
+    sourceMemoryId,
+    targetConversationId,
+    linkType: linkType ?? null,
+    direction: direction ?? null,
+    syncMode: syncMode ?? null,
+  });
+}
+
+export async function unlinkMemory(linkId: string): Promise<void> {
+  return safeInvoke<void>('unlink_memory', { linkId });
+}
+
+export async function getMemoryGraph(characterId: string): Promise<MemoryGraph> {
+  return safeInvoke<MemoryGraph>('get_memory_graph', { characterId });
 }
 
 // --- Search ---

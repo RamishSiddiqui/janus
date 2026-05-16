@@ -165,7 +165,12 @@ pub fn run() {
             // Memories
             commands::memories::list_memories,
             commands::memories::create_memory,
+            commands::memories::update_memory,
             commands::memories::delete_memory,
+            commands::memories::promote_to_canon,
+            commands::memories::share_memory,
+            commands::memories::unlink_memory,
+            commands::memories::get_memory_graph,
             // Search
             commands::conversations::search_messages,
         ])
