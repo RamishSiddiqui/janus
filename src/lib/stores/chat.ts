@@ -248,10 +248,17 @@ export async function sendMessage(conversationId: string, content: string, model
         });
       } else if (event.event_type === 'done') {
         messages.update(msgs => {
-          return msgs.map(m => m.id === event.message_id
-            ? { ...m, content: event.content, isStreaming: false }
-            : m
-          );
+          const exists = msgs.some(m => m.id === event.message_id);
+          if (exists) {
+            // Streaming path — message was created by delta events, just finalize
+            return msgs.map(m => m.id === event.message_id
+              ? { ...m, content: event.content, isStreaming: false }
+              : m
+            );
+          } else {
+            // Non-streaming path — message doesn't exist locally yet, create it
+            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content, isStreaming: false }];
+          }
         });
         isStreaming.set(false);
         unlisten();

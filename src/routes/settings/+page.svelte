@@ -242,12 +242,15 @@
         <div class="setting-row">
           <div class="setting-label">
             <span class="setting-name">Streaming Responses</span>
-            <span class="setting-desc">Show text as it generates</span>
+            <span class="setting-desc">{streamingEnabled ? 'Text appears word-by-word as it generates' : 'Full response appears at once when complete'}</span>
           </div>
           <button 
             class="toggle-switch" 
             class:on={streamingEnabled}
-            onclick={() => streamingEnabled = !streamingEnabled}
+            onclick={() => {
+              streamingEnabled = !streamingEnabled;
+              success(streamingEnabled ? 'Streaming enabled — responses stream in real-time' : 'Streaming disabled — responses appear when complete');
+            }}
             role="switch"
             aria-checked={streamingEnabled}
             aria-label="Toggle streaming responses"
