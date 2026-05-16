@@ -3,7 +3,6 @@
   import '@xyflow/svelte/dist/style.css';
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
-  import { writable } from 'svelte/store';
 
   let { data, onRefresh }: { data: MemoryGraphData; onRefresh: () => void } = $props();
 
@@ -67,7 +66,6 @@
     });
 
     // 3. Memory nodes
-    // Group by conversation, then lay out vertically
     const convMemories = new Map<string | null, typeof g.memories>();
     const canonMemories = g.memories.filter(m => m.is_canon);
     const otherMemories = g.memories.filter(m => !m.is_canon);
@@ -78,7 +76,7 @@
       convMemories.get(key)!.push(m);
     }
 
-    // Canon memories — arranged under the character node
+    // Canon memories
     canonMemories.forEach((m, i) => {
       const x = 400 - ((canonMemories.length - 1) * 200) / 2 + i * 200;
       const truncated = m.content.length > 60 ? m.content.slice(0, 57) + '...' : m.content;
@@ -102,7 +100,7 @@
       });
     });
 
-    // Conversation memories — arranged under each conversation
+    // Conversation memories
     g.conversations.forEach((conv, convIndex) => {
       const mems = convMemories.get(conv.id) ?? [];
       const color = convColorMap.get(conv.id) ?? '#666';
@@ -123,7 +121,6 @@
           style: `background: ${color}11; color: ${color}; border: 1px solid ${color}44; border-radius: 8px; padding: 8px 12px; font-size: 11px; max-width: 180px;`,
         });
 
-        // Edge: conversation → memory or parent → memory
         const sourceId = m.parent_id
           ? `mem-${m.parent_id}`
           : `conv-${conv.id}`;
@@ -160,22 +157,22 @@
     return { nodes, edges };
   }
 
-  let graphResult = $derived(buildGraph(data));
-  let nodesStore = writable(graphResult.nodes);
-  let edgesStore = writable(graphResult.edges);
+  // Use $state.raw for Svelte 5 + @xyflow/svelte compatibility
+  let nodes: Node[] = $state.raw([]);
+  let edges: Edge[] = $state.raw([]);
 
-  // Update stores when data changes
+  // Rebuild graph when data changes
   $effect(() => {
     const result = buildGraph(data);
-    nodesStore.set(result.nodes);
-    edgesStore.set(result.edges);
+    nodes = result.nodes;
+    edges = result.edges;
   });
 </script>
 
 <div class="graph-wrapper">
   <SvelteFlow
-    nodes={nodesStore}
-    edges={edgesStore}
+    bind:nodes
+    bind:edges
     fitView
     minZoom={0.2}
     maxZoom={2}
