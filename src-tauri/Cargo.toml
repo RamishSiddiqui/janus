@@ -1,0 +1,70 @@
+[package]
+name = "mythic"
+version = "0.1.0"
+description = "Open-source LLM-powered role-playing desktop app with image and video generation"
+authors = ["Mythic Contributors"]
+edition = "2021"
+
+[lib]
+name = "mythic_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri core + plugins
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client (for provider APIs)
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Image processing (for character card PNG embedding)
+image = "0.25"
+png = "0.18"
+base64 = "0.22"
+
+# Async traits
+async-trait = "0.1"
+
+# Streaming
+futures = "0.3"
+tokio-stream = "0.1"
+
+# Event-based SSE parsing for OpenAI-compatible APIs
+eventsource-stream = "0.2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+opt-level = "z"       # Optimize for binary size
+lto = true            # Link-time optimization
+strip = true          # Strip debug symbols
+codegen-units = 1     # Better optimization (slower compile)
+panic = "abort"       # No unwinding overhead
