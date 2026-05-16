@@ -202,6 +202,7 @@
         source: `mem-${link.source_memory_id}`,
         target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
         type: 'sharing',
+        zIndex: 1000,
         data: {
           linkType: link.link_type,
           direction: link.direction,
@@ -210,8 +211,10 @@
       });
     });
 
-    // Apply dagre auto-layout
-    const layoutNodes = applyLayout(nodes, treeEdges);
+    // Include ALL edges in dagre layout so it positions nodes
+    // to avoid sharing links crossing through other nodes
+    const allLayoutEdges = [...treeEdges, ...extraEdges];
+    const layoutNodes = applyLayout(nodes, allLayoutEdges);
     return { nodes: layoutNodes, edges: [...treeEdges, ...extraEdges] };
   }
 
