@@ -4,21 +4,15 @@
 
   let { data }: { data: MemoryGraphData } = $props();
 
-  const CONV_COLORS = [
-    '#2ea67e', '#5865f2', '#e05260', '#f0b232',
-    '#9b59b6', '#1abc9c', '#e67e22', '#3498db',
-  ];
-
+  const PALETTE = ['#c4a1ff', '#00f2ff', '#fb7185', '#fbbf24', '#34d399', '#d580ff'];
   const CANON_COLOR = '#daa520';
 
-  // Build timeline entries sorted by creation date
   interface TimelineEntry {
     id: string;
     content: string;
     source: string;
     version: number;
     isCanon: boolean;
-    conversationId: string | null;
     conversationTitle: string;
     color: string;
     category: string;
@@ -28,35 +22,28 @@
 
   let convColorMap = $derived.by(() => {
     const map = new Map<string, string>();
-    data.conversations.forEach((c, i) => {
-      map.set(c.id, CONV_COLORS[i % CONV_COLORS.length]);
-    });
+    data.conversations.forEach((c, i) => map.set(c.id, PALETTE[i % PALETTE.length]));
     return map;
   });
 
   let convTitleMap = $derived.by(() => {
     const map = new Map<string, string>();
-    data.conversations.forEach(c => {
-      map.set(c.id, c.title);
-    });
+    data.conversations.forEach(c => map.set(c.id, c.title));
     return map;
   });
 
   let entries = $derived.by(() => {
     return data.memories
       .map(m => {
-        // Extract category from content prefix like "[event] Aria..."
         const catMatch = m.content.match(/^\[(\w+)\]\s*/);
         const category = catMatch ? catMatch[1] : 'fact';
         const content = catMatch ? m.content.slice(catMatch[0].length) : m.content;
-
         return {
           id: m.id,
           content,
           source: m.source,
           version: m.version,
           isCanon: m.is_canon,
-          conversationId: m.conversation_id,
           conversationTitle: m.conversation_id ? (convTitleMap.get(m.conversation_id) ?? 'Unknown') : 'Canon',
           color: m.is_canon ? CANON_COLOR : (m.conversation_id ? (convColorMap.get(m.conversation_id) ?? '#666') : CANON_COLOR),
           category,
@@ -67,16 +54,15 @@
       .sort((a, b) => a.time.localeCompare(b.time));
   });
 
-  // Filter state
+  // Filters
   let filterConv: string | null = $state(null);
   let filterCategory: string | null = $state(null);
-
   let categories = $derived([...new Set(entries.map(e => e.category))]);
 
-  let filteredEntries = $derived.by(() => {
+  let filtered = $derived.by(() => {
     let result = entries;
     if (filterConv) {
-      result = result.filter(e => e.conversationId === filterConv || (filterConv === 'canon' && e.isCanon));
+      result = result.filter(e => (filterConv === 'canon' && e.isCanon) || e.conversationTitle === filterConv);
     }
     if (filterCategory) {
       result = result.filter(e => e.category === filterCategory);
@@ -84,78 +70,100 @@
     return result;
   });
 
-  function formatTime(iso: string): string {
+  function fmt(iso: string): string {
     try {
       const d = new Date(iso);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-             ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return iso;
-    }
+             ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch { return iso; }
   }
 </script>
 
-<div class="timeline-container">
-  <!-- Filters -->
-  <div class="timeline-filters">
-    <div class="filter-group">
-      <label>Conversation</label>
-      <select bind:value={filterConv}>
-        <option value={null}>All</option>
-        <option value="canon">Canon Only</option>
-        {#each data.conversations as conv}
-          <option value={conv.id}>{conv.title}</option>
-        {/each}
-      </select>
+<div class="tl-container">
+  <!-- Filter bar -->
+  <div class="tl-filters">
+    <div class="filter-chip-group">
+      <button
+        class="filter-chip"
+        class:active={!filterConv}
+        onclick={() => filterConv = null}
+      >All</button>
+      <button
+        class="filter-chip canon"
+        class:active={filterConv === 'canon'}
+        onclick={() => filterConv = filterConv === 'canon' ? null : 'canon'}
+      >Canon</button>
+      {#each data.conversations as conv, i}
+        <button
+          class="filter-chip"
+          class:active={filterConv === conv.title}
+          style="--chip-color: {PALETTE[i % PALETTE.length]}"
+          onclick={() => filterConv = filterConv === conv.title ? null : conv.title}
+        >
+          <span class="chip-dot" style="background: {PALETTE[i % PALETTE.length]}"></span>
+          {conv.title.length > 20 ? conv.title.slice(0, 18) + '…' : conv.title}
+        </button>
+      {/each}
     </div>
-    <div class="filter-group">
-      <label>Category</label>
-      <select bind:value={filterCategory}>
-        <option value={null}>All</option>
-        {#each categories as cat}
-          <option value={cat}>{cat}</option>
-        {/each}
-      </select>
+    <div class="filter-right">
+      {#if categories.length > 1}
+        <select class="cat-select" bind:value={filterCategory}>
+          <option value={null}>All types</option>
+          {#each categories as cat}
+            <option value={cat}>{cat}</option>
+          {/each}
+        </select>
+      {/if}
+      <span class="entry-count">{filtered.length}</span>
     </div>
-    <span class="entry-count">{filteredEntries.length} memor{filteredEntries.length === 1 ? 'y' : 'ies'}</span>
   </div>
 
-  <!-- Timeline -->
-  <div class="timeline-scroll">
-    {#if filteredEntries.length === 0}
-      <div class="empty">
-        <Icon name="clock" size={36} />
+  <!-- Timeline body -->
+  <div class="tl-scroll">
+    {#if filtered.length === 0}
+      <div class="tl-empty">
+        <Icon name="inbox" size={28} />
         <p>No memories match the current filters</p>
       </div>
     {:else}
-      <div class="timeline-track">
-        {#each filteredEntries as entry, i (entry.id)}
-          <div class="timeline-entry">
-            <!-- Dot + vertical line -->
-            <div class="entry-track">
-              <div class="entry-dot" style="background: {entry.color}; box-shadow: 0 0 8px {entry.color}44;"></div>
-              {#if i < filteredEntries.length - 1}
-                <div class="entry-line"></div>
+      <div class="tl-track">
+        {#each filtered as entry, i (entry.id)}
+          <div class="tl-row" style="--delay: {Math.min(i * 40, 400)}ms;">
+            <!-- Track -->
+            <div class="row-track">
+              <div class="row-dot" style="background: {entry.color}; box-shadow: 0 0 8px {entry.color}44;"></div>
+              {#if i < filtered.length - 1}
+                <div class="row-line"></div>
               {/if}
             </div>
 
-            <!-- Content card -->
-            <div class="entry-card" style="border-left: 3px solid {entry.color};">
-              <div class="entry-header">
-                <span class="entry-conv" style="color: {entry.color};">
-                  {entry.isCanon ? '🧠 Canon' : `💬 ${entry.conversationTitle}`}
-                </span>
-                <span class="entry-time">{formatTime(entry.time)}</span>
+            <!-- Card -->
+            <div class="row-card">
+              <div class="card-header">
+                <div class="card-origin" style="color: {entry.color};">
+                  {#if entry.isCanon}
+                    <span class="origin-badge canon-badge">🧠 Canon</span>
+                  {:else}
+                    <span class="origin-badge" style="background: {entry.color}12; border-color: {entry.color}25;">
+                      💬 {entry.conversationTitle}
+                    </span>
+                  {/if}
+                </div>
+                <span class="card-time">{fmt(entry.time)}</span>
               </div>
-              <div class="entry-content">{entry.content}</div>
-              <div class="entry-meta">
-                <span class="badge cat">{entry.category}</span>
-                <span class="badge source">{entry.source === 'auto' ? '🤖 Auto' : '📌 Pinned'}</span>
+
+              <p class="card-content">{entry.content}</p>
+
+              <div class="card-tags">
+                <span class="tag type">{entry.category}</span>
+                <span class="tag source" class:auto={entry.source === 'auto'}>
+                  {entry.source === 'auto' ? '🤖 Auto' : '📌 Pinned'}
+                </span>
                 {#if entry.version > 1}
-                  <span class="badge version">v{entry.version}</span>
+                  <span class="tag version">v{entry.version}</span>
                 {/if}
                 {#if entry.parentId}
-                  <span class="badge linked">🔗 Inherited</span>
+                  <span class="tag inherited">⛓ Inherited</span>
                 {/if}
               </div>
             </div>
@@ -167,178 +175,268 @@
 </div>
 
 <style>
-  .timeline-container {
+  .tl-container {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
   }
 
-  .timeline-filters {
+  /* ── Filter bar ── */
+  .tl-filters {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 12px 24px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--surface-secondary);
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.05);
+    flex-shrink: 0;
+    gap: 12px;
+    overflow-x: auto;
+  }
+
+  .tl-filters::-webkit-scrollbar { height: 0; }
+
+  .filter-chip-group {
+    display: flex;
+    gap: 6px;
     flex-shrink: 0;
   }
 
-  .filter-group {
+  .filter-chip {
     display: flex;
     align-items: center;
-    gap: 6px;
-  }
-
-  .filter-group label {
+    gap: 5px;
+    padding: 5px 12px;
     font-size: 11px;
-    color: var(--text-tertiary);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: #5a5a7a;
+    background: rgba(14, 14, 30, 0.5);
+    border: 1px solid rgba(139, 92, 246, 0.06);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 200ms;
+    white-space: nowrap;
+    font-family: var(--font-body);
   }
 
-  .filter-group select {
-    background: var(--surface-primary);
-    border: 1px solid var(--border-subtle);
+  .filter-chip:hover {
+    border-color: rgba(139, 92, 246, 0.15);
+    color: #8b8ba7;
+  }
+
+  .filter-chip.active {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.2);
+    color: #c4a1ff;
+  }
+
+  .filter-chip.canon.active {
+    background: rgba(218, 165, 32, 0.1);
+    border-color: rgba(218, 165, 32, 0.25);
+    color: #daa520;
+  }
+
+  .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .filter-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .cat-select {
+    background: rgba(14, 14, 30, 0.5);
+    border: 1px solid rgba(139, 92, 246, 0.08);
     border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 12px;
-    color: var(--text-primary);
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #8b8ba7;
     cursor: pointer;
+    font-family: var(--font-body);
   }
 
   .entry-count {
-    margin-left: auto;
     font-size: 12px;
-    color: var(--text-tertiary);
+    font-weight: 700;
+    color: #c4a1ff;
+    font-family: var(--font-mono);
+    min-width: 20px;
+    text-align: right;
   }
 
-  .timeline-scroll {
+  /* ── Scroll area ── */
+  .tl-scroll {
     flex: 1;
     overflow-y: auto;
-    padding: 24px;
+    padding: 20px 24px 40px;
   }
 
-  .empty {
+  .tl-scroll::-webkit-scrollbar { width: 3px; }
+  .tl-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.12); border-radius: 3px; }
+
+  .tl-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: 12px;
-    color: var(--text-tertiary);
+    gap: 10px;
+    color: #4a4a6a;
   }
 
-  .empty p {
-    font-size: 14px;
+  .tl-empty p {
+    font-size: 12px;
     margin: 0;
   }
 
-  .timeline-track {
+  /* ── Timeline track ── */
+  .tl-track {
     display: flex;
     flex-direction: column;
-    max-width: 700px;
+    max-width: 640px;
     margin: 0 auto;
   }
 
-  .timeline-entry {
+  .tl-row {
     display: flex;
-    gap: 16px;
-    min-height: 60px;
+    gap: 14px;
+    animation: fadeSlide 350ms ease both;
+    animation-delay: var(--delay);
   }
 
-  .entry-track {
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .row-track {
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 16px;
+    width: 12px;
     flex-shrink: 0;
+    padding-top: 2px;
   }
 
-  .entry-dot {
-    width: 12px;
-    height: 12px;
+  .row-dot {
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
     z-index: 1;
+    transition: transform 200ms;
   }
 
-  .entry-line {
-    width: 2px;
+  .tl-row:hover .row-dot {
+    transform: scale(1.3);
+  }
+
+  .row-line {
+    width: 1.5px;
     flex: 1;
-    background: var(--border-subtle);
-    min-height: 20px;
+    background: linear-gradient(to bottom, rgba(139, 92, 246, 0.1), transparent);
+    min-height: 16px;
   }
 
-  .entry-card {
+  /* ── Card ── */
+  .row-card {
     flex: 1;
     padding: 12px 16px;
-    background: var(--surface-secondary);
-    border-radius: 8px;
-    margin-bottom: 12px;
-    transition: background 0.2s ease;
+    background: rgba(14, 14, 30, 0.4);
+    border: 1px solid rgba(139, 92, 246, 0.05);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    transition: all 200ms;
   }
 
-  .entry-card:hover {
-    background: var(--surface-tertiary);
+  .row-card:hover {
+    background: rgba(14, 14, 30, 0.6);
+    border-color: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
-  .entry-header {
+  .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 6px;
   }
 
-  .entry-conv {
-    font-size: 12px;
+  .card-origin { font-size: 11px; }
+
+  .origin-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
     font-weight: 600;
+    font-size: 10px;
+    border: 1px solid transparent;
   }
 
-  .entry-time {
-    font-size: 11px;
-    color: var(--text-tertiary);
+  .canon-badge {
+    background: rgba(218, 165, 32, 0.1);
+    border-color: rgba(218, 165, 32, 0.2);
+    color: #daa520;
   }
 
-  .entry-content {
+  .card-time {
+    font-size: 10px;
+    color: #3a3a5a;
+    font-family: var(--font-mono);
+  }
+
+  .card-content {
     font-size: 13px;
-    color: var(--text-primary);
-    line-height: 1.5;
-    margin-bottom: 8px;
+    color: #c8c8e0;
+    line-height: 1.55;
+    margin: 0 0 8px;
   }
 
-  .entry-meta {
+  .card-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 5px;
   }
 
-  .badge {
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-weight: 500;
+  .tag {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
   }
 
-  .badge.cat {
-    background: rgba(255,255,255,0.06);
-    color: var(--text-secondary);
+  .tag.type {
+    background: rgba(139, 92, 246, 0.08);
+    color: #8b8ba7;
     text-transform: capitalize;
   }
 
-  .badge.source {
-    background: rgba(46, 166, 126, 0.1);
-    color: #2ea67e;
+  .tag.source {
+    background: rgba(16, 185, 129, 0.08);
+    color: #34d399;
   }
 
-  .badge.version {
-    background: rgba(88, 101, 242, 0.1);
-    color: #5865f2;
+  .tag.source.auto {
+    background: rgba(0, 242, 255, 0.08);
+    color: #00f2ff;
   }
 
-  .badge.linked {
-    background: rgba(240, 178, 50, 0.1);
-    color: #f0b232;
+  .tag.version {
+    background: rgba(139, 92, 246, 0.1);
+    color: #c4a1ff;
+  }
+
+  .tag.inherited {
+    background: rgba(218, 165, 32, 0.08);
+    color: #daa520;
   }
 </style>
