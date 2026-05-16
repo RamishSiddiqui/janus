@@ -417,7 +417,7 @@
   }
 
   .landing-title {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
     color: var(--fg-primary);
     margin-bottom: 12px;
@@ -429,7 +429,7 @@
   }
 
   .landing-subtitle {
-    font-size: 14px;
+    font-size: var(--text-base);
     color: var(--fg-muted);
     line-height: 1.7;
     margin-bottom: 32px;
@@ -447,7 +447,7 @@
     gap: 8px;
     padding: 10px 24px;
     border-radius: var(--rounded-lg);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     text-decoration: none;
     transition: all var(--duration-normal) var(--ease-out);
@@ -480,7 +480,7 @@
   }
 
   .bubble-text {
-    font-size: 11px;
+    font-size: var(--text-sm);
     white-space: nowrap;
   }
 
@@ -554,13 +554,13 @@
   }
 
   .empty-title {
-    font-size: 18px;
+    font-size: var(--text-xl);
     font-weight: 600;
     color: var(--fg-secondary);
   }
 
   .empty-desc {
-    font-size: 13px;
+    font-size: var(--text-md);
     color: var(--fg-muted);
     max-width: 300px;
     text-align: center;
@@ -663,11 +663,11 @@
   }
 
   .retry-icon {
-    font-size: 16px; flex-shrink: 0;
+    font-size: var(--text-lg); flex-shrink: 0;
   }
 
   .retry-text {
-    flex: 1; font-size: 12px; color: #e0a0a8;
+    flex: 1; font-size: var(--text-sm); color: #e0a0a8;
     font-family: var(--font-body);
   }
 
@@ -675,7 +675,7 @@
     display: flex; align-items: center; gap: 5px;
     padding: 6px 14px; border-radius: 8px;
     background: linear-gradient(135deg, #8B5CF6, #bf40ff);
-    border: none; color: #fff; font-size: 11px;
+    border: none; color: #fff; font-size: var(--text-sm);
     font-weight: 600; font-family: var(--font-body);
     cursor: pointer; flex-shrink: 0;
     transition: all 150ms;

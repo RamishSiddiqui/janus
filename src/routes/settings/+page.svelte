@@ -16,6 +16,7 @@
   let systemPrompt = $state($settings.systemPrompt);
 
   let showFontDropdown = $state(false);
+  let dropdownStyle = $state('');
   let showClearConfirm = $state(false);
   let isExporting = $state(false);
   let isImporting = $state(false);
@@ -40,6 +41,39 @@
     systemPrompt = $settings.systemPrompt;
     success('System prompt reset to default');
   }
+
+  function toggleFontDropdown() {
+    showFontDropdown = !showFontDropdown;
+    if (showFontDropdown) {
+      const btn = document.querySelector('.setting-dropdown') as HTMLElement | null;
+      if (btn) {
+        const rect = btn.getBoundingClientRect();
+        dropdownStyle = `top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;width:120px;`;
+      }
+    }
+  }
+
+  // Close dropdown on click outside, scroll, or resize
+  $effect(() => {
+    if (showFontDropdown) {
+      const handler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.dropdown-menu') && !target.closest('.setting-dropdown')) {
+          showFontDropdown = false;
+        }
+      };
+      const dismissOnScroll = () => { showFontDropdown = false; };
+      const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+      window.addEventListener('scroll', dismissOnScroll, { capture: true, passive: true });
+      window.addEventListener('resize', dismissOnScroll, { passive: true });
+      return () => {
+        clearTimeout(timer);
+        document.removeEventListener('click', handler);
+        window.removeEventListener('scroll', dismissOnScroll, { capture: true } as EventListenerOptions);
+        window.removeEventListener('resize', dismissOnScroll);
+      };
+    }
+  });
 
   function selectFontSize(size: string) {
     fontSize = size;
@@ -189,17 +223,10 @@
         <div class="setting-row">
           <span class="setting-name">Font Size</span>
           <div class="font-dropdown-wrapper">
-            <button class="setting-dropdown" onclick={() => showFontDropdown = !showFontDropdown}>
+            <button class="setting-dropdown" onclick={toggleFontDropdown}>
               <span>{fontSize}</span>
               <Icon name="chevron-down" size={12} color="var(--fg-muted)" />
             </button>
-            {#if showFontDropdown}
-              <div class="dropdown-menu">
-                {#each fontSizes as size}
-                  <button class="dropdown-item" class:active={fontSize === size} onclick={() => selectFontSize(size)}>{size}</button>
-                {/each}
-              </div>
-            {/if}
           </div>
         </div>
       </section>
@@ -357,6 +384,14 @@
       </div>
     </div>
   </div>
+
+  {#if showFontDropdown}
+    <div class="dropdown-menu" style={dropdownStyle}>
+      {#each fontSizes as size}
+        <button class="dropdown-item" class:active={fontSize === size} onclick={() => selectFontSize(size)}>{size}</button>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -375,11 +410,11 @@
     background: linear-gradient(90deg, transparent, rgba(139,92,246,0.15), transparent);
   }
   .settings-title {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .settings-subtitle { font-size: 11px; color: #5a5a7a; letter-spacing: 0.3px; }
+  .settings-subtitle { font-size: var(--text-sm); color: #5a5a7a; letter-spacing: 0.3px; }
 
   /* ── Grid ── */
   .settings-grid {
@@ -405,7 +440,7 @@
 
   .section-header { display: flex; align-items: center; gap: 10px; }
   .section-header-left { display: flex; align-items: center; gap: 10px; flex: 1; }
-  .section-title { font-size: 15px; font-weight: 700; color: #e8e0ff; }
+  .section-title { font-size: var(--text-lg); font-weight: 700; color: #e8e0ff; }
 
   /* ── Setting Row ── */
   .setting-row {
@@ -413,8 +448,8 @@
     padding: 8px 0;
   }
   .setting-label { display: flex; flex-direction: column; gap: 2px; }
-  .setting-name { font-size: 13px; color: #c8c8e0; font-weight: 500; }
-  .setting-desc { font-size: 11px; color: #5a5a7a; }
+  .setting-name { font-size: var(--text-md); color: #c8c8e0; font-weight: 500; }
+  .setting-desc { font-size: var(--text-sm); color: #5a5a7a; }
 
   /* ── Theme Toggle ── */
   .theme-toggle {
@@ -424,7 +459,7 @@
   }
   .theme-btn {
     padding: 6px 14px; background: transparent; border: none;
-    color: #5a5a7a; font-size: 11px; font-weight: 600;
+    color: #5a5a7a; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); cursor: pointer;
     transition: all 200ms ease;
   }
@@ -446,15 +481,15 @@
   }
   .setting-dropdown:hover { border-color: rgba(139,92,246,0.25); }
   .dropdown-menu {
-    position: absolute; top: 100%; right: 0; margin-top: 6px; width: 120px;
+    position: fixed; z-index: 50;
     background: linear-gradient(175deg, #12122a, #0a0a1a);
     border: 1px solid rgba(139,92,246,0.12); border-radius: 12px;
-    box-shadow: 0 12px 36px rgba(0,0,0,0.5); z-index: 50; padding: 4px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5); padding: 4px;
     display: flex; flex-direction: column;
   }
   .dropdown-item {
     padding: 7px 12px; border-radius: 8px; border: none; background: transparent;
-    color: #8b8ba7; font-size: 12px; font-weight: 500;
+    color: #8b8ba7; font-size: var(--text-sm); font-weight: 500;
     font-family: var(--font-body); text-align: left; cursor: pointer;
     transition: all 120ms;
   }
@@ -467,7 +502,7 @@
     border-radius: 12px; background: rgba(244,63,94,0.04);
     border: 1px solid rgba(244,63,94,0.15);
   }
-  .clear-warn { font-size: 12px; color: #F43F5E; line-height: 1.5; }
+  .clear-warn { font-size: var(--text-sm); color: #F43F5E; line-height: 1.5; }
 
   /* ── Toggle Switch ── */
   .toggle-switch {
@@ -491,7 +526,7 @@
   .button-row { display: flex; gap: 10px; }
   .settings-btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    padding: 9px 16px; border-radius: 10px; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); border: none; cursor: pointer;
     transition: all 180ms ease;
   }
@@ -518,7 +553,7 @@
   .prompt-hint { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); }
   .reset-btn {
     background: none; border: none; cursor: pointer;
-    color: #bf40ff; font-size: 11px; font-weight: 600;
+    color: #bf40ff; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); transition: opacity 150ms;
   }
   .reset-btn:hover { opacity: 0.7; }
@@ -530,7 +565,7 @@
     background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
   }
   .about-left { display: flex; flex-direction: column; gap: 3px; }
-  .about-name { font-size: 13px; font-weight: 700; color: #e8e0ff; }
+  .about-name { font-size: var(--text-md); font-weight: 700; color: #e8e0ff; }
   .about-desc { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); letter-spacing: 0.5px; }
   .about-links { display: flex; gap: 8px; }
   .about-link-btn {

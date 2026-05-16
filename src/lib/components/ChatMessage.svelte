@@ -284,7 +284,7 @@
     box-shadow: 0 4px 20px rgba(139,92,246,0.2);
   }
 
-  .msg-text { font-size: 14px; color: #e0e0f0; word-wrap: break-word; }
+  .msg-text { font-size: var(--text-base); color: #e0e0f0; word-wrap: break-word; }
   .msg-text :global(.rp-action) { color: #8b8ba7; font-style: italic; }
   .streaming-cursor { color: #c4a1ff; font-weight: 700; }
 
@@ -314,7 +314,7 @@
   .branch-arrow:disabled { opacity: 0.3; cursor: default; }
 
   .branch-counter {
-    font-size: 11px; font-weight: 600; color: #8b8ba7;
+    font-size: var(--text-sm); font-weight: 600; color: #8b8ba7;
     font-family: var(--font-mono); min-width: 28px;
     text-align: center; user-select: none;
   }

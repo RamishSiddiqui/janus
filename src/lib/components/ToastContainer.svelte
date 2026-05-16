@@ -40,7 +40,7 @@
     backdrop-filter: blur(16px);
     border: 1px solid rgba(139,92,246,0.08);
     box-shadow: 0 12px 36px rgba(0,0,0,0.5), 0 0 15px rgba(139,92,246,0.04);
-    font-size: 13px;
+    font-size: var(--text-md);
     font-weight: 500;
     color: #e8e0ff;
     pointer-events: auto;

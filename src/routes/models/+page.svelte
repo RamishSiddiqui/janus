@@ -554,11 +554,11 @@
   }
   .models-header-left { display: flex; flex-direction: column; gap: 3px; }
   .models-title {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .models-subtitle { font-size: 11px; color: #5a5a7a; letter-spacing: 0.3px; }
+  .models-subtitle { font-size: var(--text-sm); color: #5a5a7a; letter-spacing: 0.3px; }
 
   .add-provider-btn {
     display: flex; align-items: center; gap: 6px;
@@ -587,7 +587,7 @@
     width: 32px; height: 32px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
   }
-  .column-title { font-size: 16px; font-weight: 700; color: #e8e0ff; letter-spacing: -0.2px; }
+  .column-title { font-size: var(--text-lg); font-weight: 700; color: #e8e0ff; letter-spacing: -0.2px; }
 
   /* ── Provider Card ── */
   .provider-card {
@@ -615,11 +615,11 @@
     transition: background 200ms, box-shadow 200ms;
   }
   .provider-dot.connected { background: #10B981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
-  .provider-name { font-size: 14px; font-weight: 500; color: #8b8ba7; }
+  .provider-name { font-size: var(--text-base); font-weight: 500; color: #8b8ba7; }
   .provider-name.active { font-weight: 700; color: #e8e0ff; }
 
   .provider-badge {
-    padding: 3px 10px; border-radius: 99px; font-size: 9px; font-weight: 700;
+    padding: 3px 10px; border-radius: 99px; font-size: var(--text-xs); font-weight: 700;
     letter-spacing: 0.3px; background: rgba(90,90,120,0.15); color: #5a5a7a;
   }
   .provider-badge.active { background: rgba(16,185,129,0.12); color: #10B981; }
@@ -631,7 +631,7 @@
   /* ── Fields ── */
   .field-group { display: flex; flex-direction: column; gap: 6px; flex: 1; }
   .field-label {
-    font-size: 10px; font-weight: 700; color: #5a5a7a;
+    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
     text-transform: uppercase; letter-spacing: 1px; font-family: var(--font-mono);
   }
   .field-dropdown, .field-input {
@@ -642,7 +642,7 @@
   }
   .field-dropdown { justify-content: space-between; cursor: pointer; }
   .field-dropdown:hover, .field-input:focus-within { border-color: rgba(139,92,246,0.3); }
-  .field-value { font-size: 13px; color: #e0e0f0; }
+  .field-value { font-size: var(--text-md); color: #e0e0f0; }
   .mono { font-family: var(--font-mono); }
   .field-input input {
     width: 100%; background: none; border: none; outline: none;
@@ -657,14 +657,14 @@
     padding: 12px 14px; border-radius: 12px;
     background: rgba(245,158,11,0.04); border: 1px solid rgba(245,158,11,0.15);
   }
-  .warning-text { font-size: 11px; color: #F59E0B; line-height: 1.5; }
+  .warning-text { font-size: var(--text-sm); color: #F59E0B; line-height: 1.5; }
 
   /* ── Provider Actions ── */
   .provider-actions { display: flex; gap: 6px; margin-top: 2px; }
   .action-btn {
     padding: 5px 12px; border-radius: 8px;
     border: 1px solid rgba(139,92,246,0.1); background: transparent;
-    color: #6b6b8a; font-size: 10px; font-weight: 600;
+    color: #6b6b8a; font-size: var(--text-xs); font-weight: 600;
     font-family: var(--font-body); cursor: pointer;
     transition: all 150ms ease;
   }
@@ -686,7 +686,7 @@
     display: flex; flex-direction: column; gap: 16px;
     box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 30px rgba(139,92,246,0.08);
   }
-  .modal-title { font-size: 18px; font-weight: 700; color: #e8e0ff; }
+  .modal-title { font-size: var(--text-xl); font-weight: 700; color: #e8e0ff; }
   .modal-field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
   .modal-row { display: flex; gap: 12px; }
   .modal-input {
@@ -708,7 +708,7 @@
   .settings-btn.outline {
     flex: unset; background: transparent;
     border: 1px solid rgba(139,92,246,0.12); color: #8b8ba7;
-    padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    padding: 8px 16px; border-radius: 10px; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); cursor: pointer; transition: all 150ms;
   }
   .settings-btn.outline:hover { background: rgba(139,92,246,0.06); border-color: rgba(139,92,246,0.2); }
@@ -727,8 +727,8 @@
     padding: 36px 16px; border: 1px dashed rgba(139,92,246,0.1);
     border-radius: 14px; text-align: center;
   }
-  .empty-provider-text { font-size: 13px; color: #6b6b8a; font-weight: 600; }
-  .empty-provider-hint { font-size: 11px; color: #4a4a6a; }
+  .empty-provider-text { font-size: var(--text-md); color: #6b6b8a; font-weight: 600; }
+  .empty-provider-hint { font-size: var(--text-sm); color: #4a4a6a; }
 
   /* ── Staggered Entrance ── */
   .animate-fade-in-up { animation: fadeInUp 400ms ease both; }

@@ -462,7 +462,7 @@
 
   .ctx-header { display: flex; justify-content: space-between; align-items: center; }
   .ctx-title {
-    font-size: 10px; font-weight: 700; color: #5a5a7a;
+    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
     font-family: var(--font-mono); letter-spacing: 1.8px;
   }
   .ctx-close {
@@ -493,13 +493,13 @@
     box-shadow: 0 0 20px rgba(139,92,246,0.25);
   }
   .ctx-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
-  .char-name-lg { font-size: 18px; font-weight: 700; color: #e8e0ff; }
-  .char-tagline { font-size: 12px; color: #6b6b8a; text-align: center; line-height: 1.5; }
+  .char-name-lg { font-size: var(--text-xl); font-weight: 700; color: #e8e0ff; }
+  .char-tagline { font-size: var(--text-sm); color: #6b6b8a; text-align: center; line-height: 1.5; }
 
   .char-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
   .tag {
     padding: 4px 10px; border-radius: 99px;
-    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+    font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.3px;
   }
   .tag-violet { background: rgba(139,92,246,0.12); color: #c4a1ff; }
   .tag-pink { background: rgba(191,64,255,0.12); color: #d580ff; }
@@ -513,10 +513,10 @@
   .ctx-section { display: flex; flex-direction: column; gap: 10px; }
   .ctx-section-header { display: flex; justify-content: space-between; align-items: center; }
   .ctx-section-title {
-    font-size: 10px; font-weight: 700; color: #5a5a7a;
+    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
     font-family: var(--font-mono); letter-spacing: 1.5px;
   }
-  .ctx-section-meta { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); }
+  .ctx-section-meta { font-size: var(--text-xs); color: #4a4a6a; font-family: var(--font-mono); }
 
   .lore-header-actions { display: flex; align-items: center; gap: 8px; }
   .lore-add-btn {
@@ -561,7 +561,7 @@
 
   .lore-toggle { background: none; border: none; padding: 2px; cursor: pointer; flex-shrink: 0; display: flex; }
   .lore-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .lore-text { font-size: 12px; color: #8b8ba7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lore-text { font-size: var(--text-sm); color: #8b8ba7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lore-keys { font-size: 9px; color: #4a4a6a; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lore-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
   .lore-dot.active { background: #10B981; box-shadow: 0 0 6px rgba(16,185,129,0.3); }
@@ -573,7 +573,7 @@
   .lore-entry:hover .lore-delete { opacity: 0.5; }
   .lore-delete:hover { opacity: 1 !important; }
 
-  .lore-empty { display: flex; align-items: center; gap: 8px; padding: 14px 12px; color: #4a4a6a; font-size: 11px; }
+  .lore-empty { display: flex; align-items: center; gap: 8px; padding: 14px 12px; color: #4a4a6a; font-size: var(--text-sm); }
   .lore-loading { display: flex; gap: 4px; padding: 14px; justify-content: center; }
   .loading-dot {
     width: 5px; height: 5px; border-radius: 50%;
@@ -590,12 +590,12 @@
     transition: all 150ms;
   }
   .memory-entry:hover { background: rgba(139,92,246,0.04); border-color: rgba(139,92,246,0.1); }
-  .memory-text { font-size: 11px; color: #8b8ba7; line-height: 1.5; }
+  .memory-text { font-size: var(--text-sm); color: #8b8ba7; line-height: 1.5; }
   .memory-footer {
     display: flex; align-items: center; gap: 8px; margin-top: 2px;
   }
-  .memory-meta { font-size: 9px; color: #4a4a6a; font-family: var(--font-mono); }
-  .memory-source { font-size: 9px; color: #5a5a7a; }
+  .memory-meta { font-size: var(--text-xs); color: #4a4a6a; font-family: var(--font-mono); }
+  .memory-source { font-size: var(--text-xs); color: #5a5a7a; }
   .memory-delete {
     background: none; border: none; padding: 2px; cursor: pointer;
     opacity: 0; transition: opacity 150ms; flex-shrink: 0; display: flex; margin-left: auto;
