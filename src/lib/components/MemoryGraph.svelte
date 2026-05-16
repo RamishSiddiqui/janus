@@ -250,18 +250,34 @@
     outline: none !important;
   }
 
+  /* Character custom node wrapper — strip all defaults */
+  .graph-wrap :global(.svelte-flow__node-character) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 16px !important;
+  }
+
+  .graph-wrap :global(.svelte-flow__node-character.selected) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;
+    border-radius: 16px !important;
+    outline: none !important;
+  }
+
   .graph-wrap :global(.svelte-flow__node:hover) {
     box-shadow: 0 0 20px rgba(139, 92, 246, 0.15) !important;
+  }
+
+  .graph-wrap :global(.svelte-flow__node-character:hover) {
+    box-shadow: 0 0 24px rgba(139, 92, 246, 0.12) !important;
   }
 
   .graph-wrap :global(.svelte-flow__node.selected) {
     outline: none !important;
     box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;
-    border-radius: inherit;
-  }
-
-  .graph-wrap :global(.svelte-flow__node.selected .char-node) {
-    border-color: rgba(139, 92, 246, 0.5);
   }
 
   .graph-wrap :global(.svelte-flow__handle) {
