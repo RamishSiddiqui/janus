@@ -147,6 +147,7 @@ pub fn run() {
             // Chat
             commands::chat::send_message,
             commands::chat::regenerate_message,
+            commands::chat::generate_raw,
             // Import
             commands::import::import_character_card,
             commands::import::get_avatar_path,

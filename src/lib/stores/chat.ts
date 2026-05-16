@@ -167,6 +167,9 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
 
 /** Loads messages for the active conversation. */
 export async function loadMessages(conversationId: string) {
+  // Reset auto-memory throttle on conversation switch
+  import('$lib/services/memory-extractor').then(m => m.resetCounter()).catch(() => {});
+
   if (!isTauri) {
     // Dev mode — keep existing mock messages
     return;
@@ -262,6 +265,29 @@ export async function sendMessage(conversationId: string, content: string, model
         });
         isStreaming.set(false);
         unlisten();
+
+        // --- Auto-save memories pipeline ---
+        const s = get(settings);
+        if (s.autoSaveMemories && event.content) {
+          (async () => {
+            try {
+              const { shouldExtract, extractAndSaveMemories } = await import('$lib/services/memory-extractor');
+              if (!shouldExtract()) return;
+              const conv = get(activeConversation);
+              const saved = await extractAndSaveMemories(
+                conversationId,
+                conv?.characterId,
+                content,           // user's message
+                event.content,     // assistant's response
+              );
+              if (saved > 0) {
+                console.debug(`[Mythic] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'}`);
+              }
+            } catch (err) {
+              console.warn('[Mythic] Auto-memory extraction failed:', err);
+            }
+          })();
+        }
       } else if (event.event_type === 'error') {
         console.error('Stream error:', event.content);
         toastError(`AI response failed: ${event.content}`);

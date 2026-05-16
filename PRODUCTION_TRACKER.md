@@ -51,6 +51,7 @@
 | **Message Search** | ✅ | FTS5 full-text search with highlighted snippets in sidebar overlay |
 | **Local Storage Only** | ✅ | Privacy guard with confirmation dialog, `isLocalOnly()` utility for feature gating |
 | **Lorebook Search/Filter** | ✅ | Client-side filter by name, keywords, and content with match count |
+| **Auto-save Memories** | ✅ | Two-tier extraction: LLM-powered (via `generate_raw`) with heuristic fallback, throttled every 3rd message |
 
 
 ## 🔴 Not Implemented
@@ -62,7 +63,6 @@
 
 | **Character Export** | No export-to-PNG/JSON feature |
 | **Multi-character Chat** | No group/multi-char support |
-| **Auto-save Memories** | Toggle exists, **no extraction pipeline** |
 | **Auto-generate Images** | Toggle exists, **no auto-trigger logic** |
 
 ## Backend Command Coverage

@@ -612,3 +612,52 @@ impl LlmProvider for GenericOpenAiProvider {
         self.client.health_check().await
     }
 }
+
+/// Stateless LLM generation — calls the configured provider without saving
+/// anything to the database. Used by internal pipelines (memory extraction,
+/// summarization) that need LLM inference without polluting conversations.
+#[tauri::command]
+pub async fn generate_raw(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    system_prompt: String,
+    user_prompt: String,
+    model: Option<String>,
+    max_tokens: Option<u32>,
+    temperature: Option<f32>,
+) -> Result<String, MythicError> {
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    let http = state_guard.http_client.clone();
+    drop(state_guard);
+
+    let provider_config = get_default_llm_provider(&db).await?;
+    let model_id = model.unwrap_or_else(|| {
+        provider_config.config
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("meta-llama/llama-4-maverick")
+            .to_string()
+    });
+
+    let gen_params = GenerationParams {
+        max_tokens: max_tokens.unwrap_or(512),
+        temperature: temperature.unwrap_or(0.3),
+        ..Default::default()
+    };
+
+    let messages = vec![
+        ChatMessage {
+            role: MessageRole::System,
+            content: system_prompt,
+        },
+        ChatMessage {
+            role: MessageRole::User,
+            content: user_prompt,
+        },
+    ];
+
+    let provider = create_llm_provider(&provider_config, http)?;
+    let result = provider.generate(&model_id, &messages, &gen_params).await?;
+
+    Ok(result)
+}

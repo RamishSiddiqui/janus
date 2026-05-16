@@ -279,12 +279,15 @@
         <div class="setting-row">
           <div class="setting-label">
             <span class="setting-name">Auto-Save Memories</span>
-            <span class="setting-desc">Automatically extract key events</span>
+            <span class="setting-desc">{autoSaveMemories ? 'Key events are extracted every few messages' : 'Memories are only saved when pinned manually'}</span>
           </div>
           <button 
             class="toggle-switch" 
             class:on={autoSaveMemories}
-            onclick={() => autoSaveMemories = !autoSaveMemories}
+            onclick={() => {
+              autoSaveMemories = !autoSaveMemories;
+              success(autoSaveMemories ? 'Auto-save enabled — key events will be remembered' : 'Auto-save disabled');
+            }}
             role="switch"
             aria-checked={autoSaveMemories}
             aria-label="Toggle auto-save memories"

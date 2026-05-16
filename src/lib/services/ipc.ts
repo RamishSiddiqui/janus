@@ -461,3 +461,25 @@ export interface SearchResult {
 export async function searchMessages(query: string, limit?: number): Promise<SearchResult[]> {
   return safeInvoke<SearchResult[]>('search_messages', { query, limit: limit ?? null });
 }
+
+// --- Raw Generation (Internal pipelines) ---
+
+/**
+ * Stateless LLM generation — calls the configured provider without saving
+ * anything to the database. Used by internal pipelines like memory extraction.
+ */
+export async function generateRaw(
+  systemPrompt: string,
+  userPrompt: string,
+  model?: string,
+  maxTokens?: number,
+  temperature?: number,
+): Promise<string> {
+  return safeInvoke<string>('generate_raw', {
+    systemPrompt,
+    userPrompt,
+    model: model ?? null,
+    maxTokens: maxTokens ?? null,
+    temperature: temperature ?? null,
+  });
+}
