@@ -21,9 +21,14 @@
   let graphData: import('$lib/services/ipc').MemoryGraph | null = $state(null);
   let isLoadingGraph = $state(false);
 
-  // Load characters on mount
-  $effect(() => {
-    if (!isTauri) return;
+  import { onMount } from 'svelte';
+
+  // Load characters on mount (client-side only)
+  onMount(() => {
+    if (!isTauri) {
+      isLoading = false;
+      return;
+    }
     loadCharacters();
   });
 

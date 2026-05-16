@@ -418,6 +418,12 @@
     <div class="ctx-section-header">
       <span class="ctx-section-title" id="memories-title">MEMORIES</span>
       <div class="lore-header-actions">
+        {#if characterId}
+          <a class="graph-link" href={`/memories?character=${characterId}`} title="Open memory graph">
+            <Icon name="git-branch" size={11} color="var(--accent-primary)" />
+            Graph
+          </a>
+        {/if}
         <span class="ctx-section-meta">{memories.length} pinned</span>
         <button
           class="lore-add-btn"
@@ -563,6 +569,14 @@
     transition: all 150ms;
   }
   .lore-add-btn:hover { border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.06); }
+
+  .graph-link {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 600; color: var(--accent-primary);
+    text-decoration: none; padding: 3px 8px; border-radius: 6px;
+    border: 1px solid rgba(46,166,126,0.15); transition: all 150ms;
+  }
+  .graph-link:hover { background: rgba(46,166,126,0.08); border-color: rgba(46,166,126,0.3); }
 
   .lore-search {
     display: flex; align-items: center; gap: 6px;
