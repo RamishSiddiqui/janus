@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSmoothStepPath } from '@xyflow/svelte';
+  import { getBezierPath } from '@xyflow/svelte';
 
   let {
     id,
@@ -19,14 +19,15 @@
   const isTwoWay = data?.direction === 'two_way';
   const offset = 4;
 
-  // SmoothStep paths route with clean right-angle turns
-  let pathResult = $derived(getSmoothStepPath({
+  // Bezier path
+  let pathResult = $derived(getBezierPath({
     sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
-    borderRadius: 8,
   }));
 
   let mainPath = $derived(pathResult[0]);
+  let labelX = $derived(pathResult[1]);
+  let labelY = $derived(pathResult[2]);
 
   // Perpendicular offset for parallel lines
   let dx = $derived(targetX - sourceX);
@@ -35,17 +36,15 @@
   let nx = $derived(-dy / len * offset);
   let ny = $derived(dx / len * offset);
 
-  let path1Result = $derived(getSmoothStepPath({
+  let path1Result = $derived(getBezierPath({
     sourceX: sourceX + nx, sourceY: sourceY + ny,
     targetX: targetX + nx, targetY: targetY + ny,
     sourcePosition, targetPosition,
-    borderRadius: 8,
   }));
-  let path2Result = $derived(getSmoothStepPath({
+  let path2Result = $derived(getBezierPath({
     sourceX: sourceX - nx, sourceY: sourceY - ny,
     targetX: targetX - nx, targetY: targetY - ny,
     sourcePosition, targetPosition,
-    borderRadius: 8,
   }));
 
   let path1 = $derived(path1Result[0]);
@@ -109,12 +108,7 @@
 
 <!-- Label badge -->
 {#if data?.label}
-  {@const labelPath = getSmoothStepPath({
-    sourceX, sourceY, targetX, targetY,
-    sourcePosition, targetPosition,
-    borderRadius: 8,
-  })}
-  <foreignObject x={labelPath[1] - 28} y={labelPath[2] - 10} width="56" height="20" class="label-fo">
+  <foreignObject x={labelX - 28} y={labelY - 10} width="56" height="20" class="label-fo">
     <div class="edge-badge" style="--badge-color: {color};">
       {data.label}
     </div>

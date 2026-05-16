@@ -339,8 +339,21 @@
   .graph-wrap :global(.svelte-flow__handle) {
     width: 6px;
     height: 6px;
-    background: rgba(139, 92, 246, 0.3);
-    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    opacity: 0;
+  }
+
+  /* Force bottom handles to center */
+  .graph-wrap :global(.svelte-flow__handle-bottom) {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+  }
+
+  /* Force top handles to center */
+  .graph-wrap :global(.svelte-flow__handle-top) {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
   }
 
   .graph-wrap :global(.svelte-flow__edge-path) {
