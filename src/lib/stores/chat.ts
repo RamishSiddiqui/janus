@@ -201,8 +201,9 @@ export async function loadMessages(conversationId: string) {
       };
     }));
   } catch (err) {
-    console.error('Failed to load messages:', err);
-    toastError('Failed to load messages for this conversation.');
+    console.error(`Failed to load messages for conversation ${conversationId}:`, err);
+    const detail = (err as any)?.message ?? String(err);
+    toastError(`Failed to load messages: ${detail}`);
     messages.set([]);
   }
 }
