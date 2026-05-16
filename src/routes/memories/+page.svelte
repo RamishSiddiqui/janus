@@ -9,10 +9,10 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  // Character selection
+  // Character selection (multi-select)
   interface CharOption { id: string; name: string; avatarPath: string | null; }
   let characters: CharOption[] = $state([]);
-  let selectedCharId: string | null = $state(null);
+  let selectedCharIds: string[] = $state([]);
   let isLoading = $state(true);
 
   // View toggle
@@ -28,8 +28,14 @@
   let linkCount = $derived(graphData?.links?.length ?? 0);
   let convCount = $derived(graphData?.conversations?.length ?? 0);
 
-  // Currently selected character info
-  let selectedChar = $derived(characters.find(c => c.id === selectedCharId));
+  // Selected characters info
+  let selectedChars = $derived(characters.filter(c => selectedCharIds.includes(c.id)));
+  let pickerLabel = $derived.by(() => {
+    if (selectedChars.length === 0) return 'Select characters';
+    if (selectedChars.length === 1) return selectedChars[0].name;
+    if (selectedChars.length === 2) return selectedChars.map(c => c.name.split(' ')[0]).join(' & ');
+    return `${selectedChars.length} characters`;
+  });
 
   onMount(() => {
     if (!isTauri) {
@@ -43,14 +49,16 @@
   $effect(() => {
     const charParam = $page.url.searchParams.get('character');
     if (charParam && characters.length > 0) {
-      selectedCharId = charParam;
+      if (!selectedCharIds.includes(charParam)) {
+        selectedCharIds = [charParam];
+      }
     }
   });
 
-  // Load graph when character changes
+  // Load merged graph when selection changes
   $effect(() => {
-    if (selectedCharId && isTauri) {
-      loadGraph(selectedCharId);
+    if (selectedCharIds.length > 0 && isTauri) {
+      loadGraphs(selectedCharIds);
     } else {
       graphData = null;
     }
@@ -70,8 +78,8 @@
           avatarPath: c.avatar_path,
         };
       });
-      if (!selectedCharId && characters.length > 0) {
-        selectedCharId = characters[0].id;
+      if (selectedCharIds.length === 0 && characters.length > 0) {
+        selectedCharIds = [characters[0].id];
       }
     } catch (err: any) {
       toastError(`Failed to load characters: ${err.message}`);
@@ -80,11 +88,27 @@
     }
   }
 
-  async function loadGraph(charId: string) {
+  async function loadGraphs(charIds: string[]) {
     isLoadingGraph = true;
     try {
       const ipc = await import('$lib/services/ipc');
-      graphData = await ipc.getMemoryGraph(charId);
+      const results = await Promise.all(charIds.map(id => ipc.getMemoryGraph(id)));
+      // Merge all graphs into one
+      const merged: import('$lib/services/ipc').MemoryGraph = {
+        character_id: charIds[0],
+        character_name: results.map(r => r.character_name).join(' & '),
+        memories: results.flatMap(r => r.memories),
+        links: results.flatMap(r => r.links),
+        conversations: results.flatMap(r => r.conversations),
+      };
+      // Deduplicate conversations by ID
+      const seenConvs = new Set<string>();
+      merged.conversations = merged.conversations.filter(c => {
+        if (seenConvs.has(c.id)) return false;
+        seenConvs.add(c.id);
+        return true;
+      });
+      graphData = merged;
     } catch (err: any) {
       toastError(`Failed to load memory graph: ${err.message}`);
       graphData = null;
@@ -94,16 +118,19 @@
   }
 
   function handleRefresh() {
-    if (selectedCharId) loadGraph(selectedCharId);
+    if (selectedCharIds.length > 0) loadGraphs(selectedCharIds);
   }
 
   // Custom dropdown state
   let dropdownOpen = $state(false);
   let dropdownEl: HTMLDivElement | undefined = $state();
 
-  function selectChar(id: string) {
-    selectedCharId = id;
-    dropdownOpen = false;
+  function toggleChar(id: string) {
+    if (selectedCharIds.includes(id)) {
+      selectedCharIds = selectedCharIds.filter(x => x !== id);
+    } else {
+      selectedCharIds = [...selectedCharIds, id];
+    }
   }
 
   function handleClickOutside(e: MouseEvent) {
@@ -140,18 +167,32 @@
           onclick={() => dropdownOpen = !dropdownOpen}
           disabled={isLoading || characters.length === 0}
         >
-          {#if selectedChar?.avatarPath}
-            <img
-              class="char-avatar"
-              src="/avatars/{selectedChar.avatarPath.split('/').pop()}"
-              alt={selectedChar.name}
-            />
-          {:else}
-            <div class="char-avatar placeholder">
-              <Icon name="user" size={14} />
-            </div>
-          {/if}
-          <span class="picker-label">{selectedChar?.name ?? 'Select character'}</span>
+          <!-- Stacked avatars -->
+          <div class="avatar-stack">
+            {#each selectedChars.slice(0, 3) as sc, i}
+              {#if sc.avatarPath}
+                <img
+                  class="stack-avatar"
+                  src="/avatars/{sc.avatarPath.split('/').pop()}"
+                  alt={sc.name}
+                  style="z-index: {3 - i}; margin-left: {i > 0 ? '-8px' : '0'};"
+                />
+              {:else}
+                <div class="stack-avatar placeholder" style="z-index: {3 - i}; margin-left: {i > 0 ? '-8px' : '0'};">
+                  <Icon name="user" size={10} />
+                </div>
+              {/if}
+            {/each}
+            {#if selectedChars.length === 0}
+              <div class="stack-avatar placeholder">
+                <Icon name="users" size={12} />
+              </div>
+            {/if}
+            {#if selectedChars.length > 3}
+              <span class="stack-more">+{selectedChars.length - 3}</span>
+            {/if}
+          </div>
+          <span class="picker-label">{pickerLabel}</span>
           <span class="picker-chevron" class:open={dropdownOpen}>
             <Icon name="chevron-down" size={13} />
           </span>
@@ -162,9 +203,14 @@
             {#each characters as char}
               <button
                 class="picker-option"
-                class:selected={char.id === selectedCharId}
-                onclick={() => selectChar(char.id)}
+                class:selected={selectedCharIds.includes(char.id)}
+                onclick={() => toggleChar(char.id)}
               >
+                <div class="option-check" class:checked={selectedCharIds.includes(char.id)}>
+                  {#if selectedCharIds.includes(char.id)}
+                    <Icon name="check" size={10} />
+                  {/if}
+                </div>
                 {#if char.avatarPath}
                   <img
                     class="option-avatar"
@@ -177,9 +223,6 @@
                   </div>
                 {/if}
                 <span>{char.name}</span>
-                {#if char.id === selectedCharId}
-                  <Icon name="check" size={13} />
-                {/if}
               </button>
             {/each}
           </div>
@@ -246,13 +289,13 @@
         <div class="loading-ring"></div>
         <p>Initializing...</p>
       </div>
-    {:else if !selectedCharId}
+    {:else if selectedCharIds.length === 0}
       <div class="empty-state">
         <div class="empty-icon">
           <Icon name="users" size={32} />
         </div>
-        <h2>No Character Selected</h2>
-        <p>Choose a character above to explore their memory multiverse</p>
+        <h2>No Characters Selected</h2>
+        <p>Choose one or more characters above to explore their memory multiverse</p>
       </div>
     {:else if isLoadingGraph}
       <div class="empty-state">
@@ -265,7 +308,7 @@
           <Icon name="zap" size={32} />
         </div>
         <h2>No Memories Yet</h2>
-        <p>Chat with {selectedChar?.name ?? 'this character'} to start building their memory multiverse</p>
+        <p>Chat with {selectedChars.map(c => c.name).join(' & ') || 'these characters'} to start building their memory multiverse</p>
       </div>
     {:else if graphData && activeView === 'graph'}
       <MemoryGraph data={graphData} onRefresh={handleRefresh} />
@@ -364,20 +407,35 @@
     cursor: not-allowed;
   }
 
-  .char-avatar {
-    width: 26px;
-    height: 26px;
-    border-radius: 8px;
-    object-fit: cover;
-    flex-shrink: 0;
+  .avatar-stack {
+    display: flex;
+    align-items: center;
+    padding-left: 2px;
   }
 
-  .char-avatar.placeholder {
+  .stack-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid rgba(10, 10, 26, 0.9);
+    position: relative;
+  }
+
+  .stack-avatar.placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
     background: linear-gradient(135deg, #8B5CF6, #BF40FF);
     color: #fff;
+  }
+
+  .stack-more {
+    font-size: 10px;
+    font-weight: 700;
+    color: #8b8ba7;
+    margin-left: 2px;
   }
 
   .picker-label {
@@ -455,9 +513,23 @@
     color: #c4a1ff;
   }
 
-  .picker-option :global(svg) {
-    margin-left: auto;
-    color: #8B5CF6;
+  .option-check {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(139, 92, 246, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 150ms;
+    background: transparent;
+  }
+
+  .option-check.checked {
+    background: #8B5CF6;
+    border-color: #8B5CF6;
+    color: #fff;
   }
 
   .option-avatar {
