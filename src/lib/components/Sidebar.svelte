@@ -166,7 +166,7 @@
 
   <!-- Nav -->
   <nav class="sb-nav" aria-label="Main navigation">
-    {#each navItems as item (item.path)}
+    {#each navItems.filter(i => i.path !== '/settings') as item (item.path)}
       {@const isActive = currentPath === item.path}
       <button class="sb-nav-item" class:active={isActive} onclick={() => onNavigate(item.path)}
         title={collapsed ? item.label : undefined} aria-current={isActive ? 'page' : undefined}>
@@ -286,6 +286,17 @@
       </div>
     {/if}
   {/if}
+
+  <!-- Bottom-pinned Settings -->
+  <div class="sb-bottom">
+    <div class="sb-divider"><div class="divider-grad"></div></div>
+    <button class="sb-nav-item" class:active={currentPath === '/settings'} onclick={() => onNavigate('/settings')}
+      title={collapsed ? 'Settings' : undefined} aria-current={currentPath === '/settings' ? 'page' : undefined}>
+      {#if currentPath === '/settings'}<span class="nav-glow-bar"></span>{/if}
+      <span class="nav-icon"><Icon name="settings" size={16} color={currentPath === '/settings' ? '#c4a1ff' : '#6b6b8a'} /></span>
+      {#if !collapsed}<span class="nav-text">Settings</span>{/if}
+    </button>
+  </div>
 
   {#if ctxMenu}
     <button class="ctx-bg" onclick={closeContextMenu} aria-label="Close menu"></button>
@@ -423,6 +434,14 @@
   .nav-icon { display: flex; align-items: center; width: 20px; height: 20px; flex-shrink: 0; }
   .nav-text { white-space: nowrap; }
   .collapsed .sb-nav-item { justify-content: center; padding: 10px; }
+
+  /* ── Bottom-pinned section ── */
+  .sb-bottom {
+    margin-top: auto;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
 
   /* ── Divider ── */
   .sb-divider { padding: 6px 6px; flex-shrink: 0; z-index: 1; position: relative; }

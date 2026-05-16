@@ -18,6 +18,7 @@
   let showFontDropdown = $state(false);
   let dropdownStyle = $state('');
   let showClearConfirm = $state(false);
+  let showPrivacyConfirm = $state(false);
   let isExporting = $state(false);
   let isImporting = $state(false);
 
@@ -303,12 +304,20 @@
         <div class="setting-row">
           <div class="setting-label">
             <span class="setting-name">Local Storage Only</span>
-            <span class="setting-desc">All data stays on your device</span>
+            <span class="setting-desc">All data stays on your device — no cloud sync or telemetry</span>
           </div>
           <button 
             class="toggle-switch" 
             class:on={localStorageOnly}
-            onclick={() => localStorageOnly = !localStorageOnly}
+            onclick={() => {
+              if (localStorageOnly) {
+                // Turning OFF privacy mode — confirm
+                showPrivacyConfirm = true;
+              } else {
+                localStorageOnly = true;
+                success('Privacy mode enabled — all data stays local');
+              }
+            }}
             role="switch"
             aria-checked={localStorageOnly}
             aria-label="Toggle local storage only"
@@ -345,6 +354,19 @@
             <span>Clear All Conversations</span>
           </button>
         {/if}
+
+        {#if showPrivacyConfirm}
+          <div class="clear-confirm">
+            <span class="clear-warn">Disabling privacy mode may allow future cloud features to sync your data externally. Continue?</span>
+            <div class="button-row">
+              <button class="settings-btn outline" onclick={() => showPrivacyConfirm = false}>Keep Private</button>
+              <button class="settings-btn danger" onclick={() => { localStorageOnly = false; showPrivacyConfirm = false; success('Privacy mode disabled'); }}>
+                <Icon name="shield-off" size={14} color="var(--danger)" />
+                <span>Disable Privacy</span>
+              </button>
+            </div>
+          </div>
+        {/if}
       </section>
 
       <!-- System Prompt -->
@@ -371,7 +393,7 @@
       <div class="about-card animate-fade-in-up stagger-5">
         <div class="about-left">
           <span class="about-name">Mythic v0.1.0</span>
-          <span class="about-desc">Open Source • Local First • Privacy Focused</span>
+          <span class="about-desc">Open Source • Local First • {localStorageOnly ? '🔒 Private' : '⚠️ Privacy Relaxed'}</span>
         </div>
         <div class="about-links">
           <button class="about-link-btn" title="GitHub">

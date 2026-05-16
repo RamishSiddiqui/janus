@@ -63,3 +63,14 @@ function createSettingsStore() {
 }
 
 export const settings = createSettingsStore();
+
+/**
+ * Privacy guard — returns true when the user has opted into local-only mode.
+ * Other modules should call this before making any external requests
+ * beyond the core LLM provider (e.g. analytics, telemetry, cloud sync).
+ */
+export function isLocalOnly(): boolean {
+  let value = true;
+  settings.subscribe(s => { value = s.localStorageOnly; })();
+  return value;
+}
