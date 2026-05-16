@@ -3,6 +3,7 @@
   import '@xyflow/svelte/dist/style.css';
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import Dagre from '@dagrejs/dagre';
   import CharacterNode from './nodes/CharacterNode.svelte';
   import ConversationNode from './nodes/ConversationNode.svelte';
   import MemoryNode from './nodes/MemoryNode.svelte';
@@ -44,14 +45,57 @@
     return `/avatars/${path.split('/').pop()}`;
   }
 
-  /* ── Build graph with clean layout ── */
+  /* ── Node sizes for dagre ── */
+  const NODE_SIZES: Record<string, { w: number; h: number }> = {
+    character:    { w: 220, h: 64 },
+    conversation: { w: 210, h: 56 },
+    memory:       { w: 210, h: 90 },
+  };
+
+  /* ── Dagre auto-layout ── */
+  function applyLayout(nodes: Node[], treeEdges: Edge[]): Node[] {
+    const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
+    g.setGraph({
+      rankdir: 'TB',     // top-to-bottom
+      nodesep: 50,       // horizontal gap between siblings
+      ranksep: 70,       // vertical gap between ranks
+      marginx: 40,
+      marginy: 40,
+    });
+
+    for (const node of nodes) {
+      const size = NODE_SIZES[node.type ?? 'memory'] ?? NODE_SIZES.memory;
+      g.setNode(node.id, { width: size.w, height: size.h });
+    }
+
+    for (const edge of treeEdges) {
+      g.setEdge(edge.source, edge.target);
+    }
+
+    Dagre.layout(g);
+
+    return nodes.map(node => {
+      const pos = g.node(node.id);
+      const size = NODE_SIZES[node.type ?? 'memory'] ?? NODE_SIZES.memory;
+      return {
+        ...node,
+        position: {
+          x: pos.x - size.w / 2,
+          y: pos.y - size.h / 2,
+        },
+      };
+    });
+  }
+
+  /* ── Build graph ── */
   function buildGraph(g: MemoryGraphData): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
-    const edges: Edge[] = [];
+    const treeEdges: Edge[] = [];
+    const extraEdges: Edge[] = [];
+
     const convColorMap = new Map<string, typeof PALETTE[0]>();
     g.conversations.forEach((c, i) => convColorMap.set(c.id, pal(i)));
 
-    // Count memories per conversation
     const memCountMap = new Map<string, number>();
     g.memories.forEach(m => {
       if (m.conversation_id) {
@@ -59,15 +103,13 @@
       }
     });
 
-    const centerX = 400;
-    const convSpread = 360;
-    const startX = centerX - ((g.conversations.length - 1) * convSpread) / 2;
+    const rootId = `char-${g.character_id}`;
 
-    // ── Row 0: Character root ──
+    // ── Character root ──
     nodes.push({
-      id: `char-${g.character_id}`,
+      id: rootId,
       type: 'character',
-      position: { x: centerX - 100, y: 0 },
+      position: { x: 0, y: 0 },
       data: {
         label: g.character_name,
         avatarUrl: avatarUrl(g.character_id),
@@ -75,122 +117,85 @@
       },
     });
 
-    // ── Row 1: Canon memories ──
-    const canon = g.memories.filter(m => m.is_canon);
-    const canonSpread = 250;
-    const canonStartX = centerX - ((canon.length - 1) * canonSpread) / 2;
-    const canonY = 120;
-
-    canon.forEach((m, i) => {
-      const x = canonStartX + i * canonSpread - 90;
+    // ── Canon memories ──
+    g.memories.filter(m => m.is_canon).forEach(m => {
       const p = CANON;
-
       nodes.push({
         id: `mem-${m.id}`,
         type: 'memory',
-        position: { x, y: canonY },
+        position: { x: 0, y: 0 },
         data: {
-          content: m.content,
-          source: m.source,
-          version: m.version,
-          isCanon: true,
-          parentId: m.parent_id,
-          color: p.text,
-          colorBg: p.bg,
-          colorBorder: p.border,
+          content: m.content, source: m.source, version: m.version,
+          isCanon: true, parentId: m.parent_id,
+          color: p.text, colorBg: p.bg, colorBorder: p.border,
         },
       });
-      edges.push({
+      treeEdges.push({
         id: `e-canon-${m.id}`,
-        source: `char-${g.character_id}`,
+        source: rootId,
         target: `mem-${m.id}`,
         style: `stroke: ${p.edge}; stroke-width: 1.5px;`,
         type: 'smoothstep',
       });
     });
 
-    // ── Row 2: Conversation branches ──
-    const convY = canon.length > 0 ? canonY + 160 : 120;
-
-    g.conversations.forEach((conv, i) => {
-      const x = startX + i * convSpread - 60;
+    // ── Conversation branches ──
+    g.conversations.forEach((conv) => {
       const p = convColorMap.get(conv.id)!;
       nodes.push({
         id: `conv-${conv.id}`,
         type: 'conversation',
-        position: { x, y: convY },
+        position: { x: 0, y: 0 },
         data: {
           label: conv.title,
           memoryCount: memCountMap.get(conv.id) ?? 0,
-          color: p.text,
-          colorBg: p.bg,
-          colorBorder: p.border,
+          color: p.text, colorBg: p.bg, colorBorder: p.border,
         },
       });
-      edges.push({
+      treeEdges.push({
         id: `e-root-${conv.id}`,
-        source: `char-${g.character_id}`,
+        source: rootId,
         target: `conv-${conv.id}`,
         style: `stroke: rgba(139,92,246,0.25); stroke-width: 2px;`,
         type: 'smoothstep',
       });
     });
 
-    // ── Row 3+: Scoped memories ──
-    const scoped = g.memories.filter(m => !m.is_canon);
-    const convMems = new Map<string | null, typeof g.memories>();
-    for (const m of scoped) {
-      const k = m.conversation_id;
-      if (!convMems.has(k)) convMems.set(k, []);
-      convMems.get(k)!.push(m);
-    }
+    // ── Scoped memories ──
+    g.memories.filter(m => !m.is_canon).forEach(m => {
+      const convId = m.conversation_id;
+      const p = convId ? convColorMap.get(convId) : PALETTE[0];
+      if (!p) return;
 
-    const memStartY = convY + 110;
+      nodes.push({
+        id: `mem-${m.id}`,
+        type: 'memory',
+        position: { x: 0, y: 0 },
+        data: {
+          content: m.content, source: m.source, version: m.version,
+          isCanon: false, parentId: m.parent_id,
+          color: p.text, colorBg: p.bg, colorBorder: p.border,
+        },
+      });
 
-    g.conversations.forEach((conv, ci) => {
-      const mems = convMems.get(conv.id) ?? [];
-      const p = convColorMap.get(conv.id)!;
-      const baseX = startX + ci * convSpread - 60;
-
-      mems.forEach((m, mi) => {
-        const x = baseX;
-        const y = memStartY + mi * 110;
-
-        nodes.push({
-          id: `mem-${m.id}`,
-          type: 'memory',
-          position: { x, y },
-          data: {
-            content: m.content,
-            source: m.source,
-            version: m.version,
-            isCanon: false,
-            parentId: m.parent_id,
-            color: p.text,
-            colorBg: p.bg,
-            colorBorder: p.border,
-          },
-        });
-
-        const parentId = m.parent_id ? `mem-${m.parent_id}` : `conv-${conv.id}`;
-        edges.push({
-          id: `e-mem-${m.id}`,
-          source: parentId,
-          target: `mem-${m.id}`,
-          style: `stroke: ${p.edge}; stroke-width: 1px;`,
-          type: 'smoothstep',
-        });
+      const parentId = m.parent_id ? `mem-${m.parent_id}` : (convId ? `conv-${convId}` : rootId);
+      treeEdges.push({
+        id: `e-mem-${m.id}`,
+        source: parentId,
+        target: `mem-${m.id}`,
+        style: `stroke: ${p.edge}; stroke-width: 1px;`,
+        type: 'smoothstep',
       });
     });
 
-    // ── Sharing links (dashed / animated) ──
+    // ── Sharing links (visual only — not in dagre layout) ──
     g.links.forEach((link) => {
       const isSync = link.link_type === 'sync';
       const isTwoWay = link.direction === 'two_way';
       const arrow = isTwoWay ? '↔' : '→';
       const lbl = isSync ? `sync ${arrow}` : `copy ${arrow}`;
 
-      edges.push({
+      extraEdges.push({
         id: `link-${link.id}`,
         source: `mem-${link.source_memory_id}`,
         target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
@@ -204,7 +209,9 @@
       });
     });
 
-    return { nodes, edges };
+    // Apply dagre auto-layout
+    const layoutNodes = applyLayout(nodes, treeEdges);
+    return { nodes: layoutNodes, edges: [...treeEdges, ...extraEdges] };
   }
 
   let nodes: Node[] = $state.raw([]);
