@@ -3,8 +3,15 @@
   import '@xyflow/svelte/dist/style.css';
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import CharacterNode from './nodes/CharacterNode.svelte';
 
-  let { data, onRefresh }: { data: MemoryGraphData; onRefresh: () => void } = $props();
+  let { data, avatars = {}, onRefresh }: {
+    data: MemoryGraphData;
+    avatars?: Record<string, string | null>;
+    onRefresh: () => void;
+  } = $props();
+
+  const nodeTypes = { character: CharacterNode };
 
   /* ── Palette ── */
   const PALETTE = [
@@ -17,83 +24,61 @@
   ];
 
   const CANON = {
-    bg: 'linear-gradient(135deg, rgba(218,165,32,0.18), rgba(218,165,32,0.06))',
-    border: 'rgba(218,165,32,0.35)',
+    bg: 'rgba(218,165,32,0.12)',
+    border: 'rgba(218,165,32,0.3)',
     text: '#fbbf24',
-    edge: 'rgba(218,165,32,0.5)',
-  };
-
-  const ROOT = {
-    bg: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(191,64,255,0.1))',
-    border: 'rgba(139,92,246,0.35)',
-    text: '#e8e0ff',
+    edge: 'rgba(218,165,32,0.4)',
   };
 
   function pal(i: number) { return PALETTE[i % PALETTE.length]; }
 
-  /* ── Build graph ── */
+  function avatarUrl(charId: string): string | null {
+    const path = avatars[charId];
+    if (!path) return null;
+    return `/avatars/${path.split('/').pop()}`;
+  }
+
+  /* ── Build graph with clean layout ── */
   function buildGraph(g: MemoryGraphData): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     const convColorMap = new Map<string, typeof PALETTE[0]>();
     g.conversations.forEach((c, i) => convColorMap.set(c.id, pal(i)));
 
-    // Root node
+    const centerX = 400;
+    const convSpread = 360;
+    const startX = centerX - ((g.conversations.length - 1) * convSpread) / 2;
+
+    // ── Row 0: Character root (custom node with avatar) ──
     nodes.push({
       id: `char-${g.character_id}`,
-      type: 'default',
-      position: { x: 400, y: 0 },
-      data: { label: `🧠  ${g.character_name}` },
-      style: `background: ${ROOT.bg}; color: ${ROOT.text}; border: 1.5px solid ${ROOT.border}; border-radius: 14px; padding: 14px 24px; font-weight: 700; font-size: 14px; font-family: Inter, sans-serif; box-shadow: 0 0 24px rgba(139,92,246,0.1); backdrop-filter: blur(8px);`,
+      type: 'character',
+      position: { x: centerX - 100, y: 0 },
+      data: {
+        label: g.character_name,
+        avatarUrl: avatarUrl(g.character_id),
+        subtitle: `${g.memories.length} memories · ${g.conversations.length} timelines`,
+      },
     });
 
-    // Conversation branches
-    const spread = 300;
-    const startX = 400 - ((g.conversations.length - 1) * spread) / 2;
-    g.conversations.forEach((conv, i) => {
-      const x = startX + i * spread;
-      const p = convColorMap.get(conv.id)!;
-      nodes.push({
-        id: `conv-${conv.id}`,
-        type: 'default',
-        position: { x, y: 140 },
-        data: { label: `💬  ${conv.title}` },
-        style: `background: ${p.bg}; color: ${p.text}; border: 1.5px solid ${p.border}; border-radius: 12px; padding: 10px 18px; font-size: 12px; font-weight: 600; font-family: Inter, sans-serif;`,
-      });
-      edges.push({
-        id: `e-root-${conv.id}`,
-        source: `char-${g.character_id}`,
-        target: `conv-${conv.id}`,
-        style: `stroke: ${ROOT.border}; stroke-width: 2px;`,
-        type: 'smoothstep',
-      });
-    });
-
-    // Memories
-    const convMems = new Map<string | null, typeof g.memories>();
+    // ── Row 1: Canon memories (below root, spread horizontally) ──
     const canon = g.memories.filter(m => m.is_canon);
-    const scoped = g.memories.filter(m => !m.is_canon);
-    for (const m of scoped) {
-      const k = m.conversation_id;
-      if (!convMems.has(k)) convMems.set(k, []);
-      convMems.get(k)!.push(m);
-    }
+    const canonSpread = 240;
+    const canonStartX = centerX - ((canon.length - 1) * canonSpread) / 2;
+    const canonY = 120;
 
-    // Canon memories — fan out under root
     canon.forEach((m, i) => {
-      const fanAngle = ((i - (canon.length - 1) / 2) / Math.max(canon.length - 1, 1)) * 0.6;
-      const x = 400 + Math.sin(fanAngle) * 220;
-      const y = -80 - Math.cos(fanAngle) * 60;
-      const trunc = m.content.length > 55 ? m.content.slice(0, 52) + '…' : m.content;
+      const x = canonStartX + i * canonSpread - 90;
+      const trunc = m.content.length > 50 ? m.content.slice(0, 47) + '…' : m.content;
       const badge = m.source === 'auto' ? '🤖' : '📌';
       const ver = m.version > 1 ? `  v${m.version}` : '';
 
       nodes.push({
         id: `mem-${m.id}`,
         type: 'default',
-        position: { x, y },
+        position: { x, y: canonY },
         data: { label: `${badge} ${trunc}${ver}` },
-        style: `background: ${CANON.bg}; color: ${CANON.text}; border: 1px solid ${CANON.border}; border-radius: 10px; padding: 8px 14px; font-size: 10px; max-width: 200px; line-height: 1.4; font-family: Inter, sans-serif;`,
+        style: `background: ${CANON.bg}; color: ${CANON.text}; border: 1px solid ${CANON.border}; border-radius: 10px; padding: 8px 14px; font-size: 10px; max-width: 200px; line-height: 1.4; font-family: Inter, sans-serif; backdrop-filter: blur(4px);`,
       });
       edges.push({
         id: `e-canon-${m.id}`,
@@ -104,16 +89,47 @@
       });
     });
 
-    // Conversation-scoped memories — cascade under each branch
+    // ── Row 2: Conversation branches ──
+    const convY = canon.length > 0 ? canonY + 140 : 120;
+
+    g.conversations.forEach((conv, i) => {
+      const x = startX + i * convSpread - 60;
+      const p = convColorMap.get(conv.id)!;
+      nodes.push({
+        id: `conv-${conv.id}`,
+        type: 'default',
+        position: { x, y: convY },
+        data: { label: `💬  ${conv.title}` },
+        style: `background: ${p.bg}; color: ${p.text}; border: 1.5px solid ${p.border}; border-radius: 12px; padding: 10px 18px; font-size: 12px; font-weight: 600; font-family: Inter, sans-serif; backdrop-filter: blur(4px);`,
+      });
+      edges.push({
+        id: `e-root-${conv.id}`,
+        source: `char-${g.character_id}`,
+        target: `conv-${conv.id}`,
+        style: `stroke: rgba(139,92,246,0.25); stroke-width: 2px;`,
+        type: 'smoothstep',
+      });
+    });
+
+    // ── Row 3+: Conversation-scoped memories (vertical stack under each branch) ──
+    const scoped = g.memories.filter(m => !m.is_canon);
+    const convMems = new Map<string | null, typeof g.memories>();
+    for (const m of scoped) {
+      const k = m.conversation_id;
+      if (!convMems.has(k)) convMems.set(k, []);
+      convMems.get(k)!.push(m);
+    }
+
+    const memStartY = convY + 100;
+
     g.conversations.forEach((conv, ci) => {
       const mems = convMems.get(conv.id) ?? [];
       const p = convColorMap.get(conv.id)!;
-      const baseX = startX + ci * spread;
+      const baseX = startX + ci * convSpread - 60;
 
       mems.forEach((m, mi) => {
-        const offset = (mi - (mems.length - 1) / 2) * 60;
-        const x = baseX + offset;
-        const y = 280 + mi * 70;
+        const x = baseX;
+        const y = memStartY + mi * 90;
         const trunc = m.content.length > 50 ? m.content.slice(0, 47) + '…' : m.content;
         const badge = m.source === 'auto' ? '🤖' : '📌';
         const ver = m.version > 1 ? `  v${m.version}` : '';
@@ -123,9 +139,10 @@
           type: 'default',
           position: { x, y },
           data: { label: `${badge} ${trunc}${ver}` },
-          style: `background: ${p.bg}; color: ${p.text}; border: 1px solid ${p.border}; border-radius: 10px; padding: 8px 14px; font-size: 10px; max-width: 190px; line-height: 1.4; font-family: Inter, sans-serif; opacity: 0.92;`,
+          style: `background: ${p.bg}; color: ${p.text}; border: 1px solid ${p.border}; border-radius: 10px; padding: 8px 14px; font-size: 10px; max-width: 200px; line-height: 1.4; font-family: Inter, sans-serif; opacity: 0.92;`,
         });
 
+        // Connect to parent memory or conversation
         const parentId = m.parent_id ? `mem-${m.parent_id}` : `conv-${conv.id}`;
         edges.push({
           id: `e-mem-${m.id}`,
@@ -137,7 +154,7 @@
       });
     });
 
-    // Sharing links (dashed / animated)
+    // ── Sharing links (dashed / animated) ──
     g.links.forEach((link) => {
       const isSync = link.link_type === 'sync';
       const isTwoWay = link.direction === 'two_way';
@@ -148,12 +165,12 @@
         id: `link-${link.id}`,
         source: `mem-${link.source_memory_id}`,
         target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
-        style: `stroke: rgba(0,242,255,0.4); stroke-width: 1.5px; stroke-dasharray: ${isSync ? '4 3' : '8 5'};`,
+        style: `stroke: rgba(0,242,255,0.35); stroke-width: 1.5px; stroke-dasharray: ${isSync ? '4 3' : '8 5'};`,
         type: 'smoothstep',
         animated: isSync,
         label: lbl,
         labelStyle: 'font-size: 9px; fill: #5a5a7a; font-family: Inter, sans-serif;',
-        labelBgStyle: 'fill: rgba(7,7,26,0.8); rx: 4; ry: 4;',
+        labelBgStyle: 'fill: rgba(7,7,26,0.85); rx: 4; ry: 4;',
         labelBgPadding: [4, 6] as [number, number],
       });
     });
@@ -175,8 +192,9 @@
   <SvelteFlow
     bind:nodes
     bind:edges
+    {nodeTypes}
     fitView
-    fitViewOptions={{ padding: 0.3 }}
+    fitViewOptions={{ padding: 0.25 }}
     minZoom={0.15}
     maxZoom={2.5}
     defaultEdgeOptions={{ type: 'smoothstep' }}

@@ -311,7 +311,7 @@
         <p>Chat with {selectedChars.map(c => c.name).join(' & ') || 'these characters'} to start building their memory multiverse</p>
       </div>
     {:else if graphData && activeView === 'graph'}
-      <MemoryGraph data={graphData} onRefresh={handleRefresh} />
+      <MemoryGraph data={graphData} avatars={Object.fromEntries(selectedChars.map(c => [c.id, c.avatarPath]))} onRefresh={handleRefresh} />
     {:else if graphData && activeView === 'timeline'}
       <MemoryTimeline data={graphData} />
     {/if}
