@@ -49,6 +49,7 @@
 | **System Prompt Override** | ✅ | Wired to `build_prompt()` backend pipeline |
 | **Streaming Toggle** | ✅ | Backend supports both `generate` and `generate_stream` |
 | **Message Search** | ✅ | FTS5 full-text search with highlighted snippets in sidebar overlay |
+| **Local Storage Only** | ✅ | Privacy guard with confirmation dialog, `isLocalOnly()` utility for feature gating |
 
 
 ## 🔴 Not Implemented
@@ -62,7 +63,6 @@
 | **Multi-character Chat** | No group/multi-char support |
 | **Auto-save Memories** | Toggle exists, **no extraction pipeline** |
 | **Auto-generate Images** | Toggle exists, **no auto-trigger logic** |
-| **Local Storage Only** | Toggle exists, no functional effect |
 
 ## Backend Command Coverage
 
