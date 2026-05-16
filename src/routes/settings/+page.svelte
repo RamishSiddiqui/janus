@@ -53,7 +53,7 @@
     }
   }
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside, scroll, or resize
   $effect(() => {
     if (showFontDropdown) {
       const handler = (e: MouseEvent) => {
@@ -62,8 +62,16 @@
           showFontDropdown = false;
         }
       };
+      const dismissOnScroll = () => { showFontDropdown = false; };
       const timer = setTimeout(() => document.addEventListener('click', handler), 0);
-      return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
+      window.addEventListener('scroll', dismissOnScroll, { capture: true, passive: true });
+      window.addEventListener('resize', dismissOnScroll, { passive: true });
+      return () => {
+        clearTimeout(timer);
+        document.removeEventListener('click', handler);
+        window.removeEventListener('scroll', dismissOnScroll, { capture: true } as EventListenerOptions);
+        window.removeEventListener('resize', dismissOnScroll);
+      };
     }
   });
 
@@ -451,7 +459,7 @@
   }
   .theme-btn {
     padding: 6px 14px; background: transparent; border: none;
-    color: #5a5a7a; font-size: 11px; font-weight: 600;
+    color: #5a5a7a; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); cursor: pointer;
     transition: all 200ms ease;
   }
@@ -481,7 +489,7 @@
   }
   .dropdown-item {
     padding: 7px 12px; border-radius: 8px; border: none; background: transparent;
-    color: #8b8ba7; font-size: 12px; font-weight: 500;
+    color: #8b8ba7; font-size: var(--text-sm); font-weight: 500;
     font-family: var(--font-body); text-align: left; cursor: pointer;
     transition: all 120ms;
   }
@@ -494,7 +502,7 @@
     border-radius: 12px; background: rgba(244,63,94,0.04);
     border: 1px solid rgba(244,63,94,0.15);
   }
-  .clear-warn { font-size: 12px; color: #F43F5E; line-height: 1.5; }
+  .clear-warn { font-size: var(--text-sm); color: #F43F5E; line-height: 1.5; }
 
   /* ── Toggle Switch ── */
   .toggle-switch {
@@ -518,7 +526,7 @@
   .button-row { display: flex; gap: 10px; }
   .settings-btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 600;
+    padding: 9px 16px; border-radius: 10px; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); border: none; cursor: pointer;
     transition: all 180ms ease;
   }
@@ -545,7 +553,7 @@
   .prompt-hint { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); }
   .reset-btn {
     background: none; border: none; cursor: pointer;
-    color: #bf40ff; font-size: 11px; font-weight: 600;
+    color: #bf40ff; font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); transition: opacity 150ms;
   }
   .reset-btn:hover { opacity: 0.7; }
@@ -557,7 +565,7 @@
     background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
   }
   .about-left { display: flex; flex-direction: column; gap: 3px; }
-  .about-name { font-size: 13px; font-weight: 700; color: #e8e0ff; }
+  .about-name { font-size: var(--text-md); font-weight: 700; color: #e8e0ff; }
   .about-desc { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); letter-spacing: 0.5px; }
   .about-links { display: flex; gap: 8px; }
   .about-link-btn {

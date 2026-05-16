@@ -609,7 +609,7 @@
   .card-tags { display: flex; gap: 5px; }
   .card-tag {
     padding: 3px 9px; border-radius: 99px;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.3px;
+    font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.3px;
   }
 
   .fav-btn {
@@ -651,8 +651,8 @@
     align-items: center; justify-content: center; gap: 10px;
     padding: 60px 16px;
   }
-  .empty-title { font-size: 16px; font-weight: 600; color: #8b8ba7; }
-  .empty-desc { font-size: 12px; color: #4a4a6a; }
+  .empty-title { font-size: var(--text-lg); font-weight: 600; color: #8b8ba7; }
+  .empty-desc { font-size: var(--text-sm); color: #4a4a6a; }
 
   /* ── Editor Modal ── */
   .editor-backdrop {
@@ -671,7 +671,7 @@
     display: flex; justify-content: space-between; align-items: center;
     padding: 22px 24px 0;
   }
-  .editor-title { font-size: 20px; font-weight: 700; color: #e8e0ff; }
+  .editor-title { font-size: var(--text-xl); font-weight: 700; color: #e8e0ff; }
   .editor-close {
     background: none; border: none; padding: 6px; border-radius: 8px;
     cursor: pointer; transition: background 150ms;

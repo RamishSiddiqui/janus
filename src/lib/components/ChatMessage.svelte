@@ -314,7 +314,7 @@
   .branch-arrow:disabled { opacity: 0.3; cursor: default; }
 
   .branch-counter {
-    font-size: 11px; font-weight: 600; color: #8b8ba7;
+    font-size: var(--text-sm); font-weight: 600; color: #8b8ba7;
     font-family: var(--font-mono); min-width: 28px;
     text-align: center; user-select: none;
   }

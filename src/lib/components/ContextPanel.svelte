@@ -499,7 +499,7 @@
   .char-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
   .tag {
     padding: 4px 10px; border-radius: 99px;
-    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+    font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.3px;
   }
   .tag-violet { background: rgba(139,92,246,0.12); color: #c4a1ff; }
   .tag-pink { background: rgba(191,64,255,0.12); color: #d580ff; }
@@ -513,10 +513,10 @@
   .ctx-section { display: flex; flex-direction: column; gap: 10px; }
   .ctx-section-header { display: flex; justify-content: space-between; align-items: center; }
   .ctx-section-title {
-    font-size: 10px; font-weight: 700; color: #5a5a7a;
+    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
     font-family: var(--font-mono); letter-spacing: 1.5px;
   }
-  .ctx-section-meta { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); }
+  .ctx-section-meta { font-size: var(--text-xs); color: #4a4a6a; font-family: var(--font-mono); }
 
   .lore-header-actions { display: flex; align-items: center; gap: 8px; }
   .lore-add-btn {
@@ -573,7 +573,7 @@
   .lore-entry:hover .lore-delete { opacity: 0.5; }
   .lore-delete:hover { opacity: 1 !important; }
 
-  .lore-empty { display: flex; align-items: center; gap: 8px; padding: 14px 12px; color: #4a4a6a; font-size: 11px; }
+  .lore-empty { display: flex; align-items: center; gap: 8px; padding: 14px 12px; color: #4a4a6a; font-size: var(--text-sm); }
   .lore-loading { display: flex; gap: 4px; padding: 14px; justify-content: center; }
   .loading-dot {
     width: 5px; height: 5px; border-radius: 50%;
@@ -594,8 +594,8 @@
   .memory-footer {
     display: flex; align-items: center; gap: 8px; margin-top: 2px;
   }
-  .memory-meta { font-size: 9px; color: #4a4a6a; font-family: var(--font-mono); }
-  .memory-source { font-size: 9px; color: #5a5a7a; }
+  .memory-meta { font-size: var(--text-xs); color: #4a4a6a; font-family: var(--font-mono); }
+  .memory-source { font-size: var(--text-xs); color: #5a5a7a; }
   .memory-delete {
     background: none; border: none; padding: 2px; cursor: pointer;
     opacity: 0; transition: opacity 150ms; flex-shrink: 0; display: flex; margin-left: auto;

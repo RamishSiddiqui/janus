@@ -240,7 +240,7 @@
   }
 
   .scene-title {
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--fg-muted);
     font-family: var(--font-mono);
@@ -263,7 +263,7 @@
     background: transparent;
     border: none;
     color: var(--fg-muted);
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-family: var(--font-body);
     transition: all var(--duration-fast) var(--ease-out);
   }
@@ -334,7 +334,7 @@
   }
 
   .gen-hint {
-    font-size: 10px;
+    font-size: var(--text-xs);
     color: rgba(255, 255, 255, 0.5);
     font-family: var(--font-mono);
   }
@@ -351,7 +351,7 @@
   }
 
   .loading-text {
-    font-size: 11px;
+    font-size: var(--text-sm);
     color: var(--fg-muted);
     font-family: var(--font-mono);
   }
@@ -369,7 +369,7 @@
   }
 
   .video-text {
-    font-size: 11px;
+    font-size: var(--text-sm);
     color: var(--fg-muted);
   }
 
@@ -382,7 +382,7 @@
     background: var(--accent-tertiary);
     border: none;
     color: #000;
-    font-size: 11px;
+    font-size: var(--text-sm);
     font-weight: 600;
     font-family: var(--font-body);
     margin-top: 4px;
@@ -408,7 +408,7 @@
     border: 1px solid var(--border-subtle);
     background: var(--surface-input);
     color: var(--fg-primary);
-    font-size: 11px;
+    font-size: var(--text-sm);
     font-family: var(--font-body);
     resize: vertical;
     min-height: 40px;
@@ -434,7 +434,7 @@
     background: var(--accent-primary);
     border: none;
     color: #FFFFFF;
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 600;
     font-family: var(--font-body);
     transition: all var(--duration-fast) var(--ease-out);
@@ -456,7 +456,7 @@
   }
 
   .caption-text {
-    font-size: 10px;
+    font-size: var(--text-xs);
     color: var(--fg-muted);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -478,7 +478,7 @@
     border: 1px solid var(--border-subtle);
     background: transparent;
     color: var(--fg-muted);
-    font-size: 9px;
+    font-size: var(--text-xs);
     font-family: var(--font-body);
     transition: all var(--duration-fast) var(--ease-out);
   }

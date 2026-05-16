@@ -46,6 +46,8 @@
 | **Scene Display** | ✅ | Generate Scene button in chat toolbar → opens ContextPanel |
 | **Memories** | ✅ | Full backend (SQLite table + CRUD), pin/delete UI in ContextPanel |
 | **Font Size Setting** | ✅ | Applies via CSS custom property scale throughout all components |
+| **System Prompt Override** | ✅ | Wired to `build_prompt()` backend pipeline |
+| **Streaming Toggle** | ✅ | Backend supports both `generate` and `generate_stream` |
 
 
 ## 🔴 Not Implemented
@@ -60,9 +62,6 @@
 | **Multi-character Chat** | No group/multi-char support |
 | **Auto-save Memories** | Toggle exists, **no extraction pipeline** |
 | **Auto-generate Images** | Toggle exists, **no auto-trigger logic** |
-| **Font Size Setting** | ✅ Applied via CSS scale variables |
-| **System Prompt Override** | Editable in Settings, **not read by `build_prompt()`** |
-| **Streaming Toggle** | Toggle exists, backend **always streams** |
 | **Local Storage Only** | Toggle exists, no functional effect |
 
 ## Backend Command Coverage

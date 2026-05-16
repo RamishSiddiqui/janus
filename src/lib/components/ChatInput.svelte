@@ -219,7 +219,7 @@
     background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.1);
     border-radius: 6px; padding: 2px 8px; cursor: pointer;
     transition: all 150ms; color: #5a5a7a; font-family: var(--font-mono);
-    font-size: 10px; white-space: nowrap;
+    font-size: var(--text-xs); white-space: nowrap;
   }
   .ci-model-btn:hover {
     background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.2);

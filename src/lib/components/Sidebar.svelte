@@ -271,7 +271,7 @@
     display: flex; align-items: center; gap: 11px;
     padding: 10px 14px; border-radius: 10px;
     border: 1px solid transparent; background: transparent;
-      color: #8b8ba7; font-size: var(--text-md); font-weight: 500;
+    color: #8b8ba7; font-size: var(--text-md); font-weight: 500;
     font-family: var(--font-body); width: 100%; text-align: left;
     cursor: pointer; position: relative; overflow: hidden;
     transition: all 180ms var(--ease-out);
@@ -438,9 +438,9 @@
     display: flex; flex-direction: column; align-items: center;
     gap: 6px; padding: 36px 16px; text-align: center;
   }
-  .conv-empty-icon { font-size: 28px; opacity: 0.4; }
-  .conv-empty span { font-size: 12px; color: #5a5a7a; }
-  .conv-empty-sub { font-size: 11px; color: #3a3a5a; }
+  .conv-empty-icon { font-size: var(--text-3xl); opacity: 0.4; }
+  .conv-empty span { font-size: var(--text-sm); color: #5a5a7a; }
+  .conv-empty-sub { font-size: var(--text-sm); color: #3a3a5a; }
 
   /* ── Context Menu ── */
   .ctx-bg { position: fixed; inset: 0; background: transparent; z-index: 199; border: none; cursor: default; }
@@ -453,7 +453,7 @@
   .ctx-btn {
     display: flex; align-items: center; gap: 9px; width: 100%;
     padding: 8px 12px; border-radius: 8px; border: none;
-    background: transparent; color: #8b8ba7; font-size: 12.5px;
+    background: transparent; color: #8b8ba7; font-size: var(--text-sm);
     font-family: var(--font-body); text-align: left; cursor: pointer;
     transition: all 150ms var(--ease-out);
   }
@@ -464,7 +464,7 @@
   .rename-input {
     width: 100%; padding: 3px 8px; border-radius: 6px;
     border: 1px solid rgba(139,92,246,0.4); background: rgba(14,14,30,0.8);
-    color: #e0e0f0; font-size: 12px; font-family: var(--font-body); outline: none;
+    color: #e0e0f0; font-size: var(--text-sm); font-family: var(--font-body); outline: none;
     box-shadow: 0 0 0 3px rgba(139,92,246,0.08);
   }
 
