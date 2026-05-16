@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBezierPath, BaseEdge } from '@xyflow/svelte';
+  import { getSmoothStepPath } from '@xyflow/svelte';
 
   let {
     id,
@@ -17,33 +17,35 @@
 
   const isSync = data?.linkType === 'sync';
   const isTwoWay = data?.direction === 'two_way';
-  const offset = 4; // parallel offset in px
+  const offset = 4;
 
-  // Calculate the path
-  let pathResult = $derived(getBezierPath({
+  // SmoothStep paths route with clean right-angle turns
+  let pathResult = $derived(getSmoothStepPath({
     sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
+    borderRadius: 8,
   }));
 
   let mainPath = $derived(pathResult[0]);
 
-  // Compute a perpendicular offset for parallel lines
+  // Perpendicular offset for parallel lines
   let dx = $derived(targetX - sourceX);
   let dy = $derived(targetY - sourceY);
   let len = $derived(Math.sqrt(dx * dx + dy * dy) || 1);
   let nx = $derived(-dy / len * offset);
   let ny = $derived(dx / len * offset);
 
-  // Offset paths
-  let path1Result = $derived(getBezierPath({
+  let path1Result = $derived(getSmoothStepPath({
     sourceX: sourceX + nx, sourceY: sourceY + ny,
     targetX: targetX + nx, targetY: targetY + ny,
     sourcePosition, targetPosition,
+    borderRadius: 8,
   }));
-  let path2Result = $derived(getBezierPath({
+  let path2Result = $derived(getSmoothStepPath({
     sourceX: sourceX - nx, sourceY: sourceY - ny,
     targetX: targetX - nx, targetY: targetY - ny,
     sourcePosition, targetPosition,
+    borderRadius: 8,
   }));
 
   let path1 = $derived(path1Result[0]);
@@ -82,11 +84,11 @@
     class="flow-line reverse"
   />
 
-  <!-- Arrow dots flowing forward on path1 -->
+  <!-- Dots flowing forward on path1 -->
   <circle r="3" fill={color} class="flow-dot">
     <animateMotion dur="2.5s" repeatCount="indefinite" path={path1} />
   </circle>
-  <!-- Arrow dots flowing reverse on path2 -->
+  <!-- Dots flowing reverse on path2 -->
   <circle r="3" fill={color} class="flow-dot">
     <animateMotion dur="2.5s" repeatCount="indefinite" path={path2} keyPoints="1;0" keyTimes="0;1" />
   </circle>
@@ -107,9 +109,12 @@
 
 <!-- Label badge -->
 {#if data?.label}
-  {@const midX = (sourceX + targetX) / 2}
-  {@const midY = (sourceY + targetY) / 2}
-  <foreignObject x={midX - 28} y={midY - 10} width="56" height="20" class="label-fo">
+  {@const labelPath = getSmoothStepPath({
+    sourceX, sourceY, targetX, targetY,
+    sourcePosition, targetPosition,
+    borderRadius: 8,
+  })}
+  <foreignObject x={labelPath[1] - 28} y={labelPath[2] - 10} width="56" height="20" class="label-fo">
     <div class="edge-badge" style="--badge-color: {color};">
       {data.label}
     </div>
