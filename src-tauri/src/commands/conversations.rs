@@ -239,3 +239,94 @@ pub(crate) async fn get_conversation_by_id(
 
     Ok(row.into())
 }
+
+// --- Search ---
+
+use crate::models::conversation::SearchResult;
+
+/// Row returned from the FTS5 search query.
+#[derive(sqlx::FromRow)]
+struct SearchRow {
+    message_id: String,
+    conversation_id: String,
+    role: String,
+    content: String,
+    snippet: String,
+    conversation_title: String,
+    character_name: Option<String>,
+    created_at: String,
+}
+
+/// Searches message content using SQLite FTS5 full-text search.
+///
+/// Returns results with highlighted snippets, conversation titles,
+/// and character names for display in the search overlay.
+#[tauri::command]
+pub async fn search_messages(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<SearchResult>, MythicError> {
+    let state = state.read().await;
+    let limit = limit.unwrap_or(20).min(100);
+
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Sanitize: wrap each word in double quotes to prevent FTS5 syntax errors
+    // from user input like "hello OR world" or unmatched quotes
+    let fts_query: String = query
+        .split_whitespace()
+        .map(|word| {
+            let clean: String = word.chars().filter(|c| *c != '"').collect();
+            format!("\"{}\"", clean)
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let rows = sqlx::query_as::<_, SearchRow>(
+        "SELECT
+            f.message_id,
+            f.conversation_id,
+            m.role,
+            m.content,
+            snippet(messages_fts, 2, '<mark>', '</mark>', '…', 48) AS snippet,
+            c.title AS conversation_title,
+            ch.name AS character_name,
+            m.created_at
+         FROM messages_fts f
+         JOIN messages m ON m.id = f.message_id
+         JOIN conversations c ON c.id = f.conversation_id
+         LEFT JOIN characters ch ON ch.id = c.character_id
+         WHERE messages_fts MATCH ?
+         ORDER BY rank
+         LIMIT ?"
+    )
+    .bind(&fts_query)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await?;
+
+    info!("Search '{}' returned {} results", query, rows.len());
+
+    Ok(rows.into_iter().map(|row| {
+        let role = match row.role.as_str() {
+            "user" => crate::models::conversation::MessageRole::User,
+            "assistant" => crate::models::conversation::MessageRole::Assistant,
+            "system" => crate::models::conversation::MessageRole::System,
+            _ => crate::models::conversation::MessageRole::User,
+        };
+        SearchResult {
+            message_id: row.message_id,
+            conversation_id: row.conversation_id,
+            role,
+            content: row.content,
+            snippet: row.snippet,
+            conversation_title: row.conversation_title,
+            character_name: row.character_name,
+            created_at: parse_datetime(&row.created_at),
+        }
+    }).collect())
+}

@@ -111,7 +111,7 @@ export async function updateCharacter(
     id,
     name: name ?? null,
     data: data ?? null,
-    avatar_path: avatarPath ?? null,
+    avatarPath: avatarPath ?? null,
   });
 }
 
@@ -120,11 +120,11 @@ export async function deleteCharacter(id: string): Promise<void> {
 }
 
 export async function importCharacterCard(filePath: string): Promise<Character> {
-  return safeInvoke<Character>('import_character_card', { file_path: filePath });
+  return safeInvoke<Character>('import_character_card', { filePath });
 }
 
 export async function getAvatarPath(avatarRelative: string): Promise<string> {
-  return safeInvoke<string>('get_avatar_path', { avatar_relative: avatarRelative });
+  return safeInvoke<string>('get_avatar_path', { avatarRelative });
 }
 
 // --- Conversations ---
@@ -134,7 +134,7 @@ export async function createConversation(
   title?: string
 ): Promise<Conversation> {
   return safeInvoke<Conversation>('create_conversation', {
-    character_id: characterId ?? null,
+    characterId: characterId ?? null,
     title: title ?? null,
   });
 }
@@ -164,14 +164,14 @@ export async function updateConversation(id: string, title: string): Promise<Con
 
 export async function getConversationMessages(conversationId: string): Promise<Message[]> {
   return safeInvoke<Message[]>('get_conversation_messages', {
-    conversation_id: conversationId,
+    conversationId,
   });
 }
 
 export async function setActiveMessage(conversationId: string, messageId: string): Promise<void> {
   return safeInvoke<void>('set_active_message', {
-    conversation_id: conversationId,
-    message_id: messageId,
+    conversationId,
+    messageId,
   });
 }
 
@@ -185,10 +185,10 @@ export async function createMessage(
   metadata?: Record<string, unknown>
 ): Promise<Message> {
   return safeInvoke<Message>('create_message', {
-    conversation_id: conversationId,
+    conversationId,
     role,
     content,
-    parent_id: parentId ?? null,
+    parentId: parentId ?? null,
     metadata: metadata ?? null,
   });
 }
@@ -202,11 +202,11 @@ export async function deleteMessage(id: string): Promise<void> {
 }
 
 export async function getMessageBranch(messageId: string): Promise<Message[]> {
-  return safeInvoke<Message[]>('get_message_branch', { message_id: messageId });
+  return safeInvoke<Message[]>('get_message_branch', { messageId });
 }
 
 export async function getMessageSiblings(messageId: string): Promise<Message[]> {
-  return safeInvoke<Message[]>('get_message_siblings', { message_id: messageId });
+  return safeInvoke<Message[]>('get_message_siblings', { messageId });
 }
 
 // --- Providers ---
@@ -220,10 +220,10 @@ export async function createProvider(
 ): Promise<ProviderConfig> {
   return safeInvoke<ProviderConfig>('create_provider', {
     name,
-    provider_type: providerType,
+    providerType,
     adapter,
     config,
-    is_default: isDefault ?? false,
+    isDefault: isDefault ?? false,
   });
 }
 
@@ -233,7 +233,7 @@ export async function getProvider(id: string): Promise<ProviderConfig> {
 
 export async function listProviders(providerType?: string): Promise<ProviderConfig[]> {
   return safeInvoke<ProviderConfig[]>('list_providers', {
-    provider_type: providerType ?? null,
+    providerType: providerType ?? null,
   });
 }
 
@@ -280,10 +280,10 @@ export async function sendMessage(
   streaming?: boolean,
 ): Promise<SendMessageResult> {
   return safeInvoke<SendMessageResult>('send_message', {
-    conversation_id: conversationId,
+    conversationId,
     content,
     model: model ?? null,
-    system_prompt: systemPrompt ?? null,
+    systemPrompt: systemPrompt ?? null,
     streaming: streaming ?? null,
   });
 }
@@ -296,10 +296,10 @@ export async function regenerateMessage(
   streaming?: boolean,
 ): Promise<SendMessageResult> {
   return safeInvoke<SendMessageResult>('regenerate_message', {
-    conversation_id: conversationId,
-    message_id: messageId,
+    conversationId,
+    messageId,
     model: model ?? null,
-    system_prompt: systemPrompt ?? null,
+    systemPrompt: systemPrompt ?? null,
     streaming: streaming ?? null,
   });
 }
@@ -341,25 +341,25 @@ export async function generateScene(
   }
 ): Promise<Scene> {
   return safeInvoke<Scene>('generate_scene', {
-    conversation_id: conversationId,
-    message_id: options?.messageId ?? null,
+    conversationId,
+    messageId: options?.messageId ?? null,
     prompt,
-    negative_prompt: options?.negativePrompt ?? null,
+    negativePrompt: options?.negativePrompt ?? null,
     width: options?.width ?? null,
     height: options?.height ?? null,
   });
 }
 
 export async function listScenes(conversationId: string): Promise<Scene[]> {
-  return safeInvoke<Scene[]>('list_scenes', { conversation_id: conversationId });
+  return safeInvoke<Scene[]>('list_scenes', { conversationId });
 }
 
 export async function deleteScene(sceneId: string): Promise<void> {
-  return safeInvoke<void>('delete_scene', { scene_id: sceneId });
+  return safeInvoke<void>('delete_scene', { sceneId });
 }
 
 export async function getScenePath(fileRelative: string): Promise<string> {
-  return safeInvoke<string>('get_scene_path', { file_relative: fileRelative });
+  return safeInvoke<string>('get_scene_path', { fileRelative });
 }
 
 // --- Lorebook ---
@@ -377,7 +377,7 @@ export interface LorebookEntry {
 }
 
 export async function listLorebookEntries(characterId: string): Promise<LorebookEntry[]> {
-  return safeInvoke<LorebookEntry[]>('list_lorebook_entries', { character_id: characterId });
+  return safeInvoke<LorebookEntry[]>('list_lorebook_entries', { characterId });
 }
 
 export async function createLorebookEntry(
@@ -388,11 +388,11 @@ export async function createLorebookEntry(
   alwaysActive: boolean = false,
 ): Promise<LorebookEntry> {
   return safeInvoke<LorebookEntry>('create_lorebook_entry', {
-    character_id: characterId,
+    characterId,
     name,
     keys,
     content,
-    always_active: alwaysActive,
+    alwaysActive,
   });
 }
 
@@ -420,8 +420,8 @@ export async function listMemories(
   conversationId?: string,
 ): Promise<Memory[]> {
   return safeInvoke<Memory[]>('list_memories', {
-    character_id: characterId ?? null,
-    conversation_id: conversationId ?? null,
+    characterId: characterId ?? null,
+    conversationId: conversationId ?? null,
   });
 }
 
@@ -432,13 +432,32 @@ export async function createMemory(
   source?: string,
 ): Promise<Memory> {
   return safeInvoke<Memory>('create_memory', {
-    character_id: characterId ?? null,
-    conversation_id: conversationId ?? null,
+    characterId: characterId ?? null,
+    conversationId: conversationId ?? null,
     content,
     source: source ?? null,
   });
 }
 
 export async function deleteMemory(memoryId: string): Promise<void> {
-  return safeInvoke<void>('delete_memory', { memory_id: memoryId });
+  return safeInvoke<void>('delete_memory', { memoryId });
+}
+
+// --- Search ---
+
+export interface SearchResult {
+  message_id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  /** FTS5 snippet with <mark> tags around matched terms */
+  snippet: string;
+  conversation_title: string;
+  character_name: string | null;
+  created_at: string;
+}
+
+/** Searches message content using FTS5 full-text search. */
+export async function searchMessages(query: string, limit?: number): Promise<SearchResult[]> {
+  return safeInvoke<SearchResult[]>('search_messages', { query, limit: limit ?? null });
 }

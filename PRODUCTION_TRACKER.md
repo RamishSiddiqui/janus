@@ -48,6 +48,7 @@
 | **Font Size Setting** | ✅ | Applies via CSS custom property scale throughout all components |
 | **System Prompt Override** | ✅ | Wired to `build_prompt()` backend pipeline |
 | **Streaming Toggle** | ✅ | Backend supports both `generate` and `generate_stream` |
+| **Message Search** | ✅ | FTS5 full-text search with highlighted snippets in sidebar overlay |
 
 
 ## 🔴 Not Implemented
@@ -58,7 +59,6 @@
 | **Image Provider Adapters** | `ImageProvider` trait defined, **no concrete adapter** (SiliconFlow/ComfyUI) |
 | **Lorebook Search/Filter** | No search within lorebook entries |
 | **Character Export** | No export-to-PNG/JSON feature |
-| **Message Search** | No search across conversation history |
 | **Multi-character Chat** | No group/multi-char support |
 | **Auto-save Memories** | Toggle exists, **no extraction pipeline** |
 | **Auto-generate Images** | Toggle exists, **no auto-trigger logic** |
