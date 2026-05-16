@@ -17,6 +17,7 @@
 
   let showFontDropdown = $state(false);
   let dropdownStyle = $state('');
+  let fontSizeBtn = $state<HTMLButtonElement>();
   let showClearConfirm = $state(false);
   let isExporting = $state(false);
   let isImporting = $state(false);
@@ -42,23 +43,27 @@
     success('System prompt reset to default');
   }
 
-  function toggleDropdown(e: MouseEvent) {
+  function toggleDropdown() {
     showFontDropdown = !showFontDropdown;
-    if (showFontDropdown) {
-      const btn = e.currentTarget as HTMLElement;
-      const rect = btn.getBoundingClientRect();
+    if (showFontDropdown && fontSizeBtn) {
+      const rect = fontSizeBtn.getBoundingClientRect();
       dropdownStyle = `position:fixed;top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;width:120px;`;
     }
   }
 
-  function handleGlobalClick(e: MouseEvent) {
+  // Close dropdown on outside click
+  $effect(() => {
     if (showFontDropdown) {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.font-dropdown-wrapper')) {
-        showFontDropdown = false;
-      }
+      const handler = (e: MouseEvent) => {
+        if (fontSizeBtn && !fontSizeBtn.closest('.font-dropdown-wrapper')?.contains(e.target as Node)) {
+          showFontDropdown = false;
+        }
+      };
+      // Delay to avoid the same click that opened it from closing it
+      const timer = setTimeout(() => document.addEventListener('click', handler), 0);
+      return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
     }
-  }
+  });
 
   function selectFontSize(size: string) {
     fontSize = size;
@@ -159,8 +164,6 @@
   }
 </script>
 
-<svelte:window onclick={handleGlobalClick} />
-
 <svelte:head>
   <title>Settings — Mythic</title>
 </svelte:head>
@@ -210,7 +213,7 @@
         <div class="setting-row">
           <span class="setting-name">Font Size</span>
           <div class="font-dropdown-wrapper">
-            <button class="setting-dropdown" onclick={toggleDropdown}>
+            <button bind:this={fontSizeBtn} class="setting-dropdown" onclick={toggleDropdown}>
               <span>{fontSize}</span>
               <Icon name="chevron-down" size={12} color="var(--fg-muted)" />
             </button>
