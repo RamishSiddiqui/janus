@@ -247,6 +247,7 @@
   .graph-wrap :global(.svelte-flow__node) {
     cursor: grab;
     transition: box-shadow 200ms ease;
+    outline: none !important;
   }
 
   .graph-wrap :global(.svelte-flow__node:hover) {
@@ -254,7 +255,13 @@
   }
 
   .graph-wrap :global(.svelte-flow__node.selected) {
+    outline: none !important;
     box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;
+    border-radius: inherit;
+  }
+
+  .graph-wrap :global(.svelte-flow__node.selected .char-node) {
+    border-color: rgba(139, 92, 246, 0.5);
   }
 
   .graph-wrap :global(.svelte-flow__handle) {
