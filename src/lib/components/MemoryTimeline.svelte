@@ -234,40 +234,18 @@
                 --link-width: calc({(maxIdx - minIdx)} * (100% / {lanes.length}));
               "
             >
-              <div class="link-line" style="margin-left: var(--link-left); width: var(--link-width);">
-                <svg viewBox="0 0 100 28" preserveAspectRatio="none" width="100%" height="28" overflow="visible">
-                  <!-- Glow underlay -->
-                  <line x1="0" y1="14" x2="100" y2="14"
-                    stroke="{glowColor}" stroke-width="10" vector-effect="non-scaling-stroke"
-                    class="glow-line" />
-                  {#if isTwoWay}
-                    <!-- Two-way: parallel lines -->
-                    <line x1="0" y1="11" x2="100" y2="11"
-                      stroke="{flowColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"
-                      stroke-dasharray="6 4" class="flow-forward" />
-                    <line x1="0" y1="17" x2="100" y2="17"
-                      stroke="{flowColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"
-                      stroke-dasharray="6 4" class="flow-reverse" />
-                    <!-- Forward dot -->
-                    <circle r="3" fill="{flowColor}" cy="11" class="flow-dot">
-                      <animate attributeName="cx" from="0" to="100" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
-                    <!-- Reverse dot -->
-                    <circle r="3" fill="{flowColor}" cy="17" class="flow-dot">
-                      <animate attributeName="cx" from="100" to="0" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
-                  {:else}
-                    <!-- One-way: single animated line -->
-                    <line x1="0" y1="14" x2="100" y2="14"
-                      stroke="{flowColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"
-                      stroke-dasharray="6 4" class="flow-forward" />
-                    <!-- Traveling dot -->
-                    <circle r="3" fill="{flowColor}" cy="14" class="flow-dot">
-                      <animate attributeName="cx" from="0" to="100" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
-                  {/if}
-                </svg>
-                <!-- Badge centered over the SVG -->
+              <div class="link-line" class:two-way={isTwoWay} style="margin-left: var(--link-left); width: var(--link-width); --flow-color: {flowColor}; --glow-color: {glowColor};">
+                <!-- Glow underlay -->
+                <div class="link-glow"></div>
+                {#if isTwoWay}
+                  <div class="link-track track-forward"></div>
+                  <div class="link-track track-reverse"></div>
+                  <div class="link-dot dot-forward"></div>
+                  <div class="link-dot dot-reverse"></div>
+                {:else}
+                  <div class="link-track track-forward"></div>
+                  <div class="link-dot dot-forward"></div>
+                {/if}
                 <span class="link-badge" style="--badge-color: {flowColor};">
                   {row.linkLabel}
                 </span>
@@ -519,38 +497,85 @@
   .link-line {
     position: relative;
     height: 28px;
+    display: flex;
+    align-items: center;
   }
 
-  .link-line svg {
-    display: block;
+  /* Glow underlay */
+  .link-glow {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 8px;
+    transform: translateY(-50%);
+    background: var(--glow-color);
+    filter: blur(6px);
+    border-radius: 4px;
   }
 
-  .glow-line {
-    filter: blur(5px);
-    opacity: 0.6;
+  /* Dashed track line */
+  .link-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1.5px dashed var(--flow-color);
   }
 
-  .flow-forward {
-    animation: dashFlow 1.2s linear infinite;
+  /* Single track: centered */
+  .link-track.track-forward {
+    top: 50%;
   }
 
-  .flow-reverse {
-    animation: dashFlowReverse 1.2s linear infinite;
+  /* Two-way: offset the two tracks */
+  .link-line.two-way .track-forward {
+    top: calc(50% - 3px);
   }
 
-  @keyframes dashFlow {
-    to { stroke-dashoffset: -20; }
+  .link-track.track-reverse {
+    top: calc(50% + 3px);
   }
 
-  @keyframes dashFlowReverse {
-    to { stroke-dashoffset: 20; }
+  /* Traveling dot */
+  .link-dot {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--flow-color);
+    box-shadow: 0 0 6px var(--flow-color), 0 0 12px var(--glow-color);
+    z-index: 1;
   }
 
-  .flow-dot {
-    filter: drop-shadow(0 0 4px currentColor);
-    opacity: 0.9;
+  .link-dot.dot-forward {
+    top: 50%;
+    transform: translateY(-50%);
+    animation: dotTravel 2.5s linear infinite;
   }
 
+  /* Two-way: offset dot positions */
+  .link-line.two-way .dot-forward {
+    top: calc(50% - 3px);
+  }
+
+  .link-dot.dot-reverse {
+    top: calc(50% + 3px);
+    transform: translateY(-50%);
+    animation: dotTravelReverse 2.5s linear infinite;
+  }
+
+  @keyframes dotTravel {
+    0% { left: 0; }
+    100% { left: calc(100% - 6px); }
+  }
+
+  @keyframes dotTravelReverse {
+    0% { left: calc(100% - 6px); }
+    100% { left: 0; }
+  }
+
+  /* Badge */
   .link-badge {
     position: absolute;
     top: 50%;
