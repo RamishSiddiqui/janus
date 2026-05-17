@@ -242,6 +242,10 @@
 
 /* ═══════ Light Theme — Memory Management Page ═══════ */
 /* Topbar */
+[data-theme="light"] .topbar {
+  background: rgba(255,255,255,0.85) !important;
+  border-bottom-color: rgba(139,92,246,0.08) !important;
+}
 [data-theme="light"] .page-title-group h1 {
   color: var(--fg-primary) !important;
 }

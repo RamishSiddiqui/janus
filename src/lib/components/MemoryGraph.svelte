@@ -550,4 +550,36 @@
       transparent 7px
     );
   }
+
+  /* ═══════ Light Theme ═══════ */
+  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__controls) {
+    background: rgba(255,255,255,0.9) !important;
+    border-color: rgba(139,92,246,0.1) !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  }
+
+  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__controls button) {
+    color: #5a5a7a !important;
+  }
+
+  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__controls button:hover) {
+    background: rgba(139,92,246,0.06) !important;
+    color: #7c3aed !important;
+  }
+
+  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__minimap) {
+    background: rgba(255,255,255,0.9) !important;
+    border-color: rgba(139,92,246,0.1) !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  }
+
+  :global([data-theme="light"]) .legend {
+    background: rgba(255,255,255,0.9);
+    border-color: rgba(139,92,246,0.1);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+
+  :global([data-theme="light"]) .legend-item {
+    color: #4a4a6a;
+  }
 </style>
