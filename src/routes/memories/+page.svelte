@@ -97,6 +97,7 @@
       const merged: import('$lib/services/ipc').MemoryGraph = {
         character_id: charIds[0],
         character_name: results.map(r => r.character_name).join(' & '),
+        characters: results.map(r => ({ id: r.character_id, name: r.character_name })),
         memories: results.flatMap(r => r.memories),
         links: results.flatMap(r => r.links),
         conversations: results.flatMap(r => r.conversations),

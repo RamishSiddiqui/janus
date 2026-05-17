@@ -109,23 +109,60 @@
       }
     });
 
-    const rootId = `char-${g.character_id}`;
+    // ── Multi-character support ──
+    // Build list of characters: use `characters` array if present, else single root
+    const charList = g.characters && g.characters.length > 0
+      ? g.characters
+      : [{ id: g.character_id, name: g.character_name }];
 
-    // ── Character root ──
-    nodes.push({
-      id: rootId,
-      type: 'character',
-      position: { x: 0, y: 0 },
-      data: {
-        label: g.character_name,
-        avatarUrl: avatarUrl(g.character_id),
-        subtitle: `${g.memories.length} memories · ${g.conversations.length} timelines`,
-      },
+    const isMultiChar = charList.length > 1;
+
+    // Map character_id → root node ID
+    const charRootMap = new Map<string, string>();
+    // Build a set of memory IDs owned by each character
+    const memOwner = new Map<string, string>(); // memory_id → character_id
+    g.memories.forEach(m => {
+      if (m.character_id) memOwner.set(m.id, m.character_id);
     });
+    // Map conversation_id → set of character_ids that have memories in it
+    const convCharacters = new Map<string, Set<string>>();
+    g.memories.forEach(m => {
+      if (m.conversation_id && m.character_id) {
+        if (!convCharacters.has(m.conversation_id)) convCharacters.set(m.conversation_id, new Set());
+        convCharacters.get(m.conversation_id)!.add(m.character_id);
+      }
+    });
+
+    // ── Character root nodes ──
+    charList.forEach(ch => {
+      const rootId = `char-${ch.id}`;
+      charRootMap.set(ch.id, rootId);
+      const charMems = g.memories.filter(m => m.character_id === ch.id);
+      const charConvs = new Set(charMems.filter(m => m.conversation_id).map(m => m.conversation_id!));
+      nodes.push({
+        id: rootId,
+        type: 'character',
+        position: { x: 0, y: 0 },
+        data: {
+          label: ch.name,
+          avatarUrl: avatarUrl(ch.id),
+          subtitle: `${charMems.length} memories · ${charConvs.size} timelines`,
+        },
+      });
+    });
+
+    // Helper: get root node for a memory's character
+    function rootForMemory(mem: { character_id: string | null }): string {
+      if (mem.character_id && charRootMap.has(mem.character_id)) {
+        return charRootMap.get(mem.character_id)!;
+      }
+      return charRootMap.values().next().value!; // fallback to first
+    }
 
     // ── Canon memories ──
     g.memories.filter(m => m.is_canon).forEach(m => {
       const p = CANON;
+      const rootId = rootForMemory(m);
       nodes.push({
         id: `mem-${m.id}`,
         type: 'memory',
@@ -148,8 +185,16 @@
     });
 
     // ── Conversation branches ──
+    // Track which conv nodes we've already created (for dedup in multi-char)
+    const createdConvs = new Set<string>();
     g.conversations.forEach((conv) => {
+      if (createdConvs.has(conv.id)) return;
+      createdConvs.add(conv.id);
+
       const p = convColorMap.get(conv.id)!;
+      const sharedBy = convCharacters.get(conv.id);
+      const isShared = isMultiChar && sharedBy && sharedBy.size > 1;
+
       nodes.push({
         id: `conv-${conv.id}`,
         type: 'conversation',
@@ -158,17 +203,40 @@
           label: conv.title,
           memoryCount: memCountMap.get(conv.id) ?? 0,
           color: p.text, colorBg: p.bg, colorBorder: p.border,
+          isShared,
         },
       });
-      treeEdges.push({
-        id: `e-root-${conv.id}`,
-        source: rootId,
-        target: `conv-${conv.id}`,
-        sourceHandle: 'bottom',
-        targetHandle: 'top',
-        type: 'tree',
-        data: { color: p.edge },
-      });
+
+      // Connect to each character that has memories in this conversation
+      if (isMultiChar && sharedBy) {
+        sharedBy.forEach(charId => {
+          const rootId = charRootMap.get(charId);
+          if (rootId) {
+            treeEdges.push({
+              id: `e-root-${conv.id}-${charId}`,
+              source: rootId,
+              target: `conv-${conv.id}`,
+              sourceHandle: 'bottom',
+              targetHandle: 'top',
+              type: 'tree',
+              data: { color: p.edge },
+            });
+          }
+        });
+      } else {
+        // Single character or fallback — find the conversation's owner
+        const ownerChar = sharedBy?.values().next().value ?? g.character_id;
+        const rootId = charRootMap.get(ownerChar) ?? charRootMap.values().next().value!;
+        treeEdges.push({
+          id: `e-root-${conv.id}`,
+          source: rootId,
+          target: `conv-${conv.id}`,
+          sourceHandle: 'bottom',
+          targetHandle: 'top',
+          type: 'tree',
+          data: { color: p.edge },
+        });
+      }
     });
 
     // ── Build set of node pairs that have sharing links ──
@@ -197,6 +265,7 @@
         },
       });
 
+      const rootId = rootForMemory(m);
       const parentId = m.parent_id ? `mem-${m.parent_id}` : (convId ? `conv-${convId}` : rootId);
       const pairKey = `${parentId}->${`mem-${m.id}`}`;
 

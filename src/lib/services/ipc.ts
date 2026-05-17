@@ -445,6 +445,8 @@ export interface MemoryGraphConversation {
 export interface MemoryGraph {
   character_id: string;
   character_name: string;
+  /** Present when multiple characters are selected — one entry per character */
+  characters?: { id: string; name: string }[];
   memories: Memory[];
   links: MemoryLink[];
   conversations: MemoryGraphConversation[];
