@@ -141,6 +141,8 @@
         id: `e-canon-${m.id}`,
         source: rootId,
         target: `mem-${m.id}`,
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
         style: `stroke: ${p.edge}; stroke-width: 1.5px;`,
         type: 'smoothstep',
       });
@@ -163,6 +165,8 @@
         id: `e-root-${conv.id}`,
         source: rootId,
         target: `conv-${conv.id}`,
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
         style: `stroke: rgba(139,92,246,0.25); stroke-width: 2px;`,
         type: 'smoothstep',
       });
@@ -203,6 +207,8 @@
           id: `e-mem-${m.id}`,
           source: parentId,
           target: `mem-${m.id}`,
+          sourceHandle: 'bottom',
+          targetHandle: 'top',
           style: `stroke: ${p.edge}; stroke-width: 1px;`,
           type: 'smoothstep',
         });
@@ -220,6 +226,8 @@
         source: `mem-${link.source_memory_id}`,
         target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
         type: 'sharing',
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
         data: {
           linkType: link.link_type,
           direction: link.direction,

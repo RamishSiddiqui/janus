@@ -23,7 +23,7 @@
   </div>
 </div>
 
-<Handle type="source" position={Position.Bottom} />
+<Handle type="source" position={Position.Bottom} id="bottom" />
 
 <style>
   .char-node {

@@ -23,7 +23,7 @@
   });
 </script>
 
-<Handle type="target" position={Position.Top} />
+<Handle type="target" position={Position.Top} id="top" />
 
 <div class="mem-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-bg: {data.colorBg ?? 'rgba(139,92,246,0.08)'}; --accent-border: {data.colorBorder ?? 'rgba(139,92,246,0.2)'};">
   <!-- Header row -->
@@ -58,7 +58,7 @@
   {/if}
 </div>
 
-<Handle type="source" position={Position.Bottom} />
+<Handle type="source" position={Position.Bottom} id="bottom" />
 
 <style>
   .mem-node {
