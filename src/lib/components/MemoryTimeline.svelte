@@ -235,38 +235,35 @@
               "
             >
               <div class="link-line" style="margin-left: var(--link-left); width: var(--link-width);">
-                <svg width="100%" height="28" preserveAspectRatio="none" overflow="visible">
+                <svg viewBox="0 0 100 28" preserveAspectRatio="none" width="100%" height="28" overflow="visible">
                   <!-- Glow underlay -->
-                  <line x1="0" y1="14" x2="100%" y2="14"
-                    stroke="{glowColor}" stroke-width="10"
+                  <line x1="0" y1="14" x2="100" y2="14"
+                    stroke="{glowColor}" stroke-width="10" vector-effect="non-scaling-stroke"
                     class="glow-line" />
                   {#if isTwoWay}
                     <!-- Two-way: parallel lines -->
-                    <line x1="0" y1="11" x2="100%" y2="11"
-                      stroke="{flowColor}" stroke-width="1.5"
+                    <line x1="0" y1="11" x2="100" y2="11"
+                      stroke="{flowColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"
                       stroke-dasharray="6 4" class="flow-forward" />
-                    <line x1="0" y1="17" x2="100%" y2="17"
-                      stroke="{flowColor}" stroke-width="1.5"
+                    <line x1="0" y1="17" x2="100" y2="17"
+                      stroke="{flowColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"
                       stroke-dasharray="6 4" class="flow-reverse" />
                     <!-- Forward dot -->
-                    <circle r="3" fill="{flowColor}" class="flow-dot">
-                      <animate attributeName="cx" from="0" to="100%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" values="11" dur="2.5s" repeatCount="indefinite" />
+                    <circle r="3" fill="{flowColor}" cy="11" class="flow-dot">
+                      <animate attributeName="cx" from="0" to="100" dur="2.5s" repeatCount="indefinite" />
                     </circle>
                     <!-- Reverse dot -->
-                    <circle r="3" fill="{flowColor}" class="flow-dot">
-                      <animate attributeName="cx" from="100%" to="0" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" values="17" dur="2.5s" repeatCount="indefinite" />
+                    <circle r="3" fill="{flowColor}" cy="17" class="flow-dot">
+                      <animate attributeName="cx" from="100" to="0" dur="2.5s" repeatCount="indefinite" />
                     </circle>
                   {:else}
                     <!-- One-way: single animated line -->
-                    <line x1="0" y1="14" x2="100%" y2="14"
-                      stroke="{flowColor}" stroke-width="1.5"
+                    <line x1="0" y1="14" x2="100" y2="14"
+                      stroke="{flowColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"
                       stroke-dasharray="6 4" class="flow-forward" />
                     <!-- Traveling dot -->
-                    <circle r="3" fill="{flowColor}" class="flow-dot">
-                      <animate attributeName="cx" from="0" to="100%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" values="14" dur="2.5s" repeatCount="indefinite" />
+                    <circle r="3" fill="{flowColor}" cy="14" class="flow-dot">
+                      <animate attributeName="cx" from="0" to="100" dur="2.5s" repeatCount="indefinite" />
                     </circle>
                   {/if}
                 </svg>
