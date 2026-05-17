@@ -7,203 +7,228 @@
   const PALETTE = ['#c4a1ff', '#00f2ff', '#fb7185', '#fbbf24', '#34d399', '#d580ff'];
   const CANON_COLOR = '#daa520';
 
-  // Category → icon mapping
   const CATEGORY_ICONS: Record<string, string> = {
-    trait: '🧬',
-    event: '⚡',
-    relationship: '💫',
-    goal: '🎯',
-    discovery: '🔮',
-    preference: '💭',
-    fact: '📋',
+    trait: '🧬', event: '⚡', relationship: '💫', goal: '🎯',
+    discovery: '🔮', preference: '💭', fact: '📋',
   };
 
-  interface TimelineEntry {
-    id: string;
-    content: string;
-    source: string;
-    version: number;
-    isCanon: boolean;
-    conversationTitle: string;
+  // ── Lanes ──
+  // Canon lane + one lane per conversation
+  interface Lane {
+    id: string;         // 'canon' or conversation_id
+    label: string;
     color: string;
-    category: string;
-    time: string;
-    parentId: string | null;
   }
 
-  let convColorMap = $derived.by(() => {
-    const map = new Map<string, string>();
-    data.conversations.forEach((c, i) => map.set(c.id, PALETTE[i % PALETTE.length]));
-    return map;
-  });
-
-  let convTitleMap = $derived.by(() => {
-    const map = new Map<string, string>();
-    data.conversations.forEach(c => map.set(c.id, c.title));
-    return map;
-  });
-
-  let entries = $derived.by(() => {
-    return data.memories
-      .map(m => {
-        const catMatch = m.content.match(/^\[(\w+)\]\s*/);
-        const category = catMatch ? catMatch[1].toLowerCase() : 'fact';
-        const content = catMatch ? m.content.slice(catMatch[0].length) : m.content;
-        return {
-          id: m.id,
-          content,
-          source: m.source,
-          version: m.version,
-          isCanon: m.is_canon,
-          conversationTitle: m.conversation_id ? (convTitleMap.get(m.conversation_id) ?? 'Unknown') : 'Canon',
-          color: m.is_canon ? CANON_COLOR : (m.conversation_id ? (convColorMap.get(m.conversation_id) ?? '#666') : CANON_COLOR),
-          category,
-          time: m.created_at,
-          parentId: m.parent_id,
-        } as TimelineEntry;
-      })
-      .sort((a, b) => a.time.localeCompare(b.time));
-  });
-
-  // Filters
-  let filterConv: string | null = $state(null);
-  let filterCategory: string | null = $state(null);
-  let categories = $derived([...new Set(entries.map(e => e.category))]);
-
-  let filtered = $derived.by(() => {
-    let result = entries;
-    if (filterConv) {
-      result = result.filter(e => (filterConv === 'canon' && e.isCanon) || e.conversationTitle === filterConv);
+  let lanes = $derived.by(() => {
+    const result: Lane[] = [];
+    // Canon lane first
+    const hasCanon = data.memories.some(m => m.is_canon);
+    if (hasCanon) {
+      result.push({ id: 'canon', label: 'Canon', color: CANON_COLOR });
     }
-    if (filterCategory) {
-      result = result.filter(e => e.category === filterCategory);
-    }
+    // Conversation lanes
+    data.conversations.forEach((c, i) => {
+      result.push({ id: c.id, label: c.title, color: PALETTE[i % PALETTE.length] });
+    });
     return result;
   });
 
-  function fmt(iso: string): string {
+  // ── Timeline rows ──
+  // Each row is a horizontal slice at a point in time
+  interface TimelineRow {
+    type: 'memory' | 'link';
+    time: string;
+    // For memory rows
+    laneId?: string;
+    memoryId?: string;
+    content?: string;
+    category?: string;
+    source?: string;
+    version?: number;
+    parentId?: string | null;
+    // For link rows
+    linkLabel?: string;
+    fromLaneId?: string;
+    toLaneId?: string;
+    linkType?: string;
+  }
+
+  // Map memory_id → lane_id
+  let memLaneMap = $derived.by(() => {
+    const map = new Map<string, string>();
+    data.memories.forEach(m => {
+      map.set(m.id, m.is_canon ? 'canon' : (m.conversation_id ?? 'canon'));
+    });
+    return map;
+  });
+
+  // Map memory_id → conversation_id (for links)
+  let memConvMap = $derived.by(() => {
+    const map = new Map<string, string>();
+    data.memories.forEach(m => {
+      if (m.conversation_id) map.set(m.id, m.conversation_id);
+    });
+    return map;
+  });
+
+  let rows = $derived.by(() => {
+    const result: TimelineRow[] = [];
+
+    // Memory rows
+    data.memories.forEach(m => {
+      const catMatch = m.content.match(/^\[(\w+)\]\s*/);
+      const category = catMatch ? catMatch[1].toLowerCase() : 'fact';
+      const content = catMatch ? m.content.slice(catMatch[0].length) : m.content;
+
+      result.push({
+        type: 'memory',
+        time: m.created_at,
+        laneId: m.is_canon ? 'canon' : (m.conversation_id ?? 'canon'),
+        memoryId: m.id,
+        content,
+        category,
+        source: m.source,
+        version: m.version,
+        parentId: m.parent_id,
+      });
+    });
+
+    // Link rows — insert after the source memory's time
+    data.links.forEach(link => {
+      const srcMem = data.memories.find(m => m.id === link.source_memory_id);
+      if (!srcMem) return;
+
+      const fromLane = memLaneMap.get(link.source_memory_id) ?? 'canon';
+      const toLane = link.target_conversation_id;
+      const label = link.link_type === 'sync'
+        ? (link.direction === 'two_way' ? '⇄ sync' : '→ sync')
+        : (link.direction === 'two_way' ? '⇄ copy' : '→ copy');
+
+      result.push({
+        type: 'link',
+        time: srcMem.created_at + '_link', // Sort just after the source memory
+        fromLaneId: fromLane,
+        toLaneId: toLane,
+        linkLabel: label,
+        linkType: link.link_type,
+      });
+    });
+
+    // Sort by time
+    result.sort((a, b) => a.time.localeCompare(b.time));
+    return result;
+  });
+
+  function fmtShort(iso: string): string {
     try {
-      const d = new Date(iso);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-             ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    } catch { return iso; }
+      const d = new Date(iso.replace('_link', ''));
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { return ''; }
+  }
+
+  function laneIndex(laneId: string): number {
+    return lanes.findIndex(l => l.id === laneId);
+  }
+
+  function laneColor(laneId: string): string {
+    return lanes.find(l => l.id === laneId)?.color ?? '#5a5a7a';
   }
 </script>
 
 <div class="tl-container">
-  <!-- Filter bar -->
-  <div class="tl-filters">
-    <div class="filter-chip-group">
-      <button
-        class="filter-chip"
-        class:active={!filterConv}
-        onclick={() => filterConv = null}
-      >All</button>
-      <button
-        class="filter-chip canon"
-        class:active={filterConv === 'canon'}
-        onclick={() => filterConv = filterConv === 'canon' ? null : 'canon'}
-      >
-        <span class="chip-dot" style="background: {CANON_COLOR};"></span>
-        Canon
-      </button>
-      {#each data.conversations as conv, i}
-        <button
-          class="filter-chip"
-          class:active={filterConv === conv.title}
-          style="--chip-color: {PALETTE[i % PALETTE.length]}"
-          onclick={() => filterConv = filterConv === conv.title ? null : conv.title}
-        >
-          <span class="chip-dot" style="background: {PALETTE[i % PALETTE.length]}"></span>
-          {conv.title.length > 20 ? conv.title.slice(0, 18) + '…' : conv.title}
-        </button>
+  {#if lanes.length === 0}
+    <div class="tl-empty">
+      <div class="empty-icon-wrap"><Icon name="inbox" size={28} /></div>
+      <p>No memories to display</p>
+    </div>
+  {:else}
+    <!-- Lane headers -->
+    <div class="lane-header" style="--lane-count: {lanes.length};">
+      {#each lanes as lane}
+        <div class="lane-col">
+          <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
+          <div class="lane-underline" style="background: {lane.color};"></div>
+        </div>
       {/each}
     </div>
-    <div class="filter-right">
-      {#if categories.length > 1}
-        <select class="cat-select" bind:value={filterCategory}>
-          <option value={null}>All types</option>
-          {#each categories as cat}
-            <option value={cat}>{cat}</option>
-          {/each}
-        </select>
-      {/if}
-      <span class="entry-count">{filtered.length}</span>
-    </div>
-  </div>
 
-  <!-- Timeline body -->
-  <div class="tl-scroll">
-    {#if filtered.length === 0}
-      <div class="tl-empty">
-        <div class="empty-icon-wrap">
-          <Icon name="inbox" size={28} />
-        </div>
-        <p>No memories match the current filters</p>
-      </div>
-    {:else}
-      <div class="tl-track">
-        {#each filtered as entry, i (entry.id)}
+    <!-- Timeline body -->
+    <div class="tl-scroll">
+      <div class="tl-body" style="--lane-count: {lanes.length};">
+        <!-- Vertical lane guides -->
+        {#each lanes as lane, li}
           <div
-            class="tl-row"
-            class:canon={entry.isCanon}
-            style="--accent: {entry.color}; --delay: {Math.min(i * 30, 500)}ms;"
-          >
-            <!-- Spine node + line -->
-            <div class="spine">
-              <div class="spine-node">
-                <span class="node-icon">{CATEGORY_ICONS[entry.category] ?? '📋'}</span>
-              </div>
-              {#if i < filtered.length - 1}
-                <div class="spine-line"></div>
-              {/if}
-            </div>
+            class="lane-guide"
+            style="left: calc({li} * (100% / {lanes.length}) + (100% / {lanes.length}) / 2); --guide-color: {lane.color};"
+          ></div>
+        {/each}
 
-            <!-- Card -->
-            <div class="tl-card">
-              <div class="card-accent"></div>
-              <div class="card-inner">
-                <!-- Header row -->
-                <div class="card-head">
-                  <div class="head-left">
-                    {#if entry.isCanon}
-                      <span class="origin-pill canon-pill">
-                        <span class="pill-dot canon-dot"></span>
-                        Canon
+        <!-- Rows -->
+        {#each rows as row, ri (row.memoryId ?? `link-${ri}`)}
+          {#if row.type === 'memory'}
+            {@const li = laneIndex(row.laneId ?? 'canon')}
+            {@const color = laneColor(row.laneId ?? 'canon')}
+            <div
+              class="mem-row"
+              style="
+                --accent: {color};
+                --delay: {Math.min(ri * 25, 600)}ms;
+                --lane-offset: calc({li} * (100% / {lanes.length}));
+                --lane-width: calc(100% / {lanes.length});
+              "
+            >
+              <div class="mem-cell" style="margin-left: var(--lane-offset); width: var(--lane-width);">
+                <div class="mem-dot" style="background: {color}; box-shadow: 0 0 8px {color}44;"></div>
+                <div class="mem-card">
+                  <div class="card-accent" style="background: linear-gradient(180deg, {color}, {color}33);"></div>
+                  <div class="card-inner">
+                    <div class="card-head">
+                      <span class="cat-icon">{CATEGORY_ICONS[row.category ?? 'fact'] ?? '📋'}</span>
+                      <span class="card-content">{row.content}</span>
+                    </div>
+                    <div class="card-meta">
+                      <span class="meta-time">{fmtShort(row.time)}</span>
+                      <span class="meta-badge" class:auto={row.source === 'auto'}>
+                        {row.source === 'auto' ? 'auto' : 'pinned'}
                       </span>
-                    {:else}
-                      <span class="origin-pill" style="--pill-color: {entry.color};">
-                        <span class="pill-dot" style="background: {entry.color};"></span>
-                        {entry.conversationTitle}
-                      </span>
-                    {/if}
-                    <span class="category-label">{entry.category}</span>
+                      {#if (row.version ?? 1) > 1}
+                        <span class="meta-badge version">v{row.version}</span>
+                      {/if}
+                      {#if row.parentId}
+                        <span class="meta-badge inherited">inherited</span>
+                      {/if}
+                    </div>
                   </div>
-                  <span class="card-time">{fmt(entry.time)}</span>
-                </div>
-
-                <!-- Content -->
-                <p class="card-body">{entry.content}</p>
-
-                <!-- Footer badges -->
-                <div class="card-foot">
-                  <span class="badge" class:auto={entry.source === 'auto'} class:pinned={entry.source !== 'auto'}>
-                    {entry.source === 'auto' ? '⚙ Auto' : '📌 Pinned'}
-                  </span>
-                  {#if entry.version > 1}
-                    <span class="badge version">v{entry.version}</span>
-                  {/if}
-                  {#if entry.parentId}
-                    <span class="badge inherited">⛓ Inherited</span>
-                  {/if}
                 </div>
               </div>
             </div>
-          </div>
+          {:else if row.type === 'link'}
+            {@const fromIdx = laneIndex(row.fromLaneId ?? 'canon')}
+            {@const toIdx = laneIndex(row.toLaneId ?? 'canon')}
+            {@const minIdx = Math.min(fromIdx, toIdx)}
+            {@const maxIdx = Math.max(fromIdx, toIdx)}
+            {@const isSync = row.linkType === 'sync'}
+            <div
+              class="link-row"
+              style="
+                --delay: {Math.min(ri * 25, 600)}ms;
+                --link-left: calc({minIdx} * (100% / {lanes.length}) + (100% / {lanes.length}) / 2);
+                --link-width: calc({(maxIdx - minIdx)} * (100% / {lanes.length}));
+                --link-color: {isSync ? 'rgba(0,242,255,0.5)' : 'rgba(139,92,246,0.4)'};
+              "
+            >
+              <div class="link-line">
+                <div class="link-dash"></div>
+                <span class="link-label">{row.linkLabel}</span>
+                <div class="link-dash"></div>
+              </div>
+            </div>
+          {/if}
         {/each}
       </div>
-    {/if}
-  </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -215,104 +240,6 @@
     font-family: 'Inter', -apple-system, sans-serif;
   }
 
-  /* ══════ Filter Bar ══════ */
-  .tl-filters {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 24px;
-    border-bottom: 1px solid rgba(139, 92, 246, 0.05);
-    flex-shrink: 0;
-    gap: 12px;
-    overflow-x: auto;
-  }
-
-  .tl-filters::-webkit-scrollbar { height: 0; }
-
-  .filter-chip-group {
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .filter-chip {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 12px;
-    font-size: 11px;
-    font-weight: 600;
-    color: #5a5a7a;
-    background: rgba(14, 14, 30, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.06);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 200ms;
-    white-space: nowrap;
-    font-family: 'Inter', -apple-system, sans-serif;
-  }
-
-  .filter-chip:hover {
-    border-color: rgba(139, 92, 246, 0.15);
-    color: #8b8ba7;
-  }
-
-  .filter-chip.active {
-    background: rgba(139, 92, 246, 0.1);
-    border-color: rgba(139, 92, 246, 0.2);
-    color: #c4a1ff;
-  }
-
-  .filter-chip.canon.active {
-    background: rgba(218, 165, 32, 0.1);
-    border-color: rgba(218, 165, 32, 0.25);
-    color: #daa520;
-  }
-
-  .chip-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .filter-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-  }
-
-  .cat-select {
-    background: rgba(14, 14, 30, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.08);
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 11px;
-    color: #8b8ba7;
-    cursor: pointer;
-    font-family: 'Inter', -apple-system, sans-serif;
-  }
-
-  .entry-count {
-    font-size: 12px;
-    font-weight: 700;
-    color: #c4a1ff;
-    font-family: 'JetBrains Mono', monospace;
-    min-width: 20px;
-    text-align: right;
-  }
-
-  /* ══════ Scroll Area ══════ */
-  .tl-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 28px 32px 60px;
-  }
-
-  .tl-scroll::-webkit-scrollbar { width: 3px; }
-  .tl-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.12); border-radius: 3px; }
-
   .tl-empty {
     display: flex;
     flex-direction: column;
@@ -322,7 +249,6 @@
     gap: 14px;
     color: #4a4a6a;
   }
-
   .empty-icon-wrap {
     display: flex;
     align-items: center;
@@ -333,237 +259,241 @@
     background: rgba(139, 92, 246, 0.04);
     border: 1px solid rgba(139, 92, 246, 0.06);
   }
+  .tl-empty p { font-size: 12px; margin: 0; }
 
-  .tl-empty p {
-    font-size: 12px;
-    margin: 0;
+  /* ══════ Lane Headers ══════ */
+  .lane-header {
+    display: grid;
+    grid-template-columns: repeat(var(--lane-count), 1fr);
+    padding: 14px 32px 0;
+    gap: 0;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.04);
   }
 
-  /* ══════ Timeline Track ══════ */
-  .tl-track {
+  .lane-col {
     display: flex;
     flex-direction: column;
-    max-width: 680px;
-    margin: 0 auto;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 10px;
   }
 
-  .tl-row {
-    display: flex;
-    gap: 16px;
-    animation: slideIn 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  .lane-label {
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: -0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    padding: 0 8px;
+    text-align: center;
+  }
+
+  .lane-underline {
+    height: 2px;
+    width: 48px;
+    border-radius: 2px;
+    opacity: 0.6;
+  }
+
+  /* ══════ Timeline Body ══════ */
+  .tl-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 32px 60px;
+  }
+  .tl-scroll::-webkit-scrollbar { width: 3px; }
+  .tl-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.12); border-radius: 3px; }
+
+  .tl-body {
+    position: relative;
+    padding-top: 20px;
+  }
+
+  /* ══════ Lane Guides (vertical dotted lines) ══════ */
+  .lane-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    transform: translateX(-0.5px);
+    background: repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--guide-color) 8%, transparent) 0px,
+      color-mix(in srgb, var(--guide-color) 8%, transparent) 4px,
+      transparent 4px,
+      transparent 12px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ══════ Memory Row ══════ */
+  .mem-row {
+    position: relative;
+    z-index: 1;
+    animation: fadeUp 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
     animation-delay: var(--delay);
   }
 
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(12px); }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* ══════ Spine ══════ */
-  .spine {
+  .mem-cell {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 32px;
-    flex-shrink: 0;
-    padding-top: 4px;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 8px;
   }
 
-  .spine-node {
-    width: 28px;
-    height: 28px;
+  .mem-dot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #141028, #0e0e1e);
-    border: 1.5px solid var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     flex-shrink: 0;
+    margin-top: 6px;
     z-index: 2;
-    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 15%, transparent);
-    transition: all 250ms;
+    transition: transform 200ms;
   }
 
-  .tl-row:hover .spine-node {
-    box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
-    transform: scale(1.1);
+  .mem-row:hover .mem-dot {
+    transform: scale(1.4);
   }
 
-  .node-icon {
-    font-size: 12px;
-    line-height: 1;
-  }
-
-  .spine-line {
-    width: 1.5px;
-    flex: 1;
-    min-height: 12px;
-    background: linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--accent) 20%, transparent),
-      rgba(139, 92, 246, 0.06)
-    );
-  }
-
-  /* ══════ Card ══════ */
-  .tl-card {
-    flex: 1;
+  .mem-card {
     display: flex;
-    margin-bottom: 10px;
-    background: linear-gradient(135deg, rgba(14, 14, 30, 0.6), rgba(10, 10, 26, 0.4));
+    flex: 1;
+    background: linear-gradient(135deg, rgba(14, 14, 30, 0.7), rgba(10, 10, 26, 0.5));
     border: 1px solid rgba(139, 92, 246, 0.06);
-    border-radius: 14px;
+    border-radius: 10px;
     overflow: hidden;
-    transition: all 280ms cubic-bezier(0.16, 1, 0.3, 1);
+    margin-bottom: 6px;
+    transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
+    min-width: 0;
   }
 
-  .tl-card:hover {
-    background: linear-gradient(135deg, rgba(18, 18, 38, 0.8), rgba(14, 14, 30, 0.6));
-    border-color: color-mix(in srgb, var(--accent) 15%, transparent);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.25),
-      0 0 0 1px color-mix(in srgb, var(--accent) 5%, transparent);
+  .mem-row:hover .mem-card {
+    border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 1px color-mix(in srgb, var(--accent) 5%, transparent);
     transform: translateY(-1px);
   }
 
   .card-accent {
     width: 3px;
     flex-shrink: 0;
-    background: linear-gradient(
-      180deg,
-      var(--accent),
-      color-mix(in srgb, var(--accent) 20%, transparent)
-    );
   }
 
   .card-inner {
     flex: 1;
-    padding: 12px 16px;
+    padding: 8px 10px;
     min-width: 0;
   }
 
-  /* Card Header */
   .card-head {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 5px;
+    margin-bottom: 4px;
   }
 
-  .head-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
+  .cat-icon {
+    font-size: 11px;
+    flex-shrink: 0;
+    line-height: 1.4;
   }
 
-  .origin-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 10px;
-    font-weight: 650;
-    color: var(--pill-color);
-    background: color-mix(in srgb, var(--pill-color) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--pill-color) 15%, transparent);
-    white-space: nowrap;
+  .card-content {
+    font-size: 12px;
+    color: #c8c8e0;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 200px;
   }
 
-  .canon-pill {
-    --pill-color: #daa520;
-    color: #daa520;
-    background: rgba(218, 165, 32, 0.1);
-    border-color: rgba(218, 165, 32, 0.2);
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
   }
 
-  .pill-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .canon-dot {
-    background: #daa520;
-    box-shadow: 0 0 4px rgba(218, 165, 32, 0.4);
-  }
-
-  .category-label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #4a4a6a;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .card-time {
+  .meta-time {
     font-size: 9px;
     color: #3a3a5a;
     font-family: 'JetBrains Mono', monospace;
-    white-space: nowrap;
-    flex-shrink: 0;
   }
 
-  /* Card Body */
-  .card-body {
-    font-size: 13px;
-    color: #c8c8e0;
-    line-height: 1.6;
-    margin: 0 0 10px;
-    letter-spacing: -0.1px;
-  }
-
-  /* Card Footer */
-  .card-foot {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-
-  .badge {
-    font-size: 9px;
-    padding: 2px 7px;
-    border-radius: 5px;
+  .meta-badge {
+    font-size: 8px;
+    padding: 1px 5px;
+    border-radius: 4px;
     font-weight: 600;
     letter-spacing: 0.2px;
   }
 
-  .badge.auto {
+  .meta-badge.auto {
     background: rgba(0, 242, 255, 0.06);
     color: #00c4cc;
   }
 
-  .badge.pinned {
+  .meta-badge.pinned {
     background: rgba(16, 185, 129, 0.06);
     color: #34d399;
   }
 
-  .badge.version {
+  .meta-badge.version {
     background: rgba(139, 92, 246, 0.08);
     color: #a78bfa;
   }
 
-  .badge.inherited {
+  .meta-badge.inherited {
     background: rgba(218, 165, 32, 0.06);
     color: #d4a017;
   }
 
-  /* ══════ Canon Row Special ══════ */
-  .tl-row.canon .tl-card {
-    border-color: rgba(218, 165, 32, 0.08);
+  /* ══════ Link Row ══════ */
+  .link-row {
+    position: relative;
+    z-index: 1;
+    padding: 6px 0;
+    animation: fadeUp 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--delay);
   }
 
-  .tl-row.canon .tl-card:hover {
-    border-color: rgba(218, 165, 32, 0.15);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.25),
-      0 0 0 1px rgba(218, 165, 32, 0.06);
+  .link-line {
+    position: absolute;
+    left: var(--link-left);
+    width: var(--link-width);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 20px;
+  }
+
+  .link-dash {
+    flex: 1;
+    height: 1px;
+    background: var(--link-color);
+    mask: repeating-linear-gradient(to right, #000 0px, #000 5px, transparent 5px, transparent 9px);
+    -webkit-mask: repeating-linear-gradient(to right, #000 0px, #000 5px, transparent 5px, transparent 9px);
+  }
+
+  .link-label {
+    font-size: 9px;
+    font-weight: 650;
+    color: var(--link-color);
+    white-space: nowrap;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(7, 7, 26, 0.9);
+    border: 1px solid var(--link-color);
+    letter-spacing: 0.3px;
   }
 </style>
