@@ -86,6 +86,9 @@
           x: pos.x - size.w / 2,
           y: pos.y - size.h / 2,
         },
+        width: size.w,
+        height: size.h,
+        measured: { width: size.w, height: size.h },
       };
     });
   }
@@ -312,7 +315,6 @@
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
-    width: fit-content !important;
   }
 
   .graph-wrap :global(.svelte-flow__node-character) { border-radius: 16px !important; }

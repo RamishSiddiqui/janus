@@ -66,8 +66,8 @@
     border: 1px solid var(--accent-border);
     border-radius: 10px;
     padding: 8px 12px;
-    max-width: 210px;
-    min-width: 160px;
+    width: 100%;
+    box-sizing: border-box;
     cursor: grab;
     position: relative;
     isolation: isolate;

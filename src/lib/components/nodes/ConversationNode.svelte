@@ -30,8 +30,8 @@
     border: 1.5px solid var(--accent-border);
     border-radius: 12px;
     padding: 10px 16px 10px 10px;
-    min-width: 160px;
-    max-width: 240px;
+    width: 100%;
+    box-sizing: border-box;
     cursor: grab;
     position: relative;
     isolation: isolate;
