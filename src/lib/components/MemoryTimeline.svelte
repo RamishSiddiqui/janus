@@ -70,6 +70,35 @@
     return result;
   });
 
+  // Character groups for the spanning header row
+  interface CharGroup {
+    charId: string;
+    name: string;
+    startCol: number; // 0-based grid column start
+    span: number;     // how many columns this group spans
+    color: string;    // first lane's color for accent
+  }
+
+  let charGroups = $derived.by(() => {
+    if (!isMultiChar) return [];
+    const groups: CharGroup[] = [];
+    let i = 0;
+    while (i < lanes.length) {
+      const lane = lanes[i];
+      if (!lane.characterId) { i++; continue; } // skip canon
+      const charId = lane.characterId;
+      const start = i;
+      while (i < lanes.length && lanes[i].characterId === charId) i++;
+      groups.push({
+        charId,
+        name: lane.characterName ?? charId,
+        startCol: start,
+        span: i - start,
+        color: lanes[start].color,
+      });
+    }
+    return groups;
+  });
 
   // ── Timeline rows ──
   // Each row is a horizontal slice at a point in time
@@ -195,25 +224,68 @@
     </div>
   {:else}
     <!-- Lane headers -->
-    <div class="lane-header" style="--lane-count: {lanes.length};">
-      {#each lanes as lane, li}
-        {@const prevLane = li > 0 ? lanes[li - 1] : null}
-        {@const showCharName = isMultiChar && lane.characterName && lane.characterName !== prevLane?.characterName}
-        <div class="lane-col">
-          {#if showCharName}
-            <span class="char-group-name">{lane.characterName}</span>
-          {:else if isMultiChar && lane.characterName}
-            <span class="char-group-name invisible">&nbsp;</span>
-          {/if}
-          <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
-          <div class="lane-underline" style="background: {lane.color};"></div>
+    <div class="lane-header-wrap">
+      {#if isMultiChar && charGroups.length > 0}
+        <!-- Character group name row — names span across their lanes -->
+        <div class="char-row" style="--lane-count: {lanes.length};">
+          {#each charGroups as g, gi}
+            <div
+              class="char-span"
+              style="
+                grid-column: {g.startCol + 1} / span {g.span};
+                --char-color: {g.color};
+              "
+            >
+              <div class="char-pill">
+                <span class="char-dot" style="background: {g.color};"></span>
+                <span class="char-name-text">{g.name}</span>
+              </div>
+            </div>
+          {/each}
         </div>
-      {/each}
+      {/if}
+      <!-- Lane label row -->
+      <div class="lane-row" style="--lane-count: {lanes.length};">
+        {#each lanes as lane}
+          <div class="lane-col">
+            <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
+            <div class="lane-underline" style="background: {lane.color};"></div>
+          </div>
+        {/each}
+      </div>
+      {#if isMultiChar && charGroups.length > 0}
+        <!-- Group highlight borders beneath lane labels -->
+        <div class="group-dividers" style="--lane-count: {lanes.length};">
+          {#each charGroups as g}
+            <div
+              class="group-border"
+              style="
+                grid-column: {g.startCol + 1} / span {g.span};
+                --gb-color: {g.color};
+              "
+            ></div>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     <!-- Timeline body -->
     <div class="tl-scroll">
       <div class="tl-body" style="--lane-count: {lanes.length};">
+        <!-- Character group zone highlights -->
+        {#if isMultiChar && charGroups.length > 0}
+          {#each charGroups as g, gi}
+            <div
+              class="char-zone"
+              style="
+                left: calc({g.startCol} * (100% / {lanes.length}));
+                width: calc({g.span} * (100% / {lanes.length}));
+                --zone-color: {g.color};
+              "
+            ></div>
+          {/each}
+        {/if}
+
         <!-- Vertical lane guides -->
         {#each lanes as lane, li}
           <div
@@ -332,14 +404,64 @@
   }
   .tl-empty p { font-size: 12px; margin: 0; }
 
-  /* ══════ Lane Headers ══════ */
-  .lane-header {
+  /* ══════ Lane Header Wrapper ══════ */
+  .lane-header-wrap {
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.06);
+    padding: 0 32px;
+  }
+
+  /* ── Character group row (spanning) ── */
+  .char-row {
     display: grid;
     grid-template-columns: repeat(var(--lane-count), 1fr);
-    padding: 14px 32px 0;
-    gap: 0;
+    padding: 12px 0 6px;
+  }
+
+  .char-span {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .char-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px 3px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .char-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
     flex-shrink: 0;
-    border-bottom: 1px solid rgba(139, 92, 246, 0.04);
+    box-shadow: 0 0 6px var(--char-color, rgba(139,92,246,0.4));
+  }
+
+  .char-name-text {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+  }
+
+  /* ── Lane label row ── */
+  .lane-row {
+    display: grid;
+    grid-template-columns: repeat(var(--lane-count), 1fr);
+    padding: 4px 0 0;
+  }
+
+  .lane-row:first-child {
+    padding-top: 14px;
   }
 
   .lane-col {
@@ -348,19 +470,6 @@
     align-items: center;
     gap: 6px;
     padding-bottom: 10px;
-  }
-
-  .char-group-name {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.35);
-    margin-bottom: 2px;
-  }
-
-  .char-group-name.invisible {
-    visibility: hidden;
   }
 
   .lane-label {
@@ -380,6 +489,43 @@
     width: 48px;
     border-radius: 2px;
     opacity: 0.6;
+  }
+
+  /* ── Group divider borders ── */
+  .group-dividers {
+    display: grid;
+    grid-template-columns: repeat(var(--lane-count), 1fr);
+    height: 3px;
+  }
+
+  .group-border {
+    height: 2px;
+    margin: 0 8px;
+    border-radius: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--gb-color, rgba(139,92,246,0.15)) 15%,
+      var(--gb-color, rgba(139,92,246,0.15)) 85%,
+      transparent 100%
+    );
+    opacity: 0.2;
+  }
+
+  /* ── Character zone background in body ── */
+  .char-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid color-mix(in srgb, var(--zone-color) 6%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--zone-color) 6%, transparent);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--zone-color) 3%, transparent) 0%,
+      transparent 40%
+    );
+    pointer-events: none;
+    z-index: 0;
   }
 
   /* ══════ Timeline Body ══════ */
