@@ -152,7 +152,7 @@
   <header class="topbar">
     <div class="topbar-left">
       <div class="page-icon">
-        <Icon name="git-branch" size={18} />
+        <Icon name="brain" size={18} />
       </div>
       <div class="page-title-group">
         <h1>Memory Multiverse</h1>

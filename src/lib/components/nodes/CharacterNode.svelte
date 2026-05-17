@@ -84,4 +84,15 @@
     color: #5a5a7a;
     font-weight: 500;
   }
+
+  /* ── Light theme ── */
+  :global([data-theme="light"]) .char-node {
+    background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(248,245,252,0.98));
+    border-color: rgba(139,92,246,0.15);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08), 0 0 16px rgba(139,92,246,0.06);
+  }
+
+  :global([data-theme="light"]) .char-name {
+    color: #1a1a2e;
+  }
 </style>

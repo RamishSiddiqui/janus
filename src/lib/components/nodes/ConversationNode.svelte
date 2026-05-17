@@ -75,4 +75,10 @@
     color: color-mix(in srgb, var(--accent) 40%, #5a5a7a);
     font-weight: 500;
   }
+
+  /* ── Light theme ── */
+  :global([data-theme="light"]) .conv-node {
+    background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(248,245,252,0.95));
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
 </style>

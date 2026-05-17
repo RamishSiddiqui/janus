@@ -240,6 +240,123 @@
   background: rgba(245,158,11,0.06) !important;
 }
 
+/* ═══════ Light Theme — Memory Management Page ═══════ */
+/* Topbar */
+[data-theme="light"] .page-title-group h1 {
+  color: var(--fg-primary) !important;
+}
+[data-theme="light"] .page-icon {
+  color: #7c3aed !important;
+}
+[data-theme="light"] .picker-trigger {
+  background: rgba(255,255,255,0.7) !important;
+  border-color: rgba(139,92,246,0.1) !important;
+}
+[data-theme="light"] .picker-trigger:hover,
+[data-theme="light"] .picker-trigger:focus {
+  background: rgba(255,255,255,0.9) !important;
+  border-color: rgba(139,92,246,0.25) !important;
+}
+[data-theme="light"] .picker-label {
+  color: var(--fg-primary) !important;
+}
+[data-theme="light"] .stack-avatar {
+  border-color: rgba(255,255,255,0.9) !important;
+}
+
+/* Character picker dropdown */
+[data-theme="light"] .picker-dropdown {
+  background: rgba(255,255,255,0.96) !important;
+  border-color: rgba(139,92,246,0.1) !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(139,92,246,0.06) !important;
+}
+[data-theme="light"] .picker-option {
+  color: var(--fg-secondary) !important;
+}
+[data-theme="light"] .picker-option:hover {
+  color: var(--fg-primary) !important;
+}
+[data-theme="light"] .picker-option.selected {
+  color: #7c3aed !important;
+}
+
+/* View switch */
+[data-theme="light"] .view-switch {
+  background: rgba(255,255,255,0.6) !important;
+  border-color: rgba(139,92,246,0.08) !important;
+}
+[data-theme="light"] .switch-btn { color: var(--fg-muted) !important; }
+[data-theme="light"] .switch-btn.active { color: var(--fg-primary) !important; }
+[data-theme="light"] .switch-indicator {
+  background: rgba(139,92,246,0.1) !important;
+  border-color: rgba(139,92,246,0.12) !important;
+}
+
+/* Icon button */
+[data-theme="light"] .icon-btn {
+  background: rgba(255,255,255,0.6) !important;
+  color: var(--fg-muted) !important;
+}
+[data-theme="light"] .icon-btn:hover:not(:disabled) {
+  color: #7c3aed !important;
+}
+
+/* Stats strip */
+[data-theme="light"] .stats-strip {
+  background: rgba(255,255,255,0.4) !important;
+}
+
+/* Empty states */
+[data-theme="light"] .empty-state h2 { color: var(--fg-secondary) !important; }
+[data-theme="light"] .empty-icon {
+  background: rgba(139,92,246,0.05) !important;
+  color: var(--fg-muted) !important;
+}
+
+/* ═══════ Light Theme — Graph Nodes (svelte-flow) ═══════ */
+[data-theme="light"] .svelte-flow .svelte-flow__node {
+  color: var(--fg-primary) !important;
+}
+
+/* ═══════ Light Theme — Memory Timeline ═══════ */
+[data-theme="light"] .tl-container {
+  color: var(--fg-primary);
+}
+[data-theme="light"] .lane-header-wrap {
+  border-bottom-color: rgba(139,92,246,0.08) !important;
+}
+[data-theme="light"] .char-pill {
+  background: rgba(139,92,246,0.06) !important;
+  border-color: rgba(139,92,246,0.1) !important;
+}
+[data-theme="light"] .char-name-text {
+  color: rgba(0,0,0,0.5) !important;
+}
+[data-theme="light"] .crossroads-pill {
+  background: rgba(255,159,67,0.08) !important;
+  border-color: rgba(255,159,67,0.15) !important;
+}
+[data-theme="light"] .crossroads-text {
+  color: rgba(180,100,20,0.8) !important;
+}
+[data-theme="light"] .mem-card {
+  background: rgba(255,255,255,0.8) !important;
+  border-color: rgba(139,92,246,0.08) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+}
+[data-theme="light"] .card-content {
+  color: var(--fg-primary) !important;
+}
+[data-theme="light"] .card-meta {
+  color: var(--fg-muted) !important;
+}
+[data-theme="light"] .tl-empty {
+  color: var(--fg-muted) !important;
+}
+[data-theme="light"] .link-badge {
+  background: rgba(255,255,255,0.8) !important;
+}
+
 /* --- Reset & Base --- */
 *, *::before, *::after {
   margin: 0;

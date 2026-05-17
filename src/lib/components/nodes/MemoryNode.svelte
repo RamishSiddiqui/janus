@@ -192,4 +192,19 @@
   .badge.inherited .dot {
     background: #8b8ba7;
   }
+
+  /* ── Light theme ── */
+  :global([data-theme="light"]) .mem-node {
+    background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(245,242,250,0.95));
+    border-color: rgba(139,92,246,0.1);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+
+  :global([data-theme="light"]) .mem-text {
+    color: #2a2a3e;
+  }
+
+  :global([data-theme="light"]) .badge.inherited {
+    background: rgba(139,92,246,0.06);
+  }
 </style>
