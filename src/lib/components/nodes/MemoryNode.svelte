@@ -51,10 +51,10 @@
     {#if data.isCanon || data.parentId}
       <div class="mem-footer">
         {#if data.isCanon}
-          <span class="badge canon">Canon</span>
+          <span class="badge canon"><span class="dot"></span>Canon</span>
         {/if}
         {#if data.parentId}
-          <span class="badge inherited">Inherited</span>
+          <span class="badge inherited"><span class="dot"></span>Inherited</span>
         {/if}
       </div>
     {/if}
@@ -102,15 +102,15 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     color: var(--accent);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
   }
 
   .cat-icon {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .mem-pills {
@@ -132,38 +132,59 @@
   }
 
   .pill.src {
-    font-size: 11px;
+    font-size: 10px;
     line-height: 1;
   }
 
   .mem-text {
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.55;
     color: #cbc5dd;
     margin: 0 0 2px;
   }
 
   .mem-footer {
     display: flex;
-    gap: 5px;
+    gap: 6px;
     margin-top: 6px;
   }
 
   .badge {
-    font-size: 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 8px;
     font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 5px;
-    letter-spacing: 0.2px;
+    padding: 2px 7px 2px 5px;
+    border-radius: 6px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  .badge .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .badge.canon {
-    background: rgba(218, 165, 32, 0.15);
+    background: rgba(218, 165, 32, 0.12);
     color: #fbbf24;
   }
 
+  .badge.canon .dot {
+    background: #fbbf24;
+    box-shadow: 0 0 4px rgba(218, 165, 32, 0.5);
+  }
+
   .badge.inherited {
-    background: rgba(139, 92, 246, 0.1);
+    background: rgba(139, 92, 246, 0.08);
     color: #8b8ba7;
+  }
+
+  .badge.inherited .dot {
+    background: #8b8ba7;
+    box-shadow: 0 0 4px rgba(139, 92, 246, 0.3);
   }
 </style>
