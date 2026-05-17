@@ -87,8 +87,6 @@
           y: pos.y - size.h / 2,
         },
         width: size.w,
-        height: size.h,
-        measured: { width: size.w, height: size.h },
         style: `width: ${size.w}px;`,
       };
     });
