@@ -203,8 +203,8 @@ INSERT INTO memory_links (id, source_memory_id, target_conversation_id, link_typ
   -- Copy one-way: Aria's canon trait copied to Dark Forest branch
   ('link-01', 'mem-aria-c1', 'conv-aria-branch1', 'copy', 'one_way', 'manual', 'mem-aria-b1-1'),
   
-  -- Copy two-way: Aria's relationship canon synced bidirectionally to Tournament
-  ('link-02', 'mem-aria-c2', 'conv-aria-branch2', 'copy', 'two_way', 'manual', 'mem-aria-b2-1'),
+  -- Copy one-way: Aria's relationship canon copied to Tournament
+  ('link-02', 'mem-aria-c2', 'conv-aria-branch2', 'copy', 'one_way', 'manual', 'mem-aria-b2-1'),
   
   -- Sync one-way: Aria's College friendship auto-pushes to Tournament
   ('link-03', 'mem-aria-m2', 'conv-aria-branch2', 'sync', 'one_way', 'auto', NULL),

@@ -425,11 +425,17 @@ export interface Memory {
   created_at: string;
 }
 
+/**
+ * A link between a source memory and a target conversation.
+ * Constraint: copy is always one_way; only sync can be two_way.
+ */
 export interface MemoryLink {
   id: string;
   source_memory_id: string;
   target_conversation_id: string;
+  /** 'copy' = frozen snapshot (always one_way), 'sync' = live link */
   link_type: 'copy' | 'sync';
+  /** 'one_way' = source→target, 'two_way' = bidirectional (sync only) */
   direction: 'one_way' | 'two_way';
   sync_mode: 'auto' | 'manual';
   linked_memory_id: string | null;
