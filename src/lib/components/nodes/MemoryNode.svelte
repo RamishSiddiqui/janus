@@ -3,56 +3,62 @@
 
   let { data } = $props();
 
-  const categoryIcons: Record<string, string> = {
-    trait: '🧬',
-    event: '⚡',
-    relationship: '💜',
-    preference: '⭐',
-    goal: '🎯',
-    discovery: '🔮',
-    fact: '📄',
+  const categoryMeta: Record<string, { icon: string; label: string }> = {
+    trait:        { icon: '🧬', label: 'Trait' },
+    event:       { icon: '⚡', label: 'Event' },
+    relationship: { icon: '💜', label: 'Relationship' },
+    preference:  { icon: '⭐', label: 'Preference' },
+    goal:        { icon: '🎯', label: 'Goal' },
+    discovery:   { icon: '🔮', label: 'Discovery' },
+    fact:        { icon: '📄', label: 'Fact' },
   };
 
-  // Parse category from content like "[trait] ..."
   let parsed = $derived.by(() => {
     const match = data.content?.match(/^\[(\w+)\]\s*/);
     const category = match ? match[1].toLowerCase() : 'fact';
     const text = match ? data.content.slice(match[0].length) : (data.content ?? data.label);
-    const trunc = text.length > 60 ? text.slice(0, 57) + '…' : text;
-    return { category, text: trunc, icon: categoryIcons[category] ?? '📄' };
+    const trunc = text.length > 80 ? text.slice(0, 77) + '…' : text;
+    const meta = categoryMeta[category] ?? categoryMeta.fact;
+    return { category, text: trunc, ...meta };
   });
 </script>
 
 <Handle type="target" position={Position.Top} id="top" />
 
 <div class="mem-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-bg: {data.colorBg ?? 'rgba(139,92,246,0.08)'}; --accent-border: {data.colorBorder ?? 'rgba(139,92,246,0.2)'};">
-  <!-- Header row -->
-  <div class="mem-header">
-    <span class="mem-cat">
+  <!-- Category strip -->
+  <div class="mem-strip">
+    <div class="strip-left">
       <span class="cat-icon">{parsed.icon}</span>
-      {parsed.category}
-    </span>
-    <div class="mem-tags">
+      <span class="cat-label">{parsed.label}</span>
+    </div>
+    <div class="strip-right">
       {#if data.version > 1}
-        <span class="tag ver">v{data.version}</span>
+        <span class="pill version">v{data.version}</span>
       {/if}
-      <span class="tag source" class:auto={data.source === 'auto'}>
+      <span class="pill source" class:auto={data.source === 'auto'}>
         {data.source === 'auto' ? '🤖' : '📌'}
       </span>
     </div>
   </div>
 
   <!-- Content -->
-  <p class="mem-text">{parsed.text}</p>
+  <p class="mem-content">{parsed.text}</p>
 
-  <!-- Footer -->
+  <!-- Status bar -->
   {#if data.isCanon || data.parentId}
-    <div class="mem-footer">
+    <div class="mem-status">
       {#if data.isCanon}
-        <span class="badge canon">Canon</span>
+        <span class="status-badge canon">
+          <span class="status-dot canon-dot"></span>
+          Canon
+        </span>
       {/if}
       {#if data.parentId}
-        <span class="badge inherited">Inherited</span>
+        <span class="status-badge inherited">
+          <span class="status-dot inherited-dot"></span>
+          Inherited
+        </span>
       {/if}
     </div>
   {/if}
@@ -62,101 +68,150 @@
 
 <style>
   .mem-node {
-    background: var(--accent-bg);
+    background: linear-gradient(180deg, rgba(10,10,26,0.97), rgba(14,12,28,0.97));
     border: 1px solid var(--accent-border);
-    border-radius: 10px;
-    padding: 8px 12px;
+    border-radius: 12px;
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
     position: relative;
-    isolation: isolate;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
 
-  /* Opaque dark base so edges behind the node are hidden */
+  .mem-node:hover {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 16px color-mix(in srgb, var(--accent) 15%, transparent),
+      0 4px 12px rgba(0,0,0,0.25);
+  }
+
+  /* Accent top line */
   .mem-node::before {
     content: '';
     position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: #0a0a1a;
-    z-index: -1;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+      transparent 5%,
+      color-mix(in srgb, var(--accent) 60%, transparent) 30%,
+      var(--accent) 50%,
+      color-mix(in srgb, var(--accent) 60%, transparent) 70%,
+      transparent 95%
+    );
+    opacity: 0.5;
   }
 
-  .mem-header {
+  /* Category strip */
+  .mem-strip {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 5px;
+    padding: 7px 10px 5px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
   }
 
-  .mem-cat {
+  .strip-left {
     display: flex;
     align-items: center;
-    gap: 3px;
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    opacity: 0.7;
+    gap: 4px;
   }
 
   .cat-icon {
     font-size: 11px;
+    line-height: 1;
   }
 
-  .mem-tags {
+  .cat-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    opacity: 0.65;
+  }
+
+  .strip-right {
     display: flex;
-    gap: 3px;
+    align-items: center;
+    gap: 4px;
   }
 
-  .tag {
+  .pill {
     font-size: 8px;
     padding: 1px 5px;
     border-radius: 4px;
     font-weight: 600;
+    line-height: 1.4;
   }
 
-  .tag.ver {
-    background: rgba(139, 92, 246, 0.12);
-    color: #c4a1ff;
+  .pill.version {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    opacity: 0.7;
   }
 
-  .tag.source {
+  .pill.source {
     font-size: 10px;
     line-height: 1;
+    opacity: 0.6;
   }
 
-  .mem-text {
+  /* Content */
+  .mem-content {
     font-size: 11px;
-    line-height: 1.45;
-    color: var(--accent);
+    line-height: 1.55;
+    color: rgba(230, 225, 245, 0.85);
     margin: 0;
-    opacity: 0.9;
+    padding: 6px 10px 8px;
+    letter-spacing: 0.05px;
   }
 
-  .mem-footer {
+  /* Status bar */
+  .mem-status {
     display: flex;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 6px;
+    padding: 0 10px 7px;
   }
 
-  .badge {
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 8px;
     font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 4px;
+    padding: 2px 7px 2px 5px;
+    border-radius: 6px;
     letter-spacing: 0.3px;
+    text-transform: uppercase;
   }
 
-  .badge.canon {
-    background: rgba(218, 165, 32, 0.15);
-    color: #daa520;
+  .status-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
-  .badge.inherited {
-    background: rgba(139, 92, 246, 0.1);
-    color: #8b8ba7;
+  .status-badge.canon {
+    background: rgba(218, 165, 32, 0.12);
+    color: #fbbf24;
+  }
+
+  .canon-dot {
+    background: #fbbf24;
+    box-shadow: 0 0 4px rgba(218,165,32,0.5);
+  }
+
+  .status-badge.inherited {
+    background: rgba(139, 92, 246, 0.08);
+    color: #9d8abf;
+  }
+
+  .inherited-dot {
+    background: #9d8abf;
+    box-shadow: 0 0 4px rgba(139,92,246,0.3);
   }
 </style>
