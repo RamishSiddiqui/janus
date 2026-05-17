@@ -13,12 +13,25 @@
   };
 
   // ── Lanes ──
-  // Canon lane + one lane per conversation
+  // Canon lane + one lane per conversation, grouped by character
   interface Lane {
     id: string;         // 'canon' or conversation_id
     label: string;
     color: string;
+    characterId?: string;
+    characterName?: string;
   }
+
+  // Build character name map from the multi-character data
+  let charNameMap = $derived.by(() => {
+    const map = new Map<string, string>();
+    if (data.characters) {
+      data.characters.forEach(c => map.set(c.id, c.name));
+    }
+    return map;
+  });
+
+  let isMultiChar = $derived(!!(data.characters && data.characters.length > 1));
 
   let lanes = $derived.by(() => {
     const result: Lane[] = [];
@@ -27,12 +40,36 @@
     if (hasCanon) {
       result.push({ id: 'canon', label: 'Canon', color: CANON_COLOR });
     }
-    // Conversation lanes
-    data.conversations.forEach((c, i) => {
-      result.push({ id: c.id, label: c.title, color: PALETTE[i % PALETTE.length] });
-    });
+    // Conversation lanes — grouped by character if multi-char
+    if (isMultiChar) {
+      const grouped = new Map<string, typeof data.conversations>();
+      data.conversations.forEach(c => {
+        const charId = c.character_id ?? 'unknown';
+        if (!grouped.has(charId)) grouped.set(charId, []);
+        grouped.get(charId)!.push(c);
+      });
+      let colorIdx = 0;
+      for (const [charId, convs] of grouped) {
+        const charName = charNameMap.get(charId) ?? charId;
+        convs.forEach(c => {
+          result.push({
+            id: c.id,
+            label: c.title,
+            color: PALETTE[colorIdx % PALETTE.length],
+            characterId: charId,
+            characterName: charName,
+          });
+          colorIdx++;
+        });
+      }
+    } else {
+      data.conversations.forEach((c, i) => {
+        result.push({ id: c.id, label: c.title, color: PALETTE[i % PALETTE.length] });
+      });
+    }
     return result;
   });
+
 
   // ── Timeline rows ──
   // Each row is a horizontal slice at a point in time
@@ -159,8 +196,15 @@
   {:else}
     <!-- Lane headers -->
     <div class="lane-header" style="--lane-count: {lanes.length};">
-      {#each lanes as lane}
+      {#each lanes as lane, li}
+        {@const prevLane = li > 0 ? lanes[li - 1] : null}
+        {@const showCharName = isMultiChar && lane.characterName && lane.characterName !== prevLane?.characterName}
         <div class="lane-col">
+          {#if showCharName}
+            <span class="char-group-name">{lane.characterName}</span>
+          {:else if isMultiChar && lane.characterName}
+            <span class="char-group-name invisible">&nbsp;</span>
+          {/if}
           <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
           <div class="lane-underline" style="background: {lane.color};"></div>
         </div>
@@ -304,6 +348,19 @@
     align-items: center;
     gap: 6px;
     padding-bottom: 10px;
+  }
+
+  .char-group-name {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+    margin-bottom: 2px;
+  }
+
+  .char-group-name.invisible {
+    visibility: hidden;
   }
 
   .lane-label {

@@ -445,6 +445,7 @@ export interface MemoryLink {
 export interface MemoryGraphConversation {
   id: string;
   title: string;
+  character_id: string;
   memory_count: number;
 }
 

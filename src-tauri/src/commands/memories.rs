@@ -304,10 +304,10 @@ pub async fn get_memory_graph(
 
     // Conversations that have memories for this character
     let conv_rows: Vec<ConvSummaryRow> = sqlx::query_as(
-        "SELECT c.id, c.title, COUNT(m.id) as memory_count
+        "SELECT c.id, c.title, c.character_id, COUNT(m.id) as memory_count
          FROM conversations c
          JOIN memories m ON m.conversation_id = c.id AND m.character_id = ?
-         GROUP BY c.id, c.title
+         GROUP BY c.id, c.title, c.character_id
          ORDER BY c.updated_at DESC"
     )
     .bind(&character_id)
@@ -317,6 +317,7 @@ pub async fn get_memory_graph(
     let conversations = conv_rows.into_iter().map(|r| MemoryGraphConversation {
         id: r.id,
         title: r.title,
+        character_id: r.character_id,
         memory_count: r.memory_count,
     }).collect();
 
@@ -391,6 +392,7 @@ impl From<MemoryLinkRow> for MemoryLink {
 struct ConvSummaryRow {
     id: String,
     title: String,
+    character_id: String,
     memory_count: i32,
 }
 

@@ -59,5 +59,6 @@ pub struct MemoryGraph {
 pub struct MemoryGraphConversation {
     pub id: String,
     pub title: String,
+    pub character_id: String,
     pub memory_count: i32,
 }
