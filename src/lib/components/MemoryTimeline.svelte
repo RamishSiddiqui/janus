@@ -39,6 +39,7 @@
   interface TimelineRow {
     type: 'memory' | 'link';
     time: string;
+    sortKey: string; // for stable ordering
     // For memory rows
     laneId?: string;
     memoryId?: string;
@@ -75,15 +76,17 @@
   let rows = $derived.by(() => {
     const result: TimelineRow[] = [];
 
-    // Memory rows
-    data.memories.forEach(m => {
+    // Build memory rows first with stable index-based sort keys
+    const memRows: TimelineRow[] = [];
+    data.memories.forEach((m, idx) => {
       const catMatch = m.content.match(/^\[(\w+)\]\s*/);
       const category = catMatch ? catMatch[1].toLowerCase() : 'fact';
       const content = catMatch ? m.content.slice(catMatch[0].length) : m.content;
 
-      result.push({
+      memRows.push({
         type: 'memory',
         time: m.created_at,
+        sortKey: `${m.created_at}_${String(idx).padStart(4, '0')}_a`,
         laneId: m.is_canon ? 'canon' : (m.conversation_id ?? 'canon'),
         memoryId: m.id,
         content,
@@ -94,11 +97,21 @@
       });
     });
 
-    // Link rows — insert after the source memory's time
-    data.links.forEach(link => {
+    // Sort memories by time first
+    memRows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    // Build a map of memory_id → sort position
+    const memSortPos = new Map<string, number>();
+    memRows.forEach((r, i) => { if (r.memoryId) memSortPos.set(r.memoryId, i); });
+
+    result.push(...memRows);
+
+    // Link rows — insert right after their source memory
+    data.links.forEach((link, li) => {
       const srcMem = data.memories.find(m => m.id === link.source_memory_id);
       if (!srcMem) return;
 
+      const srcPos = memSortPos.get(link.source_memory_id) ?? 0;
       const fromLane = memLaneMap.get(link.source_memory_id) ?? 'canon';
       const toLane = link.target_conversation_id;
       const label = link.link_type === 'sync'
@@ -107,7 +120,8 @@
 
       result.push({
         type: 'link',
-        time: srcMem.created_at + '_link', // Sort just after the source memory
+        time: srcMem.created_at,
+        sortKey: `${srcMem.created_at}_${String(srcPos).padStart(4, '0')}_b${String(li).padStart(3, '0')}`,
         fromLaneId: fromLane,
         toLaneId: toLane,
         linkLabel: label,
@@ -115,8 +129,8 @@
       });
     });
 
-    // Sort by time
-    result.sort((a, b) => a.time.localeCompare(b.time));
+    // Sort everything by sortKey — links land right after their source memory
+    result.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
     return result;
   });
 
@@ -218,7 +232,7 @@
                 --link-color: {isSync ? 'rgba(0,242,255,0.5)' : 'rgba(139,92,246,0.4)'};
               "
             >
-              <div class="link-line">
+              <div class="link-line" style="margin-left: var(--link-left); width: var(--link-width);">
                 <div class="link-dash"></div>
                 <span class="link-label">{row.linkLabel}</span>
                 <div class="link-dash"></div>
@@ -468,9 +482,6 @@
   }
 
   .link-line {
-    position: absolute;
-    left: var(--link-left);
-    width: var(--link-width);
     display: flex;
     align-items: center;
     gap: 6px;
