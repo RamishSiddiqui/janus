@@ -13,7 +13,6 @@
     style,
   } = $props();
 
-  // Color from data (passed by MemoryGraph)
   let color = $derived(data?.color ?? 'rgba(139,92,246,0.4)');
 
   let pathResult = $derived(getSmoothStepPath({
@@ -23,18 +22,7 @@
   }));
 
   let edgePath = $derived(pathResult[0]);
-
-  // Unique gradient ID per edge
-  let gradId = $derived(`tree-grad-${id}`);
 </script>
-
-<defs>
-  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color={color} stop-opacity="0.15" />
-    <stop offset="40%" stop-color={color} stop-opacity="0.6" />
-    <stop offset="100%" stop-color={color} stop-opacity="0.3" />
-  </linearGradient>
-</defs>
 
 <!-- Soft glow underlay -->
 <path
@@ -49,9 +37,10 @@
 <path
   d={edgePath}
   fill="none"
-  stroke="url(#{gradId})"
+  stroke={color}
   stroke-width="1.5"
-  class="main-edge"
+  stroke-opacity="0.55"
+  stroke-linecap="round"
 />
 
 <!-- Bright dot traveling along the path -->
@@ -61,12 +50,8 @@
 
 <style>
   .glow-underlay {
-    opacity: 0.06;
+    opacity: 0.07;
     filter: blur(4px);
-  }
-
-  .main-edge {
-    stroke-linecap: round;
   }
 
   .travel-dot {
