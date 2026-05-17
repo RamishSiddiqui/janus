@@ -205,10 +205,85 @@
   border-color: rgba(139,92,246,0.08) !important;
 }
 
-/* Light sidebar conversations */
-[data-theme="light"] .sb-conv-item,
-[data-theme="light"] .sb-conv-item.active {
+/* Light sidebar conversations & chrome */
+[data-theme="light"] .sb-glow-top,
+[data-theme="light"] .sb-glow-orb {
+  opacity: 0 !important;
+}
+
+[data-theme="light"] .brand-name {
+  background: linear-gradient(135deg, #2a1a5e 10%, #7c3aed 60%, #a855f7 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+}
+
+[data-theme="light"] .sb-nav-item {
+  color: #5a5a7a !important;
+}
+[data-theme="light"] .sb-nav-item:hover {
+  color: #3a3a5a !important;
+}
+[data-theme="light"] .sb-nav-item.active {
+  color: #1a1a2e !important;
+}
+
+[data-theme="light"] .sb-search {
+  background: rgba(255,255,255,0.7) !important;
+}
+[data-theme="light"] .sb-search.focused {
+  background: rgba(255,255,255,0.9) !important;
+}
+[data-theme="light"] .sb-search input {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .sb-search input::placeholder {
+  color: #8b8ba7 !important;
+}
+
+[data-theme="light"] .conv-title {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .conv-card:not(.active) .conv-title {
+  color: #3a3a5a !important;
+}
+[data-theme="light"] .conv-sub {
+  color: #6b6b8a !important;
+}
+[data-theme="light"] .conv-card:hover {
+  background: rgba(139,92,246,0.04) !important;
+}
+[data-theme="light"] .conv-card.active {
+  background: rgba(139,92,246,0.08) !important;
+}
+
+[data-theme="light"] .conv-pulse {
+  border-color: #f0edf5 !important;
+}
+
+[data-theme="light"] .ctx-menu {
+  background: rgba(255,255,255,0.95) !important;
+  border-color: rgba(139,92,246,0.1) !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.12) !important;
+}
+[data-theme="light"] .ctx-btn {
+  color: #5a5a7a !important;
+}
+[data-theme="light"] .ctx-btn:hover {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .rename-input {
+  background: rgba(255,255,255,0.9) !important;
+  color: #1a1a2e !important;
+}
+
+[data-theme="light"] .search-result-card {
   background: rgba(255,255,255,0.5) !important;
+}
+[data-theme="light"] .sr-character {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .sr-snippet {
+  color: #5a5a7a !important;
 }
 
 /* Light chat bubbles */
