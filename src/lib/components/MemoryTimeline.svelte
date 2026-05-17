@@ -7,6 +7,17 @@
   const PALETTE = ['#c4a1ff', '#00f2ff', '#fb7185', '#fbbf24', '#34d399', '#d580ff'];
   const CANON_COLOR = '#daa520';
 
+  // Category → icon mapping
+  const CATEGORY_ICONS: Record<string, string> = {
+    trait: '🧬',
+    event: '⚡',
+    relationship: '💫',
+    goal: '🎯',
+    discovery: '🔮',
+    preference: '💭',
+    fact: '📋',
+  };
+
   interface TimelineEntry {
     id: string;
     content: string;
@@ -36,7 +47,7 @@
     return data.memories
       .map(m => {
         const catMatch = m.content.match(/^\[(\w+)\]\s*/);
-        const category = catMatch ? catMatch[1] : 'fact';
+        const category = catMatch ? catMatch[1].toLowerCase() : 'fact';
         const content = catMatch ? m.content.slice(catMatch[0].length) : m.content;
         return {
           id: m.id,
@@ -92,7 +103,10 @@
         class="filter-chip canon"
         class:active={filterConv === 'canon'}
         onclick={() => filterConv = filterConv === 'canon' ? null : 'canon'}
-      >Canon</button>
+      >
+        <span class="chip-dot" style="background: {CANON_COLOR};"></span>
+        Canon
+      </button>
       {#each data.conversations as conv, i}
         <button
           class="filter-chip"
@@ -122,49 +136,67 @@
   <div class="tl-scroll">
     {#if filtered.length === 0}
       <div class="tl-empty">
-        <Icon name="inbox" size={28} />
+        <div class="empty-icon-wrap">
+          <Icon name="inbox" size={28} />
+        </div>
         <p>No memories match the current filters</p>
       </div>
     {:else}
       <div class="tl-track">
         {#each filtered as entry, i (entry.id)}
-          <div class="tl-row" style="--delay: {Math.min(i * 40, 400)}ms;">
-            <!-- Track -->
-            <div class="row-track">
-              <div class="row-dot" style="background: {entry.color}; box-shadow: 0 0 8px {entry.color}44;"></div>
+          <div
+            class="tl-row"
+            class:canon={entry.isCanon}
+            style="--accent: {entry.color}; --delay: {Math.min(i * 30, 500)}ms;"
+          >
+            <!-- Spine node + line -->
+            <div class="spine">
+              <div class="spine-node">
+                <span class="node-icon">{CATEGORY_ICONS[entry.category] ?? '📋'}</span>
+              </div>
               {#if i < filtered.length - 1}
-                <div class="row-line"></div>
+                <div class="spine-line"></div>
               {/if}
             </div>
 
             <!-- Card -->
-            <div class="row-card">
-              <div class="card-header">
-                <div class="card-origin" style="color: {entry.color};">
-                  {#if entry.isCanon}
-                    <span class="origin-badge canon-badge">🧠 Canon</span>
-                  {:else}
-                    <span class="origin-badge" style="background: {entry.color}12; border-color: {entry.color}25;">
-                      💬 {entry.conversationTitle}
-                    </span>
+            <div class="tl-card">
+              <div class="card-accent"></div>
+              <div class="card-inner">
+                <!-- Header row -->
+                <div class="card-head">
+                  <div class="head-left">
+                    {#if entry.isCanon}
+                      <span class="origin-pill canon-pill">
+                        <span class="pill-dot canon-dot"></span>
+                        Canon
+                      </span>
+                    {:else}
+                      <span class="origin-pill" style="--pill-color: {entry.color};">
+                        <span class="pill-dot" style="background: {entry.color};"></span>
+                        {entry.conversationTitle}
+                      </span>
+                    {/if}
+                    <span class="category-label">{entry.category}</span>
+                  </div>
+                  <span class="card-time">{fmt(entry.time)}</span>
+                </div>
+
+                <!-- Content -->
+                <p class="card-body">{entry.content}</p>
+
+                <!-- Footer badges -->
+                <div class="card-foot">
+                  <span class="badge" class:auto={entry.source === 'auto'} class:pinned={entry.source !== 'auto'}>
+                    {entry.source === 'auto' ? '⚙ Auto' : '📌 Pinned'}
+                  </span>
+                  {#if entry.version > 1}
+                    <span class="badge version">v{entry.version}</span>
+                  {/if}
+                  {#if entry.parentId}
+                    <span class="badge inherited">⛓ Inherited</span>
                   {/if}
                 </div>
-                <span class="card-time">{fmt(entry.time)}</span>
-              </div>
-
-              <p class="card-content">{entry.content}</p>
-
-              <div class="card-tags">
-                <span class="tag type">{entry.category}</span>
-                <span class="tag source" class:auto={entry.source === 'auto'}>
-                  {entry.source === 'auto' ? '🤖 Auto' : '📌 Pinned'}
-                </span>
-                {#if entry.version > 1}
-                  <span class="tag version">v{entry.version}</span>
-                {/if}
-                {#if entry.parentId}
-                  <span class="tag inherited">⛓ Inherited</span>
-                {/if}
               </div>
             </div>
           </div>
@@ -180,14 +212,15 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
+    font-family: 'Inter', -apple-system, sans-serif;
   }
 
-  /* ── Filter bar ── */
+  /* ══════ Filter Bar ══════ */
   .tl-filters {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 20px;
+    padding: 10px 24px;
     border-bottom: 1px solid rgba(139, 92, 246, 0.05);
     flex-shrink: 0;
     gap: 12px;
@@ -216,7 +249,7 @@
     cursor: pointer;
     transition: all 200ms;
     white-space: nowrap;
-    font-family: var(--font-body);
+    font-family: 'Inter', -apple-system, sans-serif;
   }
 
   .filter-chip:hover {
@@ -258,23 +291,23 @@
     font-size: 11px;
     color: #8b8ba7;
     cursor: pointer;
-    font-family: var(--font-body);
+    font-family: 'Inter', -apple-system, sans-serif;
   }
 
   .entry-count {
     font-size: 12px;
     font-weight: 700;
     color: #c4a1ff;
-    font-family: var(--font-mono);
+    font-family: 'JetBrains Mono', monospace;
     min-width: 20px;
     text-align: right;
   }
 
-  /* ── Scroll area ── */
+  /* ══════ Scroll Area ══════ */
   .tl-scroll {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 24px 40px;
+    padding: 28px 32px 60px;
   }
 
   .tl-scroll::-webkit-scrollbar { width: 3px; }
@@ -286,8 +319,19 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: 10px;
+    gap: 14px;
     color: #4a4a6a;
+  }
+
+  .empty-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: rgba(139, 92, 246, 0.04);
+    border: 1px solid rgba(139, 92, 246, 0.06);
   }
 
   .tl-empty p {
@@ -295,118 +339,195 @@
     margin: 0;
   }
 
-  /* ── Timeline track ── */
+  /* ══════ Timeline Track ══════ */
   .tl-track {
     display: flex;
     flex-direction: column;
-    max-width: 640px;
+    max-width: 680px;
     margin: 0 auto;
   }
 
   .tl-row {
     display: flex;
-    gap: 14px;
-    animation: fadeSlide 350ms ease both;
+    gap: 16px;
+    animation: slideIn 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
     animation-delay: var(--delay);
   }
 
-  @keyframes fadeSlide {
-    from { opacity: 0; transform: translateY(8px); }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
-  .row-track {
+  /* ══════ Spine ══════ */
+  .spine {
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 12px;
+    width: 32px;
     flex-shrink: 0;
-    padding-top: 2px;
+    padding-top: 4px;
   }
 
-  .row-dot {
-    width: 10px;
-    height: 10px;
+  .spine-node {
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
+    background: linear-gradient(135deg, #141028, #0e0e1e);
+    border: 1.5px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    z-index: 1;
-    transition: transform 200ms;
+    z-index: 2;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 15%, transparent);
+    transition: all 250ms;
   }
 
-  .tl-row:hover .row-dot {
-    transform: scale(1.3);
+  .tl-row:hover .spine-node {
+    box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+    transform: scale(1.1);
   }
 
-  .row-line {
+  .node-icon {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .spine-line {
     width: 1.5px;
     flex: 1;
-    background: linear-gradient(to bottom, rgba(139, 92, 246, 0.1), transparent);
-    min-height: 16px;
+    min-height: 12px;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--accent) 20%, transparent),
+      rgba(139, 92, 246, 0.06)
+    );
   }
 
-  /* ── Card ── */
-  .row-card {
+  /* ══════ Card ══════ */
+  .tl-card {
+    flex: 1;
+    display: flex;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, rgba(14, 14, 30, 0.6), rgba(10, 10, 26, 0.4));
+    border: 1px solid rgba(139, 92, 246, 0.06);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: all 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .tl-card:hover {
+    background: linear-gradient(135deg, rgba(18, 18, 38, 0.8), rgba(14, 14, 30, 0.6));
+    border-color: color-mix(in srgb, var(--accent) 15%, transparent);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      0 0 0 1px color-mix(in srgb, var(--accent) 5%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .card-accent {
+    width: 3px;
+    flex-shrink: 0;
+    background: linear-gradient(
+      180deg,
+      var(--accent),
+      color-mix(in srgb, var(--accent) 20%, transparent)
+    );
+  }
+
+  .card-inner {
     flex: 1;
     padding: 12px 16px;
-    background: rgba(14, 14, 30, 0.4);
-    border: 1px solid rgba(139, 92, 246, 0.05);
-    border-radius: 12px;
-    margin-bottom: 8px;
-    transition: all 200ms;
+    min-width: 0;
   }
 
-  .row-card:hover {
-    background: rgba(14, 14, 30, 0.6);
-    border-color: rgba(139, 92, 246, 0.1);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  }
-
-  .card-header {
+  /* Card Header */
+  .card-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    gap: 8px;
   }
 
-  .card-origin { font-size: 11px; }
+  .head-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
 
-  .origin-badge {
+  .origin-pill {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
     border-radius: 6px;
-    font-weight: 600;
     font-size: 10px;
-    border: 1px solid transparent;
+    font-weight: 650;
+    color: var(--pill-color);
+    background: color-mix(in srgb, var(--pill-color) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--pill-color) 15%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
   }
 
-  .canon-badge {
+  .canon-pill {
+    --pill-color: #daa520;
+    color: #daa520;
     background: rgba(218, 165, 32, 0.1);
     border-color: rgba(218, 165, 32, 0.2);
-    color: #daa520;
+  }
+
+  .pill-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .canon-dot {
+    background: #daa520;
+    box-shadow: 0 0 4px rgba(218, 165, 32, 0.4);
+  }
+
+  .category-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #4a4a6a;
+    font-weight: 600;
+    flex-shrink: 0;
   }
 
   .card-time {
-    font-size: 10px;
+    font-size: 9px;
     color: #3a3a5a;
-    font-family: var(--font-mono);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
-  .card-content {
+  /* Card Body */
+  .card-body {
     font-size: 13px;
     color: #c8c8e0;
-    line-height: 1.55;
-    margin: 0 0 8px;
+    line-height: 1.6;
+    margin: 0 0 10px;
+    letter-spacing: -0.1px;
   }
 
-  .card-tags {
+  /* Card Footer */
+  .card-foot {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
   }
 
-  .tag {
+  .badge {
     font-size: 9px;
     padding: 2px 7px;
     border-radius: 5px;
@@ -414,29 +535,35 @@
     letter-spacing: 0.2px;
   }
 
-  .tag.type {
-    background: rgba(139, 92, 246, 0.08);
-    color: #8b8ba7;
-    text-transform: capitalize;
+  .badge.auto {
+    background: rgba(0, 242, 255, 0.06);
+    color: #00c4cc;
   }
 
-  .tag.source {
-    background: rgba(16, 185, 129, 0.08);
+  .badge.pinned {
+    background: rgba(16, 185, 129, 0.06);
     color: #34d399;
   }
 
-  .tag.source.auto {
-    background: rgba(0, 242, 255, 0.08);
-    color: #00f2ff;
+  .badge.version {
+    background: rgba(139, 92, 246, 0.08);
+    color: #a78bfa;
   }
 
-  .tag.version {
-    background: rgba(139, 92, 246, 0.1);
-    color: #c4a1ff;
+  .badge.inherited {
+    background: rgba(218, 165, 32, 0.06);
+    color: #d4a017;
   }
 
-  .tag.inherited {
-    background: rgba(218, 165, 32, 0.08);
-    color: #daa520;
+  /* ══════ Canon Row Special ══════ */
+  .tl-row.canon .tl-card {
+    border-color: rgba(218, 165, 32, 0.08);
+  }
+
+  .tl-row.canon .tl-card:hover {
+    border-color: rgba(218, 165, 32, 0.15);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(218, 165, 32, 0.06);
   }
 </style>
