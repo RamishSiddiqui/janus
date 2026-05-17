@@ -17,7 +17,7 @@
   const navItems = [
     { path: '/', label: 'Chats', icon: 'message-circle' },
     { path: '/gallery', label: 'Characters', icon: 'users' },
-    { path: '/memories', label: 'Memories', icon: 'git-branch' },
+    { path: '/memories', label: 'Memories', icon: 'brain' },
     { path: '/models', label: 'Models', icon: 'cpu' },
     { path: '/settings', label: 'Settings', icon: 'settings' },
   ] as const satisfies readonly NavItem[];
