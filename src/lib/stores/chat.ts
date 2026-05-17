@@ -59,11 +59,13 @@ export async function loadConversations() {
     // DEV MODE ONLY — Mock data for browser preview (never runs in production Tauri builds)
     if (import.meta.env.DEV) {
       conversations.set([
-        { id: '1', characterId: null, characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'Are you a first-year too? This place is a labyrinth...', time: '2m' },
-        { id: '2', characterId: null, characterName: 'Rin', avatarColor: 'linear-gradient(135deg, #EC4899, #BF40FF)', avatarUrl: null, preview: 'What\'s the job, and how illegal is it?', time: '1h' },
-        { id: '3', characterId: null, characterName: 'Saffron Emberheart', avatarColor: 'linear-gradient(135deg, #F43F5E, #F59E0B)', avatarUrl: null, preview: 'The answer is on page 347 of Aldric\'s Third...', time: '3d' },
-        { id: '4', characterId: null, characterName: 'Kai', avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)', avatarUrl: null, preview: 'Sit. Put your phone on the table — I need to check...', time: '5d' },
-        { id: '5', characterId: null, characterName: 'Ryker', avatarColor: 'linear-gradient(135deg, #EF4444, #F59E0B)', avatarUrl: null, preview: 'Nobody comes to Level 12 looking that clean...', time: '1w' },
+        { id: '1', characterId: 'ch-aria', characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'Are you a first-year too? This place is a labyrinth...', time: '2m' },
+        { id: '6', characterId: 'ch-aria', characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'The Enchanted Library — Chapter 2', time: '1h',
+          additionalCharacters: [{ id: 'ch-kai', name: 'Kai', avatarUrl: null, avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }] },
+        { id: '2', characterId: 'ch-rin', characterName: 'Rin', avatarColor: 'linear-gradient(135deg, #EC4899, #BF40FF)', avatarUrl: null, preview: 'What\'s the job, and how illegal is it?', time: '1h' },
+        { id: '3', characterId: 'ch-saffron', characterName: 'Saffron Emberheart', avatarColor: 'linear-gradient(135deg, #F43F5E, #F59E0B)', avatarUrl: null, preview: 'The answer is on page 347 of Aldric\'s Third...', time: '3d' },
+        { id: '4', characterId: 'ch-kai', characterName: 'Kai', avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)', avatarUrl: null, preview: 'Sit. Put your phone on the table — I need to check...', time: '5d' },
+        { id: '5', characterId: 'ch-ryker', characterName: 'Ryker', avatarColor: 'linear-gradient(135deg, #EF4444, #F59E0B)', avatarUrl: null, preview: 'Nobody comes to Level 12 looking that clean...', time: '1w' },
       ]);
       activeConversationId.set('1');
     }

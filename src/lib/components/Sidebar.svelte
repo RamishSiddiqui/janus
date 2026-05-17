@@ -33,6 +33,8 @@
     avatarUrl: string | null;
     conversations: ConversationPreview[];
     hasActiveConv: boolean;
+    /** Other characters that share conversations with this character */
+    coCharacters: { name: string; avatarUrl: string | null; avatarColor: string }[];
   }
 
   // Tracks which groups user has explicitly toggled. 
@@ -47,29 +49,63 @@
     const groups = new Map<string, CharacterGroup>();
     const convs = filteredConversations;
 
+    // Helper to ensure a group exists for a character
+    function ensureGroup(name: string, id: string | null, color: string, url: string | null) {
+      if (!groups.has(name)) {
+        groups.set(name, {
+          characterName: name,
+          characterId: id,
+          avatarColor: color,
+          avatarUrl: url,
+          conversations: [],
+          hasActiveConv: false,
+          coCharacters: [],
+        });
+      }
+    }
+
     for (const conv of convs) {
       // Skip conversations without a character (shown ungrouped)
       if (!conv.characterId) continue;
 
-      const key = conv.characterName || 'Unknown';
-      if (!groups.has(key)) {
-        groups.set(key, {
-          characterName: key,
-          characterId: conv.characterId,
-          avatarColor: conv.avatarColor,
-          avatarUrl: conv.avatarUrl,
-          conversations: [],
-          hasActiveConv: false,
-        });
+      const primaryKey = conv.characterName || 'Unknown';
+      ensureGroup(primaryKey, conv.characterId, conv.avatarColor, conv.avatarUrl);
+
+      const primaryGroup = groups.get(primaryKey)!;
+      // Avoid duplicating the same conversation in a group
+      if (!primaryGroup.conversations.some(c => c.id === conv.id)) {
+        primaryGroup.conversations.push(conv);
       }
-      const group = groups.get(key)!;
-      group.conversations.push(conv);
       if ($activeConversationId === conv.id) {
-        group.hasActiveConv = true;
+        primaryGroup.hasActiveConv = true;
+      }
+
+      // Multi-character support: place conversation in additional character groups too
+      if (conv.additionalCharacters) {
+        for (const extra of conv.additionalCharacters) {
+          const extraKey = extra.name || 'Unknown';
+          ensureGroup(extraKey, extra.id, extra.avatarColor, extra.avatarUrl);
+
+          const extraGroup = groups.get(extraKey)!;
+          if (!extraGroup.conversations.some(c => c.id === conv.id)) {
+            extraGroup.conversations.push(conv);
+          }
+          if ($activeConversationId === conv.id) {
+            extraGroup.hasActiveConv = true;
+          }
+
+          // Track co-characters for visual indicators
+          if (!primaryGroup.coCharacters.some(c => c.name === extra.name)) {
+            primaryGroup.coCharacters.push({ name: extra.name, avatarUrl: extra.avatarUrl, avatarColor: extra.avatarColor });
+          }
+          if (!extraGroup.coCharacters.some(c => c.name === primaryKey)) {
+            extraGroup.coCharacters.push({ name: primaryKey, avatarUrl: conv.avatarUrl, avatarColor: conv.avatarColor });
+          }
+        }
       }
     }
 
-    // Sort: active character first, then by most recent conversation
+    // Sort: active character first, then alphabetical
     return [...groups.values()].sort((a, b) => {
       if (a.hasActiveConv && !b.hasActiveConv) return -1;
       if (!a.hasActiveConv && b.hasActiveConv) return 1;
@@ -334,16 +370,29 @@
               <button class="char-group-header" 
                 onclick={() => toggleGroup(group.characterName)}
                 aria-expanded={expanded}>
-                <div class="cg-ava-wrap">
+                <div class="cg-ava-wrap" class:has-co={group.coCharacters.length > 0}>
                   <div class="cg-ava" style="background:{group.avatarColor}">
                     {#if group.avatarUrl}
                       <img src={group.avatarUrl} alt={group.characterName} class="cg-ava-img" />
                     {/if}
                   </div>
+                  <!-- Stacked co-character avatars (max 2 shown) -->
+                  {#each group.coCharacters.slice(0, 2) as co, ci}
+                    <div class="cg-co-ava" style="background:{co.avatarColor}; --offset:{(ci + 1) * 14}px">
+                      {#if co.avatarUrl}
+                        <img src={co.avatarUrl} alt={co.name} class="cg-co-ava-img" />
+                      {/if}
+                    </div>
+                  {/each}
                   {#if group.hasActiveConv}<span class="cg-active-dot"></span>{/if}
                 </div>
                 <div class="cg-info">
-                  <span class="cg-name">{group.characterName}</span>
+                  <span class="cg-name">
+                    {group.characterName}
+                    {#if group.coCharacters.length > 0}
+                      <span class="cg-shared-badge">+{group.coCharacters.length}</span>
+                    {/if}
+                  </span>
                   <span class="cg-count">{group.conversations.length} {group.conversations.length === 1 ? 'chat' : 'chats'}</span>
                 </div>
                 <div class="cg-chevron" class:rotated={expanded}>
@@ -356,6 +405,7 @@
                 <div class="cg-list">
                   {#each group.conversations as conv, ci (conv.id)}
                     {@const isActive = $activeConversationId === conv.id}
+                    {@const isMultiChar = (conv.additionalCharacters?.length ?? 0) > 0}
                     <button class="cg-conv" class:active={isActive}
                       onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
                       oncontextmenu={(e) => openContextMenu(e, conv.id)}
@@ -368,6 +418,9 @@
                           onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
                       {:else}
                         <span class="cg-conv-title">{conv.preview || 'Untitled'}</span>
+                        {#if isMultiChar}
+                          <span class="cg-multi-badge" title="Multi-character conversation">⚔</span>
+                        {/if}
                         <span class="cg-conv-time">{conv.time}</span>
                       {/if}
                     </button>
@@ -666,6 +719,35 @@
   .char-group-header:hover .cg-ava {
     transform: scale(1.06);
   }
+
+  /* Co-character stacked avatars */
+  .cg-ava-wrap.has-co { margin-right: 8px; }
+  .cg-co-ava {
+    position: absolute;
+    width: 20px; height: 20px; border-radius: 6px;
+    overflow: hidden; border: 1.5px solid #09091a;
+    right: calc(-1 * var(--offset, 14px));
+    bottom: -2px; z-index: 0;
+    transition: transform 200ms var(--ease-spring);
+  }
+  .cg-co-ava-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .char-group-header:hover .cg-co-ava { transform: scale(1.1); }
+
+  /* Shared badge next to character name */
+  .cg-shared-badge {
+    font-size: 9px; font-weight: 700;
+    padding: 1px 4px; border-radius: 4px;
+    background: rgba(0,242,255,0.12); color: #00f2ff;
+    margin-left: 4px; vertical-align: middle;
+    letter-spacing: 0.2px;
+  }
+
+  /* Multi-character conversation indicator */
+  .cg-multi-badge {
+    font-size: 10px; flex-shrink: 0;
+    opacity: 0.5; transition: opacity 150ms;
+  }
+  .cg-conv:hover .cg-multi-badge { opacity: 0.8; }
 
   .cg-active-dot {
     position: absolute; bottom: -2px; right: -2px;
