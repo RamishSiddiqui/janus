@@ -25,6 +25,72 @@
     searchQuery ? $conversations.filter(c => c.characterName.toLowerCase().includes(searchQuery.toLowerCase())) : $conversations
   );
 
+  // --- Character Grouping ---
+  interface CharacterGroup {
+    characterName: string;
+    characterId: string | null;
+    avatarColor: string;
+    avatarUrl: string | null;
+    conversations: ConversationPreview[];
+    hasActiveConv: boolean;
+  }
+
+  // Tracks which groups user has explicitly toggled. 
+  // Key = characterName, value = desired state (true=open, false=closed)
+  let manualToggles = $state<Map<string, boolean>>(new Map());
+
+  let ungroupedConversations = $derived.by(() => {
+    return filteredConversations.filter(c => !c.characterId);
+  });
+
+  let characterGroups = $derived.by(() => {
+    const groups = new Map<string, CharacterGroup>();
+    const convs = filteredConversations;
+
+    for (const conv of convs) {
+      // Skip conversations without a character (shown ungrouped)
+      if (!conv.characterId) continue;
+
+      const key = conv.characterName || 'Unknown';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          characterName: key,
+          characterId: conv.characterId,
+          avatarColor: conv.avatarColor,
+          avatarUrl: conv.avatarUrl,
+          conversations: [],
+          hasActiveConv: false,
+        });
+      }
+      const group = groups.get(key)!;
+      group.conversations.push(conv);
+      if ($activeConversationId === conv.id) {
+        group.hasActiveConv = true;
+      }
+    }
+
+    // Sort: active character first, then by most recent conversation
+    return [...groups.values()].sort((a, b) => {
+      if (a.hasActiveConv && !b.hasActiveConv) return -1;
+      if (!a.hasActiveConv && b.hasActiveConv) return 1;
+      return a.characterName.localeCompare(b.characterName);
+    });
+  });
+
+  function toggleGroup(name: string) {
+    const next = new Map(manualToggles);
+    const currentlyExpanded = isGroupExpanded(name, characterGroups.find(g => g.characterName === name));
+    next.set(name, !currentlyExpanded);
+    manualToggles = next;
+  }
+
+  function isGroupExpanded(name: string, group?: CharacterGroup): boolean {
+    // If user manually toggled this group, use that state
+    if (manualToggles.has(name)) return manualToggles.get(name)!;
+    // Default: active character's group starts expanded, others collapsed
+    return group?.hasActiveConv ?? false;
+  }
+
   // --- Deep Search State ---
   let searchResults = $state<SearchResult[]>([]);
   let isSearching = $state(false);
@@ -233,8 +299,9 @@
       </div>
     {:else}
       <!-- Conversation List (hidden during search) -->
+      <!-- Character-Grouped Conversation List (hidden during search) -->
       <div class="sb-section-head">
-        <span class="section-tag">Recent</span>
+        <span class="section-tag">Chats</span>
         <span class="section-count">{filteredConversations.length}</span>
       </div>
 
@@ -243,37 +310,71 @@
           {#each Array(4) as _, i}
             <div class="conv-skeleton"><Skeleton variant="circle" width="38px" height="38px" /><div class="skel-lines"><Skeleton variant="text" width="65%" /><Skeleton variant="text" width="85%" /></div></div>
           {/each}
-        {:else if filteredConversations.length === 0}
+        {:else if characterGroups.length === 0 && ungroupedConversations.length === 0}
           <div class="conv-empty"><span class="conv-empty-icon">💬</span><span>No conversations yet</span><span class="conv-empty-sub">Start one from the gallery</span></div>
         {:else}
-          {#each filteredConversations as conv, i (conv.id)}
+          <!-- Ungrouped conversations (no character) -->
+          {#each ungroupedConversations as conv (conv.id)}
             {@const isActive = $activeConversationId === conv.id}
-            <button class="conv-card" class:active={isActive}
+            <button class="cg-conv ungrouped" class:active={isActive}
               onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
               oncontextmenu={(e) => openContextMenu(e, conv.id)}
-              style="animation-delay: {i * 40}ms"
               aria-current={isActive ? 'true' : undefined}>
-              <div class="conv-ava-wrap">
-                <div class="conv-ava" style="background:{conv.avatarColor}">
-                  {#if conv.avatarUrl}
-                    <img src={conv.avatarUrl} alt={conv.characterName} class="conv-ava-img" />
-                  {/if}
-                </div>
-                {#if isActive}<span class="conv-pulse"></span>{/if}
-              </div>
-              <div class="conv-body">
-                {#if renamingId === conv.id}
-                  <input class="rename-input" bind:value={renameValue}
-                    onblur={() => finishRename(conv.id)}
-                    onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
-                {:else}
-                  <span class="conv-title">{conv.characterName}</span>
-                  <span class="conv-sub">{conv.preview}</span>
-                {/if}
-              </div>
-              <span class="conv-meta">{conv.time}</span>
-              {#if isActive}<div class="conv-active-glow"></div>{/if}
+              <div class="cg-conv-bar"></div>
+              <span class="cg-conv-title">{conv.preview || conv.characterName || 'New Chat'}</span>
+              <span class="cg-conv-time">{conv.time}</span>
             </button>
+          {/each}
+
+          <!-- Character groups -->
+          {#each characterGroups as group, gi (group.characterName)}
+            {@const expanded = isGroupExpanded(group.characterName, group)}
+            <div class="char-group" class:expanded class:has-active={group.hasActiveConv}>
+              <!-- Character Group Header -->
+              <button class="char-group-header" 
+                onclick={() => toggleGroup(group.characterName)}
+                aria-expanded={expanded}>
+                <div class="cg-ava-wrap">
+                  <div class="cg-ava" style="background:{group.avatarColor}">
+                    {#if group.avatarUrl}
+                      <img src={group.avatarUrl} alt={group.characterName} class="cg-ava-img" />
+                    {/if}
+                  </div>
+                  {#if group.hasActiveConv}<span class="cg-active-dot"></span>{/if}
+                </div>
+                <div class="cg-info">
+                  <span class="cg-name">{group.characterName}</span>
+                  <span class="cg-count">{group.conversations.length} {group.conversations.length === 1 ? 'chat' : 'chats'}</span>
+                </div>
+                <div class="cg-chevron" class:rotated={expanded}>
+                  <Icon name="chevron-down" size={12} color="#6b6b8a" />
+                </div>
+              </button>
+
+              <!-- Conversations within this group -->
+              {#if expanded}
+                <div class="cg-list">
+                  {#each group.conversations as conv, ci (conv.id)}
+                    {@const isActive = $activeConversationId === conv.id}
+                    <button class="cg-conv" class:active={isActive}
+                      onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
+                      oncontextmenu={(e) => openContextMenu(e, conv.id)}
+                      style="animation-delay: {ci * 30}ms"
+                      aria-current={isActive ? 'true' : undefined}>
+                      <div class="cg-conv-bar"></div>
+                      {#if renamingId === conv.id}
+                        <input class="rename-input" bind:value={renameValue}
+                          onblur={() => finishRename(conv.id)}
+                          onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
+                      {:else}
+                        <span class="cg-conv-title">{conv.preview || 'Untitled'}</span>
+                        <span class="cg-conv-time">{conv.time}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           {/each}
 
           {#if $hasMoreConversations}
@@ -506,7 +607,7 @@
 
   /* ── Conversation List ── */
   .sb-convos {
-    display: flex; flex-direction: column; gap: 3px;
+    display: flex; flex-direction: column; gap: 6px;
     overflow-y: auto; flex: 1; min-height: 0;
     position: relative; z-index: 1; padding-right: 2px;
   }
@@ -515,66 +616,183 @@
   .sb-convos::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 3px; }
   .sb-convos::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.3); }
 
-  .conv-card {
-    display: flex; align-items: center; gap: 11px;
-    padding: 10px 12px; border-radius: 12px;
-    border: 1px solid transparent; background: transparent;
-    text-align: left; width: 100%; font-family: var(--font-body);
-    cursor: pointer; position: relative; overflow: hidden;
-    animation: cardSlideIn 350ms var(--ease-out) both;
+  /* ── Character Group ── */
+  .char-group {
+    border-radius: 14px;
+    background: transparent;
+    border: 1px solid transparent;
+    overflow: hidden;
+    transition: all 250ms var(--ease-out);
+  }
+  .char-group.has-active {
+    background: rgba(139,92,246,0.03);
+    border-color: rgba(139,92,246,0.06);
+  }
+  .char-group:hover:not(.has-active) {
+    background: rgba(139,92,246,0.02);
+  }
+
+  /* ── Group Header ── */
+  .char-group-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    width: 100%; text-align: left; border: none;
+    background: transparent; font-family: var(--font-body);
+    cursor: pointer; position: relative;
+    border-radius: 14px;
     transition: all 180ms var(--ease-out);
   }
-  @keyframes cardSlideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
-
-  .conv-card:hover {
+  .char-group-header:hover {
     background: rgba(139,92,246,0.06);
-    border-color: rgba(139,92,246,0.08);
-    transform: translateX(2px);
   }
-  .conv-card.active {
-    background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(191,64,255,0.04));
-    border-color: rgba(139,92,246,0.15);
-  }
-  .conv-active-glow {
-    position: absolute; inset: 0; pointer-events: none; border-radius: 12px;
-    box-shadow: inset 0 0 20px rgba(139,92,246,0.06);
+  .char-group-header:active {
+    transform: scale(0.98);
   }
 
-  .conv-ava-wrap { position: relative; flex-shrink: 0; }
-  .conv-ava {
-    width: 38px; height: 38px; min-width: 38px; min-height: 38px;
-    border-radius: 50%; aspect-ratio: 1; overflow: hidden;
-    transition: box-shadow 200ms var(--ease-out), transform 200ms var(--ease-out);
+  .cg-ava-wrap { position: relative; flex-shrink: 0; }
+  .cg-ava {
+    width: 36px; height: 36px; min-width: 36px; min-height: 36px;
+    border-radius: 10px; overflow: hidden;
+    transition: transform 200ms var(--ease-spring), box-shadow 200ms var(--ease-out);
+    border: 2px solid rgba(139,92,246,0.08);
   }
-  .conv-ava-img {
-    width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%;
+  .cg-ava-img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
-  .conv-card:hover .conv-ava { transform: scale(1.05); }
-  .conv-card.active .conv-ava { box-shadow: 0 0 14px rgba(139,92,246,0.3); }
+  .char-group.has-active .cg-ava {
+    border-color: rgba(139,92,246,0.3);
+    box-shadow: 0 0 12px rgba(139,92,246,0.15);
+  }
+  .char-group-header:hover .cg-ava {
+    transform: scale(1.06);
+  }
 
-  .conv-pulse {
-    position: absolute; bottom: -1px; right: -1px;
-    width: 11px; height: 11px; border-radius: 50%;
+  .cg-active-dot {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 10px; height: 10px; border-radius: 50%;
     background: #10B981; border: 2px solid #09091a;
     animation: pulse 2s ease-in-out infinite;
   }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.3); } 50% { box-shadow: 0 0 0 5px rgba(16,185,129,0); } }
 
-  .conv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .conv-title {
+  .cg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .cg-name {
     font-size: var(--text-md); font-weight: 600; color: #c8c8e0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: -0.1px;
   }
-  .conv-card.active .conv-title { color: #e8e0ff; }
-  .conv-card:not(.active) .conv-title { font-weight: 500; color: #8b8ba7; }
+  .char-group.has-active .cg-name { color: #e8e0ff; }
 
-  .conv-sub {
-    font-size: var(--text-sm); color: #5a5a7a;
+  .cg-count {
+    font-size: 10px; font-weight: 500; color: #5a5a7a;
+    font-family: var(--font-mono); letter-spacing: 0.3px;
+  }
+
+  .cg-chevron {
+    display: flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; flex-shrink: 0;
+    transition: transform 250ms var(--ease-spring);
+    opacity: 0.5;
+  }
+  .cg-chevron.rotated { transform: rotate(180deg); }
+  .char-group-header:hover .cg-chevron { opacity: 1; }
+
+  /* ── Conversations Sub-list ── */
+  .cg-list {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 2px 6px 8px 22px;
+    position: relative;
+    animation: listExpand 250ms var(--ease-out) both;
+  }
+  @keyframes listExpand {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Rail line connecting conversations */
+  .cg-list::before {
+    content: '';
+    position: absolute;
+    left: 27px; top: 4px; bottom: 10px;
+    width: 1.5px;
+    background: linear-gradient(180deg, rgba(139,92,246,0.15) 0%, rgba(139,92,246,0.04) 100%);
+    border-radius: 2px;
+  }
+
+  .cg-conv {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px 7px 18px;
+    border-radius: 8px; width: 100%;
+    text-align: left; border: none;
+    background: transparent; font-family: var(--font-body);
+    cursor: pointer; position: relative;
+    transition: all 150ms var(--ease-out);
+    animation: convFadeIn 200ms var(--ease-out) both;
+  }
+  @keyframes convFadeIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .cg-conv:hover {
+    background: rgba(139,92,246,0.06);
+  }
+  .cg-conv.active {
+    background: rgba(139,92,246,0.1);
+  }
+
+  /* Active conversation accent bar */
+  .cg-conv-bar {
+    width: 3px; height: 0; border-radius: 3px;
+    background: linear-gradient(180deg, #8B5CF6, #bf40ff);
+    flex-shrink: 0;
+    transition: height 200ms var(--ease-spring), box-shadow 200ms var(--ease-out);
+  }
+  .cg-conv.active .cg-conv-bar {
+    height: 16px;
+    box-shadow: 0 0 8px rgba(139,92,246,0.4);
+  }
+
+  /* Dot connector to the rail */
+  .cg-conv::before {
+    content: '';
+    position: absolute;
+    left: 3px; top: 50%;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(139,92,246,0.15);
+    transform: translateY(-50%);
+    transition: all 150ms var(--ease-out);
+  }
+  .cg-conv:hover::before {
+    background: rgba(139,92,246,0.35);
+    transform: translateY(-50%) scale(1.3);
+  }
+  .cg-conv.active::before {
+    background: #8B5CF6;
+    box-shadow: 0 0 6px rgba(139,92,246,0.5);
+  }
+
+  .cg-conv-title {
+    font-size: var(--text-sm); font-weight: 500; color: #8b8ba7;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1;
+    transition: color 150ms;
   }
-  .conv-meta {
-    font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); flex-shrink: 0;
+  .cg-conv:hover .cg-conv-title { color: #c8c8e0; }
+  .cg-conv.active .cg-conv-title { color: #e8e0ff; font-weight: 600; }
+
+  .cg-conv-time {
+    font-size: 10px; color: #4a4a6a; font-family: var(--font-mono);
+    flex-shrink: 0;
   }
+
+  /* Ungrouped (no character) conversations - flat items */
+  .cg-conv.ungrouped {
+    padding-left: 12px;
+    margin-bottom: 2px;
+  }
+  .cg-conv.ungrouped::before { display: none; }
 
   /* Empty */
   .conv-empty {
