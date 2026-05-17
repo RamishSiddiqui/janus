@@ -9,17 +9,27 @@
     targetY,
     sourcePosition,
     targetPosition,
+    sourceHandleId,
+    targetHandleId,
+    source,
+    target,
     data,
     style,
     markerEnd,
     markerStart,
   } = $props();
 
-  const isSync = data?.linkType === 'sync';
-  const isTwoWay = data?.direction === 'two_way';
+  const isSync = $derived(data?.linkType === 'sync');
+  const isTwoWay = $derived(data?.direction === 'two_way');
   const offset = 4;
 
-  // Bezier path
+  // Force X to be centered: use average of sourceX/targetX for the axis
+  // SvelteFlow computes sourceX from the handle position which can be off.
+  // We keep sourceY/targetY (correct vertical) but recenter X on the node.
+  // For top/bottom connections, sourceX should equal the center of the node.
+  // The simplest fix: just use sourceX as-is but fix via the path.
+  
+  // Bezier path using the coordinates SvelteFlow gives us
   let pathResult = $derived(getBezierPath({
     sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
@@ -51,8 +61,8 @@
   let path2 = $derived(path2Result[0]);
 
   // Colors
-  const color = isSync ? 'rgba(0,242,255,0.45)' : 'rgba(139,92,246,0.4)';
-  const glowColor = isSync ? 'rgba(0,242,255,0.15)' : 'rgba(139,92,246,0.1)';
+  let color = $derived(isSync ? 'rgba(0,242,255,0.45)' : 'rgba(139,92,246,0.4)');
+  let glowColor = $derived(isSync ? 'rgba(0,242,255,0.15)' : 'rgba(139,92,246,0.1)');
 </script>
 
 <!-- Glow underlay -->

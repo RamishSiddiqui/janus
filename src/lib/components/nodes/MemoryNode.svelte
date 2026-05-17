@@ -23,9 +23,9 @@
   });
 </script>
 
-<div class="mem-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-bg: {data.colorBg ?? 'rgba(139,92,246,0.08)'}; --accent-border: {data.colorBorder ?? 'rgba(139,92,246,0.2)'};">
-  <Handle type="target" position={Position.Top} />
+<Handle type="target" position={Position.Top} />
 
+<div class="mem-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-bg: {data.colorBg ?? 'rgba(139,92,246,0.08)'}; --accent-border: {data.colorBorder ?? 'rgba(139,92,246,0.2)'};">
   <!-- Header row -->
   <div class="mem-header">
     <span class="mem-cat">
@@ -56,9 +56,9 @@
       {/if}
     </div>
   {/if}
-
-  <Handle type="source" position={Position.Bottom} />
 </div>
+
+<Handle type="source" position={Position.Bottom} />
 
 <style>
   .mem-node {

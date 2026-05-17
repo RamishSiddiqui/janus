@@ -5,8 +5,9 @@
   let { data } = $props();
 </script>
 
+<Handle type="target" position={Position.Top} />
+
 <div class="conv-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-bg: {data.colorBg ?? 'rgba(139,92,246,0.1)'}; --accent-border: {data.colorBorder ?? 'rgba(139,92,246,0.25)'};">
-  <Handle type="target" position={Position.Top} />
   <div class="conv-icon">
     <Icon name="message-circle" size={14} />
   </div>
@@ -18,8 +19,9 @@
       {/if}
     </div>
   </div>
-  <Handle type="source" position={Position.Bottom} />
 </div>
+
+<Handle type="source" position={Position.Bottom} />
 
 <style>
   .conv-node {

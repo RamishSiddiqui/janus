@@ -21,8 +21,9 @@
       <span class="char-sub">{data.subtitle}</span>
     {/if}
   </div>
-  <Handle type="source" position={Position.Bottom} />
 </div>
+
+<Handle type="source" position={Position.Bottom} />
 
 <style>
   .char-node {
