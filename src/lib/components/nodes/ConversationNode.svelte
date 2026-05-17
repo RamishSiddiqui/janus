@@ -9,7 +9,7 @@
 
 <div class="conv-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-dim: {data.colorBorder ?? 'rgba(139,92,246,0.25)'};">
   <div class="conv-icon-wrap">
-    <Icon name="message-circle" size={16} />
+    <Icon name="message-circle" size={14} />
   </div>
   <div class="conv-body">
     <span class="conv-title">{data.label}</span>
@@ -26,40 +26,41 @@
     display: flex;
     align-items: stretch;
     background: linear-gradient(135deg, #0e0e1e, #141028);
-    border: 1.5px solid var(--accent-dim);
-    border-radius: 14px;
+    border: 1.5px solid var(--accent);
+    border-radius: 12px;
     overflow: hidden;
     box-shadow:
-      0 0 24px rgba(0, 0, 0, 0.35),
-      0 0 12px color-mix(in srgb, var(--accent) 8%, transparent);
+      0 0 12px color-mix(in srgb, var(--accent) 25%, transparent),
+      0 0 28px color-mix(in srgb, var(--accent) 10%, transparent);
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
+    font-family: 'Inter', -apple-system, sans-serif;
   }
 
   .conv-icon-wrap {
-    width: 44px;
+    width: 38px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
     color: var(--accent);
-    border-right: 1px solid color-mix(in srgb, var(--accent) 8%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
   }
 
   .conv-body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 10px 14px;
+    padding: 8px 12px;
     gap: 2px;
     min-width: 0;
   }
 
   .conv-title {
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 650;
     color: var(--accent);
     line-height: 1.3;
     letter-spacing: -0.2px;
@@ -70,8 +71,8 @@
   }
 
   .conv-sub {
-    font-size: 10px;
-    color: #5a5a7a;
+    font-size: 9px;
+    color: color-mix(in srgb, var(--accent) 40%, #5a5a7a);
     font-weight: 500;
   }
 </style>
