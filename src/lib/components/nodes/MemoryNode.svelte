@@ -25,12 +25,12 @@
 
 <Handle type="target" position={Position.Top} id="top" />
 
-<div class="mem-node" style="--accent: {data.color ?? '#c4a1ff'}; --accent-dim: {data.colorBorder ?? 'rgba(139,92,246,0.2)'};">
-  <!-- Left accent strip -->
+<div class="mem-node" style="--accent: {data.color ?? '#c4a1ff'};">
+  <!-- Left accent strip — the ONLY colored element -->
   <div class="mem-accent-strip"></div>
 
   <div class="mem-body">
-    <!-- Header -->
+    <!-- Header row: category left, pills right -->
     <div class="mem-header">
       <span class="mem-cat">
         <span class="cat-icon">{parsed.icon}</span>
@@ -44,7 +44,7 @@
       </div>
     </div>
 
-    <!-- Content -->
+    <!-- Content text -->
     <p class="mem-text">{parsed.text}</p>
 
     <!-- Footer badges -->
@@ -66,23 +66,28 @@
 <style>
   .mem-node {
     display: flex;
+    /* Always dark — never tinted by accent color */
     background: linear-gradient(135deg, #0e0e1e, #141028);
-    border: 1px solid var(--accent-dim);
+    /* Subtle structural border only — not accent-colored */
+    border: 1px solid rgba(45, 36, 88, 0.6);
     border-radius: 12px;
     overflow: hidden;
-    box-shadow:
-      0 0 20px rgba(0, 0, 0, 0.3),
-      0 0 8px color-mix(in srgb, var(--accent) 6%, transparent);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
+    font-family: 'Inter', -apple-system, sans-serif;
   }
 
-  /* Colored left edge strip */
+  /* Left accent strip — the only place accent color appears */
   .mem-accent-strip {
     width: 3px;
     flex-shrink: 0;
-    background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 30%, transparent));
+    background: linear-gradient(
+      180deg,
+      var(--accent),
+      color-mix(in srgb, var(--accent) 25%, transparent)
+    );
   }
 
   .mem-body {
@@ -95,7 +100,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
   }
 
   .mem-cat {
@@ -111,6 +116,7 @@
 
   .cat-icon {
     font-size: 11px;
+    line-height: 1;
   }
 
   .mem-pills {
@@ -127,7 +133,7 @@
   }
 
   .pill.ver {
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
     color: var(--accent);
   }
 
@@ -140,13 +146,13 @@
     font-size: 12px;
     line-height: 1.55;
     color: #cbc5dd;
-    margin: 0 0 2px;
+    margin: 0;
   }
 
   .mem-footer {
     display: flex;
     gap: 6px;
-    margin-top: 6px;
+    margin-top: 8px;
   }
 
   .badge {
@@ -185,6 +191,5 @@
 
   .badge.inherited .dot {
     background: #8b8ba7;
-    box-shadow: 0 0 4px rgba(139, 92, 246, 0.3);
   }
 </style>

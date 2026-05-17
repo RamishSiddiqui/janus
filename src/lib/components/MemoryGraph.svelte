@@ -50,9 +50,9 @@
 
   /* ── Node sizes for dagre ── */
   const NODE_SIZES: Record<string, { w: number; h: number }> = {
-    character:    { w: 220, h: 64 },
-    conversation: { w: 210, h: 56 },
-    memory:       { w: 210, h: 90 },
+    character:    { w: 240, h: 64 },
+    conversation: { w: 220, h: 56 },
+    memory:       { w: 240, h: 120 },
   };
 
   /* ── Dagre auto-layout ── */
