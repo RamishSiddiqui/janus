@@ -237,7 +237,7 @@
           class:active={activeView === 'graph'}
           onclick={() => activeView = 'graph'}
         >
-          <Icon name="git-branch" size={14} />
+          <Icon name="network" size={14} />
           <span>Graph</span>
         </button>
         <button
@@ -245,7 +245,7 @@
           class:active={activeView === 'timeline'}
           onclick={() => activeView = 'timeline'}
         >
-          <Icon name="list" size={14} />
+          <Icon name="clock" size={14} />
           <span>Timeline</span>
         </button>
         <div class="switch-indicator" class:right={activeView === 'timeline'}></div>
