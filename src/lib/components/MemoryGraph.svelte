@@ -8,6 +8,7 @@
   import ConversationNode from './nodes/ConversationNode.svelte';
   import MemoryNode from './nodes/MemoryNode.svelte';
   import SharingEdge from './edges/SharingEdge.svelte';
+  import TreeEdge from './edges/TreeEdge.svelte';
 
   let { data, avatars = {}, onRefresh }: {
     data: MemoryGraphData;
@@ -21,7 +22,7 @@
     memory: MemoryNode,
   };
 
-  const edgeTypes = { sharing: SharingEdge };
+  const edgeTypes = { sharing: SharingEdge, tree: TreeEdge };
 
   /* ── Palette ── */
   const PALETTE = [
@@ -141,8 +142,8 @@
         target: `mem-${m.id}`,
         sourceHandle: 'bottom',
         targetHandle: 'top',
-        style: `stroke: ${p.edge}; stroke-width: 1.5px;`,
-        type: 'smoothstep',
+        type: 'tree',
+        data: { color: p.edge },
       });
     });
 
@@ -165,8 +166,8 @@
         target: `conv-${conv.id}`,
         sourceHandle: 'bottom',
         targetHandle: 'top',
-        style: `stroke: rgba(139,92,246,0.25); stroke-width: 2px;`,
-        type: 'smoothstep',
+        type: 'tree',
+        data: { color: p.edge },
       });
     });
 
@@ -207,8 +208,8 @@
           target: `mem-${m.id}`,
           sourceHandle: 'bottom',
           targetHandle: 'top',
-          style: `stroke: ${p.edge}; stroke-width: 1px;`,
-          type: 'smoothstep',
+          type: 'tree',
+          data: { color: p.edge },
         });
       }
     });
