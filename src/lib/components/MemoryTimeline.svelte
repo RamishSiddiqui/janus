@@ -223,19 +223,57 @@
             {@const minIdx = Math.min(fromIdx, toIdx)}
             {@const maxIdx = Math.max(fromIdx, toIdx)}
             {@const isSync = row.linkType === 'sync'}
+            {@const isTwoWay = row.linkLabel?.includes('⇄')}
+            {@const flowColor = isSync ? 'rgba(0,242,255,0.45)' : 'rgba(139,92,246,0.4)'}
+            {@const glowColor = isSync ? 'rgba(0,242,255,0.15)' : 'rgba(139,92,246,0.1)'}
             <div
               class="link-row"
               style="
                 --delay: {Math.min(ri * 25, 600)}ms;
                 --link-left: calc({minIdx} * (100% / {lanes.length}) + (100% / {lanes.length}) / 2);
                 --link-width: calc({(maxIdx - minIdx)} * (100% / {lanes.length}));
-                --link-color: {isSync ? 'rgba(0,242,255,0.5)' : 'rgba(139,92,246,0.4)'};
               "
             >
               <div class="link-line" style="margin-left: var(--link-left); width: var(--link-width);">
-                <div class="link-dash"></div>
-                <span class="link-label">{row.linkLabel}</span>
-                <div class="link-dash"></div>
+                <svg width="100%" height="28" preserveAspectRatio="none" overflow="visible">
+                  <!-- Glow underlay -->
+                  <line x1="0" y1="14" x2="100%" y2="14"
+                    stroke="{glowColor}" stroke-width="10"
+                    class="glow-line" />
+                  {#if isTwoWay}
+                    <!-- Two-way: parallel lines -->
+                    <line x1="0" y1="11" x2="100%" y2="11"
+                      stroke="{flowColor}" stroke-width="1.5"
+                      stroke-dasharray="6 4" class="flow-forward" />
+                    <line x1="0" y1="17" x2="100%" y2="17"
+                      stroke="{flowColor}" stroke-width="1.5"
+                      stroke-dasharray="6 4" class="flow-reverse" />
+                    <!-- Forward dot -->
+                    <circle r="3" fill="{flowColor}" class="flow-dot">
+                      <animate attributeName="cx" from="0" to="100%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" values="11" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                    <!-- Reverse dot -->
+                    <circle r="3" fill="{flowColor}" class="flow-dot">
+                      <animate attributeName="cx" from="100%" to="0" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" values="17" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                  {:else}
+                    <!-- One-way: single animated line -->
+                    <line x1="0" y1="14" x2="100%" y2="14"
+                      stroke="{flowColor}" stroke-width="1.5"
+                      stroke-dasharray="6 4" class="flow-forward" />
+                    <!-- Traveling dot -->
+                    <circle r="3" fill="{flowColor}" class="flow-dot">
+                      <animate attributeName="cx" from="0" to="100%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" values="14" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                  {/if}
+                </svg>
+                <!-- Badge centered over the SVG -->
+                <span class="link-badge" style="--badge-color: {flowColor};">
+                  {row.linkLabel}
+                </span>
               </div>
             </div>
           {/if}
@@ -476,35 +514,62 @@
   .link-row {
     position: relative;
     z-index: 1;
-    padding: 6px 0;
+    padding: 4px 0;
     animation: fadeUp 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
     animation-delay: var(--delay);
   }
 
   .link-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 20px;
+    position: relative;
+    height: 28px;
   }
 
-  .link-dash {
-    flex: 1;
-    height: 1px;
-    background: var(--link-color);
-    mask: repeating-linear-gradient(to right, #000 0px, #000 5px, transparent 5px, transparent 9px);
-    -webkit-mask: repeating-linear-gradient(to right, #000 0px, #000 5px, transparent 5px, transparent 9px);
+  .link-line svg {
+    display: block;
   }
 
-  .link-label {
-    font-size: 9px;
-    font-weight: 650;
-    color: var(--link-color);
+  .glow-line {
+    filter: blur(5px);
+    opacity: 0.6;
+  }
+
+  .flow-forward {
+    animation: dashFlow 1.2s linear infinite;
+  }
+
+  .flow-reverse {
+    animation: dashFlowReverse 1.2s linear infinite;
+  }
+
+  @keyframes dashFlow {
+    to { stroke-dashoffset: -20; }
+  }
+
+  @keyframes dashFlowReverse {
+    to { stroke-dashoffset: 20; }
+  }
+
+  .flow-dot {
+    filter: drop-shadow(0 0 4px currentColor);
+    opacity: 0.9;
+  }
+
+  .link-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8px;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    color: var(--badge-color);
+    background: rgba(7, 7, 26, 0.92);
+    border: 1px solid var(--badge-color);
+    border-radius: 6px;
+    padding: 2px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     white-space: nowrap;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: rgba(7, 7, 26, 0.9);
-    border: 1px solid var(--link-color);
-    letter-spacing: 0.3px;
+    z-index: 2;
   }
 </style>
