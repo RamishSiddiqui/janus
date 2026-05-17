@@ -181,6 +181,7 @@
     // For memory rows
     laneId?: string;
     memoryId?: string;
+    characterId?: string;  // owning character (for shared lane coloring)
     content?: string;
     category?: string;
     source?: string;
@@ -192,6 +193,17 @@
     toLaneId?: string;
     linkType?: string;
   }
+
+  // Map character_id → their exclusive lane color (for shared lane card tinting)
+  let charColorMap = $derived.by(() => {
+    const map = new Map<string, string>();
+    lanes.forEach(l => {
+      if (l.characterId && l.characterId !== '__shared__' && !map.has(l.characterId)) {
+        map.set(l.characterId, l.color);
+      }
+    });
+    return map;
+  });
 
   // Map memory_id → lane_id
   let memLaneMap = $derived.by(() => {
@@ -227,6 +239,7 @@
         sortKey: `${m.created_at}_${String(idx).padStart(4, '0')}_a`,
         laneId: m.is_canon ? 'canon' : (m.conversation_id ?? 'canon'),
         memoryId: m.id,
+        characterId: m.character_id ?? undefined,
         content,
         category,
         source: m.source,
@@ -398,7 +411,11 @@
         {#each rows as row, ri (row.memoryId ?? `link-${ri}`)}
           {#if row.type === 'memory'}
             {@const li = laneIndex(row.laneId ?? 'canon')}
-            {@const color = laneColor(row.laneId ?? 'canon')}
+            {@const lane = lanes[li]}
+            {@const isSharedLane = lane?.characterId === '__shared__'}
+            {@const color = isSharedLane && row.characterId
+              ? (charColorMap.get(row.characterId) ?? laneColor(row.laneId ?? 'canon'))
+              : laneColor(row.laneId ?? 'canon')}
             <div
               class="mem-row"
               style="
