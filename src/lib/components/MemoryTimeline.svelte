@@ -14,12 +14,17 @@
 
   // ── Lanes ──
   // Canon lane + one lane per conversation, grouped by character
+  // Shared conversations (2+ characters) get characterId='__shared__'
   interface Lane {
     id: string;         // 'canon' or conversation_id
     label: string;
     color: string;
     characterId?: string;
     characterName?: string;
+    // Shared conversation participants
+    participantIds?: string[];
+    participantColors?: string[];
+    participantNames?: string[];
   }
 
   // Build character name map from the multi-character data
@@ -40,33 +45,74 @@
     if (hasCanon) {
       result.push({ id: 'canon', label: 'Canon', color: CANON_COLOR });
     }
-    // Conversation lanes — grouped by character if multi-char
-    if (isMultiChar) {
-      const grouped = new Map<string, typeof data.conversations>();
-      data.conversations.forEach(c => {
-        const charId = c.character_id ?? 'unknown';
-        if (!grouped.has(charId)) grouped.set(charId, []);
-        grouped.get(charId)!.push(c);
-      });
-      let colorIdx = 0;
-      for (const [charId, convs] of grouped) {
-        const charName = charNameMap.get(charId) ?? charId;
-        convs.forEach(c => {
-          result.push({
-            id: c.id,
-            label: c.title,
-            color: PALETTE[colorIdx % PALETTE.length],
-            characterId: charId,
-            characterName: charName,
-          });
-          colorIdx++;
-        });
-      }
-    } else {
+
+    if (!isMultiChar) {
       data.conversations.forEach((c, i) => {
         result.push({ id: c.id, label: c.title, color: PALETTE[i % PALETTE.length] });
       });
+      return result;
     }
+
+    // ── Multi-character: detect shared conversations ──
+    // A conversation is "shared" if memories from 2+ characters exist in it
+    const convChars = new Map<string, Set<string>>();
+    data.memories.forEach(m => {
+      if (!m.conversation_id || !m.character_id) return;
+      if (!convChars.has(m.conversation_id)) convChars.set(m.conversation_id, new Set());
+      convChars.get(m.conversation_id)!.add(m.character_id);
+    });
+
+    const sharedConvIds = new Set<string>();
+    convChars.forEach((chars, convId) => { if (chars.size > 1) sharedConvIds.add(convId); });
+
+    // Exclusive conversations grouped by character
+    const exclusiveGrouped = new Map<string, typeof data.conversations>();
+    const sharedConvs: typeof data.conversations = [];
+
+    data.conversations.forEach(c => {
+      if (sharedConvIds.has(c.id)) {
+        sharedConvs.push(c);
+      } else {
+        const charId = c.character_id ?? 'unknown';
+        if (!exclusiveGrouped.has(charId)) exclusiveGrouped.set(charId, []);
+        exclusiveGrouped.get(charId)!.push(c);
+      }
+    });
+
+    // Add exclusive lanes per character
+    let colorIdx = 0;
+    for (const [charId, convs] of exclusiveGrouped) {
+      const charName = charNameMap.get(charId) ?? charId;
+      convs.forEach(c => {
+        result.push({
+          id: c.id, label: c.title,
+          color: PALETTE[colorIdx % PALETTE.length],
+          characterId: charId, characterName: charName,
+        });
+        colorIdx++;
+      });
+    }
+
+    // Add shared ("Crossroads") lanes at the end
+    sharedConvs.forEach(c => {
+      const participants = convChars.get(c.id) ?? new Set();
+      const partColors = [...participants].map((pid, i) => {
+        // Find the first exclusive lane of this character for its color
+        const charLane = result.find(l => l.characterId === pid);
+        return charLane?.color ?? PALETTE[(colorIdx + i) % PALETTE.length];
+      });
+      result.push({
+        id: c.id, label: c.title,
+        color: partColors[0] ?? PALETTE[colorIdx % PALETTE.length],
+        characterId: '__shared__',
+        characterName: 'Crossroads',
+        participantIds: [...participants],
+        participantColors: partColors,
+        participantNames: [...participants].map(pid => charNameMap.get(pid) ?? pid),
+      });
+      colorIdx++;
+    });
+
     return result;
   });
 
@@ -77,6 +123,9 @@
     startCol: number; // 0-based grid column start
     span: number;     // how many columns this group spans
     color: string;    // first lane's color for accent
+    isShared: boolean;
+    participantColors?: string[];
+    participantNames?: string[];
   }
 
   let charGroups = $derived.by(() => {
@@ -86,16 +135,39 @@
     while (i < lanes.length) {
       const lane = lanes[i];
       if (!lane.characterId) { i++; continue; } // skip canon
-      const charId = lane.characterId;
-      const start = i;
-      while (i < lanes.length && lanes[i].characterId === charId) i++;
-      groups.push({
-        charId,
-        name: lane.characterName ?? charId,
-        startCol: start,
-        span: i - start,
-        color: lanes[start].color,
-      });
+
+      if (lane.characterId === '__shared__') {
+        // Shared group — collect all consecutive shared lanes
+        const start = i;
+        while (i < lanes.length && lanes[i].characterId === '__shared__') i++;
+        groups.push({
+          charId: '__shared__',
+          name: 'Crossroads',
+          startCol: start,
+          span: i - start,
+          color: '#ff9f43',
+          isShared: true,
+          participantColors: [...new Set(
+            lanes.slice(start, i).flatMap(l => l.participantColors ?? [])
+          )],
+          participantNames: [...new Set(
+            lanes.slice(start, i).flatMap(l => l.participantNames ?? [])
+          )],
+        });
+      } else {
+        // Exclusive character group
+        const charId = lane.characterId;
+        const start = i;
+        while (i < lanes.length && lanes[i].characterId === charId) i++;
+        groups.push({
+          charId,
+          name: lane.characterName ?? charId,
+          startCol: start,
+          span: i - start,
+          color: lanes[start].color,
+          isShared: false,
+        });
+      }
     }
     return groups;
   });
@@ -231,15 +303,26 @@
           {#each charGroups as g, gi}
             <div
               class="char-span"
+              class:shared={g.isShared}
               style="
                 grid-column: {g.startCol + 1} / span {g.span};
                 --char-color: {g.color};
               "
             >
-              <div class="char-pill">
-                <span class="char-dot" style="background: {g.color};"></span>
-                <span class="char-name-text">{g.name}</span>
-              </div>
+              {#if g.isShared}
+                <!-- Shared "Crossroads" pill with multi-dot -->
+                <div class="char-pill crossroads-pill">
+                  {#each g.participantColors ?? [] as pc}
+                    <span class="char-dot" style="background: {pc}; --char-color: {pc};"></span>
+                  {/each}
+                  <span class="char-name-text crossroads-text">Crossroads</span>
+                </div>
+              {:else}
+                <div class="char-pill">
+                  <span class="char-dot" style="background: {g.color};"></span>
+                  <span class="char-name-text">{g.name}</span>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -248,8 +331,23 @@
       <div class="lane-row" style="--lane-count: {lanes.length};">
         {#each lanes as lane}
           <div class="lane-col">
+            {#if lane.participantColors && lane.participantColors.length > 0}
+              <!-- Shared lane: show participant dots above title -->
+              <div class="lane-participants">
+                {#each lane.participantNames ?? [] as pName, pi}
+                  <span class="participant-tag" style="--pt-color: {lane.participantColors?.[pi] ?? '#888'};">
+                    {pName.split(' ')[0]}
+                  </span>
+                {/each}
+              </div>
+            {/if}
             <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
-            <div class="lane-underline" style="background: {lane.color};"></div>
+            {#if lane.participantColors && lane.participantColors.length >= 2}
+              <!-- Gradient underline blending participant colors -->
+              <div class="lane-underline" style="background: linear-gradient(90deg, {lane.participantColors.join(', ')});"></div>
+            {:else}
+              <div class="lane-underline" style="background: {lane.color};"></div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -259,9 +357,10 @@
           {#each charGroups as g}
             <div
               class="group-border"
+              class:shared-border={g.isShared}
               style="
                 grid-column: {g.startCol + 1} / span {g.span};
-                --gb-color: {g.color};
+                --gb-color: {g.isShared ? '#ff9f43' : g.color};
               "
             ></div>
           {/each}
@@ -277,10 +376,11 @@
           {#each charGroups as g, gi}
             <div
               class="char-zone"
+              class:shared-zone={g.isShared}
               style="
                 left: calc({g.startCol} * (100% / {lanes.length}));
                 width: calc({g.span} * (100% / {lanes.length}));
-                --zone-color: {g.color};
+                --zone-color: {g.isShared ? '#ff9f43' : g.color};
               "
             ></div>
           {/each}
@@ -453,6 +553,46 @@
     white-space: nowrap;
   }
 
+  /* ── Crossroads (shared group) styling ── */
+  .crossroads-pill {
+    border-color: rgba(255, 159, 67, 0.15);
+    background: rgba(255, 159, 67, 0.05);
+    gap: 4px;
+    padding: 3px 14px 3px 10px;
+  }
+
+  .crossroads-pill .char-dot {
+    margin-right: -3px;
+  }
+  .crossroads-pill .char-dot:last-of-type {
+    margin-right: 4px;
+  }
+
+  .crossroads-text {
+    color: rgba(255, 159, 67, 0.7);
+  }
+
+  /* ── Participant tags on shared lanes ── */
+  .lane-participants {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+  }
+
+  .participant-tag {
+    font-size: 7.5px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--pt-color, #888);
+    opacity: 0.7;
+    border-left: 2px solid var(--pt-color, #888);
+    padding-left: 4px;
+    line-height: 1;
+  }
+
   /* ── Lane label row ── */
   .lane-row {
     display: grid;
@@ -512,6 +652,19 @@
     opacity: 0.2;
   }
 
+  .group-border.shared-border {
+    opacity: 0.35;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 159, 67, 0.3) 20%,
+      rgba(255, 159, 67, 0.5) 50%,
+      rgba(255, 159, 67, 0.3) 80%,
+      transparent 100%
+    );
+  }
+
   /* ── Character zone background in body ── */
   .char-zone {
     position: absolute;
@@ -526,6 +679,16 @@
     );
     pointer-events: none;
     z-index: 0;
+  }
+
+  .char-zone.shared-zone {
+    border-left: 1px dashed rgba(255, 159, 67, 0.1);
+    border-right: 1px dashed rgba(255, 159, 67, 0.1);
+    background: linear-gradient(
+      180deg,
+      rgba(255, 159, 67, 0.03) 0%,
+      transparent 50%
+    );
   }
 
   /* ══════ Timeline Body ══════ */
