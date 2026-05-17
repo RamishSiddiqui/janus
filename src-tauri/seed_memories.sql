@@ -227,8 +227,8 @@ INSERT INTO memory_links (id, source_memory_id, target_conversation_id, link_typ
   -- Sync two-way: Saffron's Codex fragment synced to Astral branch
   ('link-09', 'mem-saff-m2', 'conv-saff-b2', 'sync', 'two_way', 'auto', 'mem-saff-a1'),
 
-  -- Cross-character: Aria's forge memory synced to Roran's forge context
-  ('link-10', 'mem-aria-forge2', 'conv-shared-forge', 'sync', 'two_way', 'auto', 'mem-roran-forge2'),
+  -- Cross-character: Aria's main relationship memory synced into the shared Forge conversation
+  ('link-10', 'mem-aria-m2', 'conv-shared-forge', 'sync', 'two_way', 'auto', 'mem-roran-forge2'),
   
   -- Cross-character: Finn's heist memory copied from his Heist conv context  
   ('link-11', 'mem-finn-h2', 'conv-shared-heist', 'copy', 'one_way', 'manual', 'mem-finn-heist1'),
