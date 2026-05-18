@@ -56,40 +56,39 @@
   // Close picker when clicking outside
   function handleWindowClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (showModelPicker && !target.closest('.model-picker-wrap')) {
+    if (showModelPicker && !target.closest('.ci-model-wrap')) {
       showModelPicker = false;
       modelFilter = '';
     }
   }
 </script>
 
-
 <svelte:window onclick={handleWindowClick} />
 
-<div class="composer" class:focused class:branching={isBranching} class:has-content={hasContent}>
-  <!-- Ambient backdrop glow -->
-  <div class="composer-ambient" aria-hidden="true"></div>
+<!-- B3 - TWO-ROW CARD with PILL BUTTON -->
+<div class="ci-wrap" class:is-focused={focused} class:is-branching={isBranching} class:has-content={hasContent}>
 
-  <!-- Branch indicator strip -->
+  <!-- Branch indicator banner -->
   {#if isBranching}
-    <div class="branch-banner" role="status" aria-label="Branching mode active">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <div class="ci-branch-banner" role="status">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
         <path d="M18 9a9 9 0 0 1-9 9"/>
       </svg>
-      <span>Branching â€” your reply creates a new timeline</span>
+      Branching - your reply creates a new timeline
     </div>
   {/if}
 
-  <!-- Main composer panel -->
-  <div class="composer-panel">
-    <!-- Textarea -->
-    <div class="composer-field">
+  <!-- CARD -->
+  <div class="ci-card">
+
+    <!-- Textarea row -->
+    <div class="ci-textarea-row">
       <textarea
         bind:this={inputElement}
         bind:value
-        class="composer-textarea"
-        placeholder="Write your responseâ€¦"
+        class="ci-textarea"
+        placeholder="Write your response..."
         aria-label="Message input"
         rows="1"
         onkeydown={handleKeydown}
@@ -99,535 +98,510 @@
       ></textarea>
     </div>
 
-    <!-- Right action cluster -->
-    <div class="composer-actions">
-      <!-- Attach -->
-      <button class="action-icon" title="Attach File" aria-label="Attach file">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-        </svg>
-      </button>
+    <!-- Divider -->
+    <div class="ci-divider" aria-hidden="true"></div>
 
-      <!-- Send orb -->
-      <button
-        class="send-orb"
-        class:ready={hasContent && !disabled}
-        onclick={onSend}
-        title="Send message"
-        aria-label="Send message"
-        disabled={!hasContent || disabled}
-      >
-        <span class="send-orb-ring" aria-hidden="true"></span>
-        <span class="send-orb-ring send-orb-ring--2" aria-hidden="true"></span>
-        <span class="send-orb-core" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+    <!-- Toolbar row -->
+    <div class="ci-toolbar">
+
+      <!-- Left tools: paperclip / bold / sparkle -->
+      <div class="ci-left-tools">
+        <button class="ci-tool-btn" title="Attach file" aria-label="Attach file">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
-        </span>
-      </button>
-    </div>
-  </div>
+        </button>
+        <button class="ci-tool-btn" title="Bold" aria-label="Bold">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>
+          </svg>
+        </button>
+        <button class="ci-tool-btn" title="AI Assist" aria-label="AI Assist">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3L9.5 9.5 3 12l6.5 2.5L12 21l2.5-6.5L21 12l-6.5-2.5z"/>
+          </svg>
+        </button>
+      </div>
 
-  <!-- Footer bar -->
-  <div class="composer-footer">
-    <span class="footer-hint">
-      <kbd>Shift+Enter</kbd> new line Â· <kbd>Enter</kbd> send Â· Markdown supported
-    </span>
-    <div class="model-picker-wrap">
-      <button class="model-pill" onclick={togglePicker} title="Click to select model" aria-label="Select model">
-        <span class="model-pill-dot" aria-hidden="true"></span>
-        <span class="model-pill-text">{selectedModel || modelName}</span>
-        <svg class="model-pill-caret" width="9" height="9" viewBox="0 0 10 6" fill="none">
-          <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <span class="token-badge">{tokenCount} <span class="token-label">tokens</span></span>
+      <!-- Right cluster: model pill + send pill -->
+      <div class="ci-right-tools">
 
-      {#if showModelPicker}
-        <div class="model-dropdown" role="listbox" aria-label="Available models">
-          <div class="model-search-row">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        <!-- Model picker pill -->
+        <div class="ci-model-wrap">
+          <button class="ci-model-pill" onclick={togglePicker} aria-label="Select model" title="Select AI model">
+            <span class="ci-model-dot" aria-hidden="true"></span>
+            <span class="ci-model-name">{selectedModel || modelName}</span>
+            <svg class="ci-model-caret" width="9" height="9" viewBox="0 0 10 6" fill="none">
+              <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <input type="text" class="model-search" placeholder="Search modelsâ€¦" bind:value={modelFilter} aria-label="Filter models" />
-          </div>
-          <div class="model-list">
-            {#if filteredModels.length === 0}
-              <div class="model-empty">
-                {availableModels.length === 0 ? 'No enabled models â€” go to AI Studio â†’ Models' : 'No matches for this query'}
+          </button>
+
+          {#if showModelPicker}
+            <div class="ci-dropdown" role="listbox" aria-label="Available models">
+              <div class="ci-dropdown-search">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" class="ci-search-input" placeholder="Search models..." bind:value={modelFilter} aria-label="Filter models" />
               </div>
-            {:else}
-              {#each filteredModels as model}
-                <button
-                  class="model-item"
-                  class:model-item--active={model === selectedModel}
-                  onclick={() => selectModel(model)}
-                  role="option"
-                  aria-selected={model === selectedModel}
-                >
-                  <span class="model-item-name">{model}</span>
-                  {#if model === selectedModel}
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c4a1ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  {/if}
-                </button>
-              {/each}
-            {/if}
-          </div>
+              <div class="ci-dropdown-list">
+                {#if filteredModels.length === 0}
+                  <div class="ci-dropdown-empty">
+                    {availableModels.length === 0 ? 'No enabled models - go to AI Studio > Models' : 'No matches'}
+                  </div>
+                {:else}
+                  {#each filteredModels as model}
+                    <button
+                      class="ci-dropdown-item"
+                      class:is-active={model === selectedModel}
+                      onclick={() => selectModel(model)}
+                      role="option"
+                      aria-selected={model === selectedModel}
+                    >
+                      <span class="ci-dropdown-item-name">{model}</span>
+                      {#if model === selectedModel}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#BF40FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      {/if}
+                    </button>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+          {/if}
         </div>
-      {/if}
+
+        <!-- Send pill - B3 centrepiece -->
+        <button
+          class="ci-send-pill"
+          class:is-ready={hasContent && !disabled}
+          onclick={onSend}
+          disabled={!hasContent || disabled}
+          aria-label="Send message"
+          title="Send message"
+        >
+          <svg class="ci-send-zap" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span>Send</span>
+        </button>
+
+      </div>
     </div>
   </div>
+
+  <!-- Footer: hints + token count -->
+  <div class="ci-footer">
+    <span class="ci-hints"><kbd>Shift+Enter</kbd> new line | Markdown supported</span>
+    <span class="ci-tokens">{tokenCount} <span class="ci-tokens-label">tokens</span></span>
+  </div>
+
 </div>
+
 <style>
-  /* ---------------------------------------------------
-     NEURAL COMPOSER — Awwwards-tier chat input
-     Design System: Dark OLED + Glassmorphism hybrid
-     Colors: #7C3AED primary, #0F0F23 bg, #A78BFA secondary
-  --------------------------------------------------- */
+  /* ======================================================
+     B3 PILL BUTTON - Pixel-perfect from Pencil spec
+     Design tokens from Violet Void + Inter + Geist Mono
+  ====================================================== */
 
   /* -- Outer wrapper -- */
-  .composer {
+  .ci-wrap {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 0;
-    padding: 0 20px 16px;
+    padding: 0 20px 14px;
     position: relative;
-    background: transparent;
   }
 
-  /* -- Ambient background glow (rises from bottom) -- */
-  .composer-ambient {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 160px;
-    background: radial-gradient(ellipse 80% 60% at 50% 100%,
-      rgba(124, 58, 237, 0.07) 0%,
-      rgba(124, 58, 237, 0.03) 50%,
-      transparent 100%
-    );
-    pointer-events: none;
-    transition: opacity 400ms ease;
-  }
-  .composer.focused .composer-ambient {
-    background: radial-gradient(ellipse 80% 60% at 50% 100%,
-      rgba(124, 58, 237, 0.13) 0%,
-      rgba(124, 58, 237, 0.05) 50%,
-      transparent 100%
-    );
-  }
-  .composer.branching .composer-ambient {
-    background: radial-gradient(ellipse 80% 60% at 50% 100%,
-      rgba(0, 210, 220, 0.1) 0%,
-      rgba(0, 210, 220, 0.04) 50%,
-      transparent 100%
-    );
-  }
-
-  /* -- Branch banner -- */
-  .branch-banner {
-    display: flex; align-items: center; gap: 7px;
-    padding: 7px 14px;
+  /* Branch banner */
+  .ci-branch-banner {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 12px;
     margin-bottom: 10px;
     background: rgba(0, 210, 220, 0.06);
     border: 1px solid rgba(0, 210, 220, 0.18);
     border-radius: 10px;
     color: rgba(0, 210, 220, 0.75);
-    font-size: 11px; font-family: var(--font-mono);
-    letter-spacing: 0.04em;
-    animation: bannerIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    font-size: 11px;
+    font-family: 'Geist Mono', monospace;
+    letter-spacing: 0.03em;
+    animation: bannerSlideIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  @keyframes bannerIn {
+  @keyframes bannerSlideIn {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* -- Main panel (floating glass card) -- */
-  .composer-panel {
+  /* -- Card -- */
+  .ci-card {
     display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    padding: 6px 6px 6px 20px;
-    background: rgba(13, 13, 32, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.055);
-    border-radius: 20px;
-    backdrop-filter: blur(24px) saturate(160%);
-    box-shadow:
-      /* top inner sheen */
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      /* bottom inner shadow */
-      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-      /* ambient float */
-      0 8px 40px rgba(0, 0, 0, 0.5),
-      /* subtle depth */
-      0 2px 10px rgba(0, 0, 0, 0.3);
+    flex-direction: column;
+    border-radius: 16px;
+    background: rgba(16, 14, 36, 0.92);
+    border: 1px solid rgba(88, 44, 255, 0.18);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    /* NO overflow:hidden - dropdown must float above */
     transition:
-      border-color 350ms cubic-bezier(0.16, 1, 0.3, 1),
-      box-shadow 350ms cubic-bezier(0.16, 1, 0.3, 1);
+      border-color 300ms cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow   300ms cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
-    overflow: hidden;
   }
-
-  /* Top edge shimmer line */
-  .composer-panel::before {
+  .ci-card::before {
     content: '';
-    position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07) 50%, transparent);
+    position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.055) 50%, transparent);
     pointer-events: none;
   }
 
-  /* Focus state — violet glow border */
-  .composer.focused .composer-panel {
-    border-color: rgba(124, 58, 237, 0.28);
+  .is-focused .ci-card {
+    border-color: rgba(124, 58, 237, 0.32);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.07),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-      0 0 0 4px rgba(124, 58, 237, 0.07),
-      0 8px 48px rgba(124, 58, 237, 0.14),
-      0 2px 10px rgba(0, 0, 0, 0.3);
+      0 0 0 3px rgba(124, 58, 237, 0.08),
+      0 12px 48px rgba(124, 58, 237, 0.18);
+  }
+  .is-branching .ci-card {
+    border-color: rgba(0, 210, 220, 0.28);
+    box-shadow:
+      0 0 0 3px rgba(0, 210, 220, 0.06),
+      0 12px 48px rgba(0, 210, 220, 0.12);
   }
 
-  /* Branch state — cyan glow border */
-  .composer.branching .composer-panel {
-    border-color: rgba(0, 210, 220, 0.25);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.07),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-      0 0 0 4px rgba(0, 210, 220, 0.06),
-      0 8px 48px rgba(0, 210, 220, 0.1),
-      0 2px 10px rgba(0, 0, 0, 0.3);
+  /* -- Textarea row -- */
+  .ci-textarea-row {
+    display: flex;
+    align-items: center;
+    min-height: 54px;
+    padding: 0 18px;
   }
 
-  /* -- Textarea area -- */
-  .composer-field { flex: 1; padding: 13px 0; }
-
-  .composer-textarea {
+  .ci-textarea {
     width: 100%;
-    background: none; border: none; outline: none;
-    color: rgba(232, 226, 255, 0.94);
-    font-size: 15px;
-    font-family: var(--font-body);
-    line-height: 1.65;
-    resize: none;
-    max-height: 180px;
-    letter-spacing: 0.012em;
-    caret-color: #a78bfa;
-  }
-  .composer-textarea::placeholder {
-    color: rgba(94, 88, 140, 0.55);
-    font-style: italic;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: rgba(232, 224, 255, 0.92);
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
     font-weight: 400;
+    line-height: 1.6;
+    resize: none;
+    max-height: 160px;
+    caret-color: #BF40FF;
+    letter-spacing: 0.01em;
+  }
+  .ci-textarea::placeholder {
+    color: #3D3560;
+    font-style: italic;
   }
 
-  /* -- Right action cluster -- */
-  .composer-actions {
+  /* -- Divider -- */
+  .ci-divider {
+    width: 100%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+  }
+
+  /* -- Toolbar -- */
+  .ci-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 46px;
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  /* Left tool buttons */
+  .ci-left-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .ci-tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: rgba(100, 90, 160, 0.45);
+    cursor: pointer;
+    transition: color 150ms ease, background 150ms ease;
+  }
+  .ci-tool-btn:hover {
+    color: rgba(167, 139, 250, 0.75);
+    background: rgba(124, 58, 237, 0.08);
+  }
+  .ci-tool-btn:active { transform: scale(0.9); }
+
+  /* Right cluster */
+  .ci-right-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* -- Model pill -- */
+  .ci-model-wrap { position: relative; }
+
+  .ci-model-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 99px;
+    border: 1px solid rgba(191, 64, 255, 0.14);
+    background: rgba(191, 64, 255, 0.06);
+    cursor: pointer;
+    color: rgba(180, 130, 255, 0.7);
+    font-family: 'Geist Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    transition: background 160ms ease, border-color 160ms ease;
+  }
+  .ci-model-pill:hover {
+    background: rgba(191, 64, 255, 0.1);
+    border-color: rgba(191, 64, 255, 0.28);
+    color: rgba(200, 160, 255, 0.9);
+  }
+
+  /* Pulsing dot */
+  .ci-model-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #BF40FF;
+    box-shadow: 0 0 5px rgba(191, 64, 255, 0.6);
+    flex-shrink: 0;
+    animation: dotGlow 2.5s ease-in-out infinite;
+  }
+  @keyframes dotGlow {
+    0%, 100% { box-shadow: 0 0 4px rgba(191,64,255,0.5); }
+    50%       { box-shadow: 0 0 9px rgba(191,64,255,1.0), 0 0 14px rgba(191,64,255,0.4); }
+  }
+
+  .ci-model-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ci-model-caret { color: rgba(140, 100, 200, 0.5); flex-shrink: 0; }
+
+  /* -- B3 SEND PILL -- */
+  .ci-send-pill {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 8px 8px 4px;
-    flex-shrink: 0;
-  }
-
-  /* Attach icon button */
-  .action-icon {
-    display: flex; align-items: center; justify-content: center;
-    width: 38px; height: 38px; border-radius: 11px;
-    border: none; background: transparent;
-    color: rgba(100, 95, 150, 0.5);
-    cursor: pointer;
-    transition: color 180ms ease, background 180ms ease, transform 120ms ease;
-  }
-  .action-icon:hover {
-    color: rgba(167, 139, 250, 0.85);
-    background: rgba(124, 58, 237, 0.1);
-    transform: scale(1.08);
-  }
-  .action-icon:active { transform: scale(0.92); }
-
-  /* ------------------------------------------------
-     SEND ORB — the centrepiece of the design
-  ------------------------------------------------ */
-  .send-orb {
-    position: relative;
-    width: 44px; height: 44px;
-    border-radius: 14px;
+    padding: 0 18px 0 14px;
+    height: 34px;
+    border-radius: 99px;
     border: none;
-    background: none;
-    padding: 0;
     cursor: not-allowed;
-    flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-
-  /* Outer animated rings (hidden when not ready) */
-  .send-orb-ring {
-    position: absolute; inset: -4px;
-    border-radius: 18px;
-    border: 1.5px solid rgba(124, 58, 237, 0.0);
-    transition: border-color 400ms ease, inset 400ms ease;
-    pointer-events: none;
-  }
-  .send-orb-ring--2 {
-    inset: -9px;
-    border-radius: 23px;
-    animation-delay: 200ms;
-  }
-
-  /* Core button body */
-  .send-orb-core {
-    position: relative; z-index: 2;
-    width: 44px; height: 44px;
-    border-radius: 14px;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(145deg, rgba(60, 30, 120, 0.6), rgba(80, 40, 160, 0.4));
-    border: 1px solid rgba(124, 58, 237, 0.15);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    position: relative;
+    background: rgba(80, 40, 140, 0.3);
     color: rgba(167, 139, 250, 0.3);
     transition:
-      background 350ms cubic-bezier(0.16, 1, 0.3, 1),
-      border-color 350ms ease,
-      color 350ms ease,
-      box-shadow 350ms ease,
-      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  /* Top specular highlight on core */
-  .send-orb-core::before {
-    content: '';
-    position: absolute; inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,255,255,0.12), transparent 60%);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 350ms ease;
+      background     350ms cubic-bezier(0.16, 1, 0.3, 1),
+      color          350ms ease,
+      box-shadow     350ms ease,
+      transform      200ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  /* READY state — full activation */
-  .send-orb.ready {
+  .ci-send-zap {
+    flex-shrink: 0;
+    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* READY state */
+  .ci-send-pill.is-ready {
     cursor: pointer;
-  }
-  .send-orb.ready .send-orb-ring {
-    border-color: rgba(124, 58, 237, 0.2);
-    animation: orbRingPulse 2.8s ease-in-out infinite;
-  }
-  .send-orb.ready .send-orb-ring--2 {
-    border-color: rgba(124, 58, 237, 0.1);
-    animation: orbRingPulse 2.8s ease-in-out infinite 0.7s;
-  }
-  .send-orb.ready .send-orb-core {
-    background: linear-gradient(145deg, #5b21b6 0%, #7c3aed 50%, #8b5cf6 100%);
-    border-color: rgba(139, 92, 246, 0.5);
-    color: rgba(255, 255, 255, 0.95);
+    background: linear-gradient(135deg, #7C3AED 0%, #BF40FF 100%);
+    color: #FFFFFF;
     box-shadow:
-      0 0 0 1px rgba(139, 92, 246, 0.2),
-      0 4px 20px rgba(109, 40, 217, 0.45),
-      0 10px 40px rgba(109, 40, 217, 0.22),
-      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      0 4px 16px rgba(124, 58, 237, 0.4),
+      0 8px 32px rgba(191, 64, 255, 0.13);
   }
-  .send-orb.ready .send-orb-core::before { opacity: 1; }
 
-  .send-orb.ready:hover .send-orb-core {
-    background: linear-gradient(145deg, #6d28d9 0%, #8b5cf6 50%, #a78bfa 100%);
+  .ci-send-pill.is-ready:hover {
+    background: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%);
     box-shadow:
-      0 0 0 1px rgba(139, 92, 246, 0.35),
-      0 6px 28px rgba(109, 40, 217, 0.6),
-      0 14px 48px rgba(109, 40, 217, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.22);
-    transform: scale(1.07) translateY(-1px);
+      0 4px 20px rgba(124, 58, 237, 0.6),
+      0 10px 40px rgba(191, 64, 255, 0.22);
+    transform: scale(1.04) translateY(-1px);
   }
-  .send-orb.ready:active .send-orb-core {
-    transform: scale(0.93) translateY(0);
+  .ci-send-pill.is-ready:hover .ci-send-zap {
+    transform: rotate(-15deg) scale(1.15);
+  }
+  .ci-send-pill.is-ready:active {
+    transform: scale(0.95) translateY(0);
     transition-duration: 80ms;
   }
 
-  /* Branching mode — cyan orb */
-  .composer.branching .send-orb.ready .send-orb-ring {
-    border-color: rgba(0, 210, 220, 0.2);
-    animation: orbRingPulseCyan 2.8s ease-in-out infinite;
-  }
-  .composer.branching .send-orb.ready .send-orb-ring--2 {
-    border-color: rgba(0, 210, 220, 0.1);
-  }
-  .composer.branching .send-orb.ready .send-orb-core {
-    background: linear-gradient(145deg, #0e5c66, #0d8f9e);
-    border-color: rgba(0, 210, 220, 0.45);
+  /* Branching mode - cyan pill */
+  .is-branching .ci-send-pill.is-ready {
+    background: linear-gradient(135deg, #0e5c66, #00c8d7);
     box-shadow:
-      0 0 0 1px rgba(0, 210, 220, 0.2),
-      0 4px 24px rgba(0, 180, 200, 0.4),
-      0 10px 40px rgba(0, 180, 200, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      0 4px 16px rgba(0, 200, 215, 0.4),
+      0 8px 32px rgba(0, 200, 215, 0.15);
   }
-
-  @keyframes orbRingPulse {
-    0%, 100% { opacity: 0.4; transform: scale(1); }
-    50%       { opacity: 1;   transform: scale(1.04); }
+  .is-branching .ci-send-pill.is-ready:hover {
+    background: linear-gradient(135deg, #117a86, #00f2ff);
   }
-  @keyframes orbRingPulseCyan {
-    0%, 100% { opacity: 0.35; transform: scale(1); }
-    50%       { opacity: 0.9;  transform: scale(1.05); }
-  }
-
-  /* -- Footer bar -- */
-  .composer-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 4px 0;
-  }
-
-  .footer-hint {
-    font-size: 10px;
-    color: rgba(70, 65, 115, 0.65);
-    font-family: var(--font-mono);
-    letter-spacing: 0.035em;
-    display: flex; gap: 1px; align-items: center;
-  }
-  .footer-hint kbd {
-    display: inline-flex; align-items: center;
-    padding: 1px 5px;
-    background: rgba(124, 58, 237, 0.08);
-    border: 1px solid rgba(124, 58, 237, 0.12);
-    border-radius: 5px;
-    font-size: 9.5px;
-    font-family: var(--font-mono);
-    color: rgba(167, 139, 250, 0.5);
-    margin: 0 2px;
-  }
-
-  /* -- Model picker wrap -- */
-  .model-picker-wrap {
-    position: relative; display: flex; align-items: center; gap: 7px;
-  }
-
-  /* Model pill */
-  .model-pill {
-    display: flex; align-items: center; gap: 5px;
-    padding: 3px 9px 3px 6px;
-    background: rgba(124, 58, 237, 0.05);
-    border: 1px solid rgba(124, 58, 237, 0.12);
-    border-radius: 99px;
-    cursor: pointer;
-    transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-    color: rgba(90, 85, 140, 0.8);
-    font-family: var(--font-mono);
-    font-size: 10px; letter-spacing: 0.03em;
-    white-space: nowrap;
-  }
-  .model-pill:hover {
-    background: rgba(124, 58, 237, 0.1);
-    border-color: rgba(167, 139, 250, 0.25);
-    color: rgba(180, 160, 255, 0.9);
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.06);
-  }
-  .model-pill-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: radial-gradient(circle, #7c3aed, #5b21b6);
-    box-shadow: 0 0 4px rgba(124, 58, 237, 0.6);
-    flex-shrink: 0;
-    animation: dotPulse 3s ease-in-out infinite;
-  }
-  @keyframes dotPulse {
-    0%, 100% { box-shadow: 0 0 4px rgba(124, 58, 237, 0.5); }
-    50%       { box-shadow: 0 0 8px rgba(124, 58, 237, 0.9), 0 0 12px rgba(124, 58, 237, 0.3); }
-  }
-  .model-pill-text {
-    max-width: 180px; overflow: hidden; text-overflow: ellipsis;
-  }
-  .model-pill-caret {
-    color: rgba(90, 85, 140, 0.5); flex-shrink: 0;
-    transition: transform 200ms ease;
-  }
-  /* no way to conditionally rotate in Svelte without JS, skip for now */
-
-  .token-badge {
-    font-family: var(--font-mono);
-    font-size: 10px; letter-spacing: 0.04em;
-    color: rgba(55, 50, 100, 0.65);
-    white-space: nowrap;
-  }
-  .token-label { color: rgba(55, 50, 100, 0.45); }
 
   /* -- Model dropdown -- */
-  .model-dropdown {
-    position: absolute; bottom: calc(100% + 12px); right: 0;
-    width: 360px; max-height: 380px;
-    background: rgba(8, 8, 22, 0.97);
+  .ci-dropdown {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 0;
+    width: 340px;
+    max-height: 360px;
+    background: rgba(8, 6, 20, 0.97);
     backdrop-filter: blur(28px) saturate(160%);
-    border: 1px solid rgba(124, 58, 237, 0.16);
-    border-radius: 18px;
+    border: 1px solid rgba(191, 64, 255, 0.15);
+    border-radius: 14px;
     box-shadow:
-      0 0 0 1px rgba(124, 58, 237, 0.05),
-      0 -8px 32px rgba(0, 0, 0, 0.5),
-      0 32px 80px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(191, 64, 255, 0.04),
+      0 -4px 24px rgba(0, 0, 0, 0.4),
+      0 24px 64px rgba(0, 0, 0, 0.7),
       inset 0 1px 0 rgba(255, 255, 255, 0.04);
     z-index: 100;
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     animation: dropUp 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes dropUp {
-    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    from { opacity: 0; transform: translateY(10px) scale(0.96); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  .model-search-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 13px 16px;
-    border-bottom: 1px solid rgba(124, 58, 237, 0.08);
-    color: rgba(90, 85, 140, 0.6);
+  .ci-dropdown-search {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(191, 64, 255, 0.07);
+    color: rgba(90, 80, 140, 0.55);
   }
-  .model-search {
-    flex: 1; background: none; border: none; outline: none;
-    color: rgba(220, 215, 252, 0.92);
-    font-size: 12.5px; font-family: var(--font-body);
-    letter-spacing: 0.01em;
+  .ci-search-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: rgba(220, 210, 255, 0.9);
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
   }
-  .model-search::placeholder { color: rgba(80, 75, 130, 0.5); }
+  .ci-search-input::placeholder { color: rgba(80, 70, 130, 0.5); }
 
-  .model-list {
-    overflow-y: auto; max-height: 310px; padding: 6px;
+  .ci-dropdown-list {
+    overflow-y: auto;
+    max-height: 300px;
+    padding: 5px;
   }
-  .model-list::-webkit-scrollbar { width: 3px; }
-  .model-list::-webkit-scrollbar-track { background: transparent; }
-  .model-list::-webkit-scrollbar-thumb {
-    background: rgba(124, 58, 237, 0.25);
+  .ci-dropdown-list::-webkit-scrollbar { width: 3px; }
+  .ci-dropdown-list::-webkit-scrollbar-track { background: transparent; }
+  .ci-dropdown-list::-webkit-scrollbar-thumb {
+    background: rgba(191, 64, 255, 0.2);
     border-radius: 3px;
   }
 
-  .model-item {
-    width: 100%; display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; border: none; background: transparent;
-    color: rgba(160, 150, 210, 0.72);
-    font-size: 11.5px; font-family: var(--font-mono);
-    border-radius: 11px; cursor: pointer; text-align: left;
+  .ci-dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    border: none;
+    background: transparent;
+    color: rgba(160, 145, 210, 0.7);
+    font-size: 11px;
+    font-family: 'Geist Mono', monospace;
+    border-radius: 9px;
+    cursor: pointer;
+    text-align: left;
     transition: background 100ms ease, color 100ms ease;
-    letter-spacing: 0.025em;
+    letter-spacing: 0.02em;
   }
-  .model-item:hover {
-    background: rgba(124, 58, 237, 0.09);
-    color: rgba(220, 210, 255, 0.95);
+  .ci-dropdown-item:hover {
+    background: rgba(191, 64, 255, 0.08);
+    color: rgba(220, 205, 255, 0.95);
   }
-  .model-item--active {
-    background: rgba(124, 58, 237, 0.14);
-    color: #c4a1ff;
+  .ci-dropdown-item.is-active {
+    background: rgba(191, 64, 255, 0.12);
+    color: #BF40FF;
   }
-  .model-item-name {
-    overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; flex: 1; margin-right: 10px;
+  .ci-dropdown-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    margin-right: 8px;
   }
-
-  .model-empty {
-    padding: 28px 20px; text-align: center;
-    color: rgba(80, 75, 130, 0.6);
-    font-size: 11px; font-family: var(--font-mono);
+  .ci-dropdown-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: rgba(80, 70, 130, 0.55);
+    font-size: 11px;
+    font-family: 'Geist Mono', monospace;
     line-height: 1.7;
   }
 
-  /* -- Responsive -- */
+  /* -- Footer -- */
+  .ci-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 4px 0;
+  }
+
+  .ci-hints {
+    font-family: 'Geist Mono', monospace;
+    font-size: 9px;
+    color: rgba(70, 60, 120, 0.5);
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+  }
+  .ci-hints kbd {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 4px;
+    background: rgba(124, 58, 237, 0.07);
+    border: 1px solid rgba(124, 58, 237, 0.12);
+    border-radius: 4px;
+    font-size: 9px;
+    font-family: 'Geist Mono', monospace;
+    color: rgba(180, 130, 255, 0.45);
+    margin: 0 2px;
+  }
+
+  .ci-tokens {
+    font-family: 'Geist Mono', monospace;
+    font-size: 9px;
+    color: rgba(55, 50, 100, 0.55);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .ci-tokens-label { color: rgba(55, 50, 100, 0.4); }
+
+  /* -- Mobile -- */
   @media (max-width: 768px) {
-    .composer { padding: 0 12px 14px; }
-    .composer-panel { padding: 4px 4px 4px 14px; border-radius: 16px; }
-    .model-dropdown { width: 290px; }
+    .ci-wrap { padding: 0 12px 12px; }
+    .ci-dropdown { width: 280px; }
+    .ci-model-name { max-width: 100px; }
   }
 </style>
