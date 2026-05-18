@@ -1,5 +1,7 @@
-﻿<script lang="ts">
+<script lang="ts">
+  import { tick } from 'svelte';
   import type { CharacterState } from '$lib/services/ipc';
+
 
   let { state: emotionState }: { state: CharacterState } = $props();
 
@@ -39,19 +41,20 @@
   let isScanDone = $state(false);
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  function onEnter() {
-    isHovered = true;
-    isCardVisible = true;
-    isScanDone = false;
+  async function onEnter() {
     if (timer) clearTimeout(timer);
+    isScanDone = false;
+    isCardVisible = true;          // 1. mount into DOM (opacity: 0)
+    await tick();                  // 2. wait one frame so browser paints it
+    isHovered = true;              // 3. now add .visible → transition fires
     timer = setTimeout(() => { isScanDone = true; }, 40);
   }
 
   function onLeave() {
-    isHovered = false;
+    isHovered = false;             // 1. remove .visible → fade-out starts (180ms)
     isScanDone = false;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { isCardVisible = false; }, 220);
+    timer = setTimeout(() => { isCardVisible = false; }, 180); // 2. unmount after fade
   }
 
   // Labels & descriptors for each metric
