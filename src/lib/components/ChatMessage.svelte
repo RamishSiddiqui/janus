@@ -10,7 +10,7 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let { message }: { message: Message } = $props();
+  let { message, onBranch }: { message: Message; onBranch?: (id: string) => void } = $props();
 
   let showActions = $state(false);
   let isRegenerating = $state(false);
@@ -219,6 +219,9 @@
           <button class="action-btn" title="Edit" aria-label="Edit message" onclick={startEdit}>
             <Icon name="pencil" size={13} color="var(--fg-muted)" />
           </button>
+          <button class="action-btn branch-btn" title="Branch from here" aria-label="Branch conversation from this message" onclick={() => onBranch?.(message.id)}>
+            <Icon name="git-branch" size={13} color="var(--fg-muted)" />
+          </button>
           <button class="action-btn danger-hover" title="Delete" aria-label="Delete message" onclick={handleDelete}>
             <Icon name="trash-2" size={13} color="var(--fg-muted)" />
           </button>
@@ -315,6 +318,9 @@
           </button>
           <button class="action-btn" title="Edit" aria-label="Edit message" onclick={startEdit}>
             <Icon name="pencil" size={13} color="var(--fg-muted)" />
+          </button>
+          <button class="action-btn branch-btn" title="Branch from here" aria-label="Branch conversation from this message" onclick={() => onBranch?.(message.id)}>
+            <Icon name="git-branch" size={13} color="var(--fg-muted)" />
           </button>
           <button class="action-btn danger-hover" title="Delete" aria-label="Delete message" onclick={handleDelete}>
             <Icon name="trash-2" size={13} color="var(--fg-muted)" />
@@ -516,6 +522,15 @@
   .action-btn:hover { background: rgba(139,92,246,0.08); }
   .action-btn:active { transform: scale(0.92); }
   .action-btn.danger-hover:hover { background: rgba(244,63,94,0.1); }
+  /* Branch button — cyan accent to signal "new timeline" */
+  .action-btn.branch-btn:hover {
+    background: rgba(0,242,255,0.08);
+    box-shadow: 0 0 0 1px rgba(0,242,255,0.12);
+  }
+  .action-btn.branch-btn:hover :global(svg) {
+    color: #00f2ff;
+    filter: drop-shadow(0 0 4px rgba(0,242,255,0.5));
+  }
   .action-btn.spin :global(.icon) { animation: spin 600ms ease-in-out; }
   @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 

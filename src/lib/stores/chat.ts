@@ -589,6 +589,33 @@ export async function switchBranch(siblingId: string) {
   }
 }
 
+/**
+ * Forks the conversation from a specific message.
+ * 1. Rewinds the active_message_id pointer to `branchPointId`
+ * 2. Sends the user's new message — backend parents it to that point, creating a new branch
+ * 3. The sibling dot-track in ChatMessage automatically appears on the fork point after reload
+ */
+export async function branchFromMessage(
+  conversationId: string,
+  branchPointId: string,
+  content: string,
+  model?: string,
+) {
+  if (!isTauri) return;
+
+  const ipc = await import('$lib/services/ipc');
+  try {
+    // Rewind: make the chosen message the active tip so send_message parents to it
+    await ipc.setActiveMessage(conversationId, branchPointId);
+  } catch (err) {
+    console.error('[Branch] Failed to set active message:', err);
+    throw err;
+  }
+
+  // Send normally — backend reads active_message_id as parent for the new user msg
+  await sendMessage(conversationId, content, model);
+}
+
 // --- Helpers ---
 
 function getRelativeTime(dateStr: string): string {

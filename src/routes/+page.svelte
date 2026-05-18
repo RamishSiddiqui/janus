@@ -17,6 +17,7 @@
     loadMessages,
     sendMessage,
     retryLastMessage,
+    branchFromMessage,
   } from '$lib/stores/chat';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -24,6 +25,10 @@
   let inputText = $state('');
   let showContextPanel = $state(false);
   let messagesEl: HTMLDivElement | undefined = $state();
+
+  // Branching mode — set when user clicks "Branch from here" on a message
+  let branchFromId: string | null = $state(null);
+  let branchFromContent: string = $state(''); // preview text of the branch-point message
 
   // Auto-scroll to bottom when messages change or during streaming
   $effect(() => {
@@ -165,8 +170,38 @@
     if (!inputText.trim() || $isStreaming) return;
     const text = inputText.trim();
     inputText = '';
-    await sendMessage($activeConversationId, text, selectedModel || undefined);
+
+    if (branchFromId) {
+      // Branching mode: rewind active pointer then send
+      const branchId = branchFromId;
+      branchFromId = null;
+      branchFromContent = '';
+      await branchFromMessage($activeConversationId, branchId, text, selectedModel || undefined);
+    } else {
+      await sendMessage($activeConversationId, text, selectedModel || undefined);
+    }
   }
+
+  function handleBranch(messageId: string) {
+    // Find the message content for the preview label
+    const msg = $messages.find(m => m.id === messageId);
+    branchFromContent = msg?.content ?? '';
+    branchFromId = messageId;
+    // Scroll input into view and focus it
+    tick().then(() => {
+      (document.querySelector('.chat-input-field') as HTMLTextAreaElement | null)?.focus();
+    });
+  }
+
+  function cancelBranch() {
+    branchFromId = null;
+    branchFromContent = '';
+  }
+
+  // Derived: index of the branch point in the current messages list
+  let branchIndex = $derived(
+    branchFromId ? $messages.findIndex(m => m.id === branchFromId) : -1
+  );
 </script>
 
 <svelte:head>
@@ -257,8 +292,11 @@
       <!-- Messages -->
       <div class="messages-area" bind:this={messagesEl} role="log" aria-label="Chat messages" aria-live="polite">
         {#each $messages as message, i (message.id)}
-          <div class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}">
-            <ChatMessage {message} />
+          <div
+            class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
+            class:branch-dim={branchFromId !== null && i > branchIndex}
+          >
+            <ChatMessage {message} onBranch={handleBranch} />
           </div>
         {/each}
 
@@ -295,6 +333,28 @@
         {/if}
       </div>
 
+      <!-- Branch mode banner -->
+      {#if branchFromId}
+        <div class="branch-banner" role="status" aria-live="polite">
+          <div class="branch-banner-left">
+            <span class="branch-pulse"></span>
+            <svg class="branch-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"/>
+              <circle cx="18" cy="6" r="3"/>
+              <circle cx="6" cy="18" r="3"/>
+              <path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+            <span class="branch-label">Branching from:</span>
+            <span class="branch-preview">"{branchFromContent.slice(0, 60)}{branchFromContent.length > 60 ? '…' : ''}"</span>
+          </div>
+          <button class="branch-cancel" onclick={cancelBranch} aria-label="Cancel branch">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      {/if}
+
       <ChatInput
         bind:value={inputText}
         {modelName}
@@ -304,6 +364,7 @@
         bind:selectedModel
         {availableModels}
         onRefreshModels={refreshModels}
+        isBranching={branchFromId !== null}
       />
     </div>
 
@@ -701,6 +762,112 @@
   }
 
   .retry-btn:active { transform: scale(0.95); }
+
+  /* ═══════════════════════════════════════
+     Branching Mode
+  ═══════════════════════════════════════ */
+
+  /* Messages after the branch point fade & desaturate */
+  .branch-dim {
+    opacity: 0.22;
+    filter: grayscale(0.6);
+    pointer-events: none;
+    transition: opacity 300ms ease, filter 300ms ease;
+  }
+
+  /* Frosted-glass banner that appears above ChatInput */
+  .branch-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 2px;
+    padding: 9px 14px 9px 12px;
+    background: rgba(0, 242, 255, 0.04);
+    border: 1px solid rgba(0, 242, 255, 0.14);
+    border-radius: 12px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow:
+      0 0 0 1px rgba(0, 242, 255, 0.04) inset,
+      0 4px 24px rgba(0, 0, 0, 0.15);
+    animation: branchBannerIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes branchBannerIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .branch-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* Pulsing cyan dot */
+  .branch-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #00f2ff;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px rgba(0, 242, 255, 0.7);
+    animation: branchPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes branchPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(0,242,255,0.5); opacity: 0.8; }
+    50%       { box-shadow: 0 0 14px rgba(0,242,255,0.9); opacity: 1; }
+  }
+
+  .branch-icon {
+    color: rgba(0, 242, 255, 0.7);
+    flex-shrink: 0;
+  }
+
+  .branch-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(0, 242, 255, 0.7);
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+  }
+
+  .branch-preview {
+    font-size: 11px;
+    color: rgba(0, 242, 255, 0.45);
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    font-family: var(--font-body);
+  }
+
+  .branch-cancel {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 242, 255, 0.1);
+    background: transparent;
+    color: rgba(0, 242, 255, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 150ms ease;
+  }
+  .branch-cancel:hover {
+    background: rgba(0, 242, 255, 0.08);
+    border-color: rgba(0, 242, 255, 0.25);
+    color: rgba(0, 242, 255, 0.8);
+    transform: scale(1.1);
+  }
+  .branch-cancel:active { transform: scale(0.92); }
 
 </style>
 

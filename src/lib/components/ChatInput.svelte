@@ -7,12 +7,13 @@
   let {
     value = $bindable(''), modelName, tokenCount, onSend, disabled = false,
     selectedModel = $bindable(''), availableModels = [],
-    onRefreshModels,
+    onRefreshModels, isBranching = false,
   }: {
     value: string; modelName: string; tokenCount: string;
     onSend: () => void; disabled?: boolean;
     selectedModel?: string; availableModels?: string[];
     onRefreshModels?: () => void;
+    isBranching?: boolean;
   } = $props();
 
   let inputElement: HTMLTextAreaElement | undefined = $state();
@@ -64,12 +65,13 @@
 
 <svelte:window onclick={handleWindowClick} />
 
-<div class="ci" class:focused>
+<div class="ci" class:focused class:branching={isBranching}>
   <div class="ci-glow"></div>
   <div class="ci-row">
     <div class="ci-field">
       <textarea
         bind:this={inputElement} bind:value
+        class="chat-input-field"
         placeholder="Write your response..."
         aria-label="Message input" rows="1"
         onkeydown={handleKeydown} oninput={autoResize}
@@ -165,6 +167,16 @@
     border-color: rgba(139,92,246,0.3);
     box-shadow: 0 0 0 4px rgba(139,92,246,0.05), 0 4px 24px rgba(139,92,246,0.06);
     background: rgba(18,18,36,0.9);
+  }
+  /* Branching mode \u2014 cyan glow replaces violet */
+  .ci.branching .ci-field {
+    border-color: rgba(0,242,255,0.25);
+    box-shadow: 0 0 0 4px rgba(0,242,255,0.04), 0 4px 24px rgba(0,242,255,0.06);
+    background: rgba(0,18,22,0.9);
+  }
+  .ci.branching .ci-glow {
+    background: linear-gradient(90deg, transparent 10%, rgba(0,242,255,0.18) 50%, transparent 90%);
+    opacity: 1;
   }
 
   .ci-field textarea {
