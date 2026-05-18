@@ -511,9 +511,4 @@ Replace the template with:
 ```powershell
 npm run check
 # Expected: 0 errors
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
 </div>

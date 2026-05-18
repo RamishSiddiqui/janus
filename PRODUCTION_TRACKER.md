@@ -48,6 +48,7 @@
 | **System Prompt Override** | ✅ | Wired to `build_prompt()` backend pipeline |
 | **Streaming Toggle** | ✅ | Backend supports both `generate` and `generate_stream` |
 | **Message Search** | ✅ | FTS5 full-text search with highlighted snippets in sidebar overlay |
+| **Character Profile Page** | ✅ | `/gallery/[id]` — hero panel + 5 tabs: Profile, Memories (canon graph), Lore, Stats, Edit |
 | **Local Storage Only** | ✅ | Privacy guard with confirmation dialog, `isLocalOnly()` utility for feature gating |
 | **Lorebook Search/Filter** | ✅ | Client-side filter by name, keywords, and content with match count |
 | **Auto-save Memories** | ✅ | Two-tier extraction: LLM-powered (via `generate_raw`) with heuristic fallback, throttled every 3rd message |
