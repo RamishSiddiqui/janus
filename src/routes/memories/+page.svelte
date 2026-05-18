@@ -44,6 +44,15 @@
       return;
     }
     loadCharacters();
+
+    // Auto-refresh graph when user navigates back to this page from chat
+    function onVisible() {
+      if (document.visibilityState === 'visible' && selectedCharIds.length > 0) {
+        loadGraphs(selectedCharIds);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   });
 
   // Check URL param for pre-selected character

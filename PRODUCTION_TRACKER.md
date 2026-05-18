@@ -66,10 +66,11 @@
 | **Character Export** | ❌ No UI | ❌ No export logic | Export to PNG/JSON missing |
 | **Auto-generate Images** | ✅ Toggle UI exists | ❌ No auto-trigger | Logic needed in chat flow |
 | **Message Deletion** | ❌ Missing UI | ✅ Implemented | Backend has `delete_message` |
-| **Memory Scope Control** | ❌ Missing UI | ✅ Implemented | Backend supports setting memory scope per conversation |
+| **Memory Scope Control** | ✅ Toggle in ContextPanel | ✅ Implemented | "Enable Memory" toggle in right pane (default off), wired to `set_memory_scope` |
 | **Memory Editing/Linking** | ❌ Missing UI | ✅ Implemented | Backend supports update, promote to canon, share, unlink |
 | **Scene Deletion** | ❌ Missing UI | ✅ Implemented | Backend has `delete_scene` |
 | **EmotionHUD (Character Emotional State)** | 🟡 Implemented, not verified | ✅ Implemented | UI pill built and wired — user has not confirmed it appears correctly in app |
+| **Extractor Model Setting** | ❌ Not started | ❌ Not started | **Future**: Add "Extractor Model" dropdown under AI Studio → Advanced to let users pick a smaller/faster model for background memory extraction. Currently uses same model as chat. |
 
 ## ✅ Memory Graph
 | Feature | Frontend | Backend | Notes |
