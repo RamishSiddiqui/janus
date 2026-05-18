@@ -98,7 +98,7 @@
 <style>
   .ch {
     display: flex; align-items: center; justify-content: space-between;
-    height: 60px; padding: 0 24px; flex-shrink: 0;
+    min-height: 60px; padding: 10px 24px; flex-shrink: 0;
     background: linear-gradient(180deg, rgba(12,12,30,0.95), rgba(9,9,26,0.9));
     border-bottom: 1px solid rgba(139,92,246,0.08);
     backdrop-filter: blur(12px);
@@ -123,7 +123,7 @@
     border: 1.5px solid rgba(139,92,246,0.2); pointer-events: none;
   }
 
-  .ch-info { display: flex; flex-direction: column; gap: 2px; }
+  .ch-info { display: flex; flex-direction: column; gap: 3px; }
   .ch-name { font-size: var(--text-lg); font-weight: 650; color: #e8e0ff; letter-spacing: -0.2px; }
 
   .ch-status { display: flex; align-items: center; gap: 5px; }
