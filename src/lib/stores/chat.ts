@@ -223,6 +223,9 @@ export async function loadMessages(conversationId: string) {
 
   const ipc = await import('$lib/services/ipc');
   try {
+    // Flush immediately so stale messages don't show during load
+    messages.set([]);
+
     // Fetch all messages AND the conversation (for active_message_id) in parallel
     const [msgs, conv] = await Promise.all([
       ipc.getConversationMessages(conversationId),
@@ -334,6 +337,12 @@ export async function sendMessage(conversationId: string, content: string, model
 
     // Set up stream listener BEFORE sending
     const unlisten = await ipc.onChatStream((event) => {
+      // Guard: if the user switched to a different conversation, discard stale events
+      if (get(activeConversationId) !== conversationId) {
+        if (event.event_type === 'done' || event.event_type === 'error') unlisten();
+        return;
+      }
+
       if (event.event_type === 'delta') {
         messages.update(msgs => {
           const last = msgs[msgs.length - 1];
@@ -580,10 +589,14 @@ export async function switchBranch(siblingId: string) {
   if (!convId) return;
 
   try {
+    // If a stream is in progress, the stream-guard in sendMessage will discard further
+    // events once activeConversationId no longer matches — safe to clear the flag here.
+    isStreaming.set(false);
+
     // Set this sibling as the active message on the backend
     await ipc.setActiveMessage(convId, siblingId);
 
-    // Reload all messages so sibling info is recomputed
+    // Reload all messages so sibling info is recomputed (store is flushed inside loadMessages)
     await loadMessages(convId);
   } catch (err) {
     console.error('Failed to switch branch:', err);

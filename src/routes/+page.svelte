@@ -73,6 +73,7 @@
 
   function navigateToParent(parentId: string) {
     if (!parentId) return;
+    isStreaming.set(false);       // discard any active stream for the current conversation
     activeConversationId.set(parentId);
     loadMessages(parentId);
   }
