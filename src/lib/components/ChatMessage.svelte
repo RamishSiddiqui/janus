@@ -177,9 +177,14 @@
                   class:visited={i < branchIndex}
                   disabled={isSwitching}
                   onclick={() => {
-                    if (message.siblingIds && !isSwitching) {
-                      isSwitching = true;
+                    if (isSwitching) return;
+                    isSwitching = true;
+                    if (hasConvBranches && message.siblingConversationIds) {
+                      switchToConversation(message.siblingConversationIds[i]).finally(() => setTimeout(() => isSwitching = false, 400));
+                    } else if (message.siblingIds) {
                       switchBranch(message.siblingIds[i]).finally(() => setTimeout(() => isSwitching = false, 600));
+                    } else {
+                      isSwitching = false;
                     }
                   }}
                   aria-label="Timeline {i + 1}"
@@ -294,9 +299,14 @@
                   class:visited={i < branchIndex}
                   disabled={isSwitching}
                   onclick={() => {
-                    if (message.siblingIds && !isSwitching) {
-                      isSwitching = true;
+                    if (isSwitching) return;
+                    isSwitching = true;
+                    if (hasConvBranches && message.siblingConversationIds) {
+                      switchToConversation(message.siblingConversationIds[i]).finally(() => setTimeout(() => isSwitching = false, 400));
+                    } else if (message.siblingIds) {
                       switchBranch(message.siblingIds[i]).finally(() => setTimeout(() => isSwitching = false, 600));
+                    } else {
+                      isSwitching = false;
                     }
                   }}
                   aria-label="Timeline {i + 1}"

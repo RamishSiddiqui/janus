@@ -277,8 +277,15 @@ export async function loadMessages(conversationId: string) {
     // (b) cross-conversation siblings (other conversations that branched at the same point).
 
     // --- (b) Cross-conversation branch detection ---
-    // We read $conversations (already loaded in the sidebar) — no extra IPC calls needed
-    // for case (b) because branchPointMessageId is stored on ConversationPreview.
+    // Ensure $conversations is fresh so branchPointMessageId is available.
+    // We do a lightweight reload here when this is a branch or might have children.
+    // This is async-safe: we await it before reading get(conversations).
+    if (conv.parent_conversation_id) {
+      // This is a branch — ensure parent + siblings are in the store
+      await loadConversations();
+    }
+
+    // Read conversations after potential refresh
     const allConvPreviews = get(conversations);
 
     // Map: messageId-in-THIS-conversation → { siblingConversationIds, index }
@@ -331,7 +338,13 @@ export async function loadMessages(conversationId: string) {
     }
 
     // Case 2: this conversation IS the parent — annotate the branch-point message
-    const childBranches = allConvPreviews.filter(c => c.parentConversationId === conversationId);
+    // Refresh conversations if no children found yet (might be first load after branching)
+    let childBranches = allConvPreviews.filter(c => c.parentConversationId === conversationId);
+    if (childBranches.length === 0 && !conv.parent_conversation_id) {
+      // No children seen yet and not a branch itself — do a quick refresh to find any new children
+      await loadConversations();
+      childBranches = get(conversations).filter(c => c.parentConversationId === conversationId);
+    }
     if (childBranches.length > 0) {
       // Group children by branchPointMessageId (there may be multiple branch points)
       const byBranchPoint = new Map<string, string[]>();
