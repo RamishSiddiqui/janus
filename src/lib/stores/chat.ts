@@ -357,11 +357,16 @@ export async function loadMessages(conversationId: string) {
         // Find bpMsgId in activePath
         const bpIdx = activePath.findIndex(m => m.id === bpMsgId);
         if (bpIdx === -1) continue;
-        const bpMsg = activePath[bpIdx];
+        // The divergence point is the message AFTER the branch_point — branch_point is the last
+        // message copied identically into each branch; the NEXT message is where they differ.
+        // e.g. if branched from the AI greeting, annotate the user reply (learn/teach magic).
+        // Fall back to bpIdx if there's no next message (branch at very last message).
+        const divergeIdx = bpIdx + 1 < activePath.length ? bpIdx + 1 : bpIdx;
+        const divergeMsg = activePath[divergeIdx];
         // Ordered: [this conversation (parent, index 0), ...child branches sorted]
         const sortedChildIds = [...childIds].sort();
         const uniqueIds = [conversationId, ...sortedChildIds];
-        convSiblingOverrides.set(bpMsg.id, { ids: uniqueIds, index: 0 });
+        convSiblingOverrides.set(divergeMsg.id, { ids: uniqueIds, index: 0 });
       }
     }
 
