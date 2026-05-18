@@ -70,7 +70,14 @@
   });
 
   // Memories — persisted via backend
-  interface MemoryItem { id: string; content: string; source: string; created_at: string; }
+  interface MemoryItem {
+    id: string;
+    content: string;
+    source: string;
+    is_canon: boolean;
+    conversation_id: string | null;
+    created_at: string;
+  }
   let memories: MemoryItem[] = $state([]);
   let isLoadingMemories = $state(false);
   let showAddMemory = $state(false);
@@ -91,15 +98,17 @@
     }
   });
 
-  // Load memories + scope when conversation changes
+  // Load memories + scope when character or conversation changes
   $effect(() => {
+    // Track both — conversationId changes when switching convos within same character
+    const _conv = conversationId;
     if (characterId && isTauri) {
       loadMemories(characterId);
     } else {
       memories = [];
     }
-    if (conversationId && isTauri) {
-      loadMemoryScope(conversationId);
+    if (_conv && isTauri) {
+      loadMemoryScope(_conv);
     } else {
       memoryScope = 'none';
     }
@@ -238,12 +247,19 @@
     try {
       const ipc = await import('$lib/services/ipc');
       const result = await ipc.listMemories(charId);
-      memories = result.map(m => ({
-        id: m.id,
-        content: m.content,
-        source: m.source,
-        created_at: m.created_at,
-      }));
+      memories = result
+        // Only show canon memories OR memories belonging to THIS conversation.
+        // Memories from other conversations are intentionally excluded —
+        // they live in their own timeline and should not bleed across.
+        .filter(m => m.is_canon || m.conversation_id === conversationId)
+        .map(m => ({
+          id: m.id,
+          content: m.content,
+          source: m.source,
+          is_canon: m.is_canon,
+          conversation_id: m.conversation_id ?? null,
+          created_at: m.created_at,
+        }));
     } catch (err) {
       console.error('Failed to load memories:', err);
       memories = [];
@@ -266,6 +282,8 @@
         id: created.id,
         content: created.content,
         source: created.source,
+        is_canon: false,
+        conversation_id: conversationId,
         created_at: created.created_at,
       }, ...memories];
       newMemoryText = '';
