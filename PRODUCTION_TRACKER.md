@@ -76,7 +76,7 @@ src/                             Svelte 5 frontend (SvelteKit)
 | **Send Message** | ChatInput | `send_message` | ✅ | |
 | **Regenerate Response** | ↻ button on AI bubbles | `regenerate_message` | ✅ | Creates sibling branch |
 | **Message Editing** | Pencil icon on user bubbles | `update_message` | ✅ | Inline textarea |
-| **Message Deletion** | ❌ No UI | `delete_message` | 🔇 | Backend works, no button in ChatMessage |
+| **Message Deletion** | Trash icon on message hover | `delete_message` | ✅ | `handleDelete()` → `ipc.deleteMessage()` + store removal |
 | **First Message (Greeting)** | Auto-sent on new conv | Store logic | ✅ | `first_mes` from character card |
 | **Model Picker** | Dropdown in ChatInput | Adapter dispatch | ✅ | Ollama/OpenRouter/OpenAI |
 | **Retry on Error** | Retry button in error state | — | ✅ | Shows on stream failure |
@@ -107,7 +107,7 @@ src/                             Svelte 5 frontend (SvelteKit)
 |---|---|---|---|---|
 | **Character State Table** | — | `character_states` table | ✅ | Migration 010 |
 | **LLM Inference** | `emotion-updater.ts` | `generate_raw` | ✅ | Runs after each response |
-| **EmotionHUD Pill** | In ChatMessage toolbar | — | 🟡 | Component exists, renders conditionally. **Not yet visually verified by user** |
+| **EmotionHUD Pill** | In ChatMessage toolbar | — | ✅ | Colour-coded glow dot, emotion label, 3-bar mood/trust/arousal meter — **verified rendering** |
 | **Prompt Injection** | — | `build_prompt` baseline | ✅ | Delta-continuity emotional context |
 
 ### 2.5 · Lorebook
@@ -206,7 +206,7 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | **Messages** | | | |
 | `create_message` | ✅ | ❌ (backend-internal) | N/A |
 | `update_message` | ✅ | ✅ Edit inline | ✅ |
-| `delete_message` | ✅ | ❌ No delete UI | 🔇 |
+| `delete_message` | ✅ | ✅ Trash icon | ✅ |
 | `get_message_branch` | ✅ | ❌ Not used | 🔇 |
 | `get_message_siblings` | ✅ | ✅ Branch nav dots | ✅ |
 | **Providers** | | | |
@@ -251,7 +251,7 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | `get_character_state` | ✅ | ✅ Chat store | ✅ |
 | `upsert_character_state` | ✅ | ✅ Emotion updater | ✅ |
 
-**Summary:** 54 commands registered → 42 fully wired (78%) · 10 backend-only (18%) · 2 orphaned (4%)
+**Summary:** 54 commands registered → 44 fully wired (81%) · 8 backend-only (15%) · 2 orphaned (4%)
 
 ---
 
@@ -337,7 +337,7 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | **Light Theme** | ✅ | Full CSS variable override system |
 | **Fonts** | ✅ | Inter 400–800 + Geist Mono |
 | **Branch Navigator** | ✅ | Dot-track + arrows in message toolbar |
-| **EmotionHUD** | 🟡 | Colour-coded pill, 3-bar meter — exists but not yet verified rendering |
+| **EmotionHUD** | ✅ | Colour-coded pill, 3-bar meter — **verified rendering** |
 
 ---
 
@@ -349,7 +349,6 @@ These features have full backend support AND IPC wrappers — they only need com
 
 | Gap | Backend | IPC | Effort | Priority |
 |---|---|---|---|---|
-| **Message Delete** button in ChatMessage | ✅ | ✅ `deleteMessage` | Small | Medium |
 | **Scene Delete** button in SceneDisplay | ✅ | ✅ `deleteScene` | Small | Medium |
 | **Message Search** overlay in Sidebar/Chat | ✅ FTS5 | ✅ `searchMessages` | Medium | High |
 | **Memory Edit/Delete** in ContextPanel or Memories page | ✅ | ✅ `updateMemory`, `deleteMemory` | Medium | High |
@@ -376,7 +375,7 @@ These features have full backend support AND IPC wrappers — they only need com
 | Periodic DB VACUUM | Deferred (low priority) |
 | `set_memory_scope` orphaned (no IPC wrapper) | Needs frontend integration |
 | `get_message_branch` unused | Available but no consumer |
-| EmotionHUD visual verification | Pending user testing |
+| EmotionHUD visual verification | ✅ Confirmed rendering |
 
 ---
 
