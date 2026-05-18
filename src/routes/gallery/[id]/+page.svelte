@@ -28,7 +28,8 @@
   let activeTab = $state<Tab>('profile');
 
   let conversations = $state<ConvSummary[]>([]);
-  let totalMessages = $state(0);
+  let totalMessages = $state<number | null>(null);
+  let canonMemoryCount = $state<number | null>(null);
 
   let memoryGraphData = $state<MemoryGraphData | null>(null);
   let isLoadingMemories = $state(false);
@@ -45,7 +46,7 @@
 
   $effect(() => {
     const id = charId;
-    if (id && isTauri) { loadCharacter(id); loadConvs(id); }
+    if (id && isTauri) { loadCharacter(id); loadConvs(id); loadStats(id); }
   });
 
   $effect(() => {
@@ -100,8 +101,23 @@
       const all = await ipc.listConversations(100, 0);
       const charConvs = all.filter((c: any) => c.character_id === id);
       conversations = charConvs.slice(0, 8).map((c: any) => ({ id: c.id, title: c.title, updated_at: c.updated_at }));
-      totalMessages = charConvs.reduce((sum: number, c: any) => sum + (c.message_count ?? 0), 0);
     } catch { conversations = []; }
+  }
+
+  async function loadStats(id: string) {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      // Canon memory count
+      const mems = await ipc.listMemories(id);
+      canonMemoryCount = mems.filter((m: any) => m.is_canon).length;
+      // Total message count — sum messages across all conversations for this character
+      const all = await ipc.listConversations(100, 0);
+      const charConvs = all.filter((c: any) => c.character_id === id);
+      const msgCounts = await Promise.all(
+        charConvs.map((c: any) => ipc.getConversationMessages(c.id).then((msgs: any[]) => msgs.length).catch(() => 0))
+      );
+      totalMessages = msgCounts.reduce((a, b) => a + b, 0);
+    } catch { canonMemoryCount = 0; totalMessages = 0; }
   }
 
   async function loadMemoryGraph(id: string) {
@@ -317,8 +333,8 @@
         {#if activeTab === 'stats'}
           <div class="stat-grid">
             <div class="stat-card"><p class="stat-val">{conversations.length}</p><p class="stat-lbl">Conversations</p></div>
-            <div class="stat-card"><p class="stat-val">{totalMessages || '—'}</p><p class="stat-lbl">Messages</p></div>
-            <div class="stat-card"><p class="stat-val">{memoryGraphData?.memories.length ?? '—'}</p><p class="stat-lbl">Canon Memories</p></div>
+            <div class="stat-card"><p class="stat-val">{totalMessages ?? '…'}</p><p class="stat-lbl">Messages</p></div>
+            <div class="stat-card"><p class="stat-val">{canonMemoryCount ?? '…'}</p><p class="stat-lbl">Canon Memories</p></div>
           </div>
           {#if conversations.length > 0}
             <div class="field-card full" style="margin-top:16px">
