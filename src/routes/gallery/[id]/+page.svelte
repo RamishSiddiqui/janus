@@ -32,9 +32,11 @@
 
   let memoryGraphData = $state<MemoryGraphData | null>(null);
   let isLoadingMemories = $state(false);
+  let memoriesLoaded = $state(false);
 
   let loreEntries = $state<LoreEntry[]>([]);
   let isLoadingLore = $state(false);
+  let loreLoaded = $state(false);
 
   let editName = $state(''); let editDesc = $state(''); let editPersonality = $state('');
   let editScenario = $state(''); let editFirstMes = $state('');
@@ -103,7 +105,7 @@
   }
 
   async function loadMemoryGraph(id: string) {
-    if (memoryGraphData || isLoadingMemories) return;
+    if (memoriesLoaded || isLoadingMemories) return;
     isLoadingMemories = true;
     try {
       const ipc = await import('$lib/services/ipc');
@@ -117,10 +119,11 @@
       };
     } catch { memoryGraphData = null; }
     isLoadingMemories = false;
+    memoriesLoaded = true;
   }
 
   async function loadLore(id: string) {
-    if (loreEntries.length || isLoadingLore) return;
+    if (loreLoaded || isLoadingLore) return;
     isLoadingLore = true;
     try {
       const ipc = await import('$lib/services/ipc');
@@ -128,6 +131,7 @@
       loreEntries = raw.map((e: any) => ({ id: e.id, keys: e.keys, content: e.content, enabled: e.enabled, name: e.name ?? null }));
     } catch { loreEntries = []; }
     isLoadingLore = false;
+    loreLoaded = true;
   }
 
   async function startNewChat() {
@@ -281,7 +285,7 @@
                 <MemoryGraph
                   data={memoryGraphData}
                   avatars={charId ? { [charId]: avatarUrl } : {}}
-                  onRefresh={() => { memoryGraphData = null; if (charId) loadMemoryGraph(charId); }}
+                  onRefresh={() => { memoryGraphData = null; memoriesLoaded = false; if (charId) loadMemoryGraph(charId); }}
                 />
               </div>
             {:else}
