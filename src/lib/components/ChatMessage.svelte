@@ -4,7 +4,7 @@
   import type { Message } from '$lib/types';
   import { formatRoleplayContent } from '$lib/utils/format';
   import { browser } from '$app/environment';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, regenerateMessage as storeRegenerate, characterEmotionState } from '$lib/stores/chat';
+  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionState } from '$lib/stores/chat';
   import { success, error as toastError } from '$lib/stores/toast';
   import { get } from 'svelte/store';
 
@@ -22,21 +22,33 @@
   // Reactively derived from the store — updates live after each stream completes
   let emotionState = $derived($characterEmotionState);
 
-  // Branch navigation
-  let hasBranches = $derived((message.siblingIds?.length ?? 0) > 1);
-  let branchIndex = $derived(message.siblingIndex ?? 0);
-  let branchTotal = $derived(message.siblingIds?.length ?? 1);
+  // Branch navigation — supports both in-conversation siblings and cross-conversation branches
+  let hasConvBranches = $derived((message.siblingConversationIds?.length ?? 0) > 1);
+  let hasBranches = $derived(hasConvBranches || (message.siblingIds?.length ?? 0) > 1);
+  let branchIndex = $derived(
+    hasConvBranches ? (message.siblingConversationIndex ?? 0) : (message.siblingIndex ?? 0)
+  );
+  let branchTotal = $derived(
+    hasConvBranches ? (message.siblingConversationIds?.length ?? 1) : (message.siblingIds?.length ?? 1)
+  );
   let canPrev = $derived(hasBranches && branchIndex > 0);
   let canNext = $derived(hasBranches && branchIndex < branchTotal - 1);
 
   async function navigateBranch(direction: -1 | 1) {
-    if (!message.siblingIds || isSwitching) return;
+    if (isSwitching) return;
     const newIndex = branchIndex + direction;
     if (newIndex < 0 || newIndex >= branchTotal) return;
     isSwitching = true;
-    await switchBranch(message.siblingIds[newIndex]);
-    // isSwitching resets naturally when messages reload
-    setTimeout(() => isSwitching = false, 600);
+
+    if (hasConvBranches && message.siblingConversationIds) {
+      // Cross-conversation navigation — switch entire conversation
+      await switchToConversation(message.siblingConversationIds[newIndex]);
+    } else if (message.siblingIds) {
+      // In-conversation navigation — switch active message within same conversation
+      await switchBranch(message.siblingIds[newIndex]);
+    }
+
+    setTimeout(() => isSwitching = false, 400);
   }
 
   async function handleRegenerate() {

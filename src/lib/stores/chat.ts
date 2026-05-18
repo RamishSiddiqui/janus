@@ -206,6 +206,7 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         time,
         additionalCharacters,
         parentConversationId: conv.parent_conversation_id ?? null,
+        branchPointMessageId: conv.branch_point_message_id ?? null,
       };
     })
   );
@@ -271,21 +272,110 @@ export async function loadMessages(conversationId: string) {
       }
     }
 
-    // Annotate each message on the active path with sibling navigator info
+    // Annotate each message on the active path with sibling navigator info.
+    // Two layers: (a) in-conversation siblings (same parent_id within this conversation),
+    // (b) cross-conversation siblings (other conversations that branched at the same point).
+
+    // --- (b) Cross-conversation branch detection ---
+    // We read $conversations (already loaded in the sidebar) — no extra IPC calls needed
+    // for case (b) because branchPointMessageId is stored on ConversationPreview.
+    const allConvPreviews = get(conversations);
+
+    // Map: messageId-in-THIS-conversation → { siblingConversationIds, index }
+    const convSiblingOverrides = new Map<string, { ids: string[]; index: number }>();
+
+    // Case 1: this conversation IS a branch (has parent_conversation_id)
+    if (conv.parent_conversation_id && conv.branch_point_message_id) {
+      // Find all conversations that branched from the same parent at the same point
+      const otherBranches = allConvPreviews.filter(c =>
+        c.parentConversationId === conv.parent_conversation_id &&
+        c.branchPointMessageId === conv.branch_point_message_id &&
+        c.id !== conversationId
+      );
+
+      if (otherBranches.length > 0 || true /* parent itself is always a sibling */) {
+        // Ordered list: [parent, ...other branches sorted by id, this branch]
+        const parentId = conv.parent_conversation_id;
+        const sortedOtherBranches = otherBranches.map(c => c.id).sort();
+        // Build ordered list: parent first, then branches by insertion order
+        const allBranchIds = [parentId, ...sortedOtherBranches.filter(id => id !== conversationId), conversationId];
+        // Remove duplicates (in case this somehow already appeared)
+        const uniqueIds = [...new Set(allBranchIds)];
+        const myIndex = uniqueIds.indexOf(conversationId);
+
+        // Find the divergence message in THIS conversation's activePath.
+        // Strategy: fetch parent messages to count chain length up to branch_point.
+        // We do this ONE async fetch here (only for branched conversations).
+        try {
+          const parentMsgs = await ipc.getConversationMessages(parentId);
+          const parentById = new Map(parentMsgs.map(m => [m.id, m]));
+          // Walk parent chain from branch_point_message_id → root to get chain length
+          let chainLen = 0;
+          let cur: string | null = conv.branch_point_message_id;
+          const vis = new Set<string>();
+          while (cur && parentById.has(cur) && !vis.has(cur)) {
+            vis.add(cur);
+            chainLen++;
+            cur = parentById.get(cur)!.parent_id;
+          }
+          // In activePath, the divergence message is at index chainLen
+          // (indices 0…chainLen-1 are copies, chainLen is the first new user message)
+          const divergeMsg = activePath[chainLen];
+          if (divergeMsg) {
+            convSiblingOverrides.set(divergeMsg.id, { ids: uniqueIds, index: myIndex });
+          }
+        } catch {
+          // If parent fetch fails, fall back gracefully — no navigator shown
+        }
+      }
+    }
+
+    // Case 2: this conversation IS the parent — annotate the branch-point message
+    const childBranches = allConvPreviews.filter(c => c.parentConversationId === conversationId);
+    if (childBranches.length > 0) {
+      // Group children by branchPointMessageId (there may be multiple branch points)
+      const byBranchPoint = new Map<string, string[]>();
+      for (const child of childBranches) {
+        if (!child.branchPointMessageId) continue;
+        if (!byBranchPoint.has(child.branchPointMessageId)) byBranchPoint.set(child.branchPointMessageId, []);
+        byBranchPoint.get(child.branchPointMessageId)!.push(child.id);
+      }
+      for (const [bpMsgId, childIds] of byBranchPoint) {
+        // Find bpMsgId in activePath
+        const bpIdx = activePath.findIndex(m => m.id === bpMsgId);
+        if (bpIdx === -1) continue;
+        const bpMsg = activePath[bpIdx];
+        // Ordered: [this conversation (parent, index 0), ...child branches sorted]
+        const sortedChildIds = [...childIds].sort();
+        const uniqueIds = [conversationId, ...sortedChildIds];
+        convSiblingOverrides.set(bpMsg.id, { ids: uniqueIds, index: 0 });
+      }
+    }
+
+    // Build final annotated message list
     messages.set(activePath.map(m => {
       const key = m.parent_id ?? '__root__';
       const siblings = byParent.get(key) ?? [];
       const siblingIndex = siblings.findIndex(s => s.id === m.id);
+      const convSibling = convSiblingOverrides.get(m.id);
 
       return {
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         parent_id: m.parent_id,
+        // In-conversation siblings (old message-tree branching)
         siblingIds: siblings.length > 1 ? siblings.map(s => s.id) : undefined,
         siblingIndex: siblings.length > 1 ? siblingIndex : undefined,
-        alternates: siblings.length > 1 ? siblings.length : undefined,
-        currentAlternate: siblings.length > 1 ? siblingIndex + 1 : undefined,
+        alternates: convSibling
+          ? convSibling.ids.length
+          : (siblings.length > 1 ? siblings.length : undefined),
+        currentAlternate: convSibling
+          ? convSibling.index + 1
+          : (siblings.length > 1 ? siblingIndex + 1 : undefined),
+        // Cross-conversation branch siblings
+        siblingConversationIds: convSibling?.ids,
+        siblingConversationIndex: convSibling?.index,
       };
     }));
 
@@ -604,6 +694,17 @@ export async function switchBranch(siblingId: string) {
 }
 
 /**
+ * Navigates to a different conversation (used by the cross-conversation sibling navigator).
+ * Equivalent to clicking a different conversation in the sidebar, but triggered from within
+ * the message navigator pill.
+ */
+export async function switchToConversation(targetConversationId: string) {
+  isStreaming.set(false);
+  activeConversationId.set(targetConversationId);
+  await loadMessages(targetConversationId);
+}
+
+/**
  * Branches the conversation at `branchPointId` into a new independent conversation.
  *
  * The new conversation:
@@ -632,12 +733,16 @@ export async function branchConversation(
       // Title comes from parent — backend copies it as-is
     );
 
-    // 2. Switch to the new conversation
-    await loadConversations();              // refresh sidebar list (new conv appears)
-    activeConversationId.set(newConv.id);  // switch active context
-    await loadMessages(newConv.id);        // load the copied message history
+    // 2. Refresh sidebar list FIRST so $conversations is up to date before loadMessages
+    //    reads it for cross-conversation sibling detection.
+    await loadConversations();
 
-    // 3. Send the new message into the new conversation — this is the actual fork point
+    // 3. Switch to the new conversation and load its messages
+    //    (loadMessages now reads $conversations to annotate the divergence message)
+    activeConversationId.set(newConv.id);
+    await loadMessages(newConv.id);
+
+    // 4. Send the new message into the new conversation — this is the actual fork point
     await sendMessage(newConv.id, content, model);
 
   } catch (err) {
