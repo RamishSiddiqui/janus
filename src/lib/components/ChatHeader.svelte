@@ -46,13 +46,6 @@
     {/if}
   </div>
   <div class="ch-right" role="toolbar" aria-label="Chat tools">
-    <button class="ch-btn" title="Generate Scene" aria-label="Generate scene image"
-      onclick={onGenerateScene}>
-      <Icon name="image" size={15} color="#6b6b8a" />
-    </button>
-    <button class="ch-btn" title="Branch" aria-label="Branch conversation">
-      <Icon name="git-branch" size={15} color="#6b6b8a" />
-    </button>
     <button class="ch-btn" class:active={showContextPanel} title="Context Panel"
       aria-label="Toggle context panel" aria-pressed={showContextPanel} onclick={onTogglePanel}>
       <Icon name="settings" size={15} color={showContextPanel ? '#c4a1ff' : '#6b6b8a'} />
