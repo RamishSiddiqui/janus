@@ -210,19 +210,18 @@ pub async fn test_provider_connection(
             return Ok(false);
         }
 
-        // For OpenRouter, check the models endpoint
-        let url = match provider.adapter {
-            ProviderAdapter::OpenRouter => "https://openrouter.ai/api/v1/models".to_string(),
-            _ => return Ok(!api_key.is_empty()),
+        // Use the real provider struct so all required headers (HTTP-Referer, X-Title) are set
+        return match provider.adapter {
+            ProviderAdapter::OpenRouter => {
+                use crate::providers::openrouter::OpenRouterProvider;
+                use crate::providers::traits::LlmProvider;
+                match OpenRouterProvider::new(state.http_client.clone(), api_key) {
+                    Ok(p) => Ok(p.health_check().await.unwrap_or(false)),
+                    Err(_) => Ok(false), // invalid key format
+                }
+            }
+            _ => Ok(!api_key.is_empty()),
         };
-
-        let resp = state.http_client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .send()
-            .await;
-
-        return Ok(resp.map(|r| r.status().is_success()).unwrap_or(false));
     }
 
     // Local providers — check if the base URL is reachable
@@ -376,4 +375,221 @@ async fn get_provider_by_id(
     .ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))?;
 
     row.try_into()
+}
+
+// ── Model enable/disable tracking ──────────────────────────────────────────
+
+/// A single model entry returned by `list_all_models`.
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct ModelEntry {
+    pub model_id:      String,
+    pub provider_id:   String,
+    pub provider_name: String,
+    pub adapter:       String,
+    pub model_type:    String,
+    pub context_length: Option<u32>,
+    pub enabled:       bool,
+}
+
+/// Fetches models from ALL configured providers in parallel and merges them
+/// with their enabled/disabled state from the `enabled_models` table.
+///
+/// Per-provider fetches time out after 8 seconds. Partial results are returned
+/// on timeout or network error rather than failing the whole call.
+#[tauri::command]
+pub async fn list_all_models(
+    state: State<'_, Arc<RwLock<AppState>>>,
+) -> Result<Vec<ModelEntry>, MythicError> {
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    let http = state_guard.http_client.clone();
+    drop(state_guard);
+
+    // 1. Fetch all providers
+    let providers = sqlx::query_as::<_, ProviderRow>(
+        "SELECT id, name, provider_type, adapter, config, is_default
+         FROM provider_configs ORDER BY name ASC"
+    )
+    .fetch_all(&db)
+    .await?;
+
+    // 2. Fetch all enabled_models rows
+    #[derive(sqlx::FromRow)]
+    struct EnabledRow { provider_id: String, model_id: String, enabled: bool }
+    let enabled_rows = sqlx::query_as::<_, EnabledRow>(
+        "SELECT provider_id, model_id, enabled FROM enabled_models"
+    )
+    .fetch_all(&db)
+    .await
+    .unwrap_or_default();
+
+    // Build a lookup: (provider_id, model_id) -> enabled
+    let enabled_map: std::collections::HashMap<(String,String), bool> = enabled_rows
+        .into_iter()
+        .map(|r| ((r.provider_id, r.model_id), r.enabled))
+        .collect();
+
+    // 3. Fetch models per provider in parallel with per-provider timeout
+    let mut tasks = Vec::new();
+    for row in &providers {
+        let config: serde_json::Value = serde_json::from_str(&row.config).unwrap_or_default();
+        let base_url = config.get("base_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let api_key  = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let adapter  = row.adapter.clone();
+        let provider_id   = row.id.clone();
+        let provider_name = row.name.clone();
+        let provider_type = row.provider_type.clone();
+        let http_c = http.clone();
+
+        tasks.push(tokio::spawn(async move {
+            let (url, is_ollama) = match adapter.as_str() {
+                "ollama" => {
+                    let base = if base_url.is_empty() { "http://localhost:11434".to_string() } else { base_url };
+                    (format!("{}/api/tags", base), true)
+                }
+                "open_router" => ("https://openrouter.ai/api/v1/models".to_string(), false),
+                _ => {
+                    if base_url.is_empty() { return vec![]; }
+                    (format!("{}/v1/models", base_url.trim_end_matches('/')), false)
+                }
+            };
+
+            let mut req = http_c.get(&url).timeout(std::time::Duration::from_secs(8));
+            if !api_key.is_empty() {
+                req = req.header("Authorization", format!("Bearer {}", api_key));
+                if adapter == "open_router" {
+                    req = req
+                        .header("HTTP-Referer", "https://mythic.app")
+                        .header("X-Title", "Mythic");
+                }
+            }
+
+            let body: serde_json::Value = match req.send().await {
+                Ok(resp) => match resp.json::<serde_json::Value>().await {
+                    Ok(v) => v,
+                    Err(_) => return vec![],
+                },
+                Err(_) => return vec![],
+            };
+
+            let entries: Vec<(String, Option<u32>)> = if is_ollama {
+                body.get("models")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|m| {
+                        Some((m.get("name")?.as_str()?.to_string(), None))
+                    }).collect())
+                    .unwrap_or_default()
+            } else {
+                body.get("data")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let ctx = m.get("context_length").and_then(|v| v.as_u64()).map(|v| v as u32);
+                        Some((id, ctx))
+                    }).collect())
+                    .unwrap_or_default()
+            };
+
+            entries.into_iter().map(|(model_id, context_length)| {
+                (provider_id.clone(), provider_name.clone(), adapter.clone(), provider_type.clone(), model_id, context_length)
+            }).collect::<Vec<_>>()
+        }));
+    }
+
+    // 4. Collect results
+    let mut all_entries: Vec<ModelEntry> = Vec::new();
+    for task in tasks {
+        if let Ok(rows) = task.await {
+            for (provider_id, provider_name, adapter, model_type, model_id, context_length) in rows {
+                let enabled = *enabled_map.get(&(provider_id.clone(), model_id.clone())).unwrap_or(&false);
+                all_entries.push(ModelEntry {
+                    model_id,
+                    provider_id,
+                    provider_name,
+                    adapter,
+                    model_type,
+                    context_length,
+                    enabled,
+                });
+            }
+        }
+    }
+
+    info!("list_all_models: {} total models across {} providers", all_entries.len(), providers.len());
+    Ok(all_entries)
+}
+
+/// Toggles a model's enabled state in the `enabled_models` table.
+/// Uses INSERT OR REPLACE to handle first-time toggling gracefully.
+#[tauri::command]
+pub async fn toggle_model_enabled(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    provider_id: String,
+    model_id: String,
+    model_type: String,
+    enabled: bool,
+) -> Result<(), MythicError> {
+    let state = state.read().await;
+
+    sqlx::query(
+        "INSERT INTO enabled_models (provider_id, model_id, model_type, enabled, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(provider_id, model_id) DO UPDATE SET
+           enabled    = excluded.enabled,
+           updated_at = excluded.updated_at"
+    )
+    .bind(&provider_id)
+    .bind(&model_id)
+    .bind(&model_type)
+    .bind(enabled)
+    .execute(&state.db)
+    .await?;
+
+    info!("Model {} on provider {} -> enabled={}", model_id, provider_id, enabled);
+    Ok(())
+}
+
+/// Returns all rows from enabled_models (enabled=1 only).
+#[tauri::command]
+pub async fn list_enabled_models(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    provider_id: Option<String>,
+) -> Result<Vec<ModelEntry>, MythicError> {
+    let state = state.read().await;
+
+    #[derive(sqlx::FromRow)]
+    struct EnabledFull {
+        model_id: String, provider_id: String, model_type: String,
+    }
+
+    let rows = if let Some(ref pid) = provider_id {
+        sqlx::query_as::<_, EnabledFull>(
+            "SELECT model_id, provider_id, model_type FROM enabled_models WHERE enabled = 1 AND provider_id = ?"
+        ).bind(pid).fetch_all(&state.db).await?
+    } else {
+        sqlx::query_as::<_, EnabledFull>(
+            "SELECT model_id, provider_id, model_type FROM enabled_models WHERE enabled = 1"
+        ).fetch_all(&state.db).await?
+    };
+
+    // Join with provider name
+    let mut entries = Vec::with_capacity(rows.len());
+    for r in rows {
+        let name: Option<(String, String)> = sqlx::query_as(
+            "SELECT name, adapter FROM provider_configs WHERE id = ?"
+        ).bind(&r.provider_id).fetch_optional(&state.db).await?;
+        if let Some((provider_name, adapter)) = name {
+            entries.push(ModelEntry {
+                model_id: r.model_id,
+                provider_id: r.provider_id,
+                provider_name,
+                adapter,
+                model_type: r.model_type,
+                context_length: None,
+                enabled: true,
+            });
+        }
+    }
+
+    Ok(entries)
 }

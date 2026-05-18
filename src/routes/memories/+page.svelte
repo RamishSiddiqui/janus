@@ -6,20 +6,21 @@
   import MemoryTimeline from '$lib/components/MemoryTimeline.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { success, error as toastError } from '$lib/stores/toast';
+  import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   // Character selection (multi-select)
   interface CharOption { id: string; name: string; avatarPath: string | null; }
-  let characters: CharOption[] = $state([]);
-  let selectedCharIds: string[] = $state([]);
+  let characters = $state<CharOption[]>([]);
+  let selectedCharIds = $state<string[]>([]);
   let isLoading = $state(true);
 
   // View toggle
-  let activeView: 'graph' | 'timeline' = $state('graph');
+  let activeView = $state<'graph' | 'timeline'>('graph');
 
   // Graph data
-  let graphData: import('$lib/services/ipc').MemoryGraph | null = $state(null);
+  let graphData = $state<MemoryGraphData | null>(null);
   let isLoadingGraph = $state(false);
 
   // Stats
@@ -94,7 +95,7 @@
       const ipc = await import('$lib/services/ipc');
       const results = await Promise.all(charIds.map(id => ipc.getMemoryGraph(id)));
       // Merge all graphs into one
-      const merged: import('$lib/services/ipc').MemoryGraph = {
+      const merged: MemoryGraphData = {
         character_id: charIds[0],
         character_name: results.map(r => r.character_name).join(' & '),
         characters: results.map(r => ({ id: r.character_id, name: r.character_name })),

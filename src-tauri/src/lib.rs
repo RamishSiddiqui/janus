@@ -145,6 +145,9 @@ pub fn run() {
             commands::providers::set_default_provider,
             commands::providers::test_provider_connection,
             commands::providers::list_provider_models,
+            commands::providers::list_all_models,
+            commands::providers::toggle_model_enabled,
+            commands::providers::list_enabled_models,
             // Chat
             commands::chat::send_message,
             commands::chat::regenerate_message,
@@ -173,6 +176,9 @@ pub fn run() {
             commands::memories::get_memory_graph,
             // Search
             commands::conversations::search_messages,
+            // Character State
+            commands::character_state::get_character_state,
+            commands::character_state::upsert_character_state,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Mythic");

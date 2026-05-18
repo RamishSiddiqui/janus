@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SvelteFlow, Controls, Background, MiniMap } from '@xyflow/svelte';
+  import { SvelteFlow, Controls, Background, BackgroundVariant, MiniMap } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
@@ -10,19 +10,21 @@
   import SharingEdge from './edges/SharingEdge.svelte';
   import TreeEdge from './edges/TreeEdge.svelte';
 
-  let { data, avatars = {}, onRefresh }: {
+  interface Props {
     data: MemoryGraphData;
     avatars?: Record<string, string | null>;
     onRefresh: () => void;
-  } = $props();
+  }
 
-  const nodeTypes = {
+  let { data, avatars = {}, onRefresh }: Props = $props();
+
+  const nodeTypes: any = {
     character: CharacterNode,
     conversation: ConversationNode,
     memory: MemoryNode,
   };
 
-  const edgeTypes = { sharing: SharingEdge, tree: TreeEdge };
+  const edgeTypes: any = { sharing: SharingEdge, tree: TreeEdge };
 
   /* ── Palette ── */
   const PALETTE = [
@@ -334,7 +336,7 @@
     {edgeTypes}
   >
     <Controls position="bottom-left" />
-    <Background variant="dots" gap={24} size={0.6} color="rgba(139,92,246,0.06)" />
+    <Background variant={BackgroundVariant.Dots} gap={24} size={0.6} patternColor="rgba(139,92,246,0.06)" />
     <MiniMap
       pannable
       zoomable

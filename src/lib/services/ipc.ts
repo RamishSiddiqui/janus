@@ -48,6 +48,7 @@ export interface Conversation {
   active_message_id: string | null;
   /** 'character' (shared) | 'conversation' (isolated) | 'none' (disabled) */
   memory_scope: 'character' | 'conversation' | 'none';
+  shared_character_ids: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -182,6 +183,52 @@ export async function setMemoryScope(conversationId: string, scope: 'character' 
   return safeInvoke<void>('set_memory_scope', { conversationId, scope });
 }
 
+// --- Character State ---
+
+export interface CharacterState {
+  id:               string;
+  character_id:     string;
+  conversation_id:  string;
+  mood:             number;
+  trust:            number;
+  arousal:          number;
+  dominant_emotion: string;
+  state_summary:    string;
+  updated_at:       string;
+}
+
+/** Returns the current emotional state for a character in a conversation, or null if not yet set. */
+export async function getCharacterState(
+  characterId:    string,
+  conversationId: string,
+): Promise<CharacterState | null> {
+  return safeInvoke<CharacterState | null>('get_character_state', {
+    characterId,
+    conversationId,
+  });
+}
+
+/** Upserts the emotional state — creates on first call, updates on subsequent calls. */
+export async function upsertCharacterState(
+  characterId:     string,
+  conversationId:  string,
+  mood:            number,
+  trust:           number,
+  arousal:         number,
+  dominantEmotion: string,
+  stateSummary:    string,
+): Promise<CharacterState> {
+  return safeInvoke<CharacterState>('upsert_character_state', {
+    characterId,
+    conversationId,
+    mood,
+    trust,
+    arousal,
+    dominantEmotion,
+    stateSummary,
+  });
+}
+
 // --- Messages ---
 
 export async function createMessage(
@@ -270,6 +317,35 @@ export async function testProviderConnection(id: string): Promise<boolean> {
 
 export async function listProviderModels(id: string): Promise<string[]> {
   return safeInvoke<string[]>('list_provider_models', { id });
+}
+
+export interface ModelEntry {
+  model_id: string;
+  provider_id: string;
+  provider_name: string;
+  adapter: string;
+  model_type: string;
+  context_length: number | null;
+  enabled: boolean;
+}
+
+export async function listAllModels(): Promise<ModelEntry[]> {
+  return safeInvoke<ModelEntry[]>('list_all_models');
+}
+
+export async function toggleModelEnabled(
+  providerId: string,
+  modelId: string,
+  modelType: string,
+  enabled: boolean,
+): Promise<void> {
+  return safeInvoke<void>('toggle_model_enabled', {
+    providerId, modelId, modelType, enabled,
+  });
+}
+
+export async function listEnabledModels(providerId?: string): Promise<ModelEntry[]> {
+  return safeInvoke<ModelEntry[]>('list_enabled_models', { providerId: providerId ?? null });
 }
 
 // --- Chat ---

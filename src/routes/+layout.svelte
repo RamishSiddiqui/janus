@@ -15,11 +15,12 @@
 
   // Navigation items for the sidebar
   const navItems = [
-    { path: '/', label: 'Chats', icon: 'message-circle' },
-    { path: '/gallery', label: 'Characters', icon: 'users' },
-    { path: '/memories', label: 'Memories', icon: 'brain' },
-    { path: '/models', label: 'Models', icon: 'cpu' },
-    { path: '/settings', label: 'Settings', icon: 'settings' },
+    { path: '/',          label: 'Chats',     icon: 'message-circle' },
+    { path: '/gallery',   label: 'Characters', icon: 'users' },
+    { path: '/memories',  label: 'Memories',  icon: 'brain' },
+    { path: '/providers', label: 'Providers', icon: 'plug',   group: 'ai-studio' },
+    { path: '/models',    label: 'Models',    icon: 'layers', group: 'ai-studio' },
+    { path: '/settings',  label: 'Settings',  icon: 'settings' },
   ] as const satisfies readonly NavItem[];
 
   let currentPath = $derived($page.url.pathname);

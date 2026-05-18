@@ -51,6 +51,7 @@
   // Character info from active conversation (with fallbacks)
   let characterName = $derived($activeConversation?.characterName ?? 'Select a character');
   let characterId = $derived($activeCharacterId);
+  let additionalCharacters = $derived($activeConversation?.additionalCharacters ?? []);
   let modelName = $state('No provider configured');
   let selectedModel = $state('');
   let availableModels: string[] = $state([]);
@@ -67,8 +68,17 @@
       if (active) {
         activeProviderId = active.id;
         const config = active.config as Record<string, string>;
-        const defaultModel = config.model || 'unknown';
-        modelName = `${defaultModel} via ${active.name}`;
+        let defaultModel = config.model || '';
+        if (!defaultModel || defaultModel === 'unknown') {
+          // Fall back to first enabled model for this provider
+          try {
+            const enabled = await ipc.listEnabledModels(active.id);
+            defaultModel = enabled[0]?.model_id ?? '';
+          } catch { /* ignore */ }
+        }
+        modelName = defaultModel
+          ? `${defaultModel} via ${active.name}`
+          : `No model set — AI Studio → Models`;
         selectedModel = defaultModel;
       }
     } catch { /* fallback already set */ }
@@ -78,7 +88,8 @@
     if (!isTauri || !activeProviderId) return;
     try {
       const ipc = await import('$lib/services/ipc');
-      availableModels = await ipc.listProviderModels(activeProviderId);
+      const enabled = await ipc.listEnabledModels(activeProviderId);
+      availableModels = enabled.map(e => e.model_id);
     } catch {
       availableModels = [];
     }
@@ -238,6 +249,7 @@
         {modelName}
         {avatarUrl}
         {showContextPanel}
+        {additionalCharacters}
         onTogglePanel={() => showContextPanel = !showContextPanel}
         onGenerateScene={() => { showContextPanel = true; }}
       />
@@ -303,6 +315,7 @@
         characterTagline={characterDescription}
         {avatarUrl}
         tags={characterTags}
+        {additionalCharacters}
         conversationId={$activeConversationId}
         onClose={() => showContextPanel = false}
       />
