@@ -38,6 +38,7 @@ export interface NavItem {
   readonly path: string;
   readonly label: string;
   readonly icon: string;
+  readonly group?: string;
 }
 
 /** A conversation preview shown in the sidebar. */
@@ -49,6 +50,8 @@ export interface ConversationPreview {
   avatarUrl: string | null;
   preview: string;
   time: string;
+  /** Additional characters in a multi-character conversation (future support) */
+  additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
 }
 
 /** An AI provider configuration (chat, image, or video). */

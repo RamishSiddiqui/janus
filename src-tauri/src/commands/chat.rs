@@ -86,13 +86,34 @@ pub async fn send_message(
 
     // 3. Get the active LLM provider
     let provider_config = get_default_llm_provider(&db).await?;
-    let model_id = model.unwrap_or_else(|| {
-        provider_config.config
-            .get("model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("meta-llama/llama-4-maverick")
-            .to_string()
-    });
+    let model_id = match model {
+        Some(m) if !m.is_empty() && m != "unknown" => m,
+        _ => {
+            let stored = provider_config.config
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !stored.is_empty() && stored != "unknown" {
+                stored.to_string()
+            } else {
+                // Fall back to first enabled model for this provider
+                let first_enabled: Option<(String,)> = sqlx::query_as(
+                    "SELECT model_id FROM enabled_models WHERE provider_id = ? AND enabled = 1 LIMIT 1"
+                )
+                .bind(&provider_config.id)
+                .fetch_optional(&db)
+                .await?;
+                match first_enabled {
+                    Some((m,)) => m,
+                    None => return Err(MythicError::Config(
+                        "No model selected. Go to AI Studio \u{2192} Models, enable at least one model.".to_string()
+                    )),
+                }
+            }
+        }
+    };
+
+
 
     let gen_params = GenerationParams {
         max_tokens: provider_config.config
@@ -443,10 +464,10 @@ async fn build_prompt(
     // Keyword-triggered lorebook entries: scan recent messages for matching keywords
     if let Some(ref char_id) = character_id {
         let keyword_entries: Vec<(String, String)> = sqlx::query_as(
-            "SELECT keywords, content FROM lorebook_entries
+            "SELECT keys, content FROM lorebook_entries
              WHERE (character_id = ? OR character_id IS NULL)
              AND enabled = 1 AND always_active = 0
-             AND keywords IS NOT NULL AND keywords != ''
+             AND keys IS NOT NULL AND keys != '' AND keys != '[]'
              ORDER BY priority DESC"
         )
         .bind(char_id)
@@ -462,10 +483,16 @@ async fn build_prompt(
                 .collect::<Vec<_>>()
                 .join(" ");
 
-            for (keywords_csv, content) in keyword_entries {
-                let triggered = keywords_csv
-                    .split(',')
-                    .map(|k| k.trim().to_lowercase())
+            for (keys_raw, content) in keyword_entries {
+                // keys column is a JSON array e.g. ["wolf","storm"] — fall back to CSV
+                let keywords: Vec<String> = serde_json::from_str::<Vec<String>>(&keys_raw)
+                    .unwrap_or_else(|_| {
+                        keys_raw.split(',').map(|k| k.trim().to_string()).collect()
+                    });
+
+                let triggered = keywords
+                    .iter()
+                    .map(|k| k.to_lowercase())
                     .filter(|k| !k.is_empty())
                     .any(|keyword| corpus.contains(&keyword));
 
@@ -479,7 +506,38 @@ async fn build_prompt(
         }
     }
 
+    // Inject character emotional state as a dynamic context layer.
+    // Placed last in the system prompt so it's closest to the conversation history
+    // and carries the most weight in the attention window.
+    if let Some(ref char_id) = character_id {
+        let state_row: Option<(i32, i32, i32, String, String)> = sqlx::query_as(
+            "SELECT mood, trust, arousal, dominant_emotion, state_summary
+             FROM character_states
+             WHERE character_id = ? AND conversation_id = ?
+             LIMIT 1",
+        )
+        .bind(char_id)
+        .bind(conversation_id)
+        .fetch_optional(db)
+        .await?;
+
+        if let Some((mood, trust, arousal, emotion, summary)) = state_row {
+            let state_block = format!(
+                "[Current Emotional State]\n\
+                 Dominant emotion: {emotion}\n\
+                 Mood: {mood}/100  Trust: {trust}/100  Intensity: {arousal}/100\n\
+                 Internal state: {summary}\n\
+                 (Let this emotional state colour your response naturally — do not announce or describe it explicitly.)"
+            );
+            prompt.push(ChatMessage {
+                role: MessageRole::System,
+                content: state_block,
+            });
+        }
+    }
+
     prompt.extend(chain);
+
 
     Ok(prompt)
 }
@@ -495,7 +553,6 @@ async fn get_default_llm_provider(
          ORDER BY is_default DESC
          LIMIT 1"
     )
-    .bind("llm")
     .fetch_optional(db)
     .await?;
 
@@ -532,7 +589,7 @@ fn create_llm_provider(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| MythicError::Config("OpenRouter API key missing".to_string()))?;
 
-            Ok(Box::new(OpenRouterProvider::new(http, api_key)))
+            Ok(Box::new(OpenRouterProvider::new(http, api_key)?))
         }
         ProviderAdapter::Ollama => {
             let base_url = config.config
@@ -631,13 +688,34 @@ pub async fn generate_raw(
     drop(state_guard);
 
     let provider_config = get_default_llm_provider(&db).await?;
-    let model_id = model.unwrap_or_else(|| {
-        provider_config.config
-            .get("model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("meta-llama/llama-4-maverick")
-            .to_string()
-    });
+    let model_id = match model {
+        Some(m) if !m.is_empty() && m != "unknown" => m,
+        _ => {
+            let stored = provider_config.config
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !stored.is_empty() && stored != "unknown" {
+                stored.to_string()
+            } else {
+                // Fall back to first enabled model for this provider
+                let first_enabled: Option<(String,)> = sqlx::query_as(
+                    "SELECT model_id FROM enabled_models WHERE provider_id = ? AND enabled = 1 LIMIT 1"
+                )
+                .bind(&provider_config.id)
+                .fetch_optional(&db)
+                .await?;
+                match first_enabled {
+                    Some((m,)) => m,
+                    None => return Err(MythicError::Config(
+                        "No model selected. Go to AI Studio \u{2192} Models, enable at least one model.".to_string()
+                    )),
+                }
+            }
+        }
+    };
+
+
 
     let gen_params = GenerationParams {
         max_tokens: max_tokens.unwrap_or(512),

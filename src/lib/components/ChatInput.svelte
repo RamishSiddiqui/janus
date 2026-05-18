@@ -113,7 +113,7 @@
           <div class="model-list">
             {#if filteredModels.length === 0}
               <div class="model-empty">
-                {availableModels.length === 0 ? 'Loading models...' : 'No matches'}
+              {availableModels.length === 0 ? 'No enabled models — go to AI Studio → Models' : 'No matches'}
               </div>
             {:else}
               {#each filteredModels as model}

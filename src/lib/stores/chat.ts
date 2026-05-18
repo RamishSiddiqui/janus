@@ -8,6 +8,7 @@ import type { Message, ConversationPreview } from '$lib/types';
 import { browser } from '$app/environment';
 import { error as toastError } from '$lib/stores/toast';
 import { settings } from '$lib/stores/settings';
+import type { CharacterState } from '$lib/services/ipc';
 
 // Detect if we're running inside Tauri (desktop app) or browser (dev mode)
 const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -45,6 +46,10 @@ export const activeCharacterId = derived(
   ($conv) => $conv?.characterId ?? null
 );
 
+// Live emotional state for the active character+conversation.
+// Updated reactively after each stream completes — subscribed to by EmotionHUD.
+export const characterEmotionState = writable<CharacterState | null>(null);
+
 // --- Actions ---
 
 // Pagination state
@@ -59,11 +64,13 @@ export async function loadConversations() {
     // DEV MODE ONLY — Mock data for browser preview (never runs in production Tauri builds)
     if (import.meta.env.DEV) {
       conversations.set([
-        { id: '1', characterId: null, characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'Are you a first-year too? This place is a labyrinth...', time: '2m' },
-        { id: '2', characterId: null, characterName: 'Rin', avatarColor: 'linear-gradient(135deg, #EC4899, #BF40FF)', avatarUrl: null, preview: 'What\'s the job, and how illegal is it?', time: '1h' },
-        { id: '3', characterId: null, characterName: 'Saffron Emberheart', avatarColor: 'linear-gradient(135deg, #F43F5E, #F59E0B)', avatarUrl: null, preview: 'The answer is on page 347 of Aldric\'s Third...', time: '3d' },
-        { id: '4', characterId: null, characterName: 'Kai', avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)', avatarUrl: null, preview: 'Sit. Put your phone on the table — I need to check...', time: '5d' },
-        { id: '5', characterId: null, characterName: 'Ryker', avatarColor: 'linear-gradient(135deg, #EF4444, #F59E0B)', avatarUrl: null, preview: 'Nobody comes to Level 12 looking that clean...', time: '1w' },
+        { id: '1', characterId: 'ch-aria', characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'Are you a first-year too? This place is a labyrinth...', time: '2m' },
+        { id: '6', characterId: 'ch-aria', characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'The Enchanted Library — Chapter 2', time: '1h',
+          additionalCharacters: [{ id: 'ch-kai', name: 'Kai', description: 'Enigmatic shadow mage with ties to the underground arcane network', avatarUrl: null, avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }] },
+        { id: '2', characterId: 'ch-rin', characterName: 'Rin', avatarColor: 'linear-gradient(135deg, #EC4899, #BF40FF)', avatarUrl: null, preview: 'What\'s the job, and how illegal is it?', time: '1h' },
+        { id: '3', characterId: 'ch-saffron', characterName: 'Saffron Emberheart', avatarColor: 'linear-gradient(135deg, #F43F5E, #F59E0B)', avatarUrl: null, preview: 'The answer is on page 347 of Aldric\'s Third...', time: '3d' },
+        { id: '4', characterId: 'ch-kai', characterName: 'Kai', avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)', avatarUrl: null, preview: 'Sit. Put your phone on the table — I need to check...', time: '5d' },
+        { id: '5', characterId: 'ch-ryker', characterName: 'Ryker', avatarColor: 'linear-gradient(135deg, #EF4444, #F59E0B)', avatarUrl: null, preview: 'Nobody comes to Level 12 looking that clean...', time: '1w' },
       ]);
       activeConversationId.set('1');
     }
@@ -149,6 +156,43 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         }
       }
 
+      let additionalCharacters: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[] | undefined = undefined;
+
+      if (conv.shared_character_ids) {
+        additionalCharacters = [];
+        const sharedIds = conv.shared_character_ids.split(',');
+        for (const sharedId of sharedIds) {
+          try {
+            const char = await ipc.getCharacter(sharedId);
+            let sharedAvatarUrl: string | null = null;
+            if (char.avatar_path) {
+              if (avatarCache.has(char.avatar_path)) {
+                sharedAvatarUrl = avatarCache.get(char.avatar_path)!;
+              } else {
+                try {
+                  const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+                  const bytes = await readFile(char.avatar_path, { baseDir: BaseDirectory.AppData });
+                  const ext = char.avatar_path.split('.').pop()?.toLowerCase() || 'jpeg';
+                  const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+                  const blob = new Blob([bytes], { type: mime });
+                  sharedAvatarUrl = URL.createObjectURL(blob);
+                  avatarCache.set(char.avatar_path, sharedAvatarUrl);
+                } catch { /* missing */ }
+              }
+            }
+            let charDesc = '';
+            try { charDesc = JSON.parse(char.data)?.description || ''; } catch {}
+            additionalCharacters.push({
+              id: char.id,
+              name: char.name,
+              description: charDesc,
+              avatarUrl: sharedAvatarUrl,
+              avatarColor: getAvatarColor(char.name),
+            });
+          } catch { /* missing character */ }
+        }
+      }
+
       // Calculate relative time
       const time = getRelativeTime(conv.updated_at);
 
@@ -160,12 +204,13 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         avatarUrl,
         preview: conv.title,
         time,
+        additionalCharacters,
       };
     })
   );
 }
 
-/** Loads messages for the active conversation. */
+/** Loads messages for the active conversation, showing only the active branch chain. */
 export async function loadMessages(conversationId: string) {
   // Reset auto-memory throttle on conversation switch
   import('$lib/services/memory-extractor').then(m => m.resetCounter()).catch(() => {});
@@ -177,9 +222,16 @@ export async function loadMessages(conversationId: string) {
 
   const ipc = await import('$lib/services/ipc');
   try {
-    const msgs = await ipc.getConversationMessages(conversationId);
+    // Fetch all messages AND the conversation (for active_message_id) in parallel
+    const [msgs, conv] = await Promise.all([
+      ipc.getConversationMessages(conversationId),
+      ipc.getConversation(conversationId),
+    ]);
 
-    // Group messages by parent_id to compute sibling info
+    // Build lookup maps
+    const byId = new Map(msgs.map(m => [m.id, m]));
+
+    // Group all messages by parent_id to compute sibling counts at each branch point
     const byParent = new Map<string, typeof msgs>();
     for (const m of msgs) {
       const key = m.parent_id ?? '__root__';
@@ -187,7 +239,36 @@ export async function loadMessages(conversationId: string) {
       byParent.get(key)!.push(m);
     }
 
-    messages.set(msgs.map(m => {
+    // Walk BACKWARD from active_message_id to build the active branch chain (root → tip)
+    // If no active_message_id is set, fall back to showing all root-level messages as-is
+    const activeTipId = conv.active_message_id;
+    let activePath: typeof msgs;
+
+    if (activeTipId && byId.has(activeTipId)) {
+      // Walk from tip → root collecting ancestor IDs
+      const pathIds: string[] = [];
+      let current: string | null = activeTipId;
+      const visited = new Set<string>();
+      while (current && byId.has(current) && !visited.has(current)) {
+        visited.add(current);
+        pathIds.unshift(current);
+        current = byId.get(current)!.parent_id;
+      }
+      activePath = pathIds.map(id => byId.get(id)!);
+    } else {
+      // Fallback: show only the first child at each branch level (depth-first active path)
+      activePath = [];
+      let currentParentKey = '__root__';
+      while (byParent.has(currentParentKey)) {
+        const children = byParent.get(currentParentKey)!;
+        const next = children[0];
+        activePath.push(next);
+        currentParentKey = next.id;
+      }
+    }
+
+    // Annotate each message on the active path with sibling navigator info
+    messages.set(activePath.map(m => {
       const key = m.parent_id ?? '__root__';
       const siblings = byParent.get(key) ?? [];
       const siblingIndex = siblings.findIndex(s => s.id === m.id);
@@ -203,6 +284,19 @@ export async function loadMessages(conversationId: string) {
         currentAlternate: siblings.length > 1 ? siblingIndex + 1 : undefined,
       };
     }));
+
+    // Pre-load emotional state for immediate HUD display on conversation open
+    try {
+      const charId = conv.character_id;
+      if (charId) {
+        const existingState = await ipc.getCharacterState(charId, conversationId);
+        characterEmotionState.set(existingState);
+      } else {
+        characterEmotionState.set(null);
+      }
+    } catch {
+      characterEmotionState.set(null);
+    }
   } catch (err) {
     console.error(`Failed to load messages for conversation ${conversationId}:`, err);
     const detail = (err as any)?.message ?? String(err);
@@ -210,6 +304,7 @@ export async function loadMessages(conversationId: string) {
     messages.set([]);
   }
 }
+
 
 /** Sends a user message and initiates streaming response from the backend. */
 export async function sendMessage(conversationId: string, content: string, model?: string) {
@@ -224,9 +319,9 @@ export async function sendMessage(conversationId: string, content: string, model
   }
 
   const ipc = await import('$lib/services/ipc');
+  const tempUserId = crypto.randomUUID();
   try {
     // Add user message to local state immediately for responsiveness
-    const tempUserId = crypto.randomUUID();
     messages.update(msgs => [...msgs, {
       id: tempUserId,
       role: 'user' as const,
@@ -293,6 +388,28 @@ export async function sendMessage(conversationId: string, content: string, model
             }
           })();
         }
+
+        // --- Emotional state update pipeline ---
+        // Runs fire-and-forget after every response regardless of memory scope setting.
+        // After the LLM infers the new state and persists it, we push it into
+        // characterEmotionState so the EmotionHUD reactively updates without a page reload.
+        if (event.content) {
+          (async () => {
+            try {
+              const charId = get(activeCharacterId);
+              if (!charId) return;
+              const { updateEmotionalState } = await import('$lib/services/emotion-updater');
+              await updateEmotionalState(charId, conversationId, content, event.content);
+              // Push the freshly-saved state into the reactive store so all HUDs update
+              const ipcMod = await import('$lib/services/ipc');
+              const newState = await ipcMod.getCharacterState(charId, conversationId);
+              characterEmotionState.set(newState);
+            } catch (err) {
+              console.warn('[Mythic] Emotion update failed:', err);
+            }
+          })();
+        }
+
       } else if (event.event_type === 'error') {
         console.error('Stream error:', event.content);
         toastError(`AI response failed: ${event.content}`);

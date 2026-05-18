@@ -54,8 +54,9 @@ pub async fn list_conversations(
     let offset = offset.unwrap_or(0);
 
     let rows = sqlx::query_as::<_, ConversationRow>(
-        "SELECT id, title, character_id, active_message_id, memory_scope, created_at, updated_at
-         FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+        "SELECT c.id, c.title, c.character_id, c.active_message_id, c.memory_scope, c.created_at, c.updated_at,
+         (SELECT GROUP_CONCAT(DISTINCT m.character_id) FROM memories m WHERE m.conversation_id = c.id AND m.character_id != c.character_id AND m.character_id IS NOT NULL) as shared_character_ids
+         FROM conversations c ORDER BY c.updated_at DESC LIMIT ? OFFSET ?"
     )
     .bind(limit)
     .bind(offset)
@@ -195,6 +196,7 @@ struct ConversationRow {
     memory_scope: String,
     created_at: String,
     updated_at: String,
+    shared_character_ids: Option<String>,
 }
 
 impl From<ConversationRow> for Conversation {
@@ -205,6 +207,7 @@ impl From<ConversationRow> for Conversation {
             character_id: row.character_id,
             active_message_id: row.active_message_id,
             memory_scope: row.memory_scope,
+            shared_character_ids: row.shared_character_ids,
             created_at: parse_datetime(&row.created_at),
             updated_at: parse_datetime(&row.updated_at),
         }
@@ -257,8 +260,9 @@ pub(crate) async fn get_conversation_by_id(
     id: &str,
 ) -> Result<Conversation, MythicError> {
     let row = sqlx::query_as::<_, ConversationRow>(
-        "SELECT id, title, character_id, active_message_id, memory_scope, created_at, updated_at
-         FROM conversations WHERE id = ?"
+        "SELECT c.id, c.title, c.character_id, c.active_message_id, c.memory_scope, c.created_at, c.updated_at,
+         (SELECT GROUP_CONCAT(DISTINCT m.character_id) FROM memories m WHERE m.conversation_id = c.id AND m.character_id != c.character_id AND m.character_id IS NOT NULL) as shared_character_ids
+         FROM conversations c WHERE c.id = ?"
     )
     .bind(id)
     .fetch_optional(db)

@@ -21,9 +21,104 @@
   let searchQuery = $state('');
   let searchFocused = $state(false);
   let showConversations = $derived(currentPath === '/');
+
+  // AI Studio accordion — persisted in localStorage
+  let aiStudioOpen = $state(
+    browser ? (localStorage.getItem('sidebar-ai-studio-open') !== 'false') : true
+  );
+  function toggleAiStudio() {
+    aiStudioOpen = !aiStudioOpen;
+    if (browser) localStorage.setItem('sidebar-ai-studio-open', String(aiStudioOpen));
+  }
+
   let filteredConversations = $derived(
     searchQuery ? $conversations.filter(c => c.characterName.toLowerCase().includes(searchQuery.toLowerCase())) : $conversations
   );
+
+  // --- Character Grouping ---
+  interface CharacterGroup {
+    characterName: string;
+    characterId: string | null;
+    avatarColor: string;
+    avatarUrl: string | null;
+    conversations: ConversationPreview[];
+    hasActiveConv: boolean;
+  }
+
+  // Tracks which groups user has explicitly toggled. 
+  // Key = characterName, value = desired state (true=open, false=closed)
+  let manualToggles = $state<Map<string, boolean>>(new Map());
+  let sharedExpanded = $state(true);
+
+  let ungroupedConversations = $derived.by(() => {
+    return filteredConversations.filter(c => !c.characterId);
+  });
+
+  // Shared conversations: those with additionalCharacters — shown in dedicated Alliances section
+  let sharedConversations = $derived.by(() => {
+    return filteredConversations.filter(c => c.characterId && (c.additionalCharacters?.length ?? 0) > 0);
+  });
+  let hasActiveShared = $derived(sharedConversations.some(c => c.id === $activeConversationId));
+
+  let characterGroups = $derived.by(() => {
+    const groups = new Map<string, CharacterGroup>();
+    const convs = filteredConversations;
+
+    // Helper to ensure a group exists for a character
+    function ensureGroup(name: string, id: string | null, color: string, url: string | null) {
+      if (!groups.has(name)) {
+        groups.set(name, {
+          characterName: name,
+          characterId: id,
+          avatarColor: color,
+          avatarUrl: url,
+          conversations: [],
+          hasActiveConv: false,
+        });
+      }
+    }
+
+    for (const conv of convs) {
+      // Skip conversations without a character (shown ungrouped)
+      if (!conv.characterId) continue;
+      // Skip multi-character conversations (shown in Alliances section)
+      if ((conv.additionalCharacters?.length ?? 0) > 0) continue;
+
+      const primaryKey = conv.characterName || 'Unknown';
+      ensureGroup(primaryKey, conv.characterId, conv.avatarColor, conv.avatarUrl);
+
+      const primaryGroup = groups.get(primaryKey)!;
+      if (!primaryGroup.conversations.some(c => c.id === conv.id)) {
+        primaryGroup.conversations.push(conv);
+      }
+      if ($activeConversationId === conv.id) {
+        primaryGroup.hasActiveConv = true;
+      }
+    }
+
+    // Sort: active character first, then alphabetical. Skip groups with 0 solo convs.
+    return [...groups.values()]
+      .filter(g => g.conversations.length > 0)
+      .sort((a, b) => {
+        if (a.hasActiveConv && !b.hasActiveConv) return -1;
+        if (!a.hasActiveConv && b.hasActiveConv) return 1;
+        return a.characterName.localeCompare(b.characterName);
+      });
+  });
+
+  function toggleGroup(name: string) {
+    const next = new Map(manualToggles);
+    const currentlyExpanded = isGroupExpanded(name, characterGroups.find(g => g.characterName === name));
+    next.set(name, !currentlyExpanded);
+    manualToggles = next;
+  }
+
+  function isGroupExpanded(name: string, group?: CharacterGroup): boolean {
+    // If user manually toggled this group, use that state
+    if (manualToggles.has(name)) return manualToggles.get(name)!;
+    // Default: active character's group starts expanded, others collapsed
+    return group?.hasActiveConv ?? false;
+  }
 
   // --- Deep Search State ---
   let searchResults = $state<SearchResult[]>([]);
@@ -166,7 +261,8 @@
 
   <!-- Nav -->
   <nav class="sb-nav" aria-label="Main navigation">
-    {#each navItems.filter(i => i.path !== '/settings') as item (item.path)}
+    <!-- Flat (ungrouped) items first -->
+    {#each navItems.filter(i => i.path !== '/settings' && !i.group) as item (item.path)}
       {@const isActive = currentPath === item.path}
       <button class="sb-nav-item" class:active={isActive} onclick={() => onNavigate(item.path)}
         title={collapsed ? item.label : undefined} aria-current={isActive ? 'page' : undefined}>
@@ -175,6 +271,52 @@
         {#if !collapsed}<span class="nav-text">{item.label}</span>{/if}
       </button>
     {/each}
+
+    <!-- AI Studio accordion group -->
+    {#if !collapsed}
+      {@const studioItems = navItems.filter(i => i.group === 'ai-studio')}
+      {@const studioActive = studioItems.some(i => currentPath.startsWith(i.path))}
+      {@const studioOpen = aiStudioOpen || studioActive}
+      <div class="nav-group" class:group-active={studioActive}>
+        <button class="nav-group-header" onclick={toggleAiStudio}
+          aria-expanded={studioOpen} aria-label="AI Studio section">
+          <span class="nav-group-icon">
+            <Icon name="cpu" size={15} color={studioActive ? '#c4a1ff' : '#6b6b8a'} />
+          </span>
+          <span class="nav-group-label" class:active={studioActive}>AI Studio</span>
+          <span class="nav-group-chevron" class:open={studioOpen}>
+            <Icon name="chevron-right" size={13} color={studioActive ? '#c4a1ff' : '#5a5a7a'} />
+          </span>
+        </button>
+        {#if studioOpen}
+          <div class="nav-sub-list">
+            <div class="nav-sub-rail"></div>
+            {#each studioItems as item (item.path)}
+              {@const isActive = currentPath === item.path || currentPath.startsWith(item.path + '/')}
+              <button class="nav-sub-item" class:active={isActive}
+                onclick={() => onNavigate(item.path)}
+                aria-current={isActive ? 'page' : undefined}>
+                {#if isActive}<span class="nav-sub-accent"></span>{/if}
+                <span class="nav-sub-icon">
+                  <Icon name={item.icon} size={14} color={isActive ? '#c4a1ff' : '#5a5a7a'} />
+                </span>
+                <span class="nav-sub-text">{item.label}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <!-- Collapsed: show sub-items as icon-only -->
+      {#each navItems.filter(i => i.group === 'ai-studio') as item (item.path)}
+        {@const isActive = currentPath === item.path}
+        <button class="sb-nav-item" class:active={isActive} onclick={() => onNavigate(item.path)}
+          title={item.label} aria-current={isActive ? 'page' : undefined}>
+          {#if isActive}<span class="nav-glow-bar"></span>{/if}
+          <span class="nav-icon"><Icon name={item.icon} size={16} color={isActive ? '#c4a1ff' : '#6b6b8a'} /></span>
+        </button>
+      {/each}
+    {/if}
   </nav>
 
   {#if showConversations && !collapsed}
@@ -233,8 +375,9 @@
       </div>
     {:else}
       <!-- Conversation List (hidden during search) -->
+      <!-- Character-Grouped Conversation List (hidden during search) -->
       <div class="sb-section-head">
-        <span class="section-tag">Recent</span>
+        <span class="section-tag">Chats</span>
         <span class="section-count">{filteredConversations.length}</span>
       </div>
 
@@ -243,37 +386,123 @@
           {#each Array(4) as _, i}
             <div class="conv-skeleton"><Skeleton variant="circle" width="38px" height="38px" /><div class="skel-lines"><Skeleton variant="text" width="65%" /><Skeleton variant="text" width="85%" /></div></div>
           {/each}
-        {:else if filteredConversations.length === 0}
+        {:else if characterGroups.length === 0 && ungroupedConversations.length === 0 && sharedConversations.length === 0}
           <div class="conv-empty"><span class="conv-empty-icon">💬</span><span>No conversations yet</span><span class="conv-empty-sub">Start one from the gallery</span></div>
         {:else}
-          {#each filteredConversations as conv, i (conv.id)}
+          <!-- Ungrouped conversations (no character) -->
+          {#each ungroupedConversations as conv (conv.id)}
             {@const isActive = $activeConversationId === conv.id}
-            <button class="conv-card" class:active={isActive}
+            <button class="cg-conv ungrouped" class:active={isActive}
               onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
               oncontextmenu={(e) => openContextMenu(e, conv.id)}
-              style="animation-delay: {i * 40}ms"
               aria-current={isActive ? 'true' : undefined}>
-              <div class="conv-ava-wrap">
-                <div class="conv-ava" style="background:{conv.avatarColor}">
-                  {#if conv.avatarUrl}
-                    <img src={conv.avatarUrl} alt={conv.characterName} class="conv-ava-img" />
-                  {/if}
-                </div>
-                {#if isActive}<span class="conv-pulse"></span>{/if}
-              </div>
-              <div class="conv-body">
-                {#if renamingId === conv.id}
-                  <input class="rename-input" bind:value={renameValue}
-                    onblur={() => finishRename(conv.id)}
-                    onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
-                {:else}
-                  <span class="conv-title">{conv.characterName}</span>
-                  <span class="conv-sub">{conv.preview}</span>
-                {/if}
-              </div>
-              <span class="conv-meta">{conv.time}</span>
-              {#if isActive}<div class="conv-active-glow"></div>{/if}
+              <div class="cg-conv-accent"></div>
+              <span class="cg-conv-title">{conv.preview || conv.characterName || 'New Chat'}</span>
+              <span class="cg-conv-time">{conv.time}</span>
             </button>
+          {/each}
+
+          <!-- ══ Crossovers — Multi-Character Conversations ══ -->
+          {#if sharedConversations.length > 0}
+            <div class="crossover-section" class:has-active={hasActiveShared}>
+              <button class="crossover-header" onclick={() => sharedExpanded = !sharedExpanded} aria-expanded={sharedExpanded}>
+                <div class="crossover-icon">
+                  <Icon name="users" size={14} color="#00d4e0" />
+                  <div class="crossover-icon-glow"></div>
+                </div>
+                <div class="cg-info">
+                  <span class="crossover-title">Crossovers</span>
+                  <span class="cg-count">{sharedConversations.length} {sharedConversations.length === 1 ? 'chat' : 'chats'}</span>
+                </div>
+                <div class="cg-chevron" class:rotated={sharedExpanded}>
+                  <Icon name="chevron-down" size={12} color="#00d4e0" />
+                </div>
+              </button>
+
+              {#if sharedExpanded}
+                <div class="crossover-list">
+                  {#each sharedConversations as conv, ci (conv.id)}
+                    {@const isActive = $activeConversationId === conv.id}
+                    <button class="crossover-conv" class:active={isActive}
+                      onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
+                      oncontextmenu={(e) => openContextMenu(e, conv.id)}
+                      style="animation-delay: {ci * 40}ms"
+                      aria-current={isActive ? 'true' : undefined}>
+                      <div class="crossover-accent"></div>
+                      <div class="crossover-badges">
+                        <div class="crossover-ava" style="background:{conv.avatarColor}">
+                          {#if conv.avatarUrl}<img src={conv.avatarUrl} alt={conv.characterName} />{/if}
+                        </div>
+                        {#each conv.additionalCharacters!.slice(0, 3) as p, pi}
+                          <div class="crossover-ava" style="background:{p.avatarColor}; margin-left: -8px; z-index: {5 - pi}">
+                            {#if p.avatarUrl}<img src={p.avatarUrl} alt={p.name} />{/if}
+                          </div>
+                        {/each}
+                      </div>
+                      <div class="crossover-body">
+                        <span class="crossover-conv-title">{conv.preview || 'Untitled'}</span>
+                        <span class="crossover-members">{conv.characterName} & {conv.additionalCharacters!.map(c => c.name).join(', ')}</span>
+                      </div>
+                      <span class="cg-conv-time">{conv.time}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Character groups (solo conversations only) -->
+          {#each characterGroups as group, gi (group.characterName)}
+            {@const expanded = isGroupExpanded(group.characterName, group)}
+            <div class="char-group" class:expanded class:has-active={group.hasActiveConv}>
+              <button class="char-group-header" 
+                onclick={() => toggleGroup(group.characterName)}
+                aria-expanded={expanded}>
+                <div class="cg-ava-wrap">
+                  <div class="cg-ava" style="background:{group.avatarColor}">
+                    {#if group.avatarUrl}
+                      <img src={group.avatarUrl} alt={group.characterName} class="cg-ava-img" />
+                    {/if}
+                  </div>
+                  {#if group.hasActiveConv}<span class="cg-active-dot"></span>{/if}
+                </div>
+                <div class="cg-info">
+                  <span class="cg-name">{group.characterName}</span>
+                  <span class="cg-count">{group.conversations.length} {group.conversations.length === 1 ? 'chat' : 'chats'}</span>
+                </div>
+                <div class="cg-chevron" class:rotated={expanded}>
+                  <Icon name="chevron-down" size={12} color="#6b6b8a" />
+                </div>
+              </button>
+
+              {#if expanded}
+                <div class="cg-list">
+                  {#each group.conversations as conv, ci (conv.id)}
+                    {@const isActive = $activeConversationId === conv.id}
+                    <button class="cg-conv" class:active={isActive}
+                      onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
+                      oncontextmenu={(e) => openContextMenu(e, conv.id)}
+                      style="animation-delay: {ci * 30}ms"
+                      aria-current={isActive ? 'true' : undefined}>
+                      <div class="cg-conv-accent"></div>
+                      <div class="cg-conv-dot"></div>
+                      {#if renamingId === conv.id}
+                        <input class="rename-input" bind:value={renameValue}
+                          onblur={() => finishRename(conv.id)}
+                          onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
+                      {:else}
+                        <div class="cg-conv-body">
+                          <div class="cg-conv-head">
+                            <span class="cg-conv-title">{conv.preview || 'Untitled'}</span>
+                            <span class="cg-conv-time">{conv.time}</span>
+                          </div>
+                        </div>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           {/each}
 
           {#if $hasMoreConversations}
@@ -435,6 +664,85 @@
   .nav-text { white-space: nowrap; }
   .collapsed .sb-nav-item { justify-content: center; padding: 10px; }
 
+  /* ── AI Studio Accordion Group ── */
+  .nav-group {
+    border-radius: 10px;
+    border: 1px solid transparent;
+    overflow: hidden;
+    transition: border-color 200ms, background 200ms;
+  }
+  .nav-group.group-active {
+    background: rgba(139,92,246,0.04);
+    border-color: rgba(139,92,246,0.08);
+  }
+  .nav-group-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; width: 100%;
+    background: transparent; border: none; cursor: pointer;
+    font-family: var(--font-body); text-align: left;
+    transition: background 160ms;
+    border-radius: 10px;
+  }
+  .nav-group-header:hover { background: rgba(139,92,246,0.06); }
+  .nav-group-icon { display: flex; align-items: center; width: 20px; height: 20px; flex-shrink: 0; }
+  .nav-group-label {
+    flex: 1; font-size: var(--text-md); font-weight: 500; color: #6b6b8a;
+    white-space: nowrap; transition: color 160ms;
+  }
+  .nav-group-label.active { color: #c4a1ff; font-weight: 600; }
+  .nav-group-chevron {
+    display: flex; flex-shrink: 0;
+    transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .nav-group-chevron.open { transform: rotate(90deg); }
+
+  .nav-sub-list {
+    position: relative;
+    padding: 2px 0 6px 14px;
+    display: flex; flex-direction: column; gap: 1px;
+    animation: subListIn 200ms ease both;
+  }
+  @keyframes subListIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .nav-sub-rail {
+    position: absolute; left: 22px; top: 4px; bottom: 8px;
+    width: 1.5px;
+    background: linear-gradient(180deg, rgba(139,92,246,0.2) 0%, rgba(139,92,246,0.04) 100%);
+    border-radius: 2px;
+  }
+  .nav-sub-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px 7px 20px;
+    border-radius: 8px; width: 100%;
+    background: transparent; border: 1px solid transparent;
+    font-family: var(--font-body); text-align: left; cursor: pointer;
+    position: relative; transition: all 150ms;
+  }
+  .nav-sub-item:hover {
+    background: rgba(139,92,246,0.07);
+    border-color: rgba(139,92,246,0.06);
+  }
+  .nav-sub-item.active {
+    background: linear-gradient(90deg, rgba(139,92,246,0.14) 0%, rgba(139,92,246,0.04) 100%);
+    border-color: rgba(139,92,246,0.12);
+  }
+  .nav-sub-accent {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 2.5px; height: 16px; border-radius: 0 4px 4px 0;
+    background: linear-gradient(180deg, #8B5CF6, #bf40ff);
+    box-shadow: 0 0 10px rgba(139,92,246,0.7);
+    animation: barPulse 2.5s ease-in-out infinite;
+  }
+  .nav-sub-icon { display: flex; align-items: center; width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-sub-text {
+    font-size: 13px; font-weight: 500; color: #6b6b8a;
+    white-space: nowrap; transition: color 150ms;
+  }
+  .nav-sub-item:hover .nav-sub-text { color: #c8c8e0; }
+  .nav-sub-item.active .nav-sub-text { color: #e8e0ff; font-weight: 600; }
+
   /* ── Bottom-pinned section ── */
   .sb-bottom {
     margin-top: auto;
@@ -506,7 +814,7 @@
 
   /* ── Conversation List ── */
   .sb-convos {
-    display: flex; flex-direction: column; gap: 3px;
+    display: flex; flex-direction: column; gap: 6px;
     overflow-y: auto; flex: 1; min-height: 0;
     position: relative; z-index: 1; padding-right: 2px;
   }
@@ -515,65 +823,299 @@
   .sb-convos::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 3px; }
   .sb-convos::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.3); }
 
-  .conv-card {
-    display: flex; align-items: center; gap: 11px;
-    padding: 10px 12px; border-radius: 12px;
-    border: 1px solid transparent; background: transparent;
-    text-align: left; width: 100%; font-family: var(--font-body);
-    cursor: pointer; position: relative; overflow: hidden;
-    animation: cardSlideIn 350ms var(--ease-out) both;
+  /* ── Character Group ── */
+  .char-group {
+    border-radius: 14px;
+    background: transparent;
+    border: 1px solid transparent;
+    overflow: hidden;
+    transition: all 250ms var(--ease-out);
+  }
+  .char-group.has-active {
+    background: rgba(139,92,246,0.03);
+    border-color: rgba(139,92,246,0.06);
+  }
+  .char-group:hover:not(.has-active) {
+    background: rgba(139,92,246,0.02);
+  }
+
+  /* ── Group Header ── */
+  .char-group-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    width: 100%; text-align: left; border: none;
+    background: transparent; font-family: var(--font-body);
+    cursor: pointer; position: relative;
+    border-radius: 14px;
     transition: all 180ms var(--ease-out);
   }
-  @keyframes cardSlideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
-
-  .conv-card:hover {
+  .char-group-header:hover {
     background: rgba(139,92,246,0.06);
-    border-color: rgba(139,92,246,0.08);
-    transform: translateX(2px);
   }
-  .conv-card.active {
-    background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(191,64,255,0.04));
-    border-color: rgba(139,92,246,0.15);
-  }
-  .conv-active-glow {
-    position: absolute; inset: 0; pointer-events: none; border-radius: 12px;
-    box-shadow: inset 0 0 20px rgba(139,92,246,0.06);
+  .char-group-header:active {
+    transform: scale(0.98);
   }
 
-  .conv-ava-wrap { position: relative; flex-shrink: 0; }
-  .conv-ava {
-    width: 38px; height: 38px; min-width: 38px; min-height: 38px;
-    border-radius: 50%; aspect-ratio: 1; overflow: hidden;
-    transition: box-shadow 200ms var(--ease-out), transform 200ms var(--ease-out);
+  .cg-ava-wrap { position: relative; flex-shrink: 0; }
+  .cg-ava {
+    width: 36px; height: 36px; min-width: 36px; min-height: 36px;
+    border-radius: 10px; overflow: hidden;
+    transition: transform 200ms var(--ease-spring), box-shadow 200ms var(--ease-out);
+    border: 2px solid rgba(139,92,246,0.08);
   }
-  .conv-ava-img {
-    width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%;
+  .cg-ava-img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
-  .conv-card:hover .conv-ava { transform: scale(1.05); }
-  .conv-card.active .conv-ava { box-shadow: 0 0 14px rgba(139,92,246,0.3); }
+  .char-group.has-active .cg-ava {
+    border-color: rgba(139,92,246,0.3);
+    box-shadow: 0 0 12px rgba(139,92,246,0.15);
+  }
+  .char-group-header:hover .cg-ava {
+    transform: scale(1.06);
+  }
 
-  .conv-pulse {
-    position: absolute; bottom: -1px; right: -1px;
-    width: 11px; height: 11px; border-radius: 50%;
+  /* ══ Crossovers Section ══ */
+  .crossover-section {
+    border-radius: 14px;
+    background: rgba(0,212,224,0.02);
+    border: 1px solid rgba(0,212,224,0.06);
+    overflow: hidden;
+    transition: all 250ms var(--ease-out);
+  }
+  .crossover-section.has-active {
+    background: rgba(0,212,224,0.04);
+    border-color: rgba(0,212,224,0.12);
+  }
+
+  .crossover-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; width: 100%; text-align: left; border: none;
+    background: transparent; font-family: var(--font-body);
+    cursor: pointer; border-radius: 14px;
+    transition: all 180ms var(--ease-out);
+  }
+  .crossover-header:hover { background: rgba(0,212,224,0.06); }
+  .crossover-header:active { transform: scale(0.98); }
+
+  .crossover-icon {
+    position: relative;
+    width: 36px; height: 36px; min-width: 36px; display: flex;
+    align-items: center; justify-content: center;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(0,212,224,0.12), rgba(139,92,246,0.06));
+    border: 1.5px solid rgba(0,212,224,0.15);
+  }
+  .crossover-icon-glow {
+    position: absolute; inset: -4px; border-radius: 14px;
+    background: radial-gradient(circle, rgba(0,212,224,0.2) 0%, transparent 70%);
+    pointer-events: none; opacity: 0.5;
+    animation: crossoverPulse 3s ease-in-out infinite;
+  }
+  @keyframes crossoverPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+
+  .crossover-title {
+    font-size: var(--text-md); font-weight: 600; color: #00d4e0;
+    letter-spacing: -0.1px;
+  }
+  .crossover-section.has-active .crossover-title { color: #00f2ff; }
+
+  .crossover-list {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 2px 6px 8px;
+    animation: listExpand 250ms var(--ease-out) both;
+  }
+
+  .crossover-conv {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    border-radius: 10px; width: 100%; text-align: left;
+    border: none; background: transparent;
+    font-family: var(--font-body); cursor: pointer;
+    position: relative; overflow: hidden;
+    transition: all 150ms var(--ease-out);
+    animation: convFadeIn 200ms var(--ease-out) both;
+  }
+  .crossover-conv:hover { background: rgba(0,212,224,0.06); }
+  .crossover-conv.active {
+    background: rgba(0,212,224,0.08);
+    box-shadow: inset 0 0 0 1px rgba(0,212,224,0.1);
+  }
+
+  /* Cyan accent bar */
+  .crossover-accent {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 0; border-radius: 3px;
+    background: linear-gradient(180deg, #00f2ff, #8B5CF6);
+    transition: height 200ms var(--ease-spring), box-shadow 200ms var(--ease-out);
+  }
+  .crossover-conv.active .crossover-accent {
+    height: 24px;
+    box-shadow: 0 0 10px rgba(0,242,255,0.3);
+  }
+
+  /* Overlapping avatar badges */
+  .crossover-badges {
+    display: flex; align-items: center; flex-shrink: 0;
+  }
+  .crossover-ava {
+    width: 26px; height: 26px; border-radius: 50%;
+    overflow: hidden; flex-shrink: 0;
+    border: 2px solid #0c0c1e;
+    transition: transform 200ms var(--ease-spring);
+  }
+  .crossover-ava:first-child { z-index: 10; }
+  .crossover-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .crossover-conv:hover .crossover-ava { transform: scale(1.08); }
+
+  .crossover-body {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .crossover-conv-title {
+    font-size: var(--text-sm); font-weight: 500; color: #8b8ba7;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: color 150ms;
+  }
+  .crossover-conv:hover .crossover-conv-title { color: #c8c8e0; }
+  .crossover-conv.active .crossover-conv-title { color: #e0f7fa; font-weight: 600; }
+
+  .crossover-members {
+    font-size: 9px; font-weight: 500; color: #4a7a7e;
+    font-family: var(--font-mono); letter-spacing: 0.2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: color 150ms;
+  }
+  .crossover-conv:hover .crossover-members { color: #6aafb5; }
+  .crossover-conv.active .crossover-members { color: #00d4e0; }
+
+  .cg-active-dot {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 10px; height: 10px; border-radius: 50%;
     background: #10B981; border: 2px solid #09091a;
     animation: pulse 2s ease-in-out infinite;
   }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.3); } 50% { box-shadow: 0 0 0 5px rgba(16,185,129,0); } }
 
-  .conv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .conv-title {
+  .cg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .cg-name {
     font-size: var(--text-md); font-weight: 600; color: #c8c8e0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: -0.1px;
   }
-  .conv-card.active .conv-title { color: #e8e0ff; }
-  .conv-card:not(.active) .conv-title { font-weight: 500; color: #8b8ba7; }
+  .char-group.has-active .cg-name { color: #e8e0ff; }
 
-  .conv-sub {
-    font-size: var(--text-sm); color: #5a5a7a;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .cg-count {
+    font-size: 10px; font-weight: 500; color: #5a5a7a;
+    font-family: var(--font-mono); letter-spacing: 0.3px;
   }
-  .conv-meta {
-    font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); flex-shrink: 0;
+
+  .cg-chevron {
+    display: flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; flex-shrink: 0;
+    transition: transform 250ms var(--ease-spring);
+    opacity: 0.5;
+  }
+  .cg-chevron.rotated { transform: rotate(180deg); }
+  .char-group-header:hover .cg-chevron { opacity: 1; }
+
+  /* ── Conversations Sub-list ── */
+  .cg-list {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 2px 6px 8px 22px;
+    position: relative;
+    animation: listExpand 250ms var(--ease-out) both;
+  }
+  @keyframes listExpand {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Rail line connecting conversations */
+  .cg-list::before {
+    content: '';
+    position: absolute;
+    left: 27px; top: 4px; bottom: 10px;
+    width: 1.5px;
+    background: linear-gradient(180deg, rgba(139,92,246,0.15) 0%, rgba(139,92,246,0.04) 100%);
+    border-radius: 2px;
+  }
+
+  /* ── Conversation Item (unified layout) ── */
+  .cg-conv {
+    display: flex; align-items: flex-start;
+    padding: 7px 10px 7px 18px;
+    border-radius: 8px; width: 100%;
+    text-align: left; border: none;
+    background: transparent; font-family: var(--font-body);
+    cursor: pointer; position: relative;
+    transition: all 150ms var(--ease-out);
+    animation: convFadeIn 200ms var(--ease-out) both;
+  }
+  @keyframes convFadeIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .cg-conv:hover { background: rgba(139,92,246,0.06); }
+  .cg-conv.active { background: rgba(139,92,246,0.1); }
+
+  /* Accent bar — always absolute, never in flow */
+  .cg-conv-accent {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 0; border-radius: 3px;
+    background: linear-gradient(180deg, #8B5CF6, #bf40ff);
+    transition: height 200ms var(--ease-spring), box-shadow 200ms var(--ease-out);
+  }
+  .cg-conv.active .cg-conv-accent {
+    height: 20px;
+    box-shadow: 0 0 8px rgba(139,92,246,0.4);
+  }
+
+  /* Dot connector — pinned to title line */
+  .cg-conv-dot {
+    position: absolute;
+    left: 3px; top: 14px;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(139,92,246,0.15);
+    transition: all 150ms var(--ease-out);
+  }
+  .cg-conv:hover .cg-conv-dot {
+    background: rgba(139,92,246,0.35);
+    transform: scale(1.3);
+  }
+  .cg-conv.active .cg-conv-dot {
+    background: #8B5CF6;
+    box-shadow: 0 0 6px rgba(139,92,246,0.5);
+  }
+
+  /* Content body */
+  .cg-conv-body {
+    display: flex; flex-direction: column; gap: 3px;
+    flex: 1; min-width: 0;
+  }
+  .cg-conv-head {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .cg-conv-head .cg-conv-title { flex: 1; }
+
+  .cg-conv-title {
+    font-size: var(--text-sm); font-weight: 500; color: #8b8ba7;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1;
+    transition: color 150ms;
+  }
+  .cg-conv:hover .cg-conv-title { color: #c8c8e0; }
+  .cg-conv.active .cg-conv-title { color: #e8e0ff; font-weight: 600; }
+
+  .cg-conv-time {
+    font-size: 10px; color: #4a4a6a; font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  /* Ungrouped (no character) conversations - flat items */
+  .cg-conv.ungrouped {
+    padding-left: 12px;
+    margin-bottom: 2px;
   }
 
   /* Empty */

@@ -21,12 +21,14 @@ pub struct OpenRouterProvider {
 }
 
 impl OpenRouterProvider {
-    pub fn new(http: reqwest::Client, api_key: &str) -> Self {
+    pub fn new(http: reqwest::Client, api_key: &str) -> Result<Self, crate::error::MythicError> {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&format!("Bearer {}", api_key))
-                .expect("Invalid API key format"),
+                .map_err(|_| crate::error::MythicError::Config(
+                    "OpenRouter API key contains invalid characters. Please check your key.".to_string()
+                ))?,
         );
         // OpenRouter recommends setting these for ranking/analytics
         headers.insert(
@@ -44,9 +46,9 @@ impl OpenRouterProvider {
             default_model: None,
         };
 
-        Self {
+        Ok(Self {
             client: OpenAiClient::new(http, config),
-        }
+        })
     }
 }
 

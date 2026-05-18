@@ -3,12 +3,16 @@
 
   let {
     characterName, modelName, avatarUrl = null, showContextPanel = true,
+    additionalCharacters = [],
     onTogglePanel, onGenerateScene,
   }: {
     characterName: string; modelName: string; avatarUrl?: string | null;
     showContextPanel?: boolean; onTogglePanel: () => void;
     onGenerateScene?: () => void;
+    additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
   } = $props();
+
+  let isMultiChar = $derived(additionalCharacters.length > 0);
 </script>
 
 <header class="ch">
@@ -24,6 +28,22 @@
         <span class="ch-model">Using {modelName}</span>
       </div>
     </div>
+
+    {#if isMultiChar}
+      <div class="ch-collab">
+        <div class="ch-collab-divider"></div>
+        <div class="ch-collab-group">
+          {#each additionalCharacters.slice(0, 3) as char}
+            <div class="ch-collab-ava" style="background:{char.avatarColor}" title={char.name}>
+              {#if char.avatarUrl}<img src={char.avatarUrl} alt={char.name} class="ch-collab-ava-img" />{/if}
+            </div>
+          {/each}
+          <span class="ch-collab-label">
+            {additionalCharacters.map(c => c.name).join(', ')}
+          </span>
+        </div>
+      </div>
+    {/if}
   </div>
   <div class="ch-right" role="toolbar" aria-label="Chat tools">
     <button class="ch-btn" title="Generate Scene" aria-label="Generate scene image"
@@ -79,6 +99,41 @@
   }
   @keyframes dotPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; } }
   .ch-model { font-size: var(--text-sm); color: #5a5a7a; font-family: var(--font-mono); }
+
+  /* ── Collaborator Pill ── */
+  .ch-collab {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .ch-collab-divider {
+    width: 1px; height: 28px;
+    background: linear-gradient(180deg, transparent, rgba(0,242,255,0.2), transparent);
+  }
+  .ch-collab-group {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 12px 5px 6px;
+    border-radius: 20px;
+    background: rgba(0,242,255,0.06);
+    border: 1px solid rgba(0,242,255,0.12);
+    transition: all 200ms var(--ease-out);
+  }
+  .ch-collab-group:hover {
+    background: rgba(0,242,255,0.1);
+    border-color: rgba(0,242,255,0.25);
+  }
+  .ch-collab-ava {
+    width: 24px; height: 24px; border-radius: 50%;
+    overflow: hidden; flex-shrink: 0;
+    border: 1.5px solid rgba(0,242,255,0.2);
+    transition: transform 200ms var(--ease-spring);
+  }
+  .ch-collab-ava + .ch-collab-ava { margin-left: -8px; }
+  .ch-collab-group:hover .ch-collab-ava { transform: scale(1.08); }
+  .ch-collab-ava-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ch-collab-label {
+    font-size: 11px; font-weight: 600; color: #00d4e0;
+    white-space: nowrap; letter-spacing: -0.1px;
+    font-family: var(--font-body);
+  }
 
   .ch-right { display: flex; align-items: center; gap: 6px; }
   .ch-btn {

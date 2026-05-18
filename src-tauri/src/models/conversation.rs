@@ -70,6 +70,9 @@ pub struct Conversation {
     #[serde(default = "default_memory_scope")]
     pub memory_scope: String,
 
+    #[serde(default)]
+    pub shared_character_ids: Option<String>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

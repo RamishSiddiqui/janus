@@ -178,8 +178,11 @@ impl OpenAiClient {
 
         // Buffer for incomplete SSE lines across chunk boundaries
         let mut line_buffer = String::new();
+        // Set when finish_reason is received; we drain remaining buffered
+        // lines before sending Done to avoid truncating the last token.
+        let mut finished = false;
 
-        while let Some(chunk_result) = stream.next().await {
+        'outer: while let Some(chunk_result) = stream.next().await {
             let chunk = match chunk_result {
                 Ok(c) => c,
                 Err(e) => {
@@ -220,10 +223,10 @@ impl OpenAiClient {
                                     }
                                 }
 
-                                // Some providers use finish_reason instead of [DONE]
+                                // Some providers send finish_reason on the same chunk as the last
+                                // token. Use a flag so we finish after draining — not immediately.
                                 if choice.finish_reason.is_some() {
-                                    let _ = tx.send(StreamChunk::Done(full_content.clone())).await;
-                                    return Ok(());
+                                    finished = true;
                                 }
                             }
                         }
@@ -232,15 +235,17 @@ impl OpenAiClient {
                         }
                     }
                 }
+
+                if finished {
+                    break 'outer;
+                }
             }
         }
 
-        // Stream ended without [DONE] — send what we have
-        if !full_content.is_empty() {
-            let _ = tx.send(StreamChunk::Done(full_content)).await;
-        }
-
+        // Drain complete: send Done with everything accumulated
+        let _ = tx.send(StreamChunk::Done(full_content)).await;
         Ok(())
+
     }
 
     /// Simple health check — tries to reach the models endpoint.
