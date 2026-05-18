@@ -49,6 +49,10 @@ export interface Conversation {
   /** 'character' (shared) | 'conversation' (isolated) | 'none' (disabled) */
   memory_scope: 'character' | 'conversation' | 'none';
   shared_character_ids: string | null;
+  /** Set if this conversation was branched from another. */
+  parent_conversation_id: string | null;
+  /** The exact message in the parent conversation where the fork happened. */
+  branch_point_message_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -181,6 +185,26 @@ export async function setActiveMessage(conversationId: string, messageId: string
 /** Set per-conversation memory scope: 'character' (shared), 'conversation' (isolated), or 'none' (disabled). */
 export async function setMemoryScope(conversationId: string, scope: 'character' | 'conversation' | 'none'): Promise<void> {
   return safeInvoke<void>('set_memory_scope', { conversationId, scope });
+}
+
+/**
+ * Creates a new conversation branched from an existing one.
+ *
+ * The new conversation contains a copy of all messages up to `branchPointMessageId`,
+ * inheriting the same character and memory scope as the parent. All memories from the
+ * parent are copied with 'copy' links, which render as dashed COPY connectors in
+ * MemoryGraph and MemoryTimeline.
+ */
+export async function branchConversation(
+  parentConversationId: string,
+  branchPointMessageId: string,
+  newTitle?: string,
+): Promise<Conversation> {
+  return safeInvoke<Conversation>('branch_conversation', {
+    parentConversationId,
+    branchPointMessageId,
+    newTitle: newTitle ?? null,
+  });
 }
 
 // --- Character State ---

@@ -205,6 +205,7 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         preview: conv.title,
         time,
         additionalCharacters,
+        parentConversationId: conv.parent_conversation_id ?? null,
       };
     })
   );
@@ -590,13 +591,19 @@ export async function switchBranch(siblingId: string) {
 }
 
 /**
- * Forks the conversation from a specific message.
- * 1. Rewinds the active_message_id pointer to `branchPointId`
- * 2. Sends the user's new message — backend parents it to that point, creating a new branch
- * 3. The sibling dot-track in ChatMessage automatically appears on the fork point after reload
+ * Branches the conversation at `branchPointId` into a new independent conversation.
+ *
+ * The new conversation:
+ *  - Is a copy of the parent up to (and including) `branchPointId`
+ *  - Keeps the same character, title, and memory scope as the parent
+ *  - Has all memories from the parent bulk-copied with 'copy' links
+ *    (renders as dashed COPY arrows in MemoryGraph/MemoryTimeline)
+ *  - Becomes the active conversation immediately after creation
+ *
+ * After branching, `content` is sent as the first new message in the new conversation.
  */
-export async function branchFromMessage(
-  conversationId: string,
+export async function branchConversation(
+  parentConversationId: string,
   branchPointId: string,
   content: string,
   model?: string,
@@ -605,15 +612,25 @@ export async function branchFromMessage(
 
   const ipc = await import('$lib/services/ipc');
   try {
-    // Rewind: make the chosen message the active tip so send_message parents to it
-    await ipc.setActiveMessage(conversationId, branchPointId);
+    // 1. Create the new branched conversation (backend copies messages + memories)
+    const newConv = await ipc.branchConversation(
+      parentConversationId,
+      branchPointId,
+      // Title comes from parent — backend copies it as-is
+    );
+
+    // 2. Switch to the new conversation
+    await loadConversations();              // refresh sidebar list (new conv appears)
+    activeConversationId.set(newConv.id);  // switch active context
+    await loadMessages(newConv.id);        // load the copied message history
+
+    // 3. Send the new message into the new conversation — this is the actual fork point
+    await sendMessage(newConv.id, content, model);
+
   } catch (err) {
-    console.error('[Branch] Failed to set active message:', err);
+    console.error('[Branch] Failed to branch conversation:', err);
     throw err;
   }
-
-  // Send normally — backend reads active_message_id as parent for the new user msg
-  await sendMessage(conversationId, content, model);
 }
 
 // --- Helpers ---

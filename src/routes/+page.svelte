@@ -8,6 +8,7 @@
   import ContextPanel from '$lib/components/ContextPanel.svelte';
   import {
     messages,
+    conversations,
     activeConversationId,
     activeConversation,
     activeCharacterId,
@@ -17,7 +18,7 @@
     loadMessages,
     sendMessage,
     retryLastMessage,
-    branchFromMessage,
+    branchConversation,
   } from '$lib/stores/chat';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -61,6 +62,20 @@
   let selectedModel = $state('');
   let availableModels: string[] = $state([]);
   let activeProviderId = $state('');
+
+  // Branch lineage — if the active conversation was forked from another
+  let parentConversationId = $derived($activeConversation?.parentConversationId ?? null);
+  let parentConversationTitle = $derived(
+    parentConversationId
+      ? ($conversations.find(c => c.id === parentConversationId)?.characterName ?? 'Previous conversation')
+      : null
+  );
+
+  function navigateToParent(parentId: string) {
+    if (!parentId) return;
+    activeConversationId.set(parentId);
+    loadMessages(parentId);
+  }
 
   // Load conversations + active model on mount
   onMount(async () => {
@@ -176,7 +191,7 @@
       const branchId = branchFromId;
       branchFromId = null;
       branchFromContent = '';
-      await branchFromMessage($activeConversationId, branchId, text, selectedModel || undefined);
+      await branchConversation($activeConversationId, branchId, text, selectedModel || undefined);
     } else {
       await sendMessage($activeConversationId, text, selectedModel || undefined);
     }
@@ -285,6 +300,9 @@
         {avatarUrl}
         {showContextPanel}
         {additionalCharacters}
+        {parentConversationId}
+        {parentConversationTitle}
+        onNavigateToParent={navigateToParent}
         onTogglePanel={() => showContextPanel = !showContextPanel}
         onGenerateScene={() => { showContextPanel = true; }}
       />

@@ -50,6 +50,8 @@ export interface ConversationPreview {
   avatarUrl: string | null;
   preview: string;
   time: string;
+  /** If this conversation was branched from another, the parent's ID. */
+  parentConversationId?: string | null;
   /** Additional characters in a multi-character conversation (future support) */
   additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
 }

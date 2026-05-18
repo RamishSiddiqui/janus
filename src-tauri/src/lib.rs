@@ -130,6 +130,7 @@ pub fn run() {
             commands::conversations::set_active_message,
             commands::conversations::update_conversation,
             commands::conversations::set_memory_scope,
+            commands::conversations::branch_conversation,
             // Messages
             commands::messages::create_message,
             commands::messages::update_message,

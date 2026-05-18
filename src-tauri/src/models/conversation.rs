@@ -73,6 +73,14 @@ pub struct Conversation {
     #[serde(default)]
     pub shared_character_ids: Option<String>,
 
+    /// If this conversation was forked from another, this points to the parent conversation.
+    #[serde(default)]
+    pub parent_conversation_id: Option<String>,
+
+    /// The exact message in the parent conversation where the fork happened.
+    #[serde(default)]
+    pub branch_point_message_id: Option<String>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

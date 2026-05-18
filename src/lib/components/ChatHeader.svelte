@@ -5,14 +5,30 @@
     characterName, modelName, avatarUrl = null, showContextPanel = true,
     additionalCharacters = [],
     onTogglePanel, onGenerateScene,
+    parentConversationId = null,
+    parentConversationTitle = null,
+    onNavigateToParent,
   }: {
     characterName: string; modelName: string; avatarUrl?: string | null;
     showContextPanel?: boolean; onTogglePanel: () => void;
     onGenerateScene?: () => void;
     additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
+    /** Set if this conversation was branched from another conversation. */
+    parentConversationId?: string | null;
+    /** Human-readable title of the parent conversation. */
+    parentConversationTitle?: string | null;
+    /** Called when user clicks the branch pill — navigate to parent. */
+    onNavigateToParent?: (parentId: string) => void;
   } = $props();
 
+  let isBranch = $derived(parentConversationId !== null && parentConversationId !== undefined);
   let isMultiChar = $derived(additionalCharacters.length > 0);
+
+  function handleParentClick() {
+    if (parentConversationId && onNavigateToParent) {
+      onNavigateToParent(parentConversationId);
+    }
+  }
 </script>
 
 <header class="ch">
@@ -27,6 +43,32 @@
         <span class="ch-dot"></span>
         <span class="ch-model">Using {modelName}</span>
       </div>
+
+      {#if isBranch}
+        <button
+          class="ch-branch-pill"
+          onclick={handleParentClick}
+          title="Navigate to parent conversation"
+          aria-label="This is a branched conversation. Click to go to the source."
+        >
+          <!-- Git-branch icon -->
+          <svg class="ch-branch-pill-icon" width="10" height="10" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15"/>
+            <circle cx="18" cy="6" r="3"/>
+            <circle cx="6" cy="18" r="3"/>
+            <path d="M18 9a9 9 0 0 1-9 9"/>
+          </svg>
+          <span class="ch-branch-pill-label">Branched from</span>
+          <span class="ch-branch-pill-title">{parentConversationTitle ?? 'previous conversation'}</span>
+          <!-- Hover arrow -->
+          <svg class="ch-branch-pill-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+          <span class="ch-branch-shimmer"></span>
+        </button>
+      {/if}
     </div>
 
     {#if isMultiChar}
@@ -142,5 +184,114 @@
   .ch-btn.active {
     background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25);
     box-shadow: 0 0 12px rgba(139,92,246,0.15);
+  }
+
+  /* ── Branch Lineage Pill ── */
+  .ch-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ch-branch-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px 3px 6px;
+    border-radius: 20px;
+    border: 1px solid rgba(0, 242, 255, 0.13);
+    background: rgba(0, 242, 255, 0.04);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    width: fit-content;
+    transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    animation: branchPillIn 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes branchPillIn {
+    from { opacity: 0; transform: translateY(4px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .ch-branch-pill:hover {
+    background: rgba(0, 242, 255, 0.08);
+    border-color: rgba(0, 242, 255, 0.28);
+    box-shadow: 0 0 12px rgba(0, 242, 255, 0.08);
+    transform: translateY(-1px);
+  }
+  .ch-branch-pill:active {
+    transform: scale(0.97);
+  }
+
+  /* Shimmer sweep on hover */
+  .ch-branch-shimmer {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(0, 242, 255, 0.09) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+    background-position: -100% 0;
+    pointer-events: none;
+    transition: background-position 400ms ease;
+  }
+  .ch-branch-pill:hover .ch-branch-shimmer {
+    background-position: 100% 0;
+  }
+
+  .ch-branch-pill-icon {
+    color: rgba(0, 242, 255, 0.55);
+    flex-shrink: 0;
+    transition: color 200ms;
+  }
+  .ch-branch-pill:hover .ch-branch-pill-icon {
+    color: rgba(0, 242, 255, 0.85);
+  }
+
+  .ch-branch-pill-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(0, 242, 255, 0.38);
+    letter-spacing: 0.15px;
+    white-space: nowrap;
+    font-family: var(--font-body);
+    transition: color 200ms;
+  }
+  .ch-branch-pill:hover .ch-branch-pill-label {
+    color: rgba(0, 242, 255, 0.55);
+  }
+
+  .ch-branch-pill-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(0, 210, 230, 0.75);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+    font-family: var(--font-body);
+    letter-spacing: -0.05px;
+    transition: color 200ms;
+  }
+  .ch-branch-pill:hover .ch-branch-pill-title {
+    color: #00f2ff;
+  }
+
+  /* Chevron — hidden by default, slides in on hover */
+  .ch-branch-pill-arrow {
+    color: rgba(0, 242, 255, 0.5);
+    flex-shrink: 0;
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 180ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ch-branch-pill:hover .ch-branch-pill-arrow {
+    opacity: 1;
+    transform: translateX(0);
   }
 </style>
