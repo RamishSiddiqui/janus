@@ -353,10 +353,10 @@
         <div 
           class="card-image"
           style="background: linear-gradient(135deg, {char.gradientStart}, {char.gradientEnd}30);"
-          onclick={() => startChat(char.id)}
+          onclick={() => goto('/gallery/' + char.id)}
           role="button"
           tabindex="0"
-          onkeydown={(e) => e.key === 'Enter' && startChat(char.id)}
+          onkeydown={(e) => e.key === 'Enter' && goto('/gallery/' + char.id)}
         >
           {#if char.avatarUrl}
             <img src={char.avatarUrl} alt={char.name} class="card-avatar-img" />
