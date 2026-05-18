@@ -48,6 +48,8 @@
   function avatarUrl(charId: string): string | null {
     const path = avatars[charId];
     if (!path) return null;
+    // If already a resolved URL (blob:, http:, data:) use it directly
+    if (path.startsWith('blob:') || path.startsWith('http') || path.startsWith('data:')) return path;
     return `/avatars/${path.split('/').pop()}`;
   }
 
