@@ -191,6 +191,9 @@
     // ── Conversation branches ──
     // Track which conv nodes we've already created (for dedup in multi-char)
     const createdConvs = new Set<string>();
+    // Build a quick lookup: conv.id → conv (for parent resolution)
+    const convById = new Map(g.conversations.map(c => [c.id, c]));
+
     g.conversations.forEach((conv) => {
       if (createdConvs.has(conv.id)) return;
       createdConvs.add(conv.id);
@@ -216,12 +219,30 @@
           isEmpty,
           color: p.text, colorBg: p.bg, colorBorder: p.border,
           isShared,
+          // Pass branch info for potential UI indicators
+          isBranch: !!conv.parent_conversation_id,
         },
       });
 
-      // Connect to character root.
-      // For empty convos, owner comes from conv.character_id (no memories to infer from).
-      if (isMultiChar && sharedBy && sharedBy.size > 0) {
+      // ── Determine the source node for this conversation's edge ──
+      // If this conv was branched from another, connect to the parent conv
+      // (if the parent exists in our graph). Otherwise fall back to character root.
+      const parentConvId = conv.parent_conversation_id;
+      const parentConvExists = parentConvId && convById.has(parentConvId);
+
+      if (parentConvExists) {
+        // Branch lineage: connect to parent conversation node
+        treeEdges.push({
+          id: `e-branch-${conv.id}`,
+          source: `conv-${parentConvId}`,
+          target: `conv-${conv.id}`,
+          sourceHandle: 'bottom',
+          targetHandle: 'top',
+          type: 'tree',
+          data: { color: p.edge, dashed: isEmpty },
+        });
+      } else if (isMultiChar && sharedBy && sharedBy.size > 0) {
+        // Multi-char shared: connect to each character root
         sharedBy.forEach(charId => {
           const rootId = charRootMap.get(charId);
           if (rootId) {
@@ -237,6 +258,7 @@
           }
         });
       } else {
+        // Default: connect to character root
         const ownerChar = sharedBy?.values().next().value ?? conv.character_id ?? g.character_id;
         const rootId = charRootMap.get(ownerChar) ?? charRootMap.values().next().value!;
         treeEdges.push({

@@ -304,11 +304,11 @@ pub async fn get_memory_graph(
 
     // All conversations for this character — including those with 0 memories yet
     let conv_rows: Vec<ConvSummaryRow> = sqlx::query_as(
-        "SELECT c.id, c.title, c.character_id, COUNT(m.id) as memory_count
+        "SELECT c.id, c.title, c.character_id, COUNT(m.id) as memory_count, c.parent_conversation_id
          FROM conversations c
          LEFT JOIN memories m ON m.conversation_id = c.id AND m.character_id = ?
          WHERE c.character_id = ?
-         GROUP BY c.id, c.title, c.character_id
+         GROUP BY c.id, c.title, c.character_id, c.parent_conversation_id
          ORDER BY c.updated_at DESC"
     )
     .bind(&character_id)   // for the LEFT JOIN condition
@@ -321,6 +321,7 @@ pub async fn get_memory_graph(
         title: r.title,
         character_id: r.character_id,
         memory_count: r.memory_count,
+        parent_conversation_id: r.parent_conversation_id,
     }).collect();
 
     Ok(MemoryGraph {
@@ -396,6 +397,7 @@ struct ConvSummaryRow {
     title: String,
     character_id: String,
     memory_count: i32,
+    parent_conversation_id: Option<String>,
 }
 
 async fn fetch_memory(

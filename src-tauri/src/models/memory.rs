@@ -61,4 +61,6 @@ pub struct MemoryGraphConversation {
     pub title: String,
     pub character_id: String,
     pub memory_count: i32,
+    /// If this conversation was branched from another, this is the parent's ID.
+    pub parent_conversation_id: Option<String>,
 }

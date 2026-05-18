@@ -547,6 +547,8 @@ export interface MemoryGraphConversation {
   title: string;
   character_id: string;
   memory_count: number;
+  /** If this conversation was branched from another, this is the parent's ID. */
+  parent_conversation_id: string | null;
 }
 
 export interface MemoryGraph {
