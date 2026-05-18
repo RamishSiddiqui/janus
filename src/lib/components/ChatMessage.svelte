@@ -10,7 +10,12 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let { message, onBranch }: { message: Message; onBranch?: (id: string) => void } = $props();
+  let { message, onBranch, avatarUrl = null, characterName = '' }: { 
+    message: Message; 
+    onBranch?: (id: string) => void;
+    avatarUrl?: string | null;
+    characterName?: string;
+  } = $props();
 
   let showActions = $state(false);
   let isRegenerating = $state(false);
@@ -117,6 +122,9 @@
     onfocusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) showActions = false; }}
   >
     <div class="msg-avatar ai-avatar" aria-hidden="true">
+      {#if avatarUrl}
+        <img src={avatarUrl} alt={characterName} class="ai-avatar-img" />
+      {/if}
       <div class="avatar-glow"></div>
     </div>
     <div class="msg-body">
@@ -381,6 +389,12 @@
   .ai-avatar {
     background: conic-gradient(from 200deg, #7c3aed, #bf40ff, #00f2ff, #7c3aed);
     box-shadow: 0 0 0 1px rgba(139,92,246,0.2), 0 0 18px rgba(139,92,246,0.15);
+    overflow: hidden;
+  }
+  .ai-avatar-img {
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+    border-radius: 50%;
   }
   .avatar-glow {
     position: absolute; inset: -4px; border-radius: 50%;

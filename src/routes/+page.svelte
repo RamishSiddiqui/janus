@@ -315,7 +315,7 @@
             class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
             class:branch-dim={branchFromId !== null && i > branchIndex}
           >
-            <ChatMessage {message} onBranch={handleBranch} />
+            <ChatMessage {message} onBranch={handleBranch} {avatarUrl} {characterName} />
           </div>
         {/each}
 
