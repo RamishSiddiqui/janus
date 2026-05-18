@@ -193,7 +193,14 @@
       if (createdConvs.has(conv.id)) return;
       createdConvs.add(conv.id);
 
-      const p = convColorMap.get(conv.id)!;
+      const memCount = memCountMap.get(conv.id) ?? 0;
+      const isEmpty = memCount === 0;
+
+      // For empty conversations, use a muted palette entry; for active, use the colour map
+      const p = isEmpty
+        ? { text: '#4a4a6a', bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', edge: 'rgba(120,100,200,0.45)' }
+        : (convColorMap.get(conv.id) ?? PALETTE[0]);
+
       const sharedBy = convCharacters.get(conv.id);
       const isShared = isMultiChar && sharedBy && sharedBy.size > 1;
 
@@ -203,14 +210,16 @@
         position: { x: 0, y: 0 },
         data: {
           label: conv.title,
-          memoryCount: memCountMap.get(conv.id) ?? 0,
+          memoryCount: memCount,
+          isEmpty,
           color: p.text, colorBg: p.bg, colorBorder: p.border,
           isShared,
         },
       });
 
-      // Connect to each character that has memories in this conversation
-      if (isMultiChar && sharedBy) {
+      // Connect to character root.
+      // For empty convos, owner comes from conv.character_id (no memories to infer from).
+      if (isMultiChar && sharedBy && sharedBy.size > 0) {
         sharedBy.forEach(charId => {
           const rootId = charRootMap.get(charId);
           if (rootId) {
@@ -221,13 +230,12 @@
               sourceHandle: 'bottom',
               targetHandle: 'top',
               type: 'tree',
-              data: { color: p.edge },
+              data: { color: p.edge, dashed: isEmpty },
             });
           }
         });
       } else {
-        // Single character or fallback — find the conversation's owner
-        const ownerChar = sharedBy?.values().next().value ?? g.character_id;
+        const ownerChar = sharedBy?.values().next().value ?? conv.character_id ?? g.character_id;
         const rootId = charRootMap.get(ownerChar) ?? charRootMap.values().next().value!;
         treeEdges.push({
           id: `e-root-${conv.id}`,
@@ -236,7 +244,7 @@
           sourceHandle: 'bottom',
           targetHandle: 'top',
           type: 'tree',
-          data: { color: p.edge },
+          data: { color: p.edge, dashed: isEmpty },
         });
       }
     });

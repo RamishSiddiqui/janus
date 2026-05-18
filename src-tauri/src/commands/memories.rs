@@ -302,15 +302,17 @@ pub async fn get_memory_graph(
         rows.into_iter().map(Into::into).collect()
     };
 
-    // Conversations that have memories for this character
+    // All conversations for this character — including those with 0 memories yet
     let conv_rows: Vec<ConvSummaryRow> = sqlx::query_as(
         "SELECT c.id, c.title, c.character_id, COUNT(m.id) as memory_count
          FROM conversations c
-         JOIN memories m ON m.conversation_id = c.id AND m.character_id = ?
+         LEFT JOIN memories m ON m.conversation_id = c.id AND m.character_id = ?
+         WHERE c.character_id = ?
          GROUP BY c.id, c.title, c.character_id
          ORDER BY c.updated_at DESC"
     )
-    .bind(&character_id)
+    .bind(&character_id)   // for the LEFT JOIN condition
+    .bind(&character_id)   // for the WHERE clause
     .fetch_all(&state_guard.db)
     .await?;
 
