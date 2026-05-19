@@ -621,17 +621,19 @@ export async function sendMessage(conversationId: string, content: string, model
         unlisten();
 
         // --- Auto-save memories pipeline ---
-        const s = get(settings);
-        if (s.autoSaveMemories && event.content) {
+        // The per-conversation memory_scope is the single source of truth.
+        // If memory is enabled on this conversation, extraction runs regardless
+        // of the global autoSaveMemories default.
+        if (event.content) {
           (async () => {
             try {
-              const { shouldExtract, extractAndSaveMemories } = await import('$lib/services/memory-extractor');
-              if (!shouldExtract()) return;
-
-              // Check per-conversation memory scope
+              // Check per-conversation memory scope FIRST (the authority)
               const ipcMod = await import('$lib/services/ipc');
               const conv = await ipcMod.getConversation(conversationId);
-              if (conv.memory_scope === 'none') return; // Auto-save disabled for this chat
+              if (conv.memory_scope === 'none') return; // Memory disabled for this chat
+
+              const { shouldExtract, extractAndSaveMemories } = await import('$lib/services/memory-extractor');
+              if (!shouldExtract()) return; // Throttle: only every Nth message
 
               const saved = await extractAndSaveMemories(
                 conversationId,
