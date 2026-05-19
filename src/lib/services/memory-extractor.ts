@@ -9,116 +9,99 @@
 //     self-editing via tool calls, autonomous fact curation
 //   • Replika — DB-stored facts, selective per-message retrieval,
 //     contextual injection into LLM window
-//   • SillyTavern — recursive summaries (Summaryception), VectorDB RAG,
-//     hybrid approach with multiple compression layers
-//   • Character.AI — manual pinning + fixed memory fields (400 chars),
-//     user-driven persistence via Personas
 //
-//   Our approach: Two-tier extraction
-//   1. Primary: LLM-powered structured extraction via `generate_raw`
-//      (stateless endpoint that doesn't pollute conversations)
-//   2. Fallback: Pattern-based heuristic extraction when LLM is
-//      unavailable, rate-limited, or fails
+//   Core insight: Chat history IS the short-term memory. Extraction
+//   should ONLY capture facts that transcend the current session —
+//   things that, if forgotten, would cause a continuity error in
+//   a future conversation. Most messages produce ZERO memories.
 // ============================================================
 
 /**
  * Extraction result — a structured, atomic fact suitable for memory storage.
  * Each fact is self-contained and can be stored/updated/deleted independently.
- * Follows ChatGPT's pattern of atomic, categorized user facts.
  */
 export interface ExtractedFact {
   /** The condensed, atomic fact (one sentence, third-person past tense). */
   summary: string;
   /** Category for future filtering/retrieval. */
-  category: 'character' | 'location' | 'event' | 'relationship' | 'item' | 'decision' | 'emotion' | 'trait' | 'preference' | 'atmosphere';
+  category: 'identity' | 'relationship' | 'world' | 'decision' | 'revelation';
 }
 
 /**
  * System prompt for LLM-powered memory extraction.
  *
- * Design philosophy: Extract the "connective tissue" of a story —
- * not just plot beats, but the emotional texture, interpersonal dynamics,
- * and recurring motifs that make a narrative feel alive and continuous
- * across sessions. A good memory should make the reader think
- * "oh right, THAT happened" and feel the emotional weight of it.
+ * Design philosophy: Memories are NOT a conversation log.
+ * The full chat history is already passed to the LLM each turn — so memories
+ * should ONLY capture facts that transcend the current session. These are
+ * facts that, if lost, would cause a continuity error in a future conversation.
  *
- * Architecture:
- * - Atomic facts: one sentence each, independently manageable (ChatGPT pattern)
- * - Third-person past tense: consistent format for memory injection
- * - Category tagging: enables Replika-style selective retrieval
- * - Strict JSON output: reliable parsing without markdown fencing
- * - Deduplication hint: skip information already in existing memories
- * - Hard cap of 5: keeps memory store lean (Letta pattern of curated memory)
+ * Litmus test: "Would not knowing this make the character act wrong next time?"
+ *   YES → extract: "The user revealed they were friends with Aria's mother"
+ *   NO  → skip: "Aria smiled warmly and welcomed the user to the library"
  */
-const EXTRACTION_SYSTEM_PROMPT = `You are an immersive memory system for a narrative roleplay application. Your job is to extract the moments that MATTER — the emotional beats, relationship shifts, and character-defining choices that make a story feel alive across sessions.
+const EXTRACTION_SYSTEM_PROMPT = `You are a memory filter for a roleplay application. Your job is to identify ONLY the facts that would cause a continuity error if forgotten in a future conversation session.
 
-Think like a reader annotating their favorite novel: what would you highlight, bookmark, or scribble in the margin?
+IMPORTANT CONTEXT: The full chat history is already visible to the AI during each conversation. You are NOT logging what happened — you are identifying facts that must persist ACROSS sessions, after the chat history is gone.
 
-EXTRACT THESE (in priority order):
+LITMUS TEST — Before extracting anything, ask:
+"If the character forgot this in a new conversation next week, would it feel WRONG?"
+- YES → Extract it. "The user revealed they knew Aria's mother personally" — forgetting this would break the relationship.
+- NO  → Skip it. "Aria smiled and offered to show them around" — normal scene flow, already in chat history.
 
-1. RELATIONSHIP DYNAMICS — The heart of any story
-   - Bond-forming moments: "She chose to sit next to him instead of her classmates"
-   - Trust shifts: "He hesitated before sharing the map, then handed it over"
-   - Tension/conflict: "Her voice went cold when he mentioned the tournament"
-   - Flirting/attraction: "She lingered at the doorway, glancing back with a half-smile"
-   - Inside jokes/callbacks: "She teased him about the fire incident again"
+EXTRACT ONLY:
+1. IDENTITY — Who someone actually IS
+   - "The user revealed they are a former knight of the Silver Order"
+   - "Aria confessed she is secretly the heir to the throne"
 
-2. EMOTIONAL TEXTURE — What makes characters feel real
-   - Vulnerability shown: "Her voice cracked when she mentioned her mother"
-   - Joy/humor: "They both burst out laughing at the absurdity of the situation"  
-   - Fear/anxiety: "His hands trembled as he approached the dark corridor"
-   - Anger/frustration: "She slammed the book shut and refused to explain further"
+2. RELATIONSHIP — Permanent shifts in how people relate to each other
+   - "The user told Aria they knew her mother — Aria was visibly shaken"
+   - "Aria and the user made a blood pact to investigate the ruins together"
+   - NOT: "Aria laughed at the user's joke" (mood, not a relationship shift)
 
-3. CHARACTER-DEFINING MOMENTS — Who they ARE, not just what they do
-   - Traits revealed through action (not stated): "She instinctively stepped in front of him when the noise came"
-   - Habits/quirks: "She always tucks her hair behind her ear when nervous"
-   - Skills demonstrated: "She cast a wordless barrier spell without seeming to think about it"
-   - Contradictions: "Despite claiming she didn't care, she stayed up all night preparing"
+3. WORLD — Discoveries that alter the story's landscape permanently
+   - "They discovered the old temple is actually a sealed portal"
+   - "The merchant revealed the king has been dead for three months"
 
-4. PLOT BEATS — What HAPPENED
-   - Significant events, discoveries, arrivals, departures
-   - Decisions with consequences: "He chose to enter the forest alone"
-   - Promises, vows, plans made
-   - Items received, locations discovered
+4. DECISION — Commitments that constrain future behavior
+   - "The user swore an oath to protect Aria's secret"
+   - "Aria promised to teach the user fire magic starting next week"
+   - NOT: "The user decided to explore the market" (temporary action, not binding)
 
-5. ATMOSPHERE & SETTING — Where the story lives
-   - Recurring locations: "The library alcove became their regular meeting spot"
-   - Time/weather details that matter: "It was raining the night they first practiced together"
-   - World-building facts revealed in conversation
+5. REVELATION — Secrets, confessions, or truths that permanently change the dynamic
+   - "Aria admitted she started the fire that burned the academy wing"
+   - "The user confessed they are not from this world"
 
-6. USER PREFERENCES — What the player values
-   - How they prefer to be addressed
-   - Play style signals: cautious vs. reckless, romantic vs. adventure-focused
-   - Choices that reveal what they find fun
+DO NOT EXTRACT:
+- Actions that are part of normal scene flow (walking, talking, reacting, emoting)
+- Emotional reactions that don't permanently change a relationship
+- Descriptions of settings, atmosphere, or how someone looked in a moment
+- Character traits that are already in the character's description card
+- Anything already present in EXISTING MEMORIES
+- Things the chat history already covers — you're not a session logger
 
 RULES:
-- Each fact MUST be a single, self-contained sentence in third-person past tense.
-- Capture the EMOTIONAL WEIGHT, not just the action: "Aria saved him" is weak; "Aria threw herself between him and the blast without hesitation, earning his stunned gratitude" is strong.
-- Prioritize moments that would be satisfying to reference later ("Remember when...").
-- Do NOT re-extract facts that appear in the EXISTING MEMORIES section below.
-- Do NOT extract things obvious from the character card/description.
-- Maximum 5 facts. Aim for 2-3 quality extractions per exchange.
-- If truly nothing meaningful happened (pure small talk), return an empty array.
+- Maximum 2 facts per extraction. Most exchanges should produce ZERO.
+- Each fact must be one sentence, third-person past tense.
+- Returning [] is the EXPECTED outcome for most messages. Only truly significant moments get extracted.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
-[{"summary":"...","category":"character|location|event|relationship|item|decision|emotion|trait|preference|atmosphere"},...]
+[{"summary":"...","category":"identity|relationship|world|decision|revelation"}]
 
-If nothing meaningful: []`;
+Expected output for most messages: []`;
 
 /**
  * Build the user prompt for the extraction LLM call.
- * Includes existing memories so the LLM can avoid duplicates and build
- * on what's already known — a critical feature for long-running stories.
+ * Includes existing memories so the LLM avoids duplicates.
  */
 function buildExtractionPrompt(
   userMessage: string,
   assistantResponse: string,
   existingMemories?: string[],
 ): string {
-  let prompt = `Extract memorable facts from this roleplay exchange:\n\n`;
+  let prompt = `Analyze this roleplay exchange. Extract ONLY facts that would cause a continuity error if forgotten in a future session.\n\n`;
 
   if (existingMemories && existingMemories.length > 0) {
-    prompt += `EXISTING MEMORIES (do NOT re-extract these):\n`;
+    prompt += `EXISTING MEMORIES (already known — do NOT repeat):\n`;
     for (const mem of existingMemories.slice(-15)) {
       prompt += `- ${mem}\n`;
     }
@@ -151,8 +134,7 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
     if (!Array.isArray(parsed)) return [];
 
     const validCategories = new Set([
-      'character', 'location', 'event', 'relationship', 'item', 'decision',
-      'emotion', 'trait', 'preference', 'atmosphere',
+      'identity', 'relationship', 'world', 'decision', 'revelation',
     ]);
 
     return parsed
@@ -162,7 +144,7 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
         item.summary.length < 300 &&
         validCategories.has(item.category)
       )
-      .slice(0, 5)
+      .slice(0, 2) // Hard cap: max 2 facts per extraction
       .map((item: any) => ({
         summary: item.summary.trim(),
         category: item.category as ExtractedFact['category'],
@@ -177,18 +159,20 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
 //   Throttle — Extract every Nth message (cost management)
 // ============================================================
 
-// Extract from every message — individual LLM calls are cheap and memories
-// are the primary mechanism for cross-session continuity. The old value of 3
-// meant most short conversations never got any memories at all.
-const EXTRACT_EVERY_N = 1;
-const MIN_RESPONSE_LENGTH = 80;
+// Every 3rd message — most exchanges don't contain memory-worthy facts.
+// The LLM itself will return [] for most exchanges anyway, so this is
+// purely a cost optimization to avoid unnecessary API calls.
+const EXTRACT_EVERY_N = 3;
+const MIN_RESPONSE_LENGTH = 150;
 let messageCounter = 0;
 
 /** Check if we should extract from this response. */
 export function shouldExtract(): boolean {
   messageCounter++;
   const should = messageCounter % EXTRACT_EVERY_N === 0;
-  console.debug(`[Mythic] Memory extraction check: message #${messageCounter}, extract=${should}`);
+  if (should) {
+    console.debug(`[Mythic] Memory extraction triggered (message #${messageCounter})`);
+  }
   return should;
 }
 
@@ -210,6 +194,7 @@ export function resetCounter(): void {
  * 3. Save extracted facts via `createMemory` with source='auto'
  *
  * Runs asynchronously — never blocks the main conversation flow.
+ * Most calls will produce 0 memories — this is by design.
  */
 export async function extractAndSaveMemories(
   conversationId: string,
@@ -218,7 +203,6 @@ export async function extractAndSaveMemories(
   assistantResponse: string,
 ): Promise<number> {
   if (assistantResponse.length < MIN_RESPONSE_LENGTH) {
-    console.debug(`[Mythic] Skipping extraction — response too short (${assistantResponse.length} < ${MIN_RESPONSE_LENGTH})`);
     return 0;
   }
 
@@ -240,18 +224,19 @@ export async function extractAndSaveMemories(
       EXTRACTION_SYSTEM_PROMPT,
       buildExtractionPrompt(userMessage, assistantResponse, existingMemoryTexts),
       undefined, // use default model
-      512,       // max tokens — extraction responses are short
-      0.3,       // slightly higher temp for richer extractions
+      256,       // max tokens — responses are short (usually just [])
+      0.1,       // very low temperature for consistent, conservative output
     );
     facts = parseExtractionResponse(raw);
     if (facts.length > 0) {
-      console.debug(`[Mythic] LLM extracted ${facts.length} fact(s)`);
+      console.debug(`[Mythic] LLM extracted ${facts.length} fact(s):`, facts.map(f => f.summary));
     }
   } catch (err) {
     console.warn('[Mythic] LLM extraction failed, falling back to heuristics:', err);
   }
 
   // --- Tier 2: Heuristic fallback ---
+  // Only triggers on high-signal patterns (identity reveals, oaths, confessions)
   if (facts.length === 0) {
     facts = heuristicExtract(assistantResponse);
     if (facts.length > 0) {
@@ -282,17 +267,19 @@ export async function extractAndSaveMemories(
 
 // ============================================================
 //   Heuristic Fallback — Pattern-based extraction
-//   Used when LLM extraction is unavailable or fails.
+//   Only fires on HIGH-SIGNAL patterns that almost always indicate
+//   a memory-worthy fact: identity reveals, oaths, confessions, etc.
 // ============================================================
 
 const EXTRACTION_RULES: Array<{ pattern: RegExp; category: ExtractedFact['category'] }> = [
-  { pattern: /(?:my name is|i am called|they call me|i'm known as|introduces? (?:him|her|them)self as)\s+["']?(\w[\w\s]{1,30})/i, category: 'character' },
-  { pattern: /(?:we (?:are|arrived|have reached) (?:at|in)|welcome to|this (?:is|place is called)|the (?:city|town|village|kingdom|realm) of)\s+["']?([A-Z][\w\s]{2,30})/i, category: 'location' },
+  // Identity reveals
+  { pattern: /(?:my name is|i am called|they call me|i'm known as|introduces? (?:him|her|them)self as)\s+["']?(\w[\w\s]{1,30})/i, category: 'identity' },
+  // Relationship-altering confessions
   { pattern: /(?:betray(?:s|ed)?|allies? with|joins? forces|forms? (?:a |an )?alliance|becomes? (?:friends?|enemies?|allies?|rivals?)|confesses? (?:love|feelings)|pledg(?:es?|ed) (?:loyalty|allegiance))/i, category: 'relationship' },
-  { pattern: /(?:i (?:promise|swear|vow|pledge|decide)|we must|it is decided|the pact is sealed|chooses? to|resolves? to)/i, category: 'decision' },
-  { pattern: /(?:(?:wields?|carries?|possesses?|reveals?|discovers?|bestows?|forges?|crafts?)\s+(?:a |an |the )?\w[\w\s]{2,30})/i, category: 'item' },
-  { pattern: /(?:falls? (?:in battle|dead|unconscious)|is (?:slain|defeated|captured|transformed)|the battle (?:ends?|is won|is lost)|(?:war|siege|invasion) (?:begins?|ends?))/i, category: 'event' },
-  { pattern: /(?:the (?:truth|secret|prophecy) (?:is|was)|reveals? (?:that|the truth)|confess(?:es)? (?:that|to))/i, category: 'event' },
+  // Binding decisions/oaths
+  { pattern: /(?:i (?:promise|swear|vow|pledge)|the pact is sealed)/i, category: 'decision' },
+  // World-altering revelations
+  { pattern: /(?:the (?:truth|secret|prophecy) (?:is|was)|reveals? (?:that|the truth)|confess(?:es)? (?:that|to))/i, category: 'revelation' },
 ];
 
 function heuristicExtract(response: string): ExtractedFact[] {
@@ -311,12 +298,7 @@ function heuristicExtract(response: string): ExtractedFact[] {
         facts.push({ summary, category: rule.category });
       }
     }
-    if (facts.length >= 3) break;
-  }
-
-  if (facts.length === 0) {
-    const best = findNarrativePeak(response);
-    if (best) facts.push({ summary: best, category: 'event' });
+    if (facts.length >= 2) break; // Hard cap: max 2 from heuristics too
   }
 
   return facts;
@@ -335,31 +317,4 @@ function cleanForMemory(text: string): string {
     .replace(/[#>]+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function findNarrativePeak(text: string): string | null {
-  const sentences = text
-    .replace(/\*([^*]+)\*/g, '$1')
-    .split(/(?<=[.!?])\s+/)
-    .filter(s => s.length > 20 && s.length < 200);
-
-  if (sentences.length === 0) return null;
-
-  let bestScore = 0;
-  let bestSentence = '';
-
-  for (const sentence of sentences) {
-    let score = 0;
-    score += (sentence.match(/(?<=\s)[A-Z][a-z]{2,}/g)?.length ?? 0) * 2;
-    if (/[""\u201C\u201D]/.test(sentence)) score += 3;
-    if (/\b(?:attack|discover|reveal|betray|transform|escape|arrive|defeat|summon|destroy|create|forge)\b/i.test(sentence)) score += 4;
-    if (/\b(?:love|fear|rage|joy|sorrow|betrayal|hope|despair|grief|triumph)\b/i.test(sentence)) score += 3;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestSentence = sentence;
-    }
-  }
-
-  return bestScore >= 3 ? cleanForMemory(bestSentence) : null;
 }
