@@ -14,6 +14,7 @@
   let autoSaveMemories = $state($settings.autoSaveMemories);
   let localStorageOnly = $state($settings.localStorageOnly);
   let systemPrompt = $state($settings.systemPrompt);
+  let postHistoryInstructions = $state($settings.postHistoryInstructions);
 
   let showFontDropdown = $state(false);
   let dropdownStyle = $state('');
@@ -34,13 +35,15 @@
       autoSaveMemories,
       localStorageOnly,
       systemPrompt,
+      postHistoryInstructions,
     });
   });
 
   function resetSystemPrompt() {
     settings.reset();
     systemPrompt = $settings.systemPrompt;
-    success('System prompt reset to default');
+    postHistoryInstructions = $settings.postHistoryInstructions;
+    success('Prompts reset to defaults');
   }
 
   function toggleFontDropdown() {
@@ -143,6 +146,7 @@
           autoSaveMemories = $settings.autoSaveMemories;
           localStorageOnly = $settings.localStorageOnly;
           systemPrompt = $settings.systemPrompt;
+          postHistoryInstructions = $settings.postHistoryInstructions;
         }
 
         success('Settings imported successfully');
@@ -395,6 +399,28 @@
         <span class="prompt-hint">Use {`{{char}}`} for character name • {`{{user}}`} for player name</span>
       </section>
 
+      <!-- Post-History Instructions (PHI) -->
+      <section class="settings-section animate-fade-in-up stagger-4b">
+        <div class="section-header">
+          <div class="section-header-left">
+            <Icon name="compass" size={16} color="var(--accent-primary)" />
+            <span class="section-title">Narrative Direction</span>
+          </div>
+          <button class="reset-btn" onclick={() => { settings.reset(); postHistoryInstructions = $settings.postHistoryInstructions; success('Narrative direction reset'); }}>Reset</button>
+        </div>
+
+        <span class="phi-description">Injected after conversation history to shape how the AI structures responses — narrative hooks, scene transitions, and pacing.</span>
+
+        <textarea 
+          class="system-prompt-input"
+          bind:value={postHistoryInstructions}
+          rows="6"
+          aria-label="Post-history instructions"
+        ></textarea>
+
+        <span class="prompt-hint">Controls story momentum • scene transitions • prevents dead-end conversations</span>
+      </section>
+
       <!-- About -->
       <div class="about-card animate-fade-in-up stagger-5">
         <div class="about-left">
@@ -611,7 +637,12 @@
   .stagger-2 { animation-delay: 100ms; }
   .stagger-3 { animation-delay: 160ms; }
   .stagger-4 { animation-delay: 220ms; }
-  .stagger-5 { animation-delay: 280ms; }
+  .stagger-4b { animation-delay: 260ms; }
+  .stagger-5 { animation-delay: 300ms; }
+
+  .phi-description {
+    font-size: var(--text-sm); color: #5a5a7a; line-height: 1.6;
+  }
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
