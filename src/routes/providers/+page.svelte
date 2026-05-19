@@ -34,7 +34,12 @@
   let newBaseUrl = $state('');
   let newModel = $state('');
 
-  let adapterNeedsBaseUrl = $derived(newAdapter !== 'open_router');
+  // Cloud providers that don't need a base URL
+  const cloudAdapters = new Set([
+    'open_router', 'anthropic', 'gemini', 'cohere', 'deepseek',
+    'groq', 'perplexity', 'xai', 'hugging_face', 'hyperbolic', 'moonshot', 'together',
+  ]);
+  let adapterNeedsBaseUrl = $derived(!cloudAdapters.has(newAdapter));
 
   // Edit state per provider
   let editFields = $state<Record<string, { apiKey: string; model: string; baseUrl: string }>>({});
@@ -135,7 +140,10 @@
     const map: Record<string, string> = {
       open_router: 'OpenRouter', ollama: 'Ollama',
       open_ai_compatible: 'OpenAI Compatible', openai_compatible: 'OpenAI Compatible',
-      silicon_flow: 'SiliconFlow',
+      silicon_flow: 'SiliconFlow', anthropic: 'Anthropic', gemini: 'Gemini',
+      cohere: 'Cohere', deepseek: 'DeepSeek', groq: 'Groq',
+      perplexity: 'Perplexity', xai: 'xAI', hugging_face: 'HuggingFace',
+      hyperbolic: 'Hyperbolic', moonshot: 'Moonshot', together: 'Together',
     };
     return map[a] ?? a;
   }
@@ -193,10 +201,27 @@
           <div class="form-field">
             <label class="flabel" for="pf-adapter">Adapter</label>
             <select id="pf-adapter" class="finput fselect" bind:value={newAdapter}>
-              <option value="open_router">OpenRouter</option>
-              <option value="ollama">Ollama</option>
-              <option value="open_ai_compatible">OpenAI Compatible</option>
-              <option value="silicon_flow">SiliconFlow</option>
+              <optgroup label="Cloud Providers">
+                <option value="open_router">OpenRouter</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="gemini">Gemini</option>
+                <option value="groq">Groq</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="perplexity">Perplexity</option>
+                <option value="xai">xAI</option>
+                <option value="cohere">Cohere</option>
+                <option value="together">Together</option>
+                <option value="hyperbolic">Hyperbolic</option>
+                <option value="moonshot">Moonshot</option>
+                <option value="hugging_face">HuggingFace</option>
+              </optgroup>
+              <optgroup label="Local / Self-hosted">
+                <option value="ollama">Ollama</option>
+                <option value="open_ai_compatible">OpenAI Compatible</option>
+              </optgroup>
+              <optgroup label="Image">
+                <option value="silicon_flow">SiliconFlow</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -209,8 +234,16 @@
           {:else}
             <div class="adapter-hint">
               <span>🔑</span>
-              <span>OpenRouter uses API key only — no base URL needed.</span>
-              <a href="https://openrouter.ai/keys" target="_blank" class="hint-link">Get key →</a>
+              <span>Cloud provider — API key only, no base URL needed.</span>
+              {#if newAdapter === 'open_router'}
+                <a href="https://openrouter.ai/keys" target="_blank" class="hint-link">Get key →</a>
+              {:else if newAdapter === 'anthropic'}
+                <a href="https://console.anthropic.com/account/keys" target="_blank" class="hint-link">Get key →</a>
+              {:else if newAdapter === 'gemini'}
+                <a href="https://aistudio.google.com/apikey" target="_blank" class="hint-link">Get key →</a>
+              {:else if newAdapter === 'groq'}
+                <a href="https://console.groq.com/keys" target="_blank" class="hint-link">Get key →</a>
+              {/if}
             </div>
           {/if}
           <div class="form-field">

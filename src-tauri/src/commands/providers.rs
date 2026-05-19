@@ -210,15 +210,18 @@ pub async fn test_provider_connection(
             return Ok(false);
         }
 
-        // Use the real provider struct so all required headers (HTTP-Referer, X-Title) are set
+        // Use a direct HTTP check for cloud providers
         return match provider.adapter {
             ProviderAdapter::OpenRouter => {
-                use crate::providers::openrouter::OpenRouterProvider;
-                use crate::providers::traits::LlmProvider;
-                match OpenRouterProvider::new(state.http_client.clone(), api_key) {
-                    Ok(p) => Ok(p.health_check().await.unwrap_or(false)),
-                    Err(_) => Ok(false), // invalid key format
-                }
+                let resp = state.http_client
+                    .get("https://openrouter.ai/api/v1/models")
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .header("HTTP-Referer", "https://mythic.app")
+                    .header("X-Title", "Mythic")
+                    .timeout(std::time::Duration::from_secs(5))
+                    .send()
+                    .await;
+                Ok(resp.map(|r| r.status().is_success()).unwrap_or(false))
             }
             _ => Ok(!api_key.is_empty()),
         };
@@ -357,6 +360,16 @@ fn parse_adapter(s: &str) -> Result<ProviderAdapter, MythicError> {
         "silicon_flow" => Ok(ProviderAdapter::SiliconFlow),
         "hugging_face" => Ok(ProviderAdapter::HuggingFace),
         "comfy_ui" => Ok(ProviderAdapter::ComfyUi),
+        "anthropic" => Ok(ProviderAdapter::Anthropic),
+        "gemini" => Ok(ProviderAdapter::Gemini),
+        "cohere" => Ok(ProviderAdapter::Cohere),
+        "deepseek" => Ok(ProviderAdapter::DeepSeek),
+        "groq" => Ok(ProviderAdapter::Groq),
+        "perplexity" => Ok(ProviderAdapter::Perplexity),
+        "xai" => Ok(ProviderAdapter::Xai),
+        "hyperbolic" => Ok(ProviderAdapter::Hyperbolic),
+        "moonshot" => Ok(ProviderAdapter::Moonshot),
+        "together" => Ok(ProviderAdapter::Together),
         _ => Err(MythicError::Validation(format!("Invalid adapter: {}", s))),
     }
 }

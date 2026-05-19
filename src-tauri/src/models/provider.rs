@@ -28,6 +28,26 @@ pub enum ProviderAdapter {
     HuggingFace,
     /// Local ComfyUI instance for image/video generation
     ComfyUi,
+    /// Anthropic API (Claude models)
+    Anthropic,
+    /// Google Gemini API
+    Gemini,
+    /// Cohere API (Command R+)
+    Cohere,
+    /// DeepSeek API
+    DeepSeek,
+    /// Groq API (fast inference)
+    Groq,
+    /// Perplexity API (search-augmented)
+    Perplexity,
+    /// xAI API (Grok models)
+    Xai,
+    /// Hyperbolic API
+    Hyperbolic,
+    /// Moonshot API (Kimi)
+    Moonshot,
+    /// Together API (open-source models)
+    Together,
 }
 
 /// Configuration for a specific AI provider connection.
