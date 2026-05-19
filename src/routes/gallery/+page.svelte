@@ -166,16 +166,13 @@
   /** Navigate to chat with this character */
   async function startChat(charId: string) {
     if (!isTauri) {
-      // Dev mode — just navigate to chat
       goto('/');
       return;
     }
 
     try {
-      const ipc = await import('$lib/services/ipc');
-      const conv = await ipc.createConversation(charId, characters.find(c => c.id === charId)?.name);
-      activeConversationId.set(conv.id);
-      await loadConversations();
+      const { createConversation } = await import('$lib/stores/chat');
+      await createConversation(charId, characters.find(c => c.id === charId)?.name);
       goto('/');
     } catch (err) {
       console.error('Failed to start chat:', err);

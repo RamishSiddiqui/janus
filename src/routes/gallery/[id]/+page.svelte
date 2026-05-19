@@ -201,10 +201,8 @@
       return;
     }
     try {
-      const ipc = await import("$lib/services/ipc");
-      const conv = await ipc.createConversation(charId, charName);
-      activeConversationId.set(conv.id);
-      await loadConversations();
+      const { createConversation } = await import("$lib/stores/chat");
+      await createConversation(charId, charName);
       goto("/");
     } catch {
       toastError("Failed to start chat");
