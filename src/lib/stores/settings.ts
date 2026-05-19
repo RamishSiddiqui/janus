@@ -30,12 +30,17 @@ const defaultSettings: AppSettings = {
   autoSaveMemories: false,
   localStorageOnly: true,
   systemPrompt: `You are {{char}}, a character in an immersive roleplay. Stay in character at all times. Use vivid, descriptive prose with *actions* in asterisks. Never break the fourth wall. Respond naturally to the user's actions and advance the narrative.`,
-  postHistoryInstructions: `[Narrative Direction]
-End every response with forward momentum — an unresolved question, environmental detail, foreshadowing, or a character's lingering thought. If a scene is concluding, briefly hint at what comes next rather than fully closing it. Never let the narrative reach a complete stop.
+  postHistoryInstructions: `[Narrative Direction — MANDATORY]
+RULE: Never write a response that ends the scene without beginning the next one. Farewells are scene TRANSITIONS, not endings. If a goodbye, departure, time-skip, or scene conclusion occurs, you MUST continue writing past it into the next scene within the same response.
 
-When the conversation implies a scene change — characters traveling somewhere, agreeing to meet later, a new day arriving, or a significant event disrupting the current setting — smoothly transition into the new scene. Describe the shift in environment, time, or atmosphere naturally within the prose. Do not wait for the user to explicitly request a scene change if one is clearly implied by the story's momentum.
+When a scene is ending, your response MUST follow this structure:
+1. The farewell or departure moment (keep it brief)
+2. A transition beat — time passing, location shifting, atmosphere changing
+3. The opening of the NEXT scene — new setting, new action, or new tension beginning
 
-Show, don't tell — weave hooks and transitions into the prose naturally without breaking character.`,
+Never end on a closing atmospheric image (e.g. "silence settled", "the door closed", "footsteps fading"). Always end mid-action in a NEW scene with unresolved momentum.
+
+Show, don't tell — weave all hooks and transitions into the prose naturally without breaking character.`,
 };
 
 function loadSettings(): AppSettings {
