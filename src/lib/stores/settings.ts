@@ -18,9 +18,15 @@ export interface AppSettings {
   /** Post-History Instructions — injected AFTER conversation history, before generation.
    *  Shapes how the AI ends responses (narrative hooks, pacing, tone). */
   postHistoryInstructions: string;
+  /** Internal version counter — bumped when managed defaults (PHI, systemPrompt) change.
+   *  When saved version < current version, stale prompts are refreshed automatically. */
+  _settingsVersion: number;
 }
 
 const STORAGE_KEY = 'mythic-settings';
+
+// ── Bump this whenever systemPrompt or postHistoryInstructions defaults change ──
+const CURRENT_SETTINGS_VERSION = 2;
 
 const defaultSettings: AppSettings = {
   theme: 'dark',
@@ -29,6 +35,7 @@ const defaultSettings: AppSettings = {
   autoGenerateImages: true,
   autoSaveMemories: false,
   localStorageOnly: true,
+  _settingsVersion: CURRENT_SETTINGS_VERSION,
   systemPrompt: `You are {{char}}, a character in an immersive roleplay. Stay in character at all times. Use vivid, descriptive prose with *actions* in asterisks. Never break the fourth wall. Respond naturally to the user's actions and advance the narrative.`,
   postHistoryInstructions: `[Narrative Direction — MANDATORY]
 RULE: Never write a response that ends the scene without beginning the next one. Farewells are scene TRANSITIONS, not endings. If a goodbye, departure, time-skip, or scene conclusion occurs, you MUST continue writing past it into the next scene within the same response.
@@ -43,11 +50,39 @@ Never end on a closing atmospheric image (e.g. "silence settled", "the door clos
 Show, don't tell — weave all hooks and transitions into the prose naturally without breaking character.`,
 };
 
+// These are the fields that get force-refreshed when _settingsVersion is bumped.
+// Everything else (theme, fontSize, etc.) is always preserved from the user's save.
+const MANAGED_PROMPT_KEYS: (keyof AppSettings)[] = [
+  'systemPrompt',
+  'postHistoryInstructions',
+];
+
 function loadSettings(): AppSettings {
   if (!browser) return defaultSettings;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaultSettings, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<AppSettings>;
+      const merged = { ...defaultSettings, ...saved };
+
+      // ── Version migration ──
+      // If the saved version is older (or missing), force-refresh managed prompts
+      // so the user gets updated PHI/systemPrompt defaults.
+      const savedVersion = saved._settingsVersion ?? 0;
+      if (savedVersion < CURRENT_SETTINGS_VERSION) {
+        for (const key of MANAGED_PROMPT_KEYS) {
+          (merged as any)[key] = defaultSettings[key];
+        }
+        merged._settingsVersion = CURRENT_SETTINGS_VERSION;
+        // Persist the migration immediately
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        console.info(
+          `[settings] Migrated v${savedVersion} → v${CURRENT_SETTINGS_VERSION}: refreshed managed prompts`
+        );
+      }
+
+      return merged;
+    }
   } catch {
     // Corrupted storage — fall back to defaults
   }
