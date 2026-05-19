@@ -31,31 +31,69 @@
   let branchFromId: string | null = $state(null);
   let branchFromContent: string = $state(''); // preview text of the branch-point message
 
-  // Auto-scroll to bottom when messages change or during streaming
-  // During streaming, use instant scroll (smooth scroll + rapid updates = jank).
-  // On new messages arriving, use smooth scroll for polish.
-  let lastScrolledLen = 0;
+  // ── Smart Auto-Scroll ──
+  // Respects user intent: if they scroll up to read, don't yank them down.
+  // When they scroll back near the bottom, re-engage sticky auto-scroll.
+  // Shows a floating "↓" pill when scrolled away during streaming.
+  const STICKY_THRESHOLD = 120; // px from bottom to re-engage sticky mode
+  let isSticky = $state(true);          // start at bottom
+  let showScrollPill = $state(false);   // floating "scroll to bottom" indicator
   let scrollRafId: number | null = null;
 
+  /** Is the user currently near the bottom of the messages? */
+  function isNearBottom(): boolean {
+    if (!messagesEl) return true;
+    const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+    return scrollHeight - scrollTop - clientHeight < STICKY_THRESHOLD;
+  }
+
+  /** Handle user scroll events on the messages area. */
+  function onMessagesScroll() {
+    const nearBottom = isNearBottom();
+    if (nearBottom) {
+      // User scrolled back to bottom — re-engage sticky
+      isSticky = true;
+      showScrollPill = false;
+    } else {
+      // User scrolled away — disengage sticky
+      isSticky = false;
+      // Show pill only during active streaming
+      showScrollPill = $isStreaming;
+    }
+  }
+
+  /** Scroll to bottom programmatically (from pill click or new message). */
+  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+    if (!messagesEl) return;
+    isSticky = true;
+    showScrollPill = false;
+    messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior });
+  }
+
+  // Auto-scroll effect — only when sticky
   $effect(() => {
     const len = $messages.length;
     const streaming = $isStreaming;
-    // Only track last message content during streaming to trigger scroll on growth
-    const _lastContent = streaming ? $messages[len - 1]?.content?.length : 0;
+    // Track content growth during streaming
+    const _contentLen = streaming ? $messages[len - 1]?.content?.length : 0;
 
-    // Debounce via rAF — at most one scroll per frame
+    // Show/hide pill based on streaming state
+    if (!streaming) {
+      showScrollPill = false;
+    } else if (!isSticky) {
+      showScrollPill = true;
+    }
+
+    if (!isSticky) return; // User is reading history — don't scroll
+
+    // Debounce via rAF
     if (scrollRafId !== null) cancelAnimationFrame(scrollRafId);
     scrollRafId = requestAnimationFrame(() => {
       scrollRafId = null;
-      if (!messagesEl) return;
-
-      // During streaming: instant scroll (no smooth animation fighting rapid updates)
-      // On new message: smooth scroll for polish
-      const isNewMessage = len !== lastScrolledLen;
-      lastScrolledLen = len;
+      if (!messagesEl || !isSticky) return;
       messagesEl.scrollTo({
         top: messagesEl.scrollHeight,
-        behavior: streaming ? 'instant' : (isNewMessage ? 'smooth' : 'instant'),
+        behavior: streaming ? 'instant' : 'smooth',
       });
     });
   });
@@ -325,7 +363,7 @@
       />
 
       <!-- Messages -->
-      <div class="messages-area" bind:this={messagesEl} role="log" aria-label="Chat messages" aria-live="polite">
+      <div class="messages-area" bind:this={messagesEl} onscroll={onMessagesScroll} role="log" aria-label="Chat messages" aria-live="polite">
         {#each $messages as message, i (message.id)}
           <div
             class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
@@ -367,6 +405,22 @@
           </div>
         {/if}
       </div>
+
+      <!-- Floating scroll-to-bottom pill -->
+      {#if showScrollPill}
+        <button
+          class="scroll-pill"
+          onclick={() => scrollToBottom('smooth')}
+          aria-label="Scroll to latest message"
+          title="Jump to latest"
+        >
+          <span class="scroll-pill-glow"></span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="scroll-pill-label">New message</span>
+        </button>
+      {/if}
 
       <!-- Branch mode banner -->
       {#if branchFromId}
@@ -635,6 +689,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    position: relative; /* Anchor for scroll-pill absolute positioning */
   }
 
   .messages-area {
@@ -644,6 +699,109 @@
     display: flex;
     flex-direction: column;
     gap: 20px;
+    /* Smooth scrollbar for the container */
+    scroll-behavior: auto;
+  }
+
+  /* ───────────────────────────────────────────────
+     SCROLL-TO-BOTTOM PILL — Floating glassmorphic indicator
+  ─────────────────────────────────────────────── */
+  .scroll-pill {
+    position: absolute;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px 8px 12px;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+
+    /* Glassmorphism */
+    background: rgba(11, 11, 28, 0.85);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    backdrop-filter: blur(20px) saturate(160%);
+    box-shadow:
+      0 0 0 1px rgba(139, 92, 246, 0.08),
+      0 4px 24px rgba(0, 0, 0, 0.5),
+      0 1px 0 rgba(255, 255, 255, 0.04) inset;
+
+    color: rgba(196, 161, 255, 0.9);
+    font-family: var(--font-body);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+
+    /* Entrance animation */
+    animation: pillSlideIn 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    transition: all 200ms ease;
+  }
+
+  @keyframes pillSlideIn {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(12px) scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+  }
+
+  .scroll-pill:hover {
+    background: rgba(17, 17, 38, 0.92);
+    border-color: rgba(139, 92, 246, 0.45);
+    box-shadow:
+      0 0 0 1px rgba(139, 92, 246, 0.15),
+      0 6px 32px rgba(0, 0, 0, 0.6),
+      0 0 20px rgba(139, 92, 246, 0.12),
+      0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    color: #c4a1ff;
+    transform: translateX(-50%) translateY(-2px);
+  }
+
+  .scroll-pill:active {
+    transform: translateX(-50%) scale(0.95);
+  }
+
+  /* Pulsing glow dot */
+  .scroll-pill-glow {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #00f2ff);
+    box-shadow: 0 0 8px rgba(124, 58, 237, 0.6);
+    animation: pillGlowPulse 1.8s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pillGlowPulse {
+    0%, 100% {
+      box-shadow: 0 0 4px rgba(124, 58, 237, 0.4);
+      opacity: 0.7;
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(124, 58, 237, 0.8), 0 0 20px rgba(0, 242, 255, 0.2);
+      opacity: 1;
+    }
+  }
+
+  .scroll-pill-label {
+    white-space: nowrap;
+  }
+
+  .scroll-pill svg {
+    flex-shrink: 0;
+    animation: pillChevronBounce 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pillChevronBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(2px); }
   }
 
   .empty-chat {

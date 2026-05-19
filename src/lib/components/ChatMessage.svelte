@@ -58,26 +58,24 @@
     const step = Math.max(MIN_CHARS_PER_FRAME, Math.ceil(gap * EASE_FACTOR));
     let newLen = Math.min(revealedLen + step, targetLen);
 
-    // ── Safe slice: never cut inside an *asterisk* pair ──
-    // Count asterisks in the slice — if odd, we're inside a formatting pair.
-    // Extend to include the closing * so the pair renders as a unit.
-    let asteriskCount = 0;
-    for (let i = 0; i < newLen; i++) {
-      if (text[i] === '*') asteriskCount++;
-    }
-    if (asteriskCount % 2 === 1) {
-      // Inside an unclosed pair — find the closing asterisk
-      const closingIdx = text.indexOf('*', newLen);
-      if (closingIdx !== -1 && closingIdx - newLen < 40) {
-        // Close the pair (only if it's nearby — don't jump too far ahead)
-        newLen = closingIdx + 1;
-      } else {
-        // Closing * is far away or doesn't exist — retreat to before the opening *
-        // Find the last * in the slice and back up to just before it
-        const lastStar = text.lastIndexOf('*', newLen - 1);
-        if (lastStar > revealedLen) {
-          newLen = lastStar;
+    // ── Safe slice: never cut inside an *asterisk* formatting pair ──
+    // Find all *...* pairs and ensure we don't slice inside one.
+    // This handles both *italic* and **bold** patterns.
+    const pairRegex = /\*{1,2}[^*]+\*{1,2}/g;
+    let match: RegExpExecArray | null;
+    while ((match = pairRegex.exec(text)) !== null) {
+      const pairStart = match.index;
+      const pairEnd = pairStart + match[0].length;
+      if (newLen > pairStart && newLen < pairEnd) {
+        // We're slicing inside this pair
+        if (pairEnd - newLen < 50) {
+          // Close enough — extend to include the full pair
+          newLen = pairEnd;
+        } else {
+          // Too far — retreat to before this pair starts
+          newLen = pairStart;
         }
+        break; // Only need to fix the first conflict
       }
     }
 
