@@ -4,7 +4,7 @@
   import type { Message } from '$lib/types';
   import { formatRoleplayContent } from '$lib/utils/format';
   import { browser } from '$app/environment';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionState } from '$lib/stores/chat';
+  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionState, retryLastMessage } from '$lib/stores/chat';
   import { success, error as toastError } from '$lib/stores/toast';
   import { get } from 'svelte/store';
 
@@ -247,7 +247,18 @@
           </div>
         {:else}
           <div class="msg-text" class:dim={isSwitching}>
-            {#if message.isStreaming}
+            {#if message.isError}
+              <div class="error-state">
+                <div class="error-indicator">
+                  <Icon name="alert-circle" size={14} color="#F43F5E" />
+                  <span class="error-label">Generation failed</span>
+                </div>
+                <button class="retry-btn" onclick={retryLastMessage}>
+                  <Icon name="refresh-cw" size={12} color="#FFFFFF" />
+                  <span>Retry</span>
+                </button>
+              </div>
+            {:else if message.isStreaming}
               <!-- During streaming: use direct DOM updates via $effect (no Svelte diffing) -->
               <div bind:this={streamTextEl} class="stream-live"></div>
               <span class="streaming-cursor cursor-blink" aria-label="Generating">▍</span>
@@ -378,7 +389,21 @@
           </div>
         {:else}
           <div class="msg-text user-text">
-            {@html formatRoleplayContent(message.content)}
+            {#if message.isError}
+              <div class="error-state user-error">
+                <span class="error-content">{message.content}</span>
+                <div class="error-indicator">
+                  <Icon name="alert-circle" size={14} color="#F43F5E" />
+                  <span class="error-label">Failed to send</span>
+                </div>
+                <button class="retry-btn" onclick={retryLastMessage}>
+                  <Icon name="refresh-cw" size={12} color="#FFFFFF" />
+                  <span>Retry</span>
+                </button>
+              </div>
+            {:else}
+              {@html formatRoleplayContent(message.content)}
+            {/if}
           </div>
         {/if}
       </div>
@@ -477,6 +502,42 @@
 
   .ai-message  { align-items: flex-start; }
   .user-message { justify-content: flex-end; }
+
+  /* ───────────────────────────────────────────────
+     ERROR STATE
+  ─────────────────────────────────────────────── */
+  .error-state {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 4px 0;
+  }
+  .error-indicator {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .error-label {
+    font-size: 13px; font-weight: 600; color: #F43F5E;
+    letter-spacing: 0.2px;
+  }
+  .error-content {
+    font-size: 13px; color: #c8c8e0; line-height: 1.5;
+    opacity: 0.7;
+  }
+  .retry-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; border-radius: 8px;
+    background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(191,64,255,0.15));
+    border: 1px solid rgba(139,92,246,0.25);
+    color: #e0e0f0; font-size: 12px; font-weight: 600;
+    font-family: var(--font-body); cursor: pointer;
+    transition: all 200ms ease; width: fit-content;
+  }
+  .retry-btn:hover {
+    background: linear-gradient(135deg, rgba(139,92,246,0.35), rgba(191,64,255,0.25));
+    border-color: rgba(139,92,246,0.4);
+    box-shadow: 0 2px 12px rgba(139,92,246,0.2);
+    transform: translateY(-1px);
+  }
+  .retry-btn:active { transform: translateY(0); }
+  .user-error { align-items: flex-end; }
 
   /* ───────────────────────────────────────────────
      AVATAR

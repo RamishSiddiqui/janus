@@ -17,6 +17,8 @@ export interface Message {
   /** Index of the current conversation in siblingConversationIds. */
   siblingConversationIndex?: number;
   isStreaming?: boolean;
+  /** True when the AI generation failed — UI should show a retry button. */
+  isError?: boolean;
 }
 
 /** A character card used across Gallery and Chat. */

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::error::MythicError;
@@ -43,11 +43,14 @@ pub async fn send_message(
     model: Option<String>,
     system_prompt: Option<String>,
     streaming: Option<bool>,
+    post_history_instructions: Option<String>,
 ) -> Result<serde_json::Value, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
     let http = state_guard.http_client.clone();
     drop(state_guard);
+
+    debug!("[send_message] conversation={}, content_len={}", conversation_id, content.len());
 
     // 1. Save the user message
     let user_msg_id = Uuid::new_v4().to_string();
@@ -82,7 +85,9 @@ pub async fn send_message(
     .await?;
 
     // 2. Build the prompt
-    let messages = build_prompt(&db, &conversation_id, &user_msg_id, system_prompt.as_deref()).await?;
+    debug!("[send_message] building prompt...");
+    let messages = build_prompt(&db, &conversation_id, &user_msg_id, system_prompt.as_deref(), post_history_instructions.as_deref()).await?;
+    debug!("[send_message] prompt built with {} messages", messages.len());
 
     // 3. Get the active LLM provider
     let provider_config = get_default_llm_provider(&db).await?;
@@ -151,6 +156,7 @@ pub async fn send_message(
 
     // 5. Stream or generate the response
     let use_streaming = streaming.unwrap_or(true);
+    debug!("[send_message] streaming={}, model={}", use_streaming, model_id);
 
     if use_streaming {
         // --- Streaming path ---
@@ -276,6 +282,7 @@ pub async fn regenerate_message(
     model: Option<String>,
     system_prompt: Option<String>,
     streaming: Option<bool>,
+    post_history_instructions: Option<String>,
 ) -> Result<serde_json::Value, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
@@ -323,7 +330,7 @@ pub async fn regenerate_message(
 
     // Re-trigger send_message (which will create a new assistant response)
     // For regeneration, we just need to stream a new response from the same history
-    send_message(app, state, conversation_id, parent_content, model, system_prompt, streaming).await
+    send_message(app, state, conversation_id, parent_content, model, system_prompt, streaming, post_history_instructions).await
 }
 
 // --- Internal helpers ---
@@ -335,6 +342,7 @@ async fn build_prompt(
     conversation_id: &str,
     up_to_message_id: &str,
     user_system_prompt: Option<&str>,
+    post_history_instructions: Option<&str>,
 ) -> Result<Vec<ChatMessage>, MythicError> {
     let mut prompt = Vec::new();
 
@@ -349,14 +357,18 @@ async fn build_prompt(
         }
     }
 
-    // Get the character associated with this conversation
-    let character_id: Option<String> = sqlx::query_scalar(
-        "SELECT character_id FROM conversations WHERE id = ?"
+    // Get the character and memory scope associated with this conversation
+    let conv_meta: Option<(Option<String>, String)> = sqlx::query_as(
+        "SELECT character_id, memory_scope FROM conversations WHERE id = ?"
     )
     .bind(conversation_id)
     .fetch_optional(db)
-    .await?
-    .flatten();
+    .await?;
+
+    let (character_id, memory_scope) = match conv_meta {
+        Some((char_id, scope)) => (char_id, scope),
+        None => (None, "character".to_string()),
+    };
 
     // Build system prompt from character data
     if let Some(ref char_id) = character_id {
@@ -430,7 +442,9 @@ async fn build_prompt(
         }
     }
 
-    // Walk the message tree from root to the current message
+    // Walk the message tree from root to the current message.
+    // TODO: Implement proper context management strategy (sliding window,
+    // summarization, or hybrid approach) for long conversations.
     let mut chain = Vec::new();
     let mut current_id = Some(up_to_message_id.to_string());
 
@@ -506,6 +520,59 @@ async fn build_prompt(
         }
     }
 
+    // ── Inject saved memories as a persistent context layer ──
+    // Memories are auto-extracted facts from past conversations (events, relationships,
+    // character reveals, etc.). Injecting them here gives the AI long-term recall.
+    //
+    // Placement: after lorebook, before emotional state — the "knowledge layer".
+    // Limited to 20 most recent to avoid context overflow.
+    if memory_scope != "none" {
+        let memory_rows: Vec<(String,)> = if memory_scope == "character" {
+            // Character-scoped: all memories for this character (shared across conversations)
+            if let Some(ref char_id) = character_id {
+                sqlx::query_as(
+                    "SELECT content FROM memories
+                     WHERE character_id = ?
+                     ORDER BY created_at DESC LIMIT 20"
+                )
+                .bind(char_id)
+                .fetch_all(db)
+                .await?
+            } else {
+                Vec::new()
+            }
+        } else {
+            // Conversation-scoped: only this conversation's memories
+            sqlx::query_as(
+                "SELECT content FROM memories
+                 WHERE conversation_id = ?
+                 ORDER BY created_at DESC LIMIT 20"
+            )
+            .bind(conversation_id)
+            .fetch_all(db)
+            .await?
+        };
+
+        if !memory_rows.is_empty() {
+            // Format memories as a bullet list, reversed to chronological order
+            let mut facts: Vec<String> = memory_rows.into_iter().map(|(c,)| c).collect();
+            facts.reverse(); // oldest first for natural reading order
+
+            let memory_block = format!(
+                "[Remembered Facts — things you know from past interactions]\n{}",
+                facts.iter()
+                    .map(|f| format!("• {}", f))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+
+            prompt.push(ChatMessage {
+                role: MessageRole::System,
+                content: memory_block,
+            });
+        }
+    }
+
     // Inject character emotional state as a dynamic context layer.
     // Placed last in the system prompt so it's closest to the conversation history
     // and carries the most weight in the attention window.
@@ -538,6 +605,20 @@ async fn build_prompt(
 
     prompt.extend(chain);
 
+    // ── Post-History Instructions (PHI) ──
+    // Injected AFTER the conversation history as the very last system message.
+    // This carries maximum attention weight and shapes how the AI structures
+    // its response — narrative hooks, scene transitions, pacing directives.
+    // Equivalent to SillyTavern's "Post-History Instructions" feature.
+    if let Some(phi) = post_history_instructions {
+        let trimmed = phi.trim();
+        if !trimmed.is_empty() {
+            prompt.push(ChatMessage {
+                role: MessageRole::System,
+                content: trimmed.to_string(),
+            });
+        }
+    }
 
     Ok(prompt)
 }
