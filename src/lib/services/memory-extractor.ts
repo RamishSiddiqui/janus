@@ -23,8 +23,8 @@
 export interface ExtractedFact {
   /** The condensed, atomic fact (one sentence, third-person past tense). */
   summary: string;
-  /** Category for future filtering/retrieval. */
-  category: 'identity' | 'relationship' | 'world' | 'decision' | 'revelation';
+  /** Category tag — suggested: identity, relationship, world, decision, revelation. LLM may use others. */
+  category: string;
 }
 
 /**
@@ -85,7 +85,7 @@ RULES:
 - Returning [] is the EXPECTED outcome for most messages. Only truly significant moments get extracted.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
-[{"summary":"...","category":"identity|relationship|world|decision|revelation"}]
+[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>"}]
 
 Expected output for most messages: []`;
 
@@ -133,16 +133,13 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
 
-    const validCategories = new Set([
-      'identity', 'relationship', 'world', 'decision', 'revelation',
-    ]);
-
     return parsed
       .filter((item: any) =>
         typeof item.summary === 'string' &&
         item.summary.length > 10 &&
         item.summary.length < 300 &&
-        validCategories.has(item.category)
+        typeof item.category === 'string' &&
+        item.category.length > 0
       )
       .slice(0, 2) // Hard cap: max 2 facts per extraction
       .map((item: any) => ({
