@@ -24,14 +24,74 @@
   let copied = $state(false);
   let isSwitching = $state(false);
 
-  // Direct DOM ref for streaming text — avoids Svelte {@html} re-diffing on every token
+  // ── Typewriter Reveal ──
+  // LLM tokens arrive as whole words — we reveal them character-by-character
+  // for a smooth typing feel. Uses an adaptive easing algorithm:
+  // speeds up when falling behind, slows down when caught up.
   let streamTextEl: HTMLDivElement | undefined = $state();
+  let revealedLen = 0;        // how many chars currently visible
+  let typewriterRafId: number | null = null;
+  let wasStreaming = false;
 
-  // During streaming, update innerHTML directly instead of going through Svelte's reactivity.
-  // This avoids the expensive {@html} re-evaluation on every frame.
+  // Minimum chars to reveal per frame — tuned for 60fps feel
+  const MIN_CHARS_PER_FRAME = 1;
+  // Easing factor: fraction of remaining gap to close each frame
+  // 0.35 = smooth but responsive; higher = faster catch-up
+  const EASE_FACTOR = 0.35;
+
+  function typewriterTick() {
+    typewriterRafId = null;
+    if (!streamTextEl) return;
+
+    const targetLen = message.content.length;
+    if (revealedLen >= targetLen) {
+      // Caught up — wait for more content
+      if (message.isStreaming) {
+        typewriterRafId = requestAnimationFrame(typewriterTick);
+      }
+      return;
+    }
+
+    // Adaptive speed: close a fraction of the gap, with a minimum speed
+    const gap = targetLen - revealedLen;
+    const step = Math.max(MIN_CHARS_PER_FRAME, Math.ceil(gap * EASE_FACTOR));
+    revealedLen = Math.min(revealedLen + step, targetLen);
+
+    // Render only the revealed portion
+    const visibleText = message.content.slice(0, revealedLen);
+    streamTextEl.innerHTML = formatRoleplayContent(visibleText);
+
+    // Keep ticking if there's more to reveal or stream is still active
+    if (revealedLen < targetLen || message.isStreaming) {
+      typewriterRafId = requestAnimationFrame(typewriterTick);
+    }
+  }
+
+  // React to streaming state changes
   $effect(() => {
-    if (message.isStreaming && streamTextEl) {
-      streamTextEl.innerHTML = formatRoleplayContent(message.content);
+    const isNowStreaming = !!message.isStreaming;
+    const contentLen = message.content.length;
+
+    if (isNowStreaming && streamTextEl) {
+      // Start or continue the typewriter loop
+      if (!wasStreaming) {
+        // Fresh stream start — reset reveal position
+        revealedLen = 0;
+        wasStreaming = true;
+      }
+      // Ensure the rAF loop is running
+      if (typewriterRafId === null) {
+        typewriterRafId = requestAnimationFrame(typewriterTick);
+      }
+    } else if (wasStreaming && !isNowStreaming) {
+      // Stream just ended — cancel any pending frame and show full content
+      wasStreaming = false;
+      if (typewriterRafId !== null) {
+        cancelAnimationFrame(typewriterRafId);
+        typewriterRafId = null;
+      }
+      revealedLen = contentLen;
+      // The {:else} branch of the template will now render via {@html}
     }
   });
 
