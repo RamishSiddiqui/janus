@@ -548,14 +548,17 @@
   /* ── Masonry Grid ── */
   .card-grid {
     padding: 24px 28px; overflow-y: auto; flex: 1;
-    column-count: 5; column-gap: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 18px;
+    align-content: start;
   }
   .card-grid::-webkit-scrollbar { width: 4px; }
   .card-grid::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 4px; }
 
   /* ── Cards ── */
   .char-card {
-    break-inside: avoid; margin-bottom: 18px;
+    break-inside: avoid;
     border-radius: 16px; overflow: hidden;
     background: rgba(14,14,30,0.5);
     border: 1px solid rgba(139,92,246,0.06);
@@ -630,11 +633,8 @@
   .card-action-btn.danger:hover { background: rgba(244,63,94,0.1); }
 
   /* ── Responsive ── */
-  @media (max-width: 1600px) { .card-grid { column-count: 4; } }
-  @media (max-width: 1200px) { .card-grid { column-count: 3; } }
-  @media (max-width: 900px) { .card-grid { column-count: 2; } }
   @media (max-width: 600px) {
-    .card-grid { column-count: 1; padding: 16px; }
+    .card-grid { grid-template-columns: 1fr; padding: 16px; }
     .gallery-header {
       flex-direction: column; gap: 12px; align-items: flex-start; padding: 16px;
     }
@@ -644,7 +644,7 @@
 
   /* ── Empty State ── */
   .empty-state {
-    column-span: all; display: flex; flex-direction: column;
+    grid-column: 1 / -1; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
     padding: 60px 16px;
   }
