@@ -9,11 +9,9 @@ use uuid::Uuid;
 
 use crate::error::MythicError;
 use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
-use crate::models::provider::{ModelInfo, ProviderAdapter, ProviderConfig, ProviderType};
-use crate::providers::ollama::OllamaProvider;
-use crate::providers::openai_client::{OpenAiClient, OpenAiClientConfig};
-use crate::providers::openrouter::OpenRouterProvider;
-use crate::providers::traits::{LlmProvider, StreamChunk};
+use crate::models::provider::{ProviderAdapter, ProviderConfig, ProviderType};
+use crate::providers::unified::RigProvider;
+use crate::providers::traits::StreamChunk;
 use crate::AppState;
 
 /// Payload emitted to the frontend via Tauri events during streaming.
@@ -47,7 +45,7 @@ pub async fn send_message(
 ) -> Result<serde_json::Value, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
-    let http = state_guard.http_client.clone();
+    let _http = state_guard.http_client.clone(); // retained for image providers
     drop(state_guard);
 
     debug!("[send_message] conversation={}, content_len={}", conversation_id, content.len());
@@ -162,7 +160,7 @@ pub async fn send_message(
         // --- Streaming path ---
         let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamChunk>(64);
 
-        let provider = create_llm_provider(&provider_config, http)?;
+        let provider = create_rig_provider(&provider_config)?;
 
         // Spawn the provider stream in a background task
         let stream_messages = messages.clone();
@@ -231,7 +229,7 @@ pub async fn send_message(
     }))
     } else {
         // --- Non-streaming path ---
-        let provider = create_llm_provider(&provider_config, http)?;
+        let provider = create_rig_provider(&provider_config)?;
 
         let db_for_save = db.clone();
         let conv_id = conversation_id.clone();
@@ -658,97 +656,24 @@ async fn get_default_llm_provider(
     }
 }
 
-/// Creates a concrete LLM provider instance from config.
-fn create_llm_provider(
-    config: &ProviderConfig,
-    http: reqwest::Client,
-) -> Result<Box<dyn LlmProvider>, MythicError> {
-    match config.adapter {
-        ProviderAdapter::OpenRouter => {
-            let api_key = config.config
-                .get("api_key")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| MythicError::Config("OpenRouter API key missing".to_string()))?;
+/// Creates a unified rig-backed LLM provider from DB config.
+fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider, MythicError> {
+    // Convert enum to string for RigProvider::from_config
+    let adapter_str = match config.adapter {
+        ProviderAdapter::Ollama => "ollama",
+        ProviderAdapter::OpenRouter => "openrouter",
+        ProviderAdapter::OpenAiCompatible => "openai",
+        ProviderAdapter::SiliconFlow => "openai", // OpenAI-compatible
+        ProviderAdapter::HuggingFace => "huggingface",
+        ProviderAdapter::ComfyUi => return Err(MythicError::Config(
+            "ComfyUI is an image provider, not an LLM provider".to_string()
+        )),
+    };
 
-            Ok(Box::new(OpenRouterProvider::new(http, api_key)?))
-        }
-        ProviderAdapter::Ollama => {
-            let base_url = config.config
-                .get("base_url")
-                .and_then(|v| v.as_str());
+    let api_key = config.config.get("api_key").and_then(|v| v.as_str());
+    let base_url = config.config.get("base_url").and_then(|v| v.as_str());
 
-            Ok(Box::new(OllamaProvider::new(http, base_url)))
-        }
-        ProviderAdapter::OpenAiCompatible => {
-            let base_url = config.config
-                .get("base_url")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| MythicError::Config("OpenAI-compatible base URL missing".to_string()))?;
-
-            let api_key = config.config
-                .get("api_key")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            let mut headers = reqwest::header::HeaderMap::new();
-            if !api_key.is_empty() {
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key))
-                        .map_err(|_| MythicError::Config("Invalid API key format".to_string()))?,
-                );
-            }
-
-            let client = OpenAiClient::new(http, OpenAiClientConfig {
-                base_url: format!("{}/v1", base_url.trim_end_matches("/v1").trim_end_matches('/')),
-                headers,
-                default_model: config.config.get("model").and_then(|v| v.as_str()).map(String::from),
-            });
-
-            // Wrap in a generic adapter struct
-            Ok(Box::new(GenericOpenAiProvider { client }))
-        }
-        _ => Err(MythicError::Config(format!(
-            "Unsupported LLM adapter: {:?}", config.adapter
-        ))),
-    }
-}
-
-/// Generic OpenAI-compatible provider for LM Studio, KoboldCPP, vLLM, etc.
-struct GenericOpenAiProvider {
-    client: OpenAiClient,
-}
-
-#[async_trait::async_trait]
-impl LlmProvider for GenericOpenAiProvider {
-    fn name(&self) -> &str { "OpenAI Compatible" }
-
-    async fn list_models(&self) -> Result<Vec<ModelInfo>, MythicError> {
-        self.client.list_models().await
-    }
-
-    async fn generate(
-        &self,
-        model: &str,
-        messages: &[ChatMessage],
-        params: &GenerationParams,
-    ) -> Result<String, MythicError> {
-        self.client.generate(model, messages, params).await
-    }
-
-    async fn generate_stream(
-        &self,
-        model: &str,
-        messages: &[ChatMessage],
-        params: &GenerationParams,
-        tx: tokio::sync::mpsc::Sender<StreamChunk>,
-    ) -> Result<(), MythicError> {
-        self.client.generate_stream(model, messages, params, tx).await
-    }
-
-    async fn health_check(&self) -> Result<bool, MythicError> {
-        self.client.health_check().await
-    }
+    RigProvider::from_config(adapter_str, api_key, base_url)
 }
 
 /// Stateless LLM generation — calls the configured provider without saving
@@ -765,7 +690,7 @@ pub async fn generate_raw(
 ) -> Result<String, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
-    let http = state_guard.http_client.clone();
+    let _http = state_guard.http_client.clone(); // retained for image providers
     drop(state_guard);
 
     let provider_config = get_default_llm_provider(&db).await?;
@@ -815,7 +740,7 @@ pub async fn generate_raw(
         },
     ];
 
-    let provider = create_llm_provider(&provider_config, http)?;
+    let provider = create_rig_provider(&provider_config)?;
     let result = provider.generate(&model_id, &messages, &gen_params).await?;
 
     Ok(result)
