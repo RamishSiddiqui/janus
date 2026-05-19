@@ -675,6 +675,17 @@ export async function sendMessage(conversationId: string, content: string, model
         streamBuffer.reset();
         console.error('Stream error:', event.content);
         toastError(`AI response failed: ${event.content}`);
+        // Mark the last assistant message as failed so UI shows a retry button
+        messages.update(msgs => {
+          const last = msgs[msgs.length - 1];
+          if (last && last.role === 'assistant') {
+            return msgs.map((m, i) => i === msgs.length - 1
+              ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
+              : m
+            );
+          }
+          return msgs;
+        });
         lastStreamError.set({ conversationId, lastUserContent: content });
         isStreaming.set(false);
         unlisten();
@@ -701,27 +712,26 @@ export async function sendMessage(conversationId: string, content: string, model
     console.error('Failed to send message:', err);
     const msg = (err as any)?.message ?? 'Failed to send message. Is a provider configured?';
     toastError(msg);
-    // Remove the optimistic user message
-    messages.update(msgs => msgs.filter(m => m.id !== tempUserId));
-    fullActivePath = fullActivePath.filter(m => m.id !== tempUserId);
-    currentRenderCount = Math.max(0, currentRenderCount - 1);
+    // Mark the user message as failed so UI shows a retry button
+    messages.update(msgs =>
+      msgs.map(m => m.id === tempUserId
+        ? { ...m, isError: true, content: content }
+        : m
+      )
+    );
+    lastStreamError.set({ conversationId, lastUserContent: content });
     isStreaming.set(false);
   }
 }
 
-/** Retries the last failed streaming response by re-sending the user's message. */
+/** Retries the last failed message by removing error messages and re-sending. */
 export async function retryLastMessage() {
   const err = get(lastStreamError);
   if (!err) return;
   lastStreamError.set(null);
-  // Remove the last assistant message (the failed/empty one)
-  messages.update(msgs => {
-    const last = msgs[msgs.length - 1];
-    if (last && last.role === 'assistant') {
-      return msgs.slice(0, -1);
-    }
-    return msgs;
-  });
+  // Remove all error-flagged messages (failed user send or failed assistant response)
+  messages.update(msgs => msgs.filter(m => !m.isError));
+  fullActivePath = fullActivePath.filter(m => !m.isError);
   await sendMessage(err.conversationId, err.lastUserContent);
 }
 
