@@ -641,11 +641,8 @@ async fn get_default_llm_provider(
                 id,
                 name,
                 provider_type: ProviderType::Llm,
-                adapter: match adapter.as_str() {
-                    "ollama" => ProviderAdapter::Ollama,
-                    "open_router" => ProviderAdapter::OpenRouter,
-                    _ => ProviderAdapter::OpenAiCompatible,
-                },
+                adapter: serde_json::from_value(serde_json::Value::String(adapter))
+                    .unwrap_or(ProviderAdapter::OpenAiCompatible),
                 config: serde_json::from_str(&config)?,
                 is_default,
             })
@@ -665,6 +662,16 @@ fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider, MythicErr
         ProviderAdapter::OpenAiCompatible => "openai",
         ProviderAdapter::SiliconFlow => "openai", // OpenAI-compatible
         ProviderAdapter::HuggingFace => "huggingface",
+        ProviderAdapter::Anthropic => "anthropic",
+        ProviderAdapter::Gemini => "gemini",
+        ProviderAdapter::Cohere => "cohere",
+        ProviderAdapter::DeepSeek => "deepseek",
+        ProviderAdapter::Groq => "groq",
+        ProviderAdapter::Perplexity => "perplexity",
+        ProviderAdapter::Xai => "xai",
+        ProviderAdapter::Hyperbolic => "hyperbolic",
+        ProviderAdapter::Moonshot => "moonshot",
+        ProviderAdapter::Together => "together",
         ProviderAdapter::ComfyUi => return Err(MythicError::Config(
             "ComfyUI is an image provider, not an LLM provider".to_string()
         )),

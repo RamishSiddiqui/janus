@@ -360,6 +360,16 @@ fn parse_adapter(s: &str) -> Result<ProviderAdapter, MythicError> {
         "silicon_flow" => Ok(ProviderAdapter::SiliconFlow),
         "hugging_face" => Ok(ProviderAdapter::HuggingFace),
         "comfy_ui" => Ok(ProviderAdapter::ComfyUi),
+        "anthropic" => Ok(ProviderAdapter::Anthropic),
+        "gemini" => Ok(ProviderAdapter::Gemini),
+        "cohere" => Ok(ProviderAdapter::Cohere),
+        "deepseek" => Ok(ProviderAdapter::DeepSeek),
+        "groq" => Ok(ProviderAdapter::Groq),
+        "perplexity" => Ok(ProviderAdapter::Perplexity),
+        "xai" => Ok(ProviderAdapter::Xai),
+        "hyperbolic" => Ok(ProviderAdapter::Hyperbolic),
+        "moonshot" => Ok(ProviderAdapter::Moonshot),
+        "together" => Ok(ProviderAdapter::Together),
         _ => Err(MythicError::Validation(format!("Invalid adapter: {}", s))),
     }
 }
