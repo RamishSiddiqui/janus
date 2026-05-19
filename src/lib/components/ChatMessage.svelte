@@ -43,7 +43,8 @@
     typewriterRafId = null;
     if (!streamTextEl) return;
 
-    const targetLen = message.content.length;
+    const text = message.content;
+    const targetLen = text.length;
     if (revealedLen >= targetLen) {
       // Caught up — wait for more content
       if (message.isStreaming) {
@@ -55,10 +56,35 @@
     // Adaptive speed: close a fraction of the gap, with a minimum speed
     const gap = targetLen - revealedLen;
     const step = Math.max(MIN_CHARS_PER_FRAME, Math.ceil(gap * EASE_FACTOR));
-    revealedLen = Math.min(revealedLen + step, targetLen);
+    let newLen = Math.min(revealedLen + step, targetLen);
+
+    // ── Safe slice: never cut inside an *asterisk* pair ──
+    // Count asterisks in the slice — if odd, we're inside a formatting pair.
+    // Extend to include the closing * so the pair renders as a unit.
+    let asteriskCount = 0;
+    for (let i = 0; i < newLen; i++) {
+      if (text[i] === '*') asteriskCount++;
+    }
+    if (asteriskCount % 2 === 1) {
+      // Inside an unclosed pair — find the closing asterisk
+      const closingIdx = text.indexOf('*', newLen);
+      if (closingIdx !== -1 && closingIdx - newLen < 40) {
+        // Close the pair (only if it's nearby — don't jump too far ahead)
+        newLen = closingIdx + 1;
+      } else {
+        // Closing * is far away or doesn't exist — retreat to before the opening *
+        // Find the last * in the slice and back up to just before it
+        const lastStar = text.lastIndexOf('*', newLen - 1);
+        if (lastStar > revealedLen) {
+          newLen = lastStar;
+        }
+      }
+    }
+
+    revealedLen = Math.min(newLen, targetLen);
 
     // Render only the revealed portion
-    const visibleText = message.content.slice(0, revealedLen);
+    const visibleText = text.slice(0, revealedLen);
     streamTextEl.innerHTML = formatRoleplayContent(visibleText);
 
     // Keep ticking if there's more to reveal or stream is still active
@@ -649,8 +675,10 @@
   .stream-live :global(.rp-action) {
     color: rgba(139, 139, 175, 0.72);
     font-style: italic;
-    display: block;
-    margin: 6px 0;
+    /* INLINE during streaming — prevents line breaks mid-paragraph.
+       The final render (after streaming) uses the normal display:block from .msg-text. */
+    display: inline;
+    margin: 0;
     font-size: 13.5px;
     letter-spacing: 0.02em;
   }
