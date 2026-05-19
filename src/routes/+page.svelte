@@ -47,18 +47,15 @@
     return scrollHeight - scrollTop - clientHeight < STICKY_THRESHOLD;
   }
 
-  /** Handle user scroll events on the messages area. */
   function onMessagesScroll() {
     const nearBottom = isNearBottom();
     if (nearBottom) {
-      // User scrolled back to bottom — re-engage sticky
       isSticky = true;
       showScrollPill = false;
     } else {
-      // User scrolled away — disengage sticky
       isSticky = false;
-      // Show pill only during active streaming
-      showScrollPill = $isStreaming;
+      // Show pill whenever scrolled away — not just during streaming
+      showScrollPill = true;
     }
   }
 
@@ -77,10 +74,10 @@
     // Track content growth during streaming
     const _contentLen = streaming ? $messages[len - 1]?.content?.length : 0;
 
-    // Show/hide pill based on streaming state
-    if (!streaming) {
+    // Show/hide pill based on streaming + sticky state
+    if (isSticky) {
       showScrollPill = false;
-    } else if (!isSticky) {
+    } else if (len > 0) {
       showScrollPill = true;
     }
 
@@ -404,23 +401,23 @@
             </button>
           </div>
         {/if}
-      </div>
 
-      <!-- Floating scroll-to-bottom pill -->
-      {#if showScrollPill}
-        <button
-          class="scroll-pill"
-          onclick={() => scrollToBottom('smooth')}
-          aria-label="Scroll to latest message"
-          title="Jump to latest"
-        >
-          <span class="scroll-pill-glow"></span>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span class="scroll-pill-label">New message</span>
-        </button>
-      {/if}
+        <!-- Floating scroll-to-bottom pill — inside messages-area for correct positioning -->
+        {#if showScrollPill}
+          <button
+            class="scroll-pill"
+            onclick={() => scrollToBottom('smooth')}
+            aria-label="Scroll to latest message"
+            title="Jump to latest"
+          >
+            <span class="scroll-pill-glow"></span>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="scroll-pill-label">{$isStreaming ? 'New message' : 'Jump to bottom'}</span>
+          </button>
+        {/if}
+      </div>
 
       <!-- Branch mode banner -->
       {#if branchFromId}
@@ -707,11 +704,11 @@
      SCROLL-TO-BOTTOM PILL — Floating glassmorphic indicator
   ─────────────────────────────────────────────── */
   .scroll-pill {
-    position: absolute;
-    bottom: 110px;
-    left: 50%;
-    transform: translateX(-50%);
+    position: sticky;
+    bottom: 16px;
+    align-self: center;
     z-index: 20;
+    margin-top: -8px; /* Pull up slightly so it doesn't add visual gap */
 
     display: flex;
     align-items: center;
@@ -744,11 +741,11 @@
   @keyframes pillSlideIn {
     from {
       opacity: 0;
-      transform: translateX(-50%) translateY(12px) scale(0.9);
+      transform: translateY(12px) scale(0.9);
     }
     to {
       opacity: 1;
-      transform: translateX(-50%) translateY(0) scale(1);
+      transform: translateY(0) scale(1);
     }
   }
 
@@ -761,11 +758,11 @@
       0 0 20px rgba(139, 92, 246, 0.12),
       0 1px 0 rgba(255, 255, 255, 0.06) inset;
     color: #c4a1ff;
-    transform: translateX(-50%) translateY(-2px);
+    transform: translateY(-2px);
   }
 
   .scroll-pill:active {
-    transform: translateX(-50%) scale(0.95);
+    transform: scale(0.95);
   }
 
   /* Pulsing glow dot */
