@@ -17,7 +17,12 @@ export function formatRoleplayContent(text: string): string {
   // Apply roleplay formatting
   const formatted = escaped
     .replace(/\*([^*]+)\*/g, '<em class="rp-action">$1</em>')
-    .replace(/\n/g, '<br/>');
+    // Double newlines → paragraph break (always a visible break)
+    .replace(/\n{2,}/g, '<br/><br/>')
+    // Single newline → space (prose continuation, not a hard break)
+    // This prevents words like "I'll" from being stranded on their own line
+    // when the LLM inserts soft line-wraps in its streaming output.
+    .replace(/\n/g, ' ');
 
   // Sanitize the final output
   return sanitizeHtml(formatted);

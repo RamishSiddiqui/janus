@@ -416,6 +416,29 @@ export async function regenerateMessage(
 }
 
 /**
+ * Retries a failed message by reusing the existing user message in the DB.
+ * Unlike sendMessage, this does NOT insert a new user message — it just
+ * re-triggers LLM generation from the one that already exists.
+ */
+export async function retryFailedMessage(
+  conversationId: string,
+  userMessageId: string,
+  model?: string,
+  systemPrompt?: string,
+  streaming?: boolean,
+  postHistoryInstructions?: string,
+): Promise<SendMessageResult> {
+  return safeInvoke<SendMessageResult>('retry_failed_message', {
+    conversationId,
+    userMessageId,
+    model: model ?? null,
+    systemPrompt: systemPrompt ?? null,
+    streaming: streaming ?? null,
+    postHistoryInstructions: postHistoryInstructions ?? null,
+  });
+}
+
+/**
  * Subscribes to chat stream events from the backend.
  * Returns an unlisten function to stop listening.
  */
