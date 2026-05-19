@@ -545,11 +545,12 @@
     transform: translateY(-1px);
   }
 
-  /* ── Masonry Grid ── */
+  /* ── Card Grid ── */
   .card-grid {
     padding: 24px 28px; overflow-y: auto; flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(190px, 260px));
+    justify-content: center;
     gap: 18px;
     align-content: start;
   }
@@ -581,7 +582,7 @@
 
   .card-image {
     width: 100%; position: relative; overflow: hidden; cursor: pointer;
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 4 / 5;
     flex-shrink: 0;
   }
   .card-avatar-img {
