@@ -13,6 +13,75 @@ import type { CharacterState } from '$lib/services/ipc';
 // Detect if we're running inside Tauri (desktop app) or browser (dev mode)
 const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
+// ── Streaming Buffer ──
+// Batches incoming token deltas and flushes to the store once per animation frame.
+// This reduces Svelte reactivity updates from ~100+/sec (per token) to ~60/sec (per frame),
+// eliminating layout thrash and making text rendering buttery smooth.
+class StreamBuffer {
+  private pendingText = '';
+  private messageId = '';
+  private rafId: number | null = null;
+  private isFirstDelta = true;
+
+  /** Accumulate a delta token. Actual store update deferred to next animation frame. */
+  push(messageId: string, text: string) {
+    if (this.isFirstDelta || this.messageId !== messageId) {
+      // First delta for this message — create the assistant message immediately
+      // so the user sees the bubble appear without waiting for the next frame.
+      this.messageId = messageId;
+      this.isFirstDelta = false;
+      this.pendingText = '';
+      messages.update(msgs => {
+        if (msgs.find(m => m.id === messageId)) return msgs;
+        return [...msgs, { id: messageId, role: 'assistant' as const, content: text, isStreaming: true }];
+      });
+      return;
+    }
+
+    this.pendingText += text;
+    if (this.rafId === null) {
+      this.rafId = requestAnimationFrame(() => this.flush());
+    }
+  }
+
+  /** Flush accumulated text to the store in a single update. */
+  private flush() {
+    this.rafId = null;
+    const batch = this.pendingText;
+    if (!batch) return;
+    this.pendingText = '';
+    const mid = this.messageId;
+
+    messages.update(msgs => {
+      const idx = msgs.length - 1;
+      const last = msgs[idx];
+      if (last && last.id === mid) {
+        // Mutate-then-spread: only the last message object is recreated
+        const updated = { ...last, content: last.content + batch, isStreaming: true };
+        const next = msgs.slice();
+        next[idx] = updated;
+        return next;
+      }
+      return msgs;
+    });
+  }
+
+  /** Cancel any pending flush (call on done/error/cleanup). */
+  reset() {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    // Flush any remaining text before reset
+    if (this.pendingText) this.flush();
+    this.pendingText = '';
+    this.messageId = '';
+    this.isFirstDelta = true;
+  }
+}
+
+const streamBuffer = new StreamBuffer();
+
 // In-memory cache for avatar blob URLs to avoid re-reading filesystem on every load
 const avatarCache = new Map<string, string>();
 
@@ -452,17 +521,10 @@ export async function sendMessage(conversationId: string, content: string, model
       }
 
       if (event.event_type === 'delta') {
-        messages.update(msgs => {
-          const last = msgs[msgs.length - 1];
-          if (last && last.id === event.message_id) {
-            return [...msgs.slice(0, -1), { ...last, content: last.content + event.content, isStreaming: true }];
-          } else if (!msgs.find(m => m.id === event.message_id)) {
-            // First delta — create the assistant message
-            return [...msgs, { id: event.message_id, role: 'assistant', content: event.content, isStreaming: true }];
-          }
-          return msgs;
-        });
+        streamBuffer.push(event.message_id, event.content);
       } else if (event.event_type === 'done') {
+        // Flush any buffered tokens before finalizing
+        streamBuffer.reset();
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
@@ -529,6 +591,7 @@ export async function sendMessage(conversationId: string, content: string, model
         }
 
       } else if (event.event_type === 'error') {
+        streamBuffer.reset();
         console.error('Stream error:', event.content);
         toastError(`AI response failed: ${event.content}`);
         lastStreamError.set({ conversationId, lastUserContent: content });
@@ -586,17 +649,9 @@ export async function regenerateMessage(conversationId: string, messageId: strin
     // Set up stream listener BEFORE triggering regeneration
     const unlisten = await ipc.onChatStream((event) => {
       if (event.event_type === 'delta') {
-        messages.update(msgs => {
-          const last = msgs[msgs.length - 1];
-          if (last && last.id === event.message_id) {
-            return [...msgs.slice(0, -1), { ...last, content: last.content + event.content, isStreaming: true }];
-          } else if (!msgs.find(m => m.id === event.message_id)) {
-            // First delta — create the new assistant message (replaces old one visually)
-            return [...msgs, { id: event.message_id, role: 'assistant', content: event.content, isStreaming: true }];
-          }
-          return msgs;
-        });
+        streamBuffer.push(event.message_id, event.content);
       } else if (event.event_type === 'done') {
+        streamBuffer.reset();
         messages.update(msgs =>
           msgs.map(m => m.id === event.message_id
             ? { ...m, content: event.content, isStreaming: false }
@@ -608,6 +663,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
         // Reload messages to get sibling info
         loadMessages(conversationId);
       } else if (event.event_type === 'error') {
+        streamBuffer.reset();
         console.error('Regeneration stream error:', event.content);
         toastError(`Regeneration failed: ${event.content}`);
         isStreaming.set(false);

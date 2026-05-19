@@ -32,15 +32,31 @@
   let branchFromContent: string = $state(''); // preview text of the branch-point message
 
   // Auto-scroll to bottom when messages change or during streaming
+  // During streaming, use instant scroll (smooth scroll + rapid updates = jank).
+  // On new messages arriving, use smooth scroll for polish.
+  let lastScrolledLen = 0;
+  let scrollRafId: number | null = null;
+
   $effect(() => {
-    // Track reactive dependencies
-    const _len = $messages.length;
-    const _streaming = $isStreaming;
-    const _lastContent = $messages[$messages.length - 1]?.content;
-    tick().then(() => {
-      if (messagesEl) {
-        messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
-      }
+    const len = $messages.length;
+    const streaming = $isStreaming;
+    // Only track last message content during streaming to trigger scroll on growth
+    const _lastContent = streaming ? $messages[len - 1]?.content?.length : 0;
+
+    // Debounce via rAF — at most one scroll per frame
+    if (scrollRafId !== null) cancelAnimationFrame(scrollRafId);
+    scrollRafId = requestAnimationFrame(() => {
+      scrollRafId = null;
+      if (!messagesEl) return;
+
+      // During streaming: instant scroll (no smooth animation fighting rapid updates)
+      // On new message: smooth scroll for polish
+      const isNewMessage = len !== lastScrolledLen;
+      lastScrolledLen = len;
+      messagesEl.scrollTo({
+        top: messagesEl.scrollHeight,
+        behavior: streaming ? 'instant' : (isNewMessage ? 'smooth' : 'instant'),
+      });
     });
   });
 

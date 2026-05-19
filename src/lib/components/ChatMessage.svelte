@@ -24,6 +24,17 @@
   let copied = $state(false);
   let isSwitching = $state(false);
 
+  // Direct DOM ref for streaming text — avoids Svelte {@html} re-diffing on every token
+  let streamTextEl: HTMLDivElement | undefined = $state();
+
+  // During streaming, update innerHTML directly instead of going through Svelte's reactivity.
+  // This avoids the expensive {@html} re-evaluation on every frame.
+  $effect(() => {
+    if (message.isStreaming && streamTextEl) {
+      streamTextEl.innerHTML = formatRoleplayContent(message.content);
+    }
+  });
+
   // Reactively derived from the store — updates live after each stream completes
   let emotionState = $derived($characterEmotionState);
 
@@ -152,9 +163,13 @@
           </div>
         {:else}
           <div class="msg-text" class:dim={isSwitching}>
-            {@html formatRoleplayContent(message.content)}
             {#if message.isStreaming}
+              <!-- During streaming: use direct DOM updates via $effect (no Svelte diffing) -->
+              <div bind:this={streamTextEl} class="stream-live"></div>
               <span class="streaming-cursor cursor-blink" aria-label="Generating">▍</span>
+            {:else}
+              <!-- After streaming: use normal Svelte {@html} for proper formatting -->
+              {@html formatRoleplayContent(message.content)}
             {/if}
           </div>
         {/if}
@@ -559,8 +574,26 @@
     color: #c4a1ff;
     font-weight: 700;
     animation: cursorBlink 900ms step-end infinite;
+    /* Prevent cursor from causing layout shifts */
+    display: inline-block;
+    width: 0.5em;
+    vertical-align: baseline;
   }
   @keyframes cursorBlink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* Streaming live container — inherits all text styles, avoids layout shifts */
+  .stream-live {
+    display: inline;
+    /* Inherit roleplay formatting from parent */
+  }
+  .stream-live :global(.rp-action) {
+    color: rgba(139, 139, 175, 0.72);
+    font-style: italic;
+    display: block;
+    margin: 6px 0;
+    font-size: 13.5px;
+    letter-spacing: 0.02em;
+  }
 
   /* ───────────────────────────────────────────────
      TOOLBAR
