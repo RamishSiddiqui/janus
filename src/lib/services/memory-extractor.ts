@@ -30,58 +30,104 @@ export interface ExtractedFact {
   /** The condensed, atomic fact (one sentence, third-person past tense). */
   summary: string;
   /** Category for future filtering/retrieval. */
-  category: 'character' | 'location' | 'event' | 'relationship' | 'item' | 'decision';
+  category: 'character' | 'location' | 'event' | 'relationship' | 'item' | 'decision' | 'emotion' | 'trait' | 'preference' | 'atmosphere';
 }
 
 /**
  * System prompt for LLM-powered memory extraction.
  *
- * Design principles (informed by industry research):
+ * Design philosophy: Extract the "connective tissue" of a story —
+ * not just plot beats, but the emotional texture, interpersonal dynamics,
+ * and recurring motifs that make a narrative feel alive and continuous
+ * across sessions. A good memory should make the reader think
+ * "oh right, THAT happened" and feel the emotional weight of it.
+ *
+ * Architecture:
  * - Atomic facts: one sentence each, independently manageable (ChatGPT pattern)
  * - Third-person past tense: consistent format for memory injection
  * - Category tagging: enables Replika-style selective retrieval
  * - Strict JSON output: reliable parsing without markdown fencing
- * - Deduplication hint: skip information that's common knowledge in the world
+ * - Deduplication hint: skip information already in existing memories
  * - Hard cap of 5: keeps memory store lean (Letta pattern of curated memory)
  */
-const EXTRACTION_SYSTEM_PROMPT = `You are a memory extraction system for a roleplay application.
-Analyze the conversation exchange and identify facts worth remembering long-term.
+const EXTRACTION_SYSTEM_PROMPT = `You are an immersive memory system for a narrative roleplay application. Your job is to extract the moments that MATTER — the emotional beats, relationship shifts, and character-defining choices that make a story feel alive across sessions.
 
-EXTRACT:
-- Character names, titles, appearances, and identity reveals
-- Locations visited or mentioned (cities, realms, buildings, rooms)
-- Events (battles, discoveries, transformations, meetings, arrivals, departures)
-- Emotional moments (confessions, arguments, tender moments, fears expressed)
-- Relationship dynamics (alliances, betrayals, flirting, tension, bonds forming)
-- Important items (weapons, artifacts, gifts, documents, food/drink shared)
-- Decisions and commitments (vows, promises, plans, invitations accepted/declined)
-- Character traits revealed through action (skills, habits, quirks, weaknesses)
+Think like a reader annotating their favorite novel: what would you highlight, bookmark, or scribble in the margin?
+
+EXTRACT THESE (in priority order):
+
+1. RELATIONSHIP DYNAMICS — The heart of any story
+   - Bond-forming moments: "She chose to sit next to him instead of her classmates"
+   - Trust shifts: "He hesitated before sharing the map, then handed it over"
+   - Tension/conflict: "Her voice went cold when he mentioned the tournament"
+   - Flirting/attraction: "She lingered at the doorway, glancing back with a half-smile"
+   - Inside jokes/callbacks: "She teased him about the fire incident again"
+
+2. EMOTIONAL TEXTURE — What makes characters feel real
+   - Vulnerability shown: "Her voice cracked when she mentioned her mother"
+   - Joy/humor: "They both burst out laughing at the absurdity of the situation"  
+   - Fear/anxiety: "His hands trembled as he approached the dark corridor"
+   - Anger/frustration: "She slammed the book shut and refused to explain further"
+
+3. CHARACTER-DEFINING MOMENTS — Who they ARE, not just what they do
+   - Traits revealed through action (not stated): "She instinctively stepped in front of him when the noise came"
+   - Habits/quirks: "She always tucks her hair behind her ear when nervous"
+   - Skills demonstrated: "She cast a wordless barrier spell without seeming to think about it"
+   - Contradictions: "Despite claiming she didn't care, she stayed up all night preparing"
+
+4. PLOT BEATS — What HAPPENED
+   - Significant events, discoveries, arrivals, departures
+   - Decisions with consequences: "He chose to enter the forest alone"
+   - Promises, vows, plans made
+   - Items received, locations discovered
+
+5. ATMOSPHERE & SETTING — Where the story lives
+   - Recurring locations: "The library alcove became their regular meeting spot"
+   - Time/weather details that matter: "It was raining the night they first practiced together"
+   - World-building facts revealed in conversation
+
+6. USER PREFERENCES — What the player values
+   - How they prefer to be addressed
+   - Play style signals: cautious vs. reckless, romantic vs. adventure-focused
+   - Choices that reveal what they find fun
 
 RULES:
-- Each fact must be a single, self-contained sentence.
-- Write in third person, past tense (e.g., "Aria revealed she is the last of the Sky Elves").
-- Extract anything that would be useful for maintaining narrative continuity across sessions.
-- Skip only pure filler — greetings with no substance, repeated information.
-- Do NOT extract information that would be obvious from the character's description.
-- Maximum 5 facts per extraction. Aim for at least 1-2 if ANYTHING meaningful happened.
-- If truly nothing notable happened, return an empty array.
+- Each fact MUST be a single, self-contained sentence in third-person past tense.
+- Capture the EMOTIONAL WEIGHT, not just the action: "Aria saved him" is weak; "Aria threw herself between him and the blast without hesitation, earning his stunned gratitude" is strong.
+- Prioritize moments that would be satisfying to reference later ("Remember when...").
+- Do NOT re-extract facts that appear in the EXISTING MEMORIES section below.
+- Do NOT extract things obvious from the character card/description.
+- Maximum 5 facts. Aim for 2-3 quality extractions per exchange.
+- If truly nothing meaningful happened (pure small talk), return an empty array.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
-[{"summary":"...","category":"character|location|event|relationship|item|decision"},...]
+[{"summary":"...","category":"character|location|event|relationship|item|decision|emotion|trait|preference|atmosphere"},...]
 
-If nothing notable: []`;
+If nothing meaningful: []`;
 
 /**
  * Build the user prompt for the extraction LLM call.
+ * Includes existing memories so the LLM can avoid duplicates and build
+ * on what's already known — a critical feature for long-running stories.
  */
-function buildExtractionPrompt(userMessage: string, assistantResponse: string): string {
-  return `Extract notable facts from this roleplay exchange:
+function buildExtractionPrompt(
+  userMessage: string,
+  assistantResponse: string,
+  existingMemories?: string[],
+): string {
+  let prompt = `Extract memorable facts from this roleplay exchange:\n\n`;
 
-[USER]
-${userMessage.slice(0, 1000)}
+  if (existingMemories && existingMemories.length > 0) {
+    prompt += `EXISTING MEMORIES (do NOT re-extract these):\n`;
+    for (const mem of existingMemories.slice(-15)) {
+      prompt += `- ${mem}\n`;
+    }
+    prompt += `\n`;
+  }
 
-[ASSISTANT]
-${assistantResponse.slice(0, 2000)}`;
+  prompt += `[USER MESSAGE]\n${userMessage.slice(0, 1500)}\n\n`;
+  prompt += `[CHARACTER RESPONSE]\n${assistantResponse.slice(0, 3000)}`;
+  return prompt;
 }
 
 /**
@@ -104,7 +150,10 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
 
-    const validCategories = new Set(['character', 'location', 'event', 'relationship', 'item', 'decision']);
+    const validCategories = new Set([
+      'character', 'location', 'event', 'relationship', 'item', 'decision',
+      'emotion', 'trait', 'preference', 'atmosphere',
+    ]);
 
     return parsed
       .filter((item: any) =>
@@ -176,14 +225,23 @@ export async function extractAndSaveMemories(
   const ipc = await import('$lib/services/ipc');
   let facts: ExtractedFact[] = [];
 
+  // Fetch existing memories for this character/conversation to avoid duplicates
+  let existingMemoryTexts: string[] = [];
+  try {
+    const memories = await ipc.listMemories(characterId ?? undefined, conversationId);
+    existingMemoryTexts = memories.map((m: any) => m.content);
+  } catch {
+    // Non-critical — proceed without dedup context
+  }
+
   // --- Tier 1: LLM-powered extraction ---
   try {
     const raw = await ipc.generateRaw(
       EXTRACTION_SYSTEM_PROMPT,
-      buildExtractionPrompt(userMessage, assistantResponse),
+      buildExtractionPrompt(userMessage, assistantResponse, existingMemoryTexts),
       undefined, // use default model
       512,       // max tokens — extraction responses are short
-      0.2,       // low temperature for consistent structured output
+      0.3,       // slightly higher temp for richer extractions
     );
     facts = parseExtractionResponse(raw);
     if (facts.length > 0) {
