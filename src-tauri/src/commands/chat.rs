@@ -43,6 +43,7 @@ pub async fn send_message(
     model: Option<String>,
     system_prompt: Option<String>,
     streaming: Option<bool>,
+    post_history_instructions: Option<String>,
 ) -> Result<serde_json::Value, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
@@ -82,7 +83,7 @@ pub async fn send_message(
     .await?;
 
     // 2. Build the prompt
-    let messages = build_prompt(&db, &conversation_id, &user_msg_id, system_prompt.as_deref()).await?;
+    let messages = build_prompt(&db, &conversation_id, &user_msg_id, system_prompt.as_deref(), post_history_instructions.as_deref()).await?;
 
     // 3. Get the active LLM provider
     let provider_config = get_default_llm_provider(&db).await?;
@@ -276,6 +277,7 @@ pub async fn regenerate_message(
     model: Option<String>,
     system_prompt: Option<String>,
     streaming: Option<bool>,
+    post_history_instructions: Option<String>,
 ) -> Result<serde_json::Value, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
@@ -323,7 +325,7 @@ pub async fn regenerate_message(
 
     // Re-trigger send_message (which will create a new assistant response)
     // For regeneration, we just need to stream a new response from the same history
-    send_message(app, state, conversation_id, parent_content, model, system_prompt, streaming).await
+    send_message(app, state, conversation_id, parent_content, model, system_prompt, streaming, post_history_instructions).await
 }
 
 // --- Internal helpers ---
@@ -335,6 +337,7 @@ async fn build_prompt(
     conversation_id: &str,
     up_to_message_id: &str,
     user_system_prompt: Option<&str>,
+    post_history_instructions: Option<&str>,
 ) -> Result<Vec<ChatMessage>, MythicError> {
     let mut prompt = Vec::new();
 
@@ -595,6 +598,20 @@ async fn build_prompt(
 
     prompt.extend(chain);
 
+    // ── Post-History Instructions (PHI) ──
+    // Injected AFTER the conversation history as the very last system message.
+    // This carries maximum attention weight and shapes how the AI structures
+    // its response — narrative hooks, scene transitions, pacing directives.
+    // Equivalent to SillyTavern's "Post-History Instructions" feature.
+    if let Some(phi) = post_history_instructions {
+        let trimmed = phi.trim();
+        if !trimmed.is_empty() {
+            prompt.push(ChatMessage {
+                role: MessageRole::System,
+                content: trimmed.to_string(),
+            });
+        }
+    }
 
     Ok(prompt)
 }

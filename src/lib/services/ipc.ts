@@ -385,6 +385,7 @@ export async function sendMessage(
   model?: string,
   systemPrompt?: string,
   streaming?: boolean,
+  postHistoryInstructions?: string,
 ): Promise<SendMessageResult> {
   return safeInvoke<SendMessageResult>('send_message', {
     conversationId,
@@ -392,6 +393,7 @@ export async function sendMessage(
     model: model ?? null,
     systemPrompt: systemPrompt ?? null,
     streaming: streaming ?? null,
+    postHistoryInstructions: postHistoryInstructions ?? null,
   });
 }
 
@@ -401,6 +403,7 @@ export async function regenerateMessage(
   model?: string,
   systemPrompt?: string,
   streaming?: boolean,
+  postHistoryInstructions?: string,
 ): Promise<SendMessageResult> {
   return safeInvoke<SendMessageResult>('regenerate_message', {
     conversationId,
@@ -408,6 +411,7 @@ export async function regenerateMessage(
     model: model ?? null,
     systemPrompt: systemPrompt ?? null,
     streaming: streaming ?? null,
+    postHistoryInstructions: postHistoryInstructions ?? null,
   });
 }
 

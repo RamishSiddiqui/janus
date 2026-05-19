@@ -687,6 +687,7 @@ export async function sendMessage(conversationId: string, content: string, model
       conversationId, content, model,
       currentSettings.systemPrompt || undefined,
       currentSettings.streamingEnabled,
+      currentSettings.postHistoryInstructions || undefined,
     );
 
     // Replace temp user message ID with real one from backend
@@ -762,6 +763,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
       conversationId, messageId, model,
       currentSettings.systemPrompt || undefined,
       currentSettings.streamingEnabled,
+      currentSettings.postHistoryInstructions || undefined,
     );
   } catch (err) {
     console.error('Failed to regenerate:', err);
