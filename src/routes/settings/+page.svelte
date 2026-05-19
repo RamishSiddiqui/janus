@@ -36,6 +36,7 @@
       localStorageOnly,
       systemPrompt,
       postHistoryInstructions,
+      _settingsVersion: $settings._settingsVersion,
     });
   });
 

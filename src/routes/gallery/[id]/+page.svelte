@@ -202,7 +202,7 @@
     }
     try {
       const { createConversation } = await import("$lib/stores/chat");
-      await createConversation(charId, charName);
+      await createConversation(charId ?? '', charName ?? '');
       goto("/");
     } catch {
       toastError("Failed to start chat");
