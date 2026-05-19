@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import { browser } from '$app/environment';
-  import ChatHeader from '$lib/components/ChatHeader.svelte';
-  import Icon from '$lib/components/Icon.svelte';
-  import ChatInput from '$lib/components/ChatInput.svelte';
-  import ChatMessage from '$lib/components/ChatMessage.svelte';
-  import ContextPanel from '$lib/components/ContextPanel.svelte';
+  import { onMount, tick } from "svelte";
+  import { browser } from "$app/environment";
+  import ChatHeader from "$lib/components/ChatHeader.svelte";
+  import Icon from "$lib/components/Icon.svelte";
+  import ChatInput from "$lib/components/ChatInput.svelte";
+  import ChatMessage from "$lib/components/ChatMessage.svelte";
+  import ContextPanel from "$lib/components/ContextPanel.svelte";
   import {
     messages,
     conversations,
@@ -19,25 +19,25 @@
     sendMessage,
     retryLastMessage,
     branchConversation,
-  } from '$lib/stores/chat';
+  } from "$lib/stores/chat";
 
-  const isTauri = browser && '__TAURI_INTERNALS__' in window;
+  const isTauri = browser && "__TAURI_INTERNALS__" in window;
 
-  let inputText = $state('');
+  let inputText = $state("");
   let showContextPanel = $state(false);
   let messagesEl: HTMLDivElement | undefined = $state();
 
   // Branching mode — set when user clicks "Branch from here" on a message
   let branchFromId: string | null = $state(null);
-  let branchFromContent: string = $state(''); // preview text of the branch-point message
+  let branchFromContent: string = $state(""); // preview text of the branch-point message
 
   // ── Smart Auto-Scroll ──
   // Respects user intent: if they scroll up to read, don't yank them down.
   // When they scroll back near the bottom, re-engage sticky auto-scroll.
   // Shows a floating "↓" pill when scrolled away during streaming.
   const STICKY_THRESHOLD = 120; // px from bottom to re-engage sticky mode
-  let isSticky = $state(true);          // start at bottom
-  let showScrollPill = $state(false);   // floating "scroll to bottom" indicator
+  let isSticky = $state(true); // start at bottom
+  let showScrollPill = $state(false); // floating "scroll to bottom" indicator
   let scrollRafId: number | null = null;
 
   /** Is the user currently near the bottom of the messages? */
@@ -60,7 +60,7 @@
   }
 
   /** Scroll to bottom programmatically (from pill click or new message). */
-  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
     if (!messagesEl) return;
     isSticky = true;
     showScrollPill = false;
@@ -90,41 +90,48 @@
       if (!messagesEl || !isSticky) return;
       messagesEl.scrollTo({
         top: messagesEl.scrollHeight,
-        behavior: streaming ? 'instant' : 'smooth',
+        behavior: streaming ? "instant" : "smooth",
       });
     });
   });
 
   // Character data loaded from backend
-  let characterDescription = $state('');
+  let characterDescription = $state("");
   let characterTags: { label: string; color: string }[] = $state([]);
   let avatarUrl: string | null = $state(null);
 
   // Token count approximation
   let tokenCount = $derived(
-    $messages.reduce((acc, m) => acc + m.content.length / 4, 0).toFixed(0)
+    $messages.reduce((acc, m) => acc + m.content.length / 4, 0).toFixed(0),
   );
 
   // Character info from active conversation (with fallbacks)
-  let characterName = $derived($activeConversation?.characterName ?? 'Select a character');
+  let characterName = $derived(
+    $activeConversation?.characterName ?? "Select a character",
+  );
   let characterId = $derived($activeCharacterId);
-  let additionalCharacters = $derived($activeConversation?.additionalCharacters ?? []);
-  let modelName = $state('No provider configured');
-  let selectedModel = $state('');
+  let additionalCharacters = $derived(
+    $activeConversation?.additionalCharacters ?? [],
+  );
+  let modelName = $state("No provider configured");
+  let selectedModel = $state("");
   let availableModels: string[] = $state([]);
-  let activeProviderId = $state('');
+  let activeProviderId = $state("");
 
   // Branch lineage — if the active conversation was forked from another
-  let parentConversationId = $derived($activeConversation?.parentConversationId ?? null);
+  let parentConversationId = $derived(
+    $activeConversation?.parentConversationId ?? null,
+  );
   let parentConversationTitle = $derived(
     parentConversationId
-      ? ($conversations.find(c => c.id === parentConversationId)?.characterName ?? 'Previous conversation')
-      : null
+      ? ($conversations.find((c) => c.id === parentConversationId)
+          ?.characterName ?? "Previous conversation")
+      : null,
   );
 
   function navigateToParent(parentId: string) {
     if (!parentId) return;
-    isStreaming.set(false);       // discard any active stream for the current conversation
+    isStreaming.set(false); // discard any active stream for the current conversation
     activeConversationId.set(parentId);
     loadMessages(parentId);
   }
@@ -132,36 +139,43 @@
   // Load conversations + active model on mount
   onMount(async () => {
     loadConversations();
-    if (!isTauri) { modelName = 'Llama 4 Maverick via OpenRouter'; return; }
+    if (!isTauri) {
+      modelName = "Llama 4 Maverick via OpenRouter";
+      return;
+    }
     try {
-      const ipc = await import('$lib/services/ipc');
-      const providers = await ipc.listProviders('llm');
-      const active = providers.find(p => p.is_default) ?? providers[0];
+      const ipc = await import("$lib/services/ipc");
+      const providers = await ipc.listProviders("llm");
+      const active = providers.find((p) => p.is_default) ?? providers[0];
       if (active) {
         activeProviderId = active.id;
         const config = active.config as Record<string, string>;
-        let defaultModel = config.model || '';
-        if (!defaultModel || defaultModel === 'unknown') {
+        let defaultModel = config.model || "";
+        if (!defaultModel || defaultModel === "unknown") {
           // Fall back to first enabled model for this provider
           try {
             const enabled = await ipc.listEnabledModels(active.id);
-            defaultModel = enabled[0]?.model_id ?? '';
-          } catch { /* ignore */ }
+            defaultModel = enabled[0]?.model_id ?? "";
+          } catch {
+            /* ignore */
+          }
         }
         modelName = defaultModel
           ? `${defaultModel} via ${active.name}`
           : `No model set — AI Studio → Models`;
         selectedModel = defaultModel;
       }
-    } catch { /* fallback already set */ }
+    } catch {
+      /* fallback already set */
+    }
   });
 
   async function refreshModels() {
     if (!isTauri || !activeProviderId) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import("$lib/services/ipc");
       const enabled = await ipc.listEnabledModels(activeProviderId);
-      availableModels = enabled.map(e => e.model_id);
+      availableModels = enabled.map((e) => e.model_id);
     } catch {
       availableModels = [];
     }
@@ -182,7 +196,8 @@
       loadCharacterData(charId);
     } else {
       // Reset to defaults
-      characterDescription = 'Half-elf with untamed elemental magic at the College of Magic';
+      characterDescription =
+        "Half-elf with untamed elemental magic at the College of Magic";
       characterTags = [];
       avatarUrl = null;
     }
@@ -190,14 +205,14 @@
 
   async function loadCharacterData(charId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import("$lib/services/ipc");
       const char = await ipc.getCharacter(charId);
       const data = JSON.parse(char.data);
 
-      characterDescription = data.description || 'No description available';
+      characterDescription = data.description || "No description available";
 
       // Extract tags from character data
-      const tagColors = ['#8B5CF6', '#BF40FF', '#00F2FF', '#F59E0B', '#10B981'];
+      const tagColors = ["#8B5CF6", "#BF40FF", "#00F2FF", "#F59E0B", "#10B981"];
       if (data.tags?.length) {
         characterTags = data.tags.map((t: string, i: number) => ({
           label: t,
@@ -210,10 +225,20 @@
       // Resolve avatar URL
       if (char.avatar_path) {
         try {
-          const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-          const bytes = await readFile(char.avatar_path, { baseDir: BaseDirectory.AppData });
-          const ext = char.avatar_path.split('.').pop()?.toLowerCase() || 'jpeg';
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+          const { readFile, BaseDirectory } = await import(
+            "@tauri-apps/plugin-fs"
+          );
+          const bytes = await readFile(char.avatar_path, {
+            baseDir: BaseDirectory.AppData,
+          });
+          const ext =
+            char.avatar_path.split(".").pop()?.toLowerCase() || "jpeg";
+          const mime =
+            ext === "png"
+              ? "image/png"
+              : ext === "webp"
+                ? "image/webp"
+                : "image/jpeg";
           const blob = new Blob([bytes], { type: mime });
           // Revoke old blob URL to prevent memory leak
           if (avatarUrl) URL.revokeObjectURL(avatarUrl);
@@ -226,8 +251,8 @@
         avatarUrl = null;
       }
     } catch (err) {
-      console.error('Failed to load character data:', err);
-      characterDescription = 'Character data unavailable';
+      console.error("Failed to load character data:", err);
+      characterDescription = "Character data unavailable";
       characterTags = [];
       avatarUrl = null;
     }
@@ -236,38 +261,51 @@
   async function handleSend() {
     if (!inputText.trim() || $isStreaming) return;
     const text = inputText.trim();
-    inputText = '';
+    inputText = "";
 
     if (branchFromId) {
       // Branching mode: rewind active pointer then send
       const branchId = branchFromId;
       branchFromId = null;
-      branchFromContent = '';
-      await branchConversation($activeConversationId, branchId, text, selectedModel || undefined);
+      branchFromContent = "";
+      await branchConversation(
+        $activeConversationId,
+        branchId,
+        text,
+        selectedModel || undefined,
+      );
     } else {
-      await sendMessage($activeConversationId, text, selectedModel || undefined);
+      await sendMessage(
+        $activeConversationId,
+        text,
+        selectedModel || undefined,
+      );
     }
   }
 
   function handleBranch(messageId: string) {
     // Find the message content for the preview label
-    const msg = $messages.find(m => m.id === messageId);
-    branchFromContent = msg?.content ?? '';
+    const msg = $messages.find((m) => m.id === messageId);
+    branchFromContent = msg?.content ?? "";
     branchFromId = messageId;
     // Scroll input into view and focus it
     tick().then(() => {
-      (document.querySelector('.chat-input-field') as HTMLTextAreaElement | null)?.focus();
+      (
+        document.querySelector(
+          ".chat-input-field",
+        ) as HTMLTextAreaElement | null
+      )?.focus();
     });
   }
 
   function cancelBranch() {
     branchFromId = null;
-    branchFromContent = '';
+    branchFromContent = "";
   }
 
   // Derived: index of the branch point in the current messages list
   let branchIndex = $derived(
-    branchFromId ? $messages.findIndex(m => m.id === branchFromId) : -1
+    branchFromId ? $messages.findIndex((m) => m.id === branchFromId) : -1,
   );
 </script>
 
@@ -291,23 +329,77 @@
         <!-- Animated quill/scroll icon -->
         <div class="landing-icon-group">
           <div class="landing-glow"></div>
-          <svg class="landing-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            class="landing-icon"
+            viewBox="0 0 64 64"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <!-- Scroll -->
-            <rect x="14" y="12" width="36" height="44" rx="4" stroke="url(#scrollGrad)" stroke-width="2" fill="none" opacity="0.6"/>
-            <line x1="22" y1="24" x2="42" y2="24" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
-            <line x1="22" y1="30" x2="38" y2="30" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
-            <line x1="22" y1="36" x2="34" y2="36" stroke="var(--fg-muted)" stroke-width="1.5" stroke-linecap="round" opacity="0.2"/>
+            <rect
+              x="14"
+              y="12"
+              width="36"
+              height="44"
+              rx="4"
+              stroke="url(#scrollGrad)"
+              stroke-width="2"
+              fill="none"
+              opacity="0.6"
+            />
+            <line
+              x1="22"
+              y1="24"
+              x2="42"
+              y2="24"
+              stroke="var(--fg-muted)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              opacity="0.4"
+            />
+            <line
+              x1="22"
+              y1="30"
+              x2="38"
+              y2="30"
+              stroke="var(--fg-muted)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              opacity="0.3"
+            />
+            <line
+              x1="22"
+              y1="36"
+              x2="34"
+              y2="36"
+              stroke="var(--fg-muted)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              opacity="0.2"
+            />
             <!-- Quill pen -->
-            <path d="M44 8 C44 8 50 14 48 22 C46 30 40 32 40 32 L42 28 C42 28 46 24 46 16 C46 12 44 8 44 8Z" fill="url(#quillGrad)" opacity="0.9"/>
-            <line x1="40" y1="32" x2="36" y2="44" stroke="url(#quillGrad)" stroke-width="1.5" stroke-linecap="round"/>
+            <path
+              d="M44 8 C44 8 50 14 48 22 C46 30 40 32 40 32 L42 28 C42 28 46 24 46 16 C46 12 44 8 44 8Z"
+              fill="url(#quillGrad)"
+              opacity="0.9"
+            />
+            <line
+              x1="40"
+              y1="32"
+              x2="36"
+              y2="44"
+              stroke="url(#quillGrad)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
             <defs>
               <linearGradient id="scrollGrad" x1="14" y1="12" x2="50" y2="56">
-                <stop offset="0%" stop-color="#8B5CF6"/>
-                <stop offset="100%" stop-color="#BF40FF"/>
+                <stop offset="0%" stop-color="#8B5CF6" />
+                <stop offset="100%" stop-color="#BF40FF" />
               </linearGradient>
               <linearGradient id="quillGrad" x1="36" y1="8" x2="48" y2="44">
-                <stop offset="0%" stop-color="#00F2FF"/>
-                <stop offset="100%" stop-color="#8B5CF6"/>
+                <stop offset="0%" stop-color="#00F2FF" />
+                <stop offset="100%" stop-color="#8B5CF6" />
               </linearGradient>
             </defs>
           </svg>
@@ -315,14 +407,33 @@
 
         <h2 class="landing-title">Begin Your Story</h2>
         <p class="landing-subtitle">
-          Choose a character from the gallery to start a new conversation,
-          or pick up where you left off from recent chats.
+          Choose a character from the gallery to start a new conversation, or
+          pick up where you left off from recent chats.
         </p>
 
         <div class="landing-actions">
           <a href="/gallery" class="landing-btn primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="3" y="3" width="7" height="7" /><rect
+                x="14"
+                y="3"
+                width="7"
+                height="7"
+              /><rect x="3" y="14" width="7" height="7" /><rect
+                x="14"
+                y="14"
+                width="7"
+                height="7"
+              />
             </svg>
             Browse Characters
           </a>
@@ -342,7 +453,6 @@
         </div>
       </div>
     </div>
-
   {:else}
     <!-- Active Chat UI -->
     <div class="chat-area">
@@ -355,18 +465,32 @@
         {parentConversationId}
         {parentConversationTitle}
         onNavigateToParent={navigateToParent}
-        onTogglePanel={() => showContextPanel = !showContextPanel}
-        onGenerateScene={() => { showContextPanel = true; }}
+        onTogglePanel={() => (showContextPanel = !showContextPanel)}
+        onGenerateScene={() => {
+          showContextPanel = true;
+        }}
       />
 
       <!-- Messages -->
-      <div class="messages-area" bind:this={messagesEl} onscroll={onMessagesScroll} role="log" aria-label="Chat messages" aria-live="polite">
+      <div
+        class="messages-area"
+        bind:this={messagesEl}
+        onscroll={onMessagesScroll}
+        role="log"
+        aria-label="Chat messages"
+        aria-live="polite"
+      >
         {#each $messages as message, i (message.id)}
           <div
             class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
             class:branch-dim={branchFromId !== null && i > branchIndex}
           >
-            <ChatMessage {message} onBranch={handleBranch} {avatarUrl} {characterName} />
+            <ChatMessage
+              {message}
+              onBranch={handleBranch}
+              {avatarUrl}
+              {characterName}
+            />
           </div>
         {/each}
 
@@ -374,12 +498,17 @@
           <div class="empty-chat">
             <span class="empty-icon">✦</span>
             <span class="empty-title">Start a conversation</span>
-            <span class="empty-desc">Type a message below to begin your story with {characterName}.</span>
+            <span class="empty-desc"
+              >Type a message below to begin your story with {characterName}.</span
+            >
           </div>
         {/if}
 
         {#if $isStreaming && ($messages.length === 0 || !$messages[$messages.length - 1]?.isStreaming)}
-          <div class="typing-indicator" aria-label="AI is generating a response">
+          <div
+            class="typing-indicator"
+            aria-label="AI is generating a response"
+          >
             <div class="typing-avatar">
               <div class="typing-glow"></div>
             </div>
@@ -394,7 +523,9 @@
         {#if $lastStreamError && !$isStreaming}
           <div class="retry-banner">
             <span class="retry-icon">⚠</span>
-            <span class="retry-text">Response failed. Check your provider connection.</span>
+            <span class="retry-text"
+              >Response failed. Check your provider connection.</span
+            >
             <button class="retry-btn" onclick={retryLastMessage}>
               <Icon name="refresh-cw" size={13} color="#fff" />
               <span>Retry</span>
@@ -406,15 +537,29 @@
         {#if showScrollPill}
           <button
             class="scroll-pill"
-            onclick={() => scrollToBottom('smooth')}
+            onclick={() => scrollToBottom("smooth")}
             aria-label="Scroll to latest message"
             title="Jump to latest"
           >
             <span class="scroll-pill-glow"></span>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M3 5.5L7 9.5L11 5.5"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
             </svg>
-            <span class="scroll-pill-label">{$isStreaming ? 'New message' : 'Jump to bottom'}</span>
+            <span class="scroll-pill-label"
+              >{$isStreaming ? "New message" : "Jump to bottom"}</span
+            >
           </button>
         {/if}
       </div>
@@ -424,18 +569,41 @@
         <div class="branch-banner" role="status" aria-live="polite">
           <div class="branch-banner-left">
             <span class="branch-pulse"></span>
-            <svg class="branch-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="6" y1="3" x2="6" y2="15"/>
-              <circle cx="18" cy="6" r="3"/>
-              <circle cx="6" cy="18" r="3"/>
-              <path d="M18 9a9 9 0 0 1-9 9"/>
+            <svg
+              class="branch-icon"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="6" y1="3" x2="6" y2="15" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
             <span class="branch-label">Branching from:</span>
-            <span class="branch-preview">"{branchFromContent.slice(0, 60)}{branchFromContent.length > 60 ? '…' : ''}"</span>
+            <span class="branch-preview"
+              >"{branchFromContent.slice(0, 60)}{branchFromContent.length > 60
+                ? "…"
+                : ""}"</span
+            >
           </div>
-          <button class="branch-cancel" onclick={cancelBranch} aria-label="Cancel branch">
+          <button
+            class="branch-cancel"
+            onclick={cancelBranch}
+            aria-label="Cancel branch"
+          >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path
+                d="M2 2l8 8M10 2l-8 8"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+              />
             </svg>
           </button>
         </div>
@@ -464,7 +632,7 @@
         tags={characterTags}
         {additionalCharacters}
         conversationId={$activeConversationId}
-        onClose={() => showContextPanel = false}
+        onClose={() => (showContextPanel = false)}
       />
     {/if}
   {/if}
@@ -486,7 +654,11 @@
     justify-content: center;
     position: relative;
     overflow: hidden;
-    background: radial-gradient(ellipse at 50% 40%, rgba(139, 92, 246, 0.06) 0%, transparent 70%);
+    background: radial-gradient(
+      ellipse at 50% 40%,
+      rgba(139, 92, 246, 0.06) 0%,
+      transparent 70%
+    );
   }
 
   .landing-orbs {
@@ -532,10 +704,19 @@
   }
 
   @keyframes orbFloat {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    25% { transform: translate(30px, -20px) scale(1.05); }
-    50% { transform: translate(-20px, 15px) scale(0.95); }
-    75% { transform: translate(15px, 25px) scale(1.02); }
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    25% {
+      transform: translate(30px, -20px) scale(1.05);
+    }
+    50% {
+      transform: translate(-20px, 15px) scale(0.95);
+    }
+    75% {
+      transform: translate(15px, 25px) scale(1.02);
+    }
   }
 
   .landing-content {
@@ -559,7 +740,11 @@
     position: absolute;
     inset: -16px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(139, 92, 246, 0.3),
+      transparent 70%
+    );
     animation: glowPulse 3s ease-in-out infinite;
   }
 
@@ -572,8 +757,13 @@
   }
 
   @keyframes iconFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
   }
 
   .landing-title {
@@ -582,7 +772,11 @@
     color: var(--fg-primary);
     margin-bottom: 12px;
     letter-spacing: -0.5px;
-    background: linear-gradient(135deg, var(--fg-primary), var(--accent-primary));
+    background: linear-gradient(
+      135deg,
+      var(--fg-primary),
+      var(--accent-primary)
+    );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -614,7 +808,11 @@
   }
 
   .landing-btn.primary {
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    background: linear-gradient(
+      135deg,
+      var(--accent-primary),
+      var(--accent-secondary)
+    );
     color: white;
     box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
   }
@@ -673,11 +871,25 @@
   }
 
   @keyframes bubbleFloat {
-    0% { opacity: 0; transform: translateY(20px) scale(0.9); }
-    8% { opacity: 0.5; transform: translateY(0) scale(1); }
-    25% { opacity: 0.5; transform: translateY(-10px) scale(1); }
-    33% { opacity: 0; transform: translateY(-20px) scale(0.95); }
-    100% { opacity: 0; }
+    0% {
+      opacity: 0;
+      transform: translateY(20px) scale(0.9);
+    }
+    8% {
+      opacity: 0.5;
+      transform: translateY(0) scale(1);
+    }
+    25% {
+      opacity: 0.5;
+      transform: translateY(-10px) scale(1);
+    }
+    33% {
+      opacity: 0;
+      transform: translateY(-20px) scale(0.95);
+    }
+    100% {
+      opacity: 0;
+    }
   }
 
   /* ===== Chat UI (active conversation) ===== */
@@ -705,10 +917,10 @@
   ─────────────────────────────────────────────── */
   .scroll-pill {
     position: sticky;
-    bottom: 16px;
+    bottom: 2px;
     align-self: center;
     z-index: 20;
-    margin-top: -8px; /* Pull up slightly so it doesn't add visual gap */
+    margin-top: -2px; /* Pull up slightly so it doesn't add visual gap */
 
     display: flex;
     align-items: center;
@@ -777,12 +989,15 @@
   }
 
   @keyframes pillGlowPulse {
-    0%, 100% {
+    0%,
+    100% {
       box-shadow: 0 0 4px rgba(124, 58, 237, 0.4);
       opacity: 0.7;
     }
     50% {
-      box-shadow: 0 0 12px rgba(124, 58, 237, 0.8), 0 0 20px rgba(0, 242, 255, 0.2);
+      box-shadow:
+        0 0 12px rgba(124, 58, 237, 0.8),
+        0 0 20px rgba(0, 242, 255, 0.2);
       opacity: 1;
     }
   }
@@ -797,8 +1012,13 @@
   }
 
   @keyframes pillChevronBounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(2px); }
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(2px);
+    }
   }
 
   .empty-chat {
@@ -848,7 +1068,11 @@
     width: 32px;
     height: 32px;
     border-radius: var(--rounded-full);
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    background: linear-gradient(
+      135deg,
+      var(--accent-primary),
+      var(--accent-secondary)
+    );
     flex-shrink: 0;
     position: relative;
     animation: gentlePulse 2s ease-in-out infinite;
@@ -858,7 +1082,11 @@
     position: absolute;
     inset: -3px;
     border-radius: var(--rounded-full);
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    background: linear-gradient(
+      135deg,
+      var(--accent-primary),
+      var(--accent-secondary)
+    );
     opacity: 0.2;
     filter: blur(6px);
     animation: glowPulse 2s ease-in-out infinite;
@@ -881,12 +1109,20 @@
     animation: dotBounce 1.4s ease-in-out infinite;
   }
 
-  .dot-1 { animation-delay: 0ms; }
-  .dot-2 { animation-delay: 160ms; }
-  .dot-3 { animation-delay: 320ms; }
+  .dot-1 {
+    animation-delay: 0ms;
+  }
+  .dot-2 {
+    animation-delay: 160ms;
+  }
+  .dot-3 {
+    animation-delay: 320ms;
+  }
 
   @keyframes dotBounce {
-    0%, 60%, 100% {
+    0%,
+    60%,
+    100% {
       transform: translateY(0);
       opacity: 0.4;
     }
@@ -897,13 +1133,23 @@
   }
 
   @keyframes gentlePulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
   }
 
   @keyframes glowPulse {
-    0%, 100% { opacity: 0.15; }
-    50% { opacity: 0.35; }
+    0%,
+    100% {
+      opacity: 0.15;
+    }
+    50% {
+      opacity: 0.35;
+    }
   }
 
   @keyframes fadeSlideUp {
@@ -918,30 +1164,44 @@
   }
   /* Retry Banner */
   .retry-banner {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 16px; margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin: 8px 0;
     background: rgba(244, 63, 94, 0.08);
     border: 1px solid rgba(244, 63, 94, 0.15);
-    border-radius: 12px; backdrop-filter: blur(8px);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
     animation: fadeSlideUp 200ms var(--ease-out);
   }
 
   .retry-icon {
-    font-size: var(--text-lg); flex-shrink: 0;
+    font-size: var(--text-lg);
+    flex-shrink: 0;
   }
 
   .retry-text {
-    flex: 1; font-size: var(--text-sm); color: #e0a0a8;
+    flex: 1;
+    font-size: var(--text-sm);
+    color: #e0a0a8;
     font-family: var(--font-body);
   }
 
   .retry-btn {
-    display: flex; align-items: center; gap: 5px;
-    padding: 6px 14px; border-radius: 8px;
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff);
-    border: none; color: #fff; font-size: var(--text-sm);
-    font-weight: 600; font-family: var(--font-body);
-    cursor: pointer; flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #8b5cf6, #bf40ff);
+    border: none;
+    color: #fff;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    font-family: var(--font-body);
+    cursor: pointer;
+    flex-shrink: 0;
     transition: all 150ms;
     box-shadow: 0 2px 10px rgba(139, 92, 246, 0.25);
   }
@@ -951,7 +1211,9 @@
     box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4);
   }
 
-  .retry-btn:active { transform: scale(0.95); }
+  .retry-btn:active {
+    transform: scale(0.95);
+  }
 
   /* ═══════════════════════════════════════
      Branching Mode
@@ -962,7 +1224,9 @@
     opacity: 0.22;
     filter: grayscale(0.6);
     pointer-events: none;
-    transition: opacity 300ms ease, filter 300ms ease;
+    transition:
+      opacity 300ms ease,
+      filter 300ms ease;
   }
 
   /* Frosted-glass banner that appears above ChatInput */
@@ -985,8 +1249,14 @@
   }
 
   @keyframes branchBannerIn {
-    from { opacity: 0; transform: translateY(8px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .branch-banner-left {
@@ -1008,8 +1278,15 @@
     animation: branchPulse 1.6s ease-in-out infinite;
   }
   @keyframes branchPulse {
-    0%, 100% { box-shadow: 0 0 6px rgba(0,242,255,0.5); opacity: 0.8; }
-    50%       { box-shadow: 0 0 14px rgba(0,242,255,0.9); opacity: 1; }
+    0%,
+    100% {
+      box-shadow: 0 0 6px rgba(0, 242, 255, 0.5);
+      opacity: 0.8;
+    }
+    50% {
+      box-shadow: 0 0 14px rgba(0, 242, 255, 0.9);
+      opacity: 1;
+    }
   }
 
   .branch-icon {
@@ -1057,7 +1334,7 @@
     color: rgba(0, 242, 255, 0.8);
     transform: scale(1.1);
   }
-  .branch-cancel:active { transform: scale(0.92); }
-
+  .branch-cancel:active {
+    transform: scale(0.92);
+  }
 </style>
-
