@@ -96,7 +96,10 @@ pub fn run() {
             // Build a shared HTTP client for all providers
             let http_client = reqwest::Client::builder()
                 .user_agent(format!("Mythic/{}", env!("CARGO_PKG_VERSION")))
-                .timeout(std::time::Duration::from_secs(120))
+                // Only set a connect timeout — NOT an overall timeout.
+                // Streaming SSE responses can legitimately run for minutes;
+                // an overall timeout would kill them mid-stream.
+                .connect_timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("Failed to build HTTP client");
 
