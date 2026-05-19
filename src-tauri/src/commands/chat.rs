@@ -349,14 +349,18 @@ async fn build_prompt(
         }
     }
 
-    // Get the character associated with this conversation
-    let character_id: Option<String> = sqlx::query_scalar(
-        "SELECT character_id FROM conversations WHERE id = ?"
+    // Get the character and memory scope associated with this conversation
+    let conv_meta: Option<(Option<String>, String)> = sqlx::query_as(
+        "SELECT character_id, memory_scope FROM conversations WHERE id = ?"
     )
     .bind(conversation_id)
     .fetch_optional(db)
-    .await?
-    .flatten();
+    .await?;
+
+    let (character_id, memory_scope) = match conv_meta {
+        Some((char_id, scope)) => (char_id, scope),
+        None => (None, "character".to_string()),
+    };
 
     // Build system prompt from character data
     if let Some(ref char_id) = character_id {
@@ -503,6 +507,59 @@ async fn build_prompt(
                     });
                 }
             }
+        }
+    }
+
+    // ── Inject saved memories as a persistent context layer ──
+    // Memories are auto-extracted facts from past conversations (events, relationships,
+    // character reveals, etc.). Injecting them here gives the AI long-term recall.
+    //
+    // Placement: after lorebook, before emotional state — the "knowledge layer".
+    // Limited to 20 most recent to avoid context overflow.
+    if memory_scope != "none" {
+        let memory_rows: Vec<(String,)> = if memory_scope == "character" {
+            // Character-scoped: all memories for this character (shared across conversations)
+            if let Some(ref char_id) = character_id {
+                sqlx::query_as(
+                    "SELECT content FROM memories
+                     WHERE character_id = ?
+                     ORDER BY created_at DESC LIMIT 20"
+                )
+                .bind(char_id)
+                .fetch_all(db)
+                .await?
+            } else {
+                Vec::new()
+            }
+        } else {
+            // Conversation-scoped: only this conversation's memories
+            sqlx::query_as(
+                "SELECT content FROM memories
+                 WHERE conversation_id = ?
+                 ORDER BY created_at DESC LIMIT 20"
+            )
+            .bind(conversation_id)
+            .fetch_all(db)
+            .await?
+        };
+
+        if !memory_rows.is_empty() {
+            // Format memories as a bullet list, reversed to chronological order
+            let mut facts: Vec<String> = memory_rows.into_iter().map(|(c,)| c).collect();
+            facts.reverse(); // oldest first for natural reading order
+
+            let memory_block = format!(
+                "[Remembered Facts — things you know from past interactions]\n{}",
+                facts.iter()
+                    .map(|f| format!("• {}", f))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+
+            prompt.push(ChatMessage {
+                role: MessageRole::System,
+                content: memory_block,
+            });
         }
     }
 
