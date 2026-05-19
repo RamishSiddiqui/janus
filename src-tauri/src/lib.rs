@@ -154,6 +154,7 @@ pub fn run() {
             commands::providers::list_enabled_models,
             // Chat
             commands::chat::send_message,
+            commands::chat::retry_failed_message,
             commands::chat::regenerate_message,
             commands::chat::generate_raw,
             // Import

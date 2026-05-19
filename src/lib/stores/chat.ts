@@ -104,7 +104,8 @@ export const messages = writable<Message[]>([]);
 export const isStreaming = writable<boolean>(false);
 
 // Tracks the last failed stream (set on error, cleared on successful send/regenerate)
-export const lastStreamError = writable<{ conversationId: string; lastUserContent: string } | null>(null);
+// userMessageId is the real DB id — used by retryLastMessage to reuse the existing record
+export const lastStreamError = writable<{ conversationId: string; lastUserContent: string; userMessageId?: string } | null>(null);
 
 // Whether conversations are being loaded from backend
 export const isLoadingConversations = writable<boolean>(false);
@@ -686,7 +687,10 @@ export async function sendMessage(conversationId: string, content: string, model
           }
           return msgs;
         });
-        lastStreamError.set({ conversationId, lastUserContent: content });
+        // The real user_message_id was set after sendMessage returned (line ~706)
+        // Grab it from the current messages array to pass to retry
+        const realUserMsgId = get(messages).filter(m => m.role === 'user').pop()?.id;
+        lastStreamError.set({ conversationId, lastUserContent: content, userMessageId: realUserMsgId });
         isStreaming.set(false);
         unlisten();
       }
@@ -719,20 +723,89 @@ export async function sendMessage(conversationId: string, content: string, model
         : m
       )
     );
-    lastStreamError.set({ conversationId, lastUserContent: content });
+    lastStreamError.set({ conversationId, lastUserContent: content }); // no userMessageId — sendMessage itself failed, message may not be in DB
     isStreaming.set(false);
   }
 }
 
-/** Retries the last failed message by removing error messages and re-sending. */
+/**
+ * Retries the last failed message.
+ * If the user message was already saved to the DB (stream error), reuses it
+ * via retry_failed_message. If sendMessage itself failed before saving,
+ * falls back to a fresh sendMessage call.
+ */
 export async function retryLastMessage() {
   const err = get(lastStreamError);
   if (!err) return;
   lastStreamError.set(null);
-  // Remove all error-flagged messages (failed user send or failed assistant response)
-  messages.update(msgs => msgs.filter(m => !m.isError));
-  fullActivePath = fullActivePath.filter(m => !m.isError);
-  await sendMessage(err.conversationId, err.lastUserContent);
+
+  if (err.userMessageId) {
+    // Message exists in DB — remove the failed assistant bubble from UI, keep user message
+    messages.update(msgs => msgs.filter(m => !(m.isError && m.role === 'assistant')));
+    fullActivePath = fullActivePath.filter(m => !(m.isError && m.role === 'assistant'));
+
+    // Clear error state on the user message
+    messages.update(msgs => msgs.map(m => m.id === err.userMessageId ? { ...m, isError: false } : m));
+
+    const ipc = await import('$lib/services/ipc');
+    isStreaming.set(true);
+
+    // Set up stream listener
+    const unlisten = await ipc.onChatStream((event) => {
+      if (get(activeConversationId) !== err.conversationId) {
+        if (event.event_type === 'done' || event.event_type === 'error') unlisten();
+        return;
+      }
+
+      if (event.event_type === 'delta') {
+        streamBuffer.push(event.message_id, event.content);
+      } else if (event.event_type === 'done') {
+        streamBuffer.reset();
+        messages.update(msgs => {
+          const exists = msgs.some(m => m.id === event.message_id);
+          if (exists) {
+            return msgs.map(m => m.id === event.message_id
+              ? { ...m, content: event.content, isStreaming: false }
+              : m
+            );
+          } else {
+            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content, isStreaming: false }];
+          }
+        });
+        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content };
+        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
+        if (apIdx >= 0) fullActivePath[apIdx] = assistantMsg;
+        else { fullActivePath.push(assistantMsg); currentRenderCount++; }
+        isStreaming.set(false);
+        unlisten();
+      } else if (event.event_type === 'error') {
+        streamBuffer.reset();
+        toastError(`AI response failed: ${event.content}`);
+        lastStreamError.set({ conversationId: err.conversationId, lastUserContent: err.lastUserContent, userMessageId: err.userMessageId });
+        isStreaming.set(false);
+        unlisten();
+      }
+    });
+
+    try {
+      const currentSettings = get(settings);
+      await ipc.retryFailedMessage(
+        err.conversationId, err.userMessageId, undefined,
+        currentSettings.systemPrompt || undefined,
+        currentSettings.streamingEnabled,
+        currentSettings.postHistoryInstructions || undefined,
+      );
+    } catch (retryErr) {
+      console.error('Retry failed:', retryErr);
+      toastError('Retry failed — please try again');
+      isStreaming.set(false);
+    }
+  } else {
+    // sendMessage itself failed before the message was saved — clean up and resend
+    messages.update(msgs => msgs.filter(m => !m.isError));
+    fullActivePath = fullActivePath.filter(m => !m.isError);
+    await sendMessage(err.conversationId, err.lastUserContent);
+  }
 }
 
 /** Regenerates the last assistant response, streaming the new content. */

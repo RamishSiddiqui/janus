@@ -269,6 +269,213 @@ pub async fn send_message(
     }
 }
 
+/// Retries a failed message by reusing the existing user message already in the DB.
+/// Cleans up the empty/failed assistant placeholder from the previous attempt,
+/// creates a fresh one, and re-triggers LLM generation. This avoids duplicating
+/// the user message in both the UI and database.
+#[tauri::command]
+pub async fn retry_failed_message(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+    user_message_id: String,
+    model: Option<String>,
+    system_prompt: Option<String>,
+    streaming: Option<bool>,
+    post_history_instructions: Option<String>,
+) -> Result<serde_json::Value, MythicError> {
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    drop(state_guard);
+
+    debug!("[retry_failed_message] conversation={}, user_message={}", conversation_id, user_message_id);
+
+    // Verify the user message exists
+    let msg_exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM messages WHERE id = ? AND conversation_id = ? AND role = 'user'"
+    )
+    .bind(&user_message_id)
+    .bind(&conversation_id)
+    .fetch_one(&db)
+    .await?;
+
+    if !msg_exists {
+        return Err(MythicError::Validation(
+            "User message not found — cannot retry".to_string()
+        ));
+    }
+
+    // Delete any empty/failed assistant messages that were children of this user message
+    sqlx::query(
+        "DELETE FROM messages WHERE parent_id = ? AND role = 'assistant' AND (content = '' OR content IS NULL)"
+    )
+    .bind(&user_message_id)
+    .execute(&db)
+    .await?;
+
+    // Point the conversation back to the user message
+    sqlx::query(
+        "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(&user_message_id)
+    .bind(&conversation_id)
+    .execute(&db)
+    .await?;
+
+    // Build prompt from this user message
+    let messages = build_prompt(
+        &db, &conversation_id, &user_message_id,
+        system_prompt.as_deref(), post_history_instructions.as_deref(),
+    ).await?;
+
+    // Get LLM provider + model
+    let provider_config = get_default_llm_provider(&db).await?;
+    let model_id = match model {
+        Some(m) if !m.is_empty() && m != "unknown" => m,
+        _ => {
+            let stored = provider_config.config
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !stored.is_empty() && stored != "unknown" {
+                stored.to_string()
+            } else {
+                let first_enabled: Option<(String,)> = sqlx::query_as(
+                    "SELECT model_id FROM enabled_models WHERE provider_id = ? AND enabled = 1 LIMIT 1"
+                )
+                .bind(&provider_config.id)
+                .fetch_optional(&db)
+                .await?;
+                match first_enabled {
+                    Some((m,)) => m,
+                    None => return Err(MythicError::Config(
+                        "No model selected. Go to AI Studio → Models, enable at least one model.".to_string()
+                    )),
+                }
+            }
+        }
+    };
+
+    let gen_params = GenerationParams {
+        max_tokens: provider_config.config
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(2048) as u32,
+        temperature: provider_config.config
+            .get("temperature")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.8) as f32,
+        ..Default::default()
+    };
+
+    // Create fresh assistant placeholder
+    let assistant_msg_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO messages (id, conversation_id, role, content, parent_id)
+         VALUES (?, ?, 'assistant', '', ?)"
+    )
+    .bind(&assistant_msg_id)
+    .bind(&conversation_id)
+    .bind(&user_message_id)
+    .execute(&db)
+    .await?;
+
+    sqlx::query(
+        "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(&assistant_msg_id)
+    .bind(&conversation_id)
+    .execute(&db)
+    .await?;
+
+    // Stream or generate
+    let use_streaming = streaming.unwrap_or(true);
+
+    if use_streaming {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamChunk>(64);
+        let provider = create_rig_provider(&provider_config)?;
+        let stream_messages = messages.clone();
+
+        tokio::spawn(async move {
+            if let Err(e) = provider.generate_stream(
+                &model_id, &stream_messages, &gen_params, tx,
+            ).await {
+                error!("Retry stream generation error: {}", e);
+            }
+        });
+
+        let db_for_save = db.clone();
+        let conv_id = conversation_id.clone();
+        let assist_id = assistant_msg_id.clone();
+
+        tokio::spawn(async move {
+            while let Some(chunk) = rx.recv().await {
+                match chunk {
+                    StreamChunk::Delta(text) => {
+                        let _ = app.emit("chat-stream", StreamEvent {
+                            event_type: "delta".to_string(),
+                            content: text,
+                            message_id: assist_id.clone(),
+                        });
+                    }
+                    StreamChunk::Done(full_text) => {
+                        if let Err(e) = sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
+                            .bind(&full_text)
+                            .bind(&assist_id)
+                            .execute(&db_for_save)
+                            .await {
+                            error!("Failed to save retry response: {}", e);
+                        }
+                        let _ = app.emit("chat-stream", StreamEvent {
+                            event_type: "done".to_string(),
+                            content: full_text,
+                            message_id: assist_id.clone(),
+                        });
+                        info!("Retry response completed for conversation {}", conv_id);
+                        break;
+                    }
+                    StreamChunk::Error(err) => {
+                        let _ = app.emit("chat-stream", StreamEvent {
+                            event_type: "error".to_string(),
+                            content: err,
+                            message_id: assist_id.clone(),
+                        });
+                        break;
+                    }
+                }
+            }
+        });
+    } else {
+        let provider = create_rig_provider(&provider_config)?;
+        match provider.generate(&model_id, &messages, &gen_params).await {
+            Ok(full_text) => {
+                sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
+                    .bind(&full_text)
+                    .bind(&assistant_msg_id)
+                    .execute(&db)
+                    .await?;
+                let _ = app.emit("chat-stream", StreamEvent {
+                    event_type: "done".to_string(),
+                    content: full_text,
+                    message_id: assistant_msg_id.clone(),
+                });
+            }
+            Err(e) => {
+                let _ = app.emit("chat-stream", StreamEvent {
+                    event_type: "error".to_string(),
+                    content: e.to_string(),
+                    message_id: assistant_msg_id.clone(),
+                });
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "user_message_id": user_message_id,
+        "assistant_message_id": assistant_msg_id,
+    }))
+}
+
 /// Regenerates the AI response for a given message by re-running generation
 /// from the same parent point in the conversation tree.
 #[tauri::command]
