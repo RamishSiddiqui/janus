@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::error::MythicError;
@@ -50,6 +50,8 @@ pub async fn send_message(
     let http = state_guard.http_client.clone();
     drop(state_guard);
 
+    debug!("[send_message] conversation={}, content_len={}", conversation_id, content.len());
+
     // 1. Save the user message
     let user_msg_id = Uuid::new_v4().to_string();
 
@@ -83,7 +85,9 @@ pub async fn send_message(
     .await?;
 
     // 2. Build the prompt
+    debug!("[send_message] building prompt...");
     let messages = build_prompt(&db, &conversation_id, &user_msg_id, system_prompt.as_deref(), post_history_instructions.as_deref()).await?;
+    debug!("[send_message] prompt built with {} messages", messages.len());
 
     // 3. Get the active LLM provider
     let provider_config = get_default_llm_provider(&db).await?;
@@ -152,6 +156,7 @@ pub async fn send_message(
 
     // 5. Stream or generate the response
     let use_streaming = streaming.unwrap_or(true);
+    debug!("[send_message] streaming={}, model={}", use_streaming, model_id);
 
     if use_streaming {
         // --- Streaming path ---
@@ -437,7 +442,9 @@ async fn build_prompt(
         }
     }
 
-    // Walk the message tree from root to the current message
+    // Walk the message tree from root to the current message.
+    // TODO: Implement proper context management strategy (sliding window,
+    // summarization, or hybrid approach) for long conversations.
     let mut chain = Vec::new();
     let mut current_id = Some(up_to_message_id.to_string());
 
