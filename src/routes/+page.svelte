@@ -14,8 +14,11 @@
     activeCharacterId,
     isStreaming,
     lastStreamError,
+    hasMoreMessages,
+    isLoadingMoreMessages,
     loadConversations,
     loadMessages,
+    loadMoreMessages,
     sendMessage,
     retryLastMessage,
     branchConversation,
@@ -26,6 +29,7 @@
   let inputText = $state("");
   let showContextPanel = $state(false);
   let messagesEl: HTMLDivElement | undefined = $state();
+  let loadMoreSentinelEl: HTMLDivElement | undefined = $state();
 
   // Branching mode — set when user clicks "Branch from here" on a message
   let branchFromId: string | null = $state(null);
@@ -92,6 +96,75 @@
         top: messagesEl.scrollHeight,
         behavior: streaming ? "instant" : "smooth",
       });
+    });
+  });
+
+  // ── Reverse Infinite Scroll (Load Older Messages) ──
+  // An IntersectionObserver watches a sentinel element at the top of the messages area.
+  // When it becomes visible (user scrolled near the top), we load the next batch of older
+  // messages and preserve the scroll position so the viewport doesn't jump.
+  let loadMoreObserver: IntersectionObserver | null = null;
+
+  /** Load older messages and preserve scroll position. */
+  async function handleLoadMore() {
+    if (!messagesEl || $isLoadingMoreMessages || !$hasMoreMessages) return;
+
+    // Capture scroll position BEFORE prepend
+    const prevScrollHeight = messagesEl.scrollHeight;
+    const prevScrollTop = messagesEl.scrollTop;
+
+    const count = await loadMoreMessages();
+    if (count === 0) return;
+
+    // After DOM update, restore scroll position so viewport doesn't jump
+    await tick();
+    requestAnimationFrame(() => {
+      if (!messagesEl) return;
+      const newScrollHeight = messagesEl.scrollHeight;
+      const delta = newScrollHeight - prevScrollHeight;
+      messagesEl.scrollTop = prevScrollTop + delta;
+    });
+  }
+
+  // Set up IntersectionObserver when sentinel element mounts
+  $effect(() => {
+    if (!loadMoreSentinelEl) return;
+
+    // Disconnect previous observer if any
+    loadMoreObserver?.disconnect();
+
+    loadMoreObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && $hasMoreMessages && !$isLoadingMoreMessages) {
+          handleLoadMore();
+        }
+      },
+      { root: messagesEl, rootMargin: '200px 0px 0px 0px', threshold: 0 }
+    );
+    loadMoreObserver.observe(loadMoreSentinelEl);
+
+    return () => {
+      loadMoreObserver?.disconnect();
+      loadMoreObserver = null;
+    };
+  });
+
+  // ── Initial Scroll: Start at Bottom ──
+  // When a conversation opens, scroll to bottom INSTANTLY (no animation)
+  // so the user never sees the scroll-from-top jank.
+  let lastConversationId = '';
+  $effect(() => {
+    const convId = $activeConversationId;
+    const len = $messages.length;
+    if (!convId || convId === lastConversationId || len === 0) return;
+    lastConversationId = convId;
+
+    // Use tick() to wait for DOM render, then instant scroll
+    tick().then(() => {
+      if (!messagesEl) return;
+      isSticky = true;
+      showScrollPill = false;
+      messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'instant' });
     });
   });
 
@@ -480,6 +553,26 @@
         aria-label="Chat messages"
         aria-live="polite"
       >
+        <!-- Reverse-scroll sentinel: triggers loading older messages -->
+        <div bind:this={loadMoreSentinelEl} class="load-more-sentinel" aria-hidden="true"></div>
+
+        <!-- Skeleton loader: visible while loading older messages -->
+        {#if $isLoadingMoreMessages}
+          <div class="load-more-skeleton" aria-label="Loading older messages">
+            <div class="skeleton-shimmer-bar"></div>
+            <div class="skeleton-messages">
+              <div class="skeleton-bubble skeleton-bubble--short"></div>
+              <div class="skeleton-bubble skeleton-bubble--long skeleton-bubble--right"></div>
+              <div class="skeleton-bubble skeleton-bubble--medium"></div>
+            </div>
+          </div>
+        {:else if $hasMoreMessages}
+          <div class="load-more-hint">
+            <span class="load-more-dot"></span>
+            <span>Scroll up for earlier messages</span>
+          </div>
+        {/if}
+
         {#each $messages as message, i (message.id)}
           <div
             class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
@@ -910,6 +1003,133 @@
     gap: 20px;
     /* Smooth scrollbar for the container */
     scroll-behavior: auto;
+  }
+
+  /* ───────────────────────────────────────────────
+     REVERSE-SCROLL SENTINEL + SKELETON LOADER
+  ─────────────────────────────────────────────── */
+  .load-more-sentinel {
+    width: 100%;
+    height: 1px;
+    flex-shrink: 0;
+  }
+
+  .load-more-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 0 8px;
+    animation: skeletonFadeIn 200ms ease-out both;
+  }
+
+  @keyframes skeletonFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Animated shimmer bar at top */
+  .skeleton-shimmer-bar {
+    width: 100%;
+    height: 2px;
+    border-radius: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(139, 92, 246, 0.3) 25%,
+      rgba(0, 242, 255, 0.2) 50%,
+      rgba(139, 92, 246, 0.3) 75%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmerSlide 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmerSlide {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .skeleton-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 8px;
+  }
+
+  /* Skeleton message bubbles */
+  .skeleton-bubble {
+    height: 28px;
+    border-radius: 14px;
+    background: rgba(139, 92, 246, 0.06);
+    border: 1px solid rgba(139, 92, 246, 0.08);
+    position: relative;
+    overflow: hidden;
+    animation: skeletonPulse 1.8s ease-in-out infinite;
+  }
+
+  .skeleton-bubble::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(139, 92, 246, 0.08) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmerSlide 1.8s ease-in-out infinite;
+  }
+
+  .skeleton-bubble--short { width: 40%; }
+  .skeleton-bubble--medium { width: 60%; }
+  .skeleton-bubble--long { width: 75%; }
+  .skeleton-bubble--right { align-self: flex-end; }
+
+  /* Stagger the pulse animation */
+  .skeleton-bubble:nth-child(2) {
+    animation-delay: 200ms;
+  }
+  .skeleton-bubble:nth-child(2)::after {
+    animation-delay: 200ms;
+  }
+  .skeleton-bubble:nth-child(3) {
+    animation-delay: 400ms;
+  }
+  .skeleton-bubble:nth-child(3)::after {
+    animation-delay: 400ms;
+  }
+
+  @keyframes skeletonPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* "Scroll up for earlier messages" hint */
+  .load-more-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 0 4px;
+    font-size: 11px;
+    font-family: var(--font-body);
+    color: rgba(139, 92, 246, 0.35);
+    letter-spacing: 0.02em;
+    user-select: none;
+  }
+
+  .load-more-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.3);
+    animation: dotPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes dotPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 0.8; transform: scale(1.2); }
   }
 
   /* ───────────────────────────────────────────────

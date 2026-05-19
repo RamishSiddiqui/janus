@@ -33,7 +33,13 @@ class StreamBuffer {
       this.pendingText = '';
       messages.update(msgs => {
         if (msgs.find(m => m.id === messageId)) return msgs;
-        return [...msgs, { id: messageId, role: 'assistant' as const, content: text, isStreaming: true }];
+        const newMsg = { id: messageId, role: 'assistant' as const, content: text, isStreaming: true };
+        // Sync backing array for pagination
+        if (!fullActivePath.find(m => m.id === messageId)) {
+          fullActivePath.push(newMsg);
+          currentRenderCount++;
+        }
+        return [...msgs, newMsg];
       });
       return;
     }
@@ -91,7 +97,7 @@ export const activeConversationId = writable<string>('');
 // Conversation list
 export const conversations = writable<ConversationPreview[]>([]);
 
-// Messages for the active conversation
+// Messages for the active conversation (rendered window — NOT the full history)
 export const messages = writable<Message[]>([]);
 
 // Whether we're currently streaming a response
@@ -102,6 +108,28 @@ export const lastStreamError = writable<{ conversationId: string; lastUserConten
 
 // Whether conversations are being loaded from backend
 export const isLoadingConversations = writable<boolean>(false);
+
+// ── Message Pagination ──
+// The full active branch path lives in memory (SQLite is local, fast to fetch).
+// The `messages` store only contains the rendered window (last N messages).
+// Scrolling up prepends older messages from the backing array.
+const MESSAGE_RENDER_SIZE = 30;
+let fullActivePath: Message[] = [];   // complete annotated branch (root → tip)
+let currentRenderCount = 0;           // how many messages are currently in the store
+
+/** Whether there are older messages available to load on scroll-up. */
+export const hasMoreMessages = writable<boolean>(false);
+
+/** Whether a batch of older messages is currently being prepended. */
+export const isLoadingMoreMessages = writable<boolean>(false);
+
+/** Resets all pagination state — call whenever the conversation changes or is cleared. */
+function resetPaginationState() {
+  fullActivePath = [];
+  currentRenderCount = 0;
+  hasMoreMessages.set(false);
+  isLoadingMoreMessages.set(false);
+}
 
 // Active conversation derived from ID
 export const activeConversation = derived(
@@ -295,6 +323,7 @@ export async function loadMessages(conversationId: string) {
   try {
     // Flush immediately so stale messages don't show during load
     messages.set([]);
+    resetPaginationState();
 
     // Fetch all messages AND the conversation (for active_message_id) in parallel
     const [msgs, conv] = await Promise.all([
@@ -439,8 +468,8 @@ export async function loadMessages(conversationId: string) {
       }
     }
 
-    // Build final annotated message list
-    messages.set(activePath.map(m => {
+    // Build full annotated message list (kept in memory for scroll-up pagination)
+    fullActivePath = activePath.map(m => {
       const key = m.parent_id ?? '__root__';
       const siblings = byParent.get(key) ?? [];
       const siblingIndex = siblings.findIndex(s => s.id === m.id);
@@ -464,7 +493,13 @@ export async function loadMessages(conversationId: string) {
         siblingConversationIds: convSibling?.ids,
         siblingConversationIndex: convSibling?.index,
       };
-    }));
+    });
+
+    // Render only the last N messages (paginated rendering)
+    currentRenderCount = Math.min(fullActivePath.length, MESSAGE_RENDER_SIZE);
+    const initialSlice = fullActivePath.slice(fullActivePath.length - currentRenderCount);
+    messages.set(initialSlice);
+    hasMoreMessages.set(currentRenderCount < fullActivePath.length);
 
     // Pre-load emotional state for immediate HUD display on conversation open
     try {
@@ -483,7 +518,41 @@ export async function loadMessages(conversationId: string) {
     const detail = (err as any)?.message ?? String(err);
     toastError(`Failed to load messages: ${detail}`);
     messages.set([]);
+    resetPaginationState();
   }
+}
+
+/**
+ * Prepends the next batch of older messages from the in-memory active path.
+ * Called by the UI when the user scrolls near the top of the messages area.
+ *
+ * @returns The number of messages that were prepended (used for scroll position preservation).
+ */
+export async function loadMoreMessages(): Promise<number> {
+  if (get(isLoadingMoreMessages)) return 0;
+  if (currentRenderCount >= fullActivePath.length) {
+    hasMoreMessages.set(false);
+    return 0;
+  }
+
+  isLoadingMoreMessages.set(true);
+
+  // Brief delay so the skeleton loader is perceptible (avoids jarring instant-load)
+  await new Promise(r => setTimeout(r, 120));
+
+  const remaining = fullActivePath.length - currentRenderCount;
+  const batchSize = Math.min(MESSAGE_RENDER_SIZE, remaining);
+  const startIdx = fullActivePath.length - currentRenderCount - batchSize;
+  const batch = fullActivePath.slice(startIdx, startIdx + batchSize);
+
+  currentRenderCount += batchSize;
+  hasMoreMessages.set(currentRenderCount < fullActivePath.length);
+
+  // Prepend older messages to the front of the store
+  messages.update(msgs => [...batch, ...msgs]);
+  isLoadingMoreMessages.set(false);
+
+  return batchSize;
 }
 
 
@@ -503,11 +572,14 @@ export async function sendMessage(conversationId: string, content: string, model
   const tempUserId = crypto.randomUUID();
   try {
     // Add user message to local state immediately for responsiveness
-    messages.update(msgs => [...msgs, {
+    const userMsg: Message = {
       id: tempUserId,
       role: 'user' as const,
       content,
-    }]);
+    };
+    messages.update(msgs => [...msgs, userMsg]);
+    fullActivePath.push(userMsg);
+    currentRenderCount++;
 
     isStreaming.set(true);
     lastStreamError.set(null);
@@ -528,16 +600,23 @@ export async function sendMessage(conversationId: string, content: string, model
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
-            // Streaming path — message was created by delta events, just finalize
             return msgs.map(m => m.id === event.message_id
               ? { ...m, content: event.content, isStreaming: false }
               : m
             );
           } else {
-            // Non-streaming path — message doesn't exist locally yet, create it
             return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content, isStreaming: false }];
           }
         });
+        // Sync fullActivePath with finalized assistant message
+        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content };
+        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
+        if (apIdx >= 0) {
+          fullActivePath[apIdx] = assistantMsg;
+        } else {
+          fullActivePath.push(assistantMsg);
+          currentRenderCount++;
+        }
         isStreaming.set(false);
         unlisten();
 
@@ -612,12 +691,17 @@ export async function sendMessage(conversationId: string, content: string, model
     messages.update(msgs =>
       msgs.map(m => m.id === tempUserId ? { ...m, id: result.user_message_id } : m)
     );
+    // Sync fullActivePath
+    const fpIdx = fullActivePath.findIndex(m => m.id === tempUserId);
+    if (fpIdx >= 0) fullActivePath[fpIdx] = { ...fullActivePath[fpIdx], id: result.user_message_id };
   } catch (err) {
     console.error('Failed to send message:', err);
     const msg = (err as any)?.message ?? 'Failed to send message. Is a provider configured?';
     toastError(msg);
     // Remove the optimistic user message
     messages.update(msgs => msgs.filter(m => m.id !== tempUserId));
+    fullActivePath = fullActivePath.filter(m => m.id !== tempUserId);
+    currentRenderCount = Math.max(0, currentRenderCount - 1);
     isStreaming.set(false);
   }
 }
@@ -694,6 +778,7 @@ export async function createConversation(characterId: string, title?: string) {
     const conv = await ipc.createConversation(characterId, title);
     activeConversationId.set(conv.id);
     messages.set([]);
+    resetPaginationState();
 
     // Auto-send character greeting (first_mes) if available
     if (characterId) {
@@ -705,11 +790,14 @@ export async function createConversation(characterId: string, title?: string) {
           // Create the greeting as an assistant message
           const greetingMsg = await ipc.createMessage(conv.id, 'assistant', greeting);
           await ipc.setActiveMessage(conv.id, greetingMsg.id);
-          messages.set([{
+          const greetingMessage: Message = {
             id: greetingMsg.id,
             role: 'assistant',
             content: greeting,
-          }]);
+          };
+          messages.set([greetingMessage]);
+          fullActivePath = [greetingMessage];
+          currentRenderCount = 1;
         }
       } catch (err) {
         console.warn('Could not send greeting:', err);
@@ -735,6 +823,7 @@ export async function deleteConversation(id: string) {
     if (get(activeConversationId) === id) {
       activeConversationId.set('');
       messages.set([]);
+      resetPaginationState();
     }
 
     await loadConversations();
