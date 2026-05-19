@@ -45,23 +45,26 @@ export interface ExtractedFact {
  * - Hard cap of 5: keeps memory store lean (Letta pattern of curated memory)
  */
 const EXTRACTION_SYSTEM_PROMPT = `You are a memory extraction system for a roleplay application.
-Analyze the conversation exchange and identify notable facts worth remembering long-term.
+Analyze the conversation exchange and identify facts worth remembering long-term.
 
 EXTRACT:
-- Character names, titles, and identity reveals
-- Locations visited or mentioned (cities, realms, buildings)
-- Significant events (battles, discoveries, transformations, deaths)
-- Relationship changes (alliances, betrayals, confessions, bonds)
-- Important items (weapons, artifacts, gifts, documents)
-- Key decisions and commitments (vows, promises, plans)
+- Character names, titles, appearances, and identity reveals
+- Locations visited or mentioned (cities, realms, buildings, rooms)
+- Events (battles, discoveries, transformations, meetings, arrivals, departures)
+- Emotional moments (confessions, arguments, tender moments, fears expressed)
+- Relationship dynamics (alliances, betrayals, flirting, tension, bonds forming)
+- Important items (weapons, artifacts, gifts, documents, food/drink shared)
+- Decisions and commitments (vows, promises, plans, invitations accepted/declined)
+- Character traits revealed through action (skills, habits, quirks, weaknesses)
 
 RULES:
 - Each fact must be a single, self-contained sentence.
 - Write in third person, past tense (e.g., "Aria revealed she is the last of the Sky Elves").
-- Only extract genuinely significant information — skip greetings, small talk, routine actions.
+- Extract anything that would be useful for maintaining narrative continuity across sessions.
+- Skip only pure filler — greetings with no substance, repeated information.
 - Do NOT extract information that would be obvious from the character's description.
-- Maximum 5 facts per extraction.
-- If nothing notable happened, return an empty array.
+- Maximum 5 facts per extraction. Aim for at least 1-2 if ANYTHING meaningful happened.
+- If truly nothing notable happened, return an empty array.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
 [{"summary":"...","category":"character|location|event|relationship|item|decision"},...]
@@ -125,14 +128,19 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
 //   Throttle — Extract every Nth message (cost management)
 // ============================================================
 
-const EXTRACT_EVERY_N = 3;
-const MIN_RESPONSE_LENGTH = 100;
+// Extract from every message — individual LLM calls are cheap and memories
+// are the primary mechanism for cross-session continuity. The old value of 3
+// meant most short conversations never got any memories at all.
+const EXTRACT_EVERY_N = 1;
+const MIN_RESPONSE_LENGTH = 80;
 let messageCounter = 0;
 
 /** Check if we should extract from this response. */
 export function shouldExtract(): boolean {
   messageCounter++;
-  return messageCounter % EXTRACT_EVERY_N === 0;
+  const should = messageCounter % EXTRACT_EVERY_N === 0;
+  console.debug(`[Mythic] Memory extraction check: message #${messageCounter}, extract=${should}`);
+  return should;
 }
 
 /** Reset counter (on conversation switch). */
@@ -160,7 +168,10 @@ export async function extractAndSaveMemories(
   userMessage: string,
   assistantResponse: string,
 ): Promise<number> {
-  if (assistantResponse.length < MIN_RESPONSE_LENGTH) return 0;
+  if (assistantResponse.length < MIN_RESPONSE_LENGTH) {
+    console.debug(`[Mythic] Skipping extraction — response too short (${assistantResponse.length} < ${MIN_RESPONSE_LENGTH})`);
+    return 0;
+  }
 
   const ipc = await import('$lib/services/ipc');
   let facts: ExtractedFact[] = [];
@@ -292,5 +303,5 @@ function findNarrativePeak(text: string): string | null {
     }
   }
 
-  return bestScore >= 4 ? cleanForMemory(bestSentence) : null;
+  return bestScore >= 3 ? cleanForMemory(bestSentence) : null;
 }
