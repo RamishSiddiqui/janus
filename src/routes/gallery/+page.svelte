@@ -358,7 +358,7 @@
           {#if char.avatarUrl}
             <img src={char.avatarUrl} alt={char.name} class="card-avatar-img" />
           {:else}
-            <div style="width:100%;aspect-ratio:4/3;background:linear-gradient(135deg, {char.gradientStart}, {char.gradientEnd}30)"></div>
+            <div style="width:100%;height:100%;background:linear-gradient(135deg, {char.gradientStart}, {char.gradientEnd}30)"></div>
           {/if}
           <div class="card-image-overlay"></div>
         </div>
@@ -549,9 +549,10 @@
   .card-grid {
     padding: 24px 28px; overflow-y: auto; flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 260px));
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    grid-auto-rows: max-content;
     justify-content: center;
-    gap: 18px;
+    gap: 20px;
     align-content: start;
   }
   .card-grid::-webkit-scrollbar { width: 4px; }
@@ -564,6 +565,8 @@
     background: rgba(14,14,30,0.5);
     border: 1px solid rgba(139,92,246,0.06);
     display: flex; flex-direction: column;
+    height: auto;
+    min-height: min-content;
     transition: transform 280ms cubic-bezier(0.34,1.56,0.64,1),
                 border-color 200ms ease, box-shadow 280ms ease;
     position: relative;
@@ -582,7 +585,7 @@
 
   .card-image {
     width: 100%; position: relative; overflow: hidden; cursor: pointer;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 3 / 4;
     flex-shrink: 0;
   }
   .card-avatar-img {
@@ -598,6 +601,8 @@
 
   .card-body {
     padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px;
+    flex-shrink: 0;
+    flex-grow: 1;
   }
   .card-top { display: flex; flex-direction: column; gap: 4px; }
   .card-name {
