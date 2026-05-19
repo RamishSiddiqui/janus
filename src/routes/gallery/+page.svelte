@@ -562,6 +562,7 @@
     border-radius: 16px; overflow: hidden;
     background: rgba(14,14,30,0.5);
     border: 1px solid rgba(139,92,246,0.06);
+    display: flex; flex-direction: column;
     transition: transform 280ms cubic-bezier(0.34,1.56,0.64,1),
                 border-color 200ms ease, box-shadow 280ms ease;
     position: relative;
@@ -580,9 +581,11 @@
 
   .card-image {
     width: 100%; position: relative; overflow: hidden; cursor: pointer;
+    aspect-ratio: 3 / 4;
+    flex-shrink: 0;
   }
   .card-avatar-img {
-    width: 100%; display: block;
+    width: 100%; height: 100%; display: block; object-fit: cover;
     transition: transform 400ms cubic-bezier(0.34,1.56,0.64,1);
   }
   .char-card:hover .card-avatar-img { transform: scale(1.06); }
