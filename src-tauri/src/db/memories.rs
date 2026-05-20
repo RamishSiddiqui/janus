@@ -313,7 +313,7 @@ impl MemoryRepo {
         }
 
         let mut conv_result = db
-            .query("SELECT id, title, parent_conversation_id FROM conversations WHERE character_id = type::thing('characters', $char_id) ORDER BY updated_at DESC")
+            .query("SELECT id, title, parent_conversation_id, updated_at FROM conversations WHERE character_id = type::thing('characters', $char_id) ORDER BY updated_at DESC")
             .bind(("char_id", character_id.to_string()))
             .await?;
         let conv_rows: Vec<ConvRow> = conv_result.take(0)?;
