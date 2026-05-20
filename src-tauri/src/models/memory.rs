@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 /// A persisted memory entry — user-pinned facts or AI-extracted context.
 ///
@@ -8,14 +9,18 @@ use serde::{Deserialize, Serialize};
 /// - Sharing between conversations creates linked copies/syncs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Memory {
-    pub id: String,
-    pub character_id: Option<String>,
-    pub conversation_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub character_id: Option<Thing>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub conversation_id: Option<Thing>,
     pub content: String,
     pub source: String, // "user" | "auto"
 
     /// Parent memory this was forked/inherited from (None = root)
-    pub parent_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub parent_id: Option<Thing>,
     /// Version counter — increments on each edit
     pub version: i32,
     /// Whether this is a character-level "canon" memory (trunk of the tree)
@@ -24,7 +29,7 @@ pub struct Memory {
     pub created_at: String,
 }
 
-/// A cross-conversation memory sharing link.
+/// A cross-conversation memory sharing link (SurrealDB graph edge).
 ///
 /// Links connect a source memory to a target conversation, creating either
 /// a frozen copy or a live-synced connection. Users configure:
@@ -33,13 +38,17 @@ pub struct Memory {
 /// - `sync_mode`: auto (system-managed) vs manual (user-triggered)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryLink {
-    pub id: String,
-    pub source_memory_id: String,
-    pub target_conversation_id: String,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
+    #[serde(rename = "in", serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub source: Thing,  // in = source memory
+    #[serde(rename = "out", serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub target: Thing,  // out = target conversation
     pub link_type: String,       // "copy" | "sync"
     pub direction: String,       // "one_way" | "two_way"
     pub sync_mode: String,       // "auto" | "manual"
-    pub linked_memory_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub linked_memory_id: Option<Thing>,
     pub created_at: String,
 }
 

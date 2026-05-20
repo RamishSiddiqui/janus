@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 /// The role of a message sender in a conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -19,49 +19,55 @@ pub enum MessageRole {
 /// conversation branching (forking from any point in history).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
-    pub id: String,
-    pub conversation_id: String,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub conversation_id: Thing,
     pub role: MessageRole,
     pub content: String,
 
     /// Parent message ID — enables conversation branching.
     /// If None, this is a root message.
-    pub parent_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub parent_id: Option<Thing>,
 
     /// JSON metadata for attached images, generation params, etc.
     pub metadata: Option<serde_json::Value>,
 
-    pub created_at: DateTime<Utc>,
+    pub created_at: String,
 }
 
 /// A search result from full-text message search.
 ///
 /// Contains the matched message plus context about the conversation
-/// and character it belongs to, along with an FTS5-highlighted snippet.
+/// and character it belongs to, along with a highlighted snippet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub message_id: String,
     pub conversation_id: String,
     pub role: MessageRole,
     pub content: String,
-    /// FTS5 snippet with `<mark>` tags around matched terms
+    /// Snippet with `<mark>` tags around matched terms
     pub snippet: String,
     pub conversation_title: String,
     pub character_name: Option<String>,
-    pub created_at: DateTime<Utc>,
+    pub created_at: String,
 }
 
 /// A conversation session between the user and a character.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {
-    pub id: String,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
     pub title: String,
 
     /// The character associated with this conversation
-    pub character_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub character_id: Option<Thing>,
 
     /// ID of the active (latest) message in the current branch
-    pub active_message_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub active_message_id: Option<Thing>,
 
     /// Controls how auto-extracted memories are scoped:
     /// - "character"    — shared across all conversations with this character (default)
@@ -74,15 +80,15 @@ pub struct Conversation {
     pub shared_character_ids: Option<String>,
 
     /// If this conversation was forked from another, this points to the parent conversation.
-    #[serde(default)]
-    pub parent_conversation_id: Option<String>,
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub parent_conversation_id: Option<Thing>,
 
     /// The exact message in the parent conversation where the fork happened.
-    #[serde(default)]
-    pub branch_point_message_id: Option<String>,
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub branch_point_message_id: Option<Thing>,
 
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 fn default_memory_scope() -> String {

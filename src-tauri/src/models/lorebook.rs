@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 /// A standalone lorebook entry stored in the database.
 ///
@@ -8,13 +9,15 @@ use serde::{Deserialize, Serialize};
 /// while allowing rich world-building.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LorebookEntry {
-    pub id: String,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
 
     /// The character this entry belongs to (None = global lorebook)
-    pub character_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub character_id: Option<Thing>,
 
     /// Trigger keywords — entry activates when any keyword is found in chat.
-    /// Stored as JSON array in the database.
+    /// Stored as native array in SurrealDB.
     pub keys: Vec<String>,
 
     /// The content to inject into the prompt when triggered

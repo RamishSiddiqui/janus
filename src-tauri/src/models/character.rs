@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 /// Character Card V2 specification — the community standard for
 /// portable AI character definitions. Compatible with SillyTavern,
@@ -147,21 +147,22 @@ fn default_priority() -> i32 {
 }
 
 /// Database representation of a character.
-/// Stores the full V2 JSON in the `data` column for maximum flexibility.
+/// Stores the full V2 JSON in the `data` field as a native JSON object in SurrealDB.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character {
-    pub id: String,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
     pub name: String,
     pub spec: String,
 
-    /// Full Character Card V2 JSON, stored as a string in SQLite
-    pub data: String,
+    /// Full Character Card V2 JSON, stored as native JSON in SurrealDB
+    pub data: serde_json::Value,
 
     /// Path to the character's avatar image file (relative to app data dir)
     pub avatar_path: Option<String>,
 
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 impl CharacterCardV2 {

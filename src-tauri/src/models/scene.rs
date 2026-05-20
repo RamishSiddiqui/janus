@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 /// A generated or imported scene (image/video) tied to a conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scene {
-    pub id: String,
-    pub conversation_id: String,
-    pub message_id: Option<String>,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub conversation_id: Thing,
+    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub message_id: Option<Thing>,
     pub media_type: String,
     pub prompt: String,
     pub file_path: String,

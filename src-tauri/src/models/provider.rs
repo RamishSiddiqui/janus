@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 
 /// The type of AI capability a provider offers.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,7 +57,8 @@ pub enum ProviderAdapter {
 /// at runtime. The `config` field holds adapter-specific JSON settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
-    pub id: String,
+    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub id: Thing,
 
     /// Human-readable name (e.g., "My Local Ollama", "OpenRouter Free")
     pub name: String,
@@ -67,7 +69,7 @@ pub struct ProviderConfig {
     /// Which adapter implementation to use
     pub adapter: ProviderAdapter,
 
-    /// Adapter-specific configuration as JSON.
+    /// Adapter-specific configuration as native JSON.
     ///
     /// For Ollama: `{ "base_url": "http://localhost:11434" }`
     /// For OpenRouter: `{ "api_key": "sk-...", "model": "meta-llama/llama-4-maverick" }`
