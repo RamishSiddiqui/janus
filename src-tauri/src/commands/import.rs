@@ -10,8 +10,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
-use uuid::Uuid;
 
+use crate::db::characters::CharacterRepo;
 use crate::error::MythicError;
 use crate::models::character::{Character, CharacterCardV2};
 use crate::AppState;
@@ -108,9 +108,24 @@ pub async fn import_character_card(
         .map_err(|e| MythicError::Validation(format!("Invalid character card JSON: {}", e)))?;
 
     let character_name = card.data.name.clone();
-    let character_id = Uuid::new_v4().to_string();
 
     info!("Parsed character card: {} (spec: {})", character_name, card.spec);
+
+    // Convert card data to JSON value for storage
+    let data_value = serde_json::to_value(&card.data)?;
+
+    // Create the character via repo
+    let state_guard = state.read().await;
+    let character = CharacterRepo::create(
+        &state_guard.db,
+        &character_name,
+        Some(&card.spec),
+        data_value,
+        None, // avatar_path set below after file copy
+    ).await?;
+
+    // Extract the character ID for the avatar filename
+    let character_id = character.id.id.to_raw();
 
     // Save the avatar PNG to the app data directory
     let app_data_dir = app
@@ -127,44 +142,18 @@ pub async fn import_character_card(
 
     let relative_avatar = format!("avatars/{}", avatar_filename);
 
-    // Save to database
-    let data_str = serde_json::to_string(&card.data)?;
-    let state_guard = state.read().await;
-
-    sqlx::query(
-        "INSERT INTO characters (id, name, spec, data, avatar_path) VALUES (?, ?, ?, ?, ?)"
-    )
-    .bind(&character_id)
-    .bind(&character_name)
-    .bind(&card.spec)
-    .bind(&data_str)
-    .bind(&relative_avatar)
-    .execute(&state_guard.db)
-    .await?;
-
-    // Fetch and return the created character
-    let row = sqlx::query_as::<_, ImportCharacterRow>(
-        "SELECT id, name, spec, data, avatar_path, created_at, updated_at FROM characters WHERE id = ?"
-    )
-    .bind(&character_id)
-    .fetch_one(&state_guard.db)
-    .await?;
+    // Update the character with the avatar path
+    let updated = CharacterRepo::update(
+        &state_guard.db,
+        &character_id,
+        None,  // name unchanged
+        None,  // data unchanged
+        Some(&relative_avatar),
+    ).await?;
 
     info!("Imported character: {} ({}) with avatar at {}", character_name, character_id, relative_avatar);
 
-    Ok(Character {
-        id: row.id,
-        name: row.name,
-        spec: row.spec,
-        data: row.data,
-        avatar_path: row.avatar_path,
-        created_at: chrono::DateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .unwrap_or_else(|_| chrono::Utc::now()),
-        updated_at: chrono::DateTime::parse_from_str(&row.updated_at, "%Y-%m-%d %H:%M:%S")
-            .map(|dt| dt.with_timezone(&chrono::Utc))
-            .unwrap_or_else(|_| chrono::Utc::now()),
-    })
+    Ok(updated)
 }
 
 /// Serves an avatar image from the app data directory.
@@ -189,15 +178,4 @@ pub async fn get_avatar_path(
     }
 
     Ok(full_path.to_string_lossy().to_string())
-}
-
-#[derive(sqlx::FromRow)]
-struct ImportCharacterRow {
-    id: String,
-    name: String,
-    spec: String,
-    data: String,
-    avatar_path: Option<String>,
-    created_at: String,
-    updated_at: String,
 }
