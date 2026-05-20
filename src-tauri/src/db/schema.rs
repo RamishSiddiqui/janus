@@ -13,7 +13,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE FIELD name       ON characters TYPE string ASSERT $value != NONE;
         DEFINE FIELD spec       ON characters TYPE string DEFAULT 'chara_card_v2';
-        DEFINE FIELD data       ON characters TYPE object;
+        DEFINE FIELD data       ON characters FLEXIBLE TYPE object;
         DEFINE FIELD avatar_path ON characters TYPE option<string>;
         DEFINE FIELD created_at ON characters TYPE datetime DEFAULT time::now();
         DEFINE FIELD updated_at ON characters TYPE datetime DEFAULT time::now();
@@ -50,7 +50,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             ASSERT $value IN ['user', 'assistant', 'system'];
         DEFINE FIELD content          ON messages TYPE string;
         DEFINE FIELD parent_id        ON messages TYPE option<record<messages>>;
-        DEFINE FIELD metadata         ON messages TYPE option<object>;
+        DEFINE FIELD metadata         ON messages FLEXIBLE TYPE option<object>;
         DEFINE FIELD created_at       ON messages TYPE datetime DEFAULT time::now();
 
         DEFINE INDEX idx_messages_conversation ON messages FIELDS conversation_id;
@@ -128,7 +128,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD provider_type ON provider_configs TYPE string
             ASSERT $value IN ['llm', 'image', 'video'];
         DEFINE FIELD adapter       ON provider_configs TYPE string;
-        DEFINE FIELD config        ON provider_configs TYPE object;
+        DEFINE FIELD config        ON provider_configs FLEXIBLE TYPE object;
         DEFINE FIELD is_default    ON provider_configs TYPE bool DEFAULT false;
 
         DEFINE INDEX idx_provider_type ON provider_configs FIELDS provider_type;
@@ -160,7 +160,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD prompt           ON scenes TYPE string;
         DEFINE FIELD file_path        ON scenes TYPE string;
         DEFINE FIELD caption          ON scenes TYPE option<string>;
-        DEFINE FIELD metadata         ON scenes TYPE option<object>;
+        DEFINE FIELD metadata         ON scenes FLEXIBLE TYPE option<object>;
         DEFINE FIELD created_at       ON scenes TYPE datetime DEFAULT time::now();
 
         DEFINE INDEX idx_scenes_conversation ON scenes FIELDS conversation_id;

@@ -72,7 +72,8 @@ impl CharacterRepo {
         }
 
         sets.push("updated_at = time::now()");
-        let query = format!("UPDATE characters:{} SET {}", id, sets.join(", "));
+        let query = format!("UPDATE type::thing('characters', $id) SET {}", sets.join(", "));
+        bindings_json.insert("id".into(), serde_json::Value::String(id.to_string()));
         let mut result = db
             .query(&query)
             .bind(serde_json::Value::Object(bindings_json))

@@ -28,6 +28,9 @@ pub async fn get_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Character, MythicError> {
+    if id.is_empty() {
+        return Err(MythicError::Validation("Character ID is required".into()));
+    }
     let state = state.read().await;
     CharacterRepo::get(&state.db, &id).await
 }
@@ -50,6 +53,9 @@ pub async fn update_character(
     data: Option<serde_json::Value>,
     avatar_path: Option<String>,
 ) -> Result<Character, MythicError> {
+    if id.is_empty() {
+        return Err(MythicError::Validation("Character ID is required".into()));
+    }
     if let Some(ref name) = name {
         validate_required_string("Character name", name, 200)?;
     }
@@ -72,6 +78,9 @@ pub async fn delete_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
+    if id.is_empty() {
+        return Err(MythicError::Validation("Character ID is required".into()));
+    }
     let state = state.read().await;
     CharacterRepo::delete(&state.db, &id).await?;
     info!("Deleted character: {}", id);
