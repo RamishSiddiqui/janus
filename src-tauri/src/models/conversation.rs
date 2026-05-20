@@ -33,7 +33,7 @@ pub struct Message {
 
     /// JSON metadata for attached images, generation params, etc.
     pub metadata: Option<serde_json::Value>,
-
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
 }
 
@@ -51,6 +51,7 @@ pub struct SearchResult {
     pub snippet: String,
     pub conversation_title: String,
     pub character_name: Option<String>,
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
 }
 
@@ -86,8 +87,9 @@ pub struct Conversation {
     /// The exact message in the parent conversation where the fork happened.
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
     pub branch_point_message_id: Option<Thing>,
-
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub updated_at: String,
 }
 

@@ -25,7 +25,7 @@ pub struct Memory {
     pub version: i32,
     /// Whether this is a character-level "canon" memory (trunk of the tree)
     pub is_canon: bool,
-
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
 }
 
@@ -49,6 +49,7 @@ pub struct MemoryLink {
     pub sync_mode: String,       // "auto" | "manual"
     #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
     pub linked_memory_id: Option<Thing>,
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
 }
 

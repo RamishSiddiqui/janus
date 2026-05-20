@@ -160,8 +160,9 @@ pub struct Character {
 
     /// Path to the character's avatar image file (relative to app data dir)
     pub avatar_path: Option<String>,
-
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub updated_at: String,
 }
 

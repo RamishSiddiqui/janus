@@ -15,5 +15,6 @@ pub struct Scene {
     pub file_path: String,
     pub caption: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
 }

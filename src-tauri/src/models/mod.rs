@@ -42,3 +42,13 @@ where
 {
     Option::<Thing>::deserialize(deserializer)
 }
+
+/// Deserializes a SurrealDB Datetime into a String
+pub fn deserialize_datetime<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let dt = surrealdb::sql::Datetime::deserialize(deserializer)?;
+    Ok(dt.to_string())
+}
+
