@@ -7,10 +7,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum MythicError {
     #[error("Database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(#[from] surrealdb::Error),
 
-    #[error("Database migration error: {0}")]
-    Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("Database operation failed: {0}")]
+    DatabaseOp(String),
 
     #[error("HTTP request error: {0}")]
     Http(#[from] reqwest::Error),
@@ -76,7 +76,7 @@ impl serde::Serialize for MythicError {
 
         let variant = match self {
             MythicError::Database(_) => "database",
-            MythicError::Migration(_) => "migration",
+            MythicError::DatabaseOp(_) => "database_op",
             MythicError::Http(_) => "http",
             MythicError::Serialization(_) => "serialization",
             MythicError::Io(_) => "io",

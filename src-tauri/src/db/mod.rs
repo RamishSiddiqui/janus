@@ -1,42 +1,35 @@
-use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 use std::path::Path;
+use surrealdb::Surreal;
+use surrealdb::engine::local::{Db, RocksDb};
 use tracing::info;
 
 use crate::error::MythicError;
 
-/// Initializes the SQLite database connection pool and runs migrations.
-///
-/// The database file is created in the Tauri app data directory,
-/// ensuring platform-compliant storage on all operating systems.
-pub async fn init_database(db_path: &Path) -> Result<Pool<Sqlite>, MythicError> {
-    // Ensure the parent directory exists
+pub mod schema;
+pub mod seed;
+pub mod characters;
+pub mod conversations;
+pub mod messages;
+pub mod memories;
+pub mod providers;
+pub mod scenes;
+pub mod lorebook;
+pub mod character_state;
+
+pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {
+    let db_path = data_dir.join("mythic_surreal");
+    info!("Initializing SurrealDB at: {:?}", db_path);
+
     if let Some(parent) = db_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    info!("Initializing database at: {}", db_url);
+    let db = Surreal::new::<RocksDb>(&db_path).await?;
+    db.use_ns("mythic").use_db("mythic").await?;
 
-    let pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect(&db_url)
-        .await?;
+    schema::define_schema(&db).await?;
+    seed::seed_defaults(&db).await?;
 
-    // Enable WAL mode for better concurrent read performance
-    sqlx::query("PRAGMA journal_mode=WAL;")
-        .execute(&pool)
-        .await?;
-
-    // Enable foreign keys
-    sqlx::query("PRAGMA foreign_keys=ON;")
-        .execute(&pool)
-        .await?;
-
-    // Run embedded migrations
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await?;
-
-    info!("Database initialized successfully");
-    Ok(pool)
+    info!("SurrealDB initialized successfully");
+    Ok(db)
 }

@@ -4,7 +4,8 @@ pub mod error;
 pub mod models;
 pub mod providers;
 
-use sqlx::{Pool, Sqlite};
+use surrealdb::Surreal;
+use surrealdb::engine::local::Db;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
@@ -16,8 +17,8 @@ use tracing_subscriber::EnvFilter;
 /// Wrapped in `Arc<RwLock<>>` for safe concurrent access from multiple
 /// async command handlers. Registered as Tauri managed state.
 pub struct AppState {
-    /// SQLite connection pool
-    pub db: Pool<Sqlite>,
+    /// SurrealDB embedded database connection
+    pub db: Surreal<Db>,
 
     /// HTTP client shared across all providers (connection pooling)
     pub http_client: reqwest::Client,
@@ -49,14 +50,12 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
 
-            let db_path = app_data_dir.join("mythic.db");
-
             // Initialize the database in a blocking context during setup
             let rt = tokio::runtime::Runtime::new()
                 .expect("Failed to create Tokio runtime");
 
-            let pool = rt.block_on(async {
-                db::init_database(&db_path).await
+            let db = rt.block_on(async {
+                db::init_database(&app_data_dir).await
             }).expect("Failed to initialize database");
 
             // Copy bundled seed avatars to app data dir if not already present
@@ -105,7 +104,7 @@ pub fn run() {
 
             // Register global app state
             let state = AppState {
-                db: pool,
+                db,
                 http_client,
             };
 
