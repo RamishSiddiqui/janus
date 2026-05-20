@@ -50,11 +50,12 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
 
-            // Initialize the database in a blocking context during setup
-            let rt = tokio::runtime::Runtime::new()
-                .expect("Failed to create Tokio runtime");
-
-            let db = rt.block_on(async {
+            // Initialize the database using Tauri's own async runtime.
+            // IMPORTANT: We must NOT create a temporary tokio::runtime::Runtime here.
+            // SurrealDB spawns internal async tasks on the current runtime — if that
+            // runtime is dropped (as a temporary one would be at end of setup()),
+            // those tasks die and the Surreal<Db> handle becomes a dead channel.
+            let db = tauri::async_runtime::block_on(async {
                 db::init_database(&app_data_dir).await
             }).expect("Failed to initialize database");
 

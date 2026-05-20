@@ -43,10 +43,20 @@ pub async fn list_conversations(
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<Vec<Conversation>, MythicError> {
+    info!("[CMD] list_conversations called (limit={:?}, offset={:?})", limit, offset);
     let state = state.read().await;
     let limit = limit.unwrap_or(50).min(200);
     let offset = offset.unwrap_or(0);
-    ConversationRepo::list(&state.db, limit, offset).await
+    match ConversationRepo::list(&state.db, limit, offset).await {
+        Ok(convos) => {
+            info!("[CMD] list_conversations OK — returned {} conversations", convos.len());
+            Ok(convos)
+        }
+        Err(e) => {
+            info!("[CMD] list_conversations FAILED: {:?}", e);
+            Err(e)
+        }
+    }
 }
 
 /// Returns the total number of conversations (for pagination).
@@ -54,8 +64,18 @@ pub async fn list_conversations(
 pub async fn count_conversations(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<u32, MythicError> {
+    info!("[CMD] count_conversations called");
     let state = state.read().await;
-    ConversationRepo::count(&state.db).await
+    match ConversationRepo::count(&state.db).await {
+        Ok(count) => {
+            info!("[CMD] count_conversations OK — count={}", count);
+            Ok(count)
+        }
+        Err(e) => {
+            info!("[CMD] count_conversations FAILED: {:?}", e);
+            Err(e)
+        }
+    }
 }
 
 /// Deletes a conversation and all its messages (cascade).

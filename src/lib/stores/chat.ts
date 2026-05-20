@@ -179,18 +179,38 @@ export async function loadConversations() {
   conversationPage.set(0);
   const ipc = await import('$lib/services/ipc');
   try {
-    const [convos, count] = await Promise.all([
-      ipc.listConversations(PAGE_SIZE, 0),
-      ipc.countConversations(),
-    ]);
+    console.log('[Mythic] loadConversations: calling listConversations...');
+    let convos;
+    try {
+      convos = await ipc.listConversations(PAGE_SIZE, 0);
+      console.log('[Mythic] loadConversations: listConversations OK, got', convos.length, 'conversations');
+    } catch (listErr) {
+      console.error('[Mythic] loadConversations: listConversations FAILED:', listErr);
+      console.error('[Mythic] listErr type:', typeof listErr, 'keys:', listErr ? Object.keys(listErr as object) : 'null');
+      throw listErr;
+    }
+
+    console.log('[Mythic] loadConversations: calling countConversations...');
+    let count;
+    try {
+      count = await ipc.countConversations();
+      console.log('[Mythic] loadConversations: countConversations OK, count=', count);
+    } catch (countErr) {
+      console.error('[Mythic] loadConversations: countConversations FAILED:', countErr);
+      console.error('[Mythic] countErr type:', typeof countErr, 'keys:', countErr ? Object.keys(countErr as object) : 'null');
+      throw countErr;
+    }
 
     totalConversations.set(count);
     hasMoreConversations.set(convos.length < count);
 
+    console.log('[Mythic] loadConversations: resolving previews...');
     const previews = await resolveConversationPreviews(convos);
+    console.log('[Mythic] loadConversations: previews resolved, count=', previews.length);
     conversations.set(previews);
   } catch (err) {
     console.error('Failed to load conversations:', err);
+    console.error('Error details:', JSON.stringify(err, null, 2));
     toastError('Failed to load conversations. Check your connection.');
   }
   isLoadingConversations.set(false);
