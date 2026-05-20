@@ -1,13 +1,16 @@
 //! Memory management commands — CRUD + sharing + graph for the multiverse memory system.
+//!
+//! All database operations are delegated to `MemoryRepo`. This layer handles
+//! Tauri state extraction and input validation only.
 
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
-use uuid::Uuid;
 
+use crate::db::memories::MemoryRepo;
 use crate::error::MythicError;
-use crate::models::memory::{Memory, MemoryGraph, MemoryGraphConversation, MemoryLink};
+use crate::models::memory::{Memory, MemoryGraph, MemoryLink};
 use crate::AppState;
 
 /// Lists memories for a character and/or conversation.
@@ -17,34 +20,13 @@ pub async fn list_memories(
     character_id: Option<String>,
     conversation_id: Option<String>,
 ) -> Result<Vec<Memory>, MythicError> {
-    let state_guard = state.read().await;
-
-    let rows: Vec<MemoryRow> = if let Some(ref char_id) = character_id {
-        sqlx::query_as(
-            "SELECT id, character_id, conversation_id, content, source, parent_id, version, is_canon, created_at
-             FROM memories WHERE character_id = ? ORDER BY created_at DESC"
-        )
-        .bind(char_id)
-        .fetch_all(&state_guard.db)
-        .await?
-    } else if let Some(ref conv_id) = conversation_id {
-        sqlx::query_as(
-            "SELECT id, character_id, conversation_id, content, source, parent_id, version, is_canon, created_at
-             FROM memories WHERE conversation_id = ? ORDER BY created_at DESC"
-        )
-        .bind(conv_id)
-        .fetch_all(&state_guard.db)
-        .await?
-    } else {
-        sqlx::query_as(
-            "SELECT id, character_id, conversation_id, content, source, parent_id, version, is_canon, created_at
-             FROM memories ORDER BY created_at DESC LIMIT 100"
-        )
-        .fetch_all(&state_guard.db)
-        .await?
-    };
-
-    Ok(rows.into_iter().map(Into::into).collect())
+    let state = state.read().await;
+    MemoryRepo::list(
+        &state.db,
+        character_id.as_deref(),
+        conversation_id.as_deref(),
+    )
+    .await
 }
 
 /// Creates a new memory entry.
@@ -56,23 +38,18 @@ pub async fn create_memory(
     content: String,
     source: Option<String>,
 ) -> Result<Memory, MythicError> {
-    let state_guard = state.read().await;
-    let id = Uuid::new_v4().to_string();
+    let state = state.read().await;
     let source = source.unwrap_or_else(|| "user".to_string());
-
-    sqlx::query(
-        "INSERT INTO memories (id, character_id, conversation_id, content, source) VALUES (?, ?, ?, ?, ?)"
+    let memory = MemoryRepo::create(
+        &state.db,
+        character_id.as_deref(),
+        conversation_id.as_deref(),
+        &content,
+        &source,
     )
-    .bind(&id)
-    .bind(&character_id)
-    .bind(&conversation_id)
-    .bind(&content)
-    .bind(&source)
-    .execute(&state_guard.db)
     .await?;
-
-    info!("Created memory: {} (source: {})", id, source);
-    fetch_memory(&state_guard.db, &id).await
+    info!("Created memory: {} (source: {})", memory.id, source);
+    Ok(memory)
 }
 
 /// Updates a memory's content and increments its version.
@@ -82,22 +59,10 @@ pub async fn update_memory(
     memory_id: String,
     content: String,
 ) -> Result<Memory, MythicError> {
-    let state_guard = state.read().await;
-
-    let result = sqlx::query(
-        "UPDATE memories SET content = ?, version = version + 1 WHERE id = ?"
-    )
-    .bind(&content)
-    .bind(&memory_id)
-    .execute(&state_guard.db)
-    .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(MythicError::NotFound(format!("Memory not found: {}", memory_id)));
-    }
-
+    let state = state.read().await;
+    let memory = MemoryRepo::update(&state.db, &memory_id, &content).await?;
     info!("Updated memory: {} (version incremented)", memory_id);
-    fetch_memory(&state_guard.db, &memory_id).await
+    Ok(memory)
 }
 
 /// Deletes a memory entry.
@@ -106,17 +71,8 @@ pub async fn delete_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
 ) -> Result<(), MythicError> {
-    let state_guard = state.read().await;
-
-    let result = sqlx::query("DELETE FROM memories WHERE id = ?")
-        .bind(&memory_id)
-        .execute(&state_guard.db)
-        .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(MythicError::NotFound(format!("Memory not found: {}", memory_id)));
-    }
-
+    let state = state.read().await;
+    MemoryRepo::delete(&state.db, &memory_id).await?;
     info!("Deleted memory: {}", memory_id);
     Ok(())
 }
@@ -128,23 +84,10 @@ pub async fn promote_to_canon(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
 ) -> Result<Memory, MythicError> {
-    let state_guard = state.read().await;
-
-    // Verify the memory exists and has a character_id
-    let mem = fetch_memory(&state_guard.db, &memory_id).await?;
-    if mem.character_id.is_none() {
-        return Err(MythicError::Config(
-            "Cannot promote a memory without a character_id to canon".to_string()
-        ));
-    }
-
-    sqlx::query("UPDATE memories SET is_canon = 1 WHERE id = ?")
-        .bind(&memory_id)
-        .execute(&state_guard.db)
-        .await?;
-
+    let state = state.read().await;
+    let memory = MemoryRepo::promote_to_canon(&state.db, &memory_id).await?;
     info!("Promoted memory {} to canon", memory_id);
-    fetch_memory(&state_guard.db, &memory_id).await
+    Ok(memory)
 }
 
 /// Shares a memory to another conversation by creating a link.
@@ -160,12 +103,11 @@ pub async fn share_memory(
     direction: Option<String>,
     sync_mode: Option<String>,
 ) -> Result<MemoryLink, MythicError> {
-    let state_guard = state.read().await;
     let link_type = link_type.unwrap_or_else(|| "copy".to_string());
     let direction = direction.unwrap_or_else(|| "one_way".to_string());
     let sync_mode = sync_mode.unwrap_or_else(|| "manual".to_string());
 
-    // Validate
+    // Validate link parameters
     if !matches!(link_type.as_str(), "copy" | "sync") {
         return Err(MythicError::Config("link_type must be 'copy' or 'sync'".to_string()));
     }
@@ -176,57 +118,22 @@ pub async fn share_memory(
         return Err(MythicError::Config("sync_mode must be 'auto' or 'manual'".to_string()));
     }
 
-    // Fetch source memory
-    let source = fetch_memory(&state_guard.db, &source_memory_id).await?;
-
-    let link_id = Uuid::new_v4().to_string();
-    let mut linked_memory_id: Option<String> = None;
-
-    // For 'copy', create a duplicate memory in the target conversation
-    if link_type == "copy" {
-        let copy_id = Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO memories (id, character_id, conversation_id, content, source, parent_id, version, is_canon)
-             VALUES (?, ?, ?, ?, 'auto', ?, 1, 0)"
-        )
-        .bind(&copy_id)
-        .bind(&source.character_id)
-        .bind(&target_conversation_id)
-        .bind(&source.content)
-        .bind(&source.id)
-        .execute(&state_guard.db)
-        .await?;
-
-        linked_memory_id = Some(copy_id);
-    }
-
-    // Create the link record
-    sqlx::query(
-        "INSERT INTO memory_links (id, source_memory_id, target_conversation_id, link_type, direction, sync_mode, linked_memory_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+    let state = state.read().await;
+    let link = MemoryRepo::share(
+        &state.db,
+        &source_memory_id,
+        &target_conversation_id,
+        &link_type,
+        &direction,
+        &sync_mode,
     )
-    .bind(&link_id)
-    .bind(&source_memory_id)
-    .bind(&target_conversation_id)
-    .bind(&link_type)
-    .bind(&direction)
-    .bind(&sync_mode)
-    .bind(&linked_memory_id)
-    .execute(&state_guard.db)
     .await?;
 
-    info!("Shared memory {} to conversation {} (type: {}, direction: {}, sync: {})",
-        source_memory_id, target_conversation_id, link_type, direction, sync_mode);
-
-    let row: MemoryLinkRow = sqlx::query_as(
-        "SELECT id, source_memory_id, target_conversation_id, link_type, direction, sync_mode, linked_memory_id, created_at
-         FROM memory_links WHERE id = ?"
-    )
-    .bind(&link_id)
-    .fetch_one(&state_guard.db)
-    .await?;
-
-    Ok(row.into())
+    info!(
+        "Shared memory {} to conversation {} (type: {}, direction: {}, sync: {})",
+        source_memory_id, target_conversation_id, link_type, direction, sync_mode
+    );
+    Ok(link)
 }
 
 /// Removes a sharing link between conversations.
@@ -235,17 +142,8 @@ pub async fn unlink_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     link_id: String,
 ) -> Result<(), MythicError> {
-    let state_guard = state.read().await;
-
-    let result = sqlx::query("DELETE FROM memory_links WHERE id = ?")
-        .bind(&link_id)
-        .execute(&state_guard.db)
-        .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(MythicError::NotFound(format!("Memory link not found: {}", link_id)));
-    }
-
+    let state = state.read().await;
+    MemoryRepo::unlink(&state.db, &link_id).await?;
     info!("Removed memory link: {}", link_id);
     Ok(())
 }
@@ -257,161 +155,6 @@ pub async fn get_memory_graph(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<MemoryGraph, MythicError> {
-    let state_guard = state.read().await;
-
-    // Get character name
-    let char_name: Option<String> = sqlx::query_scalar(
-        "SELECT name FROM characters WHERE id = ?"
-    )
-    .bind(&character_id)
-    .fetch_optional(&state_guard.db)
-    .await?;
-
-    let character_name = char_name
-        .ok_or_else(|| MythicError::NotFound(format!("Character not found: {}", character_id)))?;
-
-    // All memories for this character
-    let memory_rows: Vec<MemoryRow> = sqlx::query_as(
-        "SELECT id, character_id, conversation_id, content, source, parent_id, version, is_canon, created_at
-         FROM memories WHERE character_id = ? ORDER BY created_at ASC"
-    )
-    .bind(&character_id)
-    .fetch_all(&state_guard.db)
-    .await?;
-
-    let memories: Vec<Memory> = memory_rows.into_iter().map(Into::into).collect();
-
-    // All memory IDs for this character (for link query)
-    let memory_ids: Vec<String> = memories.iter().map(|m| m.id.clone()).collect();
-
-    // All links involving these memories
-    let links = if memory_ids.is_empty() {
-        Vec::new()
-    } else {
-        let placeholders = memory_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query = format!(
-            "SELECT id, source_memory_id, target_conversation_id, link_type, direction, sync_mode, linked_memory_id, created_at
-             FROM memory_links WHERE source_memory_id IN ({})",
-            placeholders
-        );
-        let mut q = sqlx::query_as::<_, MemoryLinkRow>(&query);
-        for id in &memory_ids {
-            q = q.bind(id);
-        }
-        let rows: Vec<MemoryLinkRow> = q.fetch_all(&state_guard.db).await?;
-        rows.into_iter().map(Into::into).collect()
-    };
-
-    // All conversations for this character — including those with 0 memories yet
-    let conv_rows: Vec<ConvSummaryRow> = sqlx::query_as(
-        "SELECT c.id, c.title, c.character_id, COUNT(m.id) as memory_count, c.parent_conversation_id
-         FROM conversations c
-         LEFT JOIN memories m ON m.conversation_id = c.id AND m.character_id = ?
-         WHERE c.character_id = ?
-         GROUP BY c.id, c.title, c.character_id, c.parent_conversation_id
-         ORDER BY c.updated_at DESC"
-    )
-    .bind(&character_id)   // for the LEFT JOIN condition
-    .bind(&character_id)   // for the WHERE clause
-    .fetch_all(&state_guard.db)
-    .await?;
-
-    let conversations = conv_rows.into_iter().map(|r| MemoryGraphConversation {
-        id: r.id,
-        title: r.title,
-        character_id: r.character_id,
-        memory_count: r.memory_count,
-        parent_conversation_id: r.parent_conversation_id,
-    }).collect();
-
-    Ok(MemoryGraph {
-        character_id,
-        character_name,
-        memories,
-        links,
-        conversations,
-    })
-}
-
-// --- Internal helpers ---
-
-#[derive(sqlx::FromRow)]
-struct MemoryRow {
-    id: String,
-    character_id: Option<String>,
-    conversation_id: Option<String>,
-    content: String,
-    source: String,
-    parent_id: Option<String>,
-    version: i32,
-    is_canon: bool,
-    created_at: String,
-}
-
-impl From<MemoryRow> for Memory {
-    fn from(row: MemoryRow) -> Self {
-        Memory {
-            id: row.id,
-            character_id: row.character_id,
-            conversation_id: row.conversation_id,
-            content: row.content,
-            source: row.source,
-            parent_id: row.parent_id,
-            version: row.version,
-            is_canon: row.is_canon,
-            created_at: row.created_at,
-        }
-    }
-}
-
-#[derive(sqlx::FromRow)]
-struct MemoryLinkRow {
-    id: String,
-    source_memory_id: String,
-    target_conversation_id: String,
-    link_type: String,
-    direction: String,
-    sync_mode: String,
-    linked_memory_id: Option<String>,
-    created_at: String,
-}
-
-impl From<MemoryLinkRow> for MemoryLink {
-    fn from(row: MemoryLinkRow) -> Self {
-        MemoryLink {
-            id: row.id,
-            source_memory_id: row.source_memory_id,
-            target_conversation_id: row.target_conversation_id,
-            link_type: row.link_type,
-            direction: row.direction,
-            sync_mode: row.sync_mode,
-            linked_memory_id: row.linked_memory_id,
-            created_at: row.created_at,
-        }
-    }
-}
-
-#[derive(sqlx::FromRow)]
-struct ConvSummaryRow {
-    id: String,
-    title: String,
-    character_id: String,
-    memory_count: i32,
-    parent_conversation_id: Option<String>,
-}
-
-async fn fetch_memory(
-    db: &sqlx::Pool<sqlx::Sqlite>,
-    id: &str,
-) -> Result<Memory, MythicError> {
-    let row: MemoryRow = sqlx::query_as(
-        "SELECT id, character_id, conversation_id, content, source, parent_id, version, is_canon, created_at
-         FROM memories WHERE id = ?"
-    )
-    .bind(id)
-    .fetch_optional(db)
-    .await?
-    .ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))?;
-
-    Ok(row.into())
+    let state = state.read().await;
+    MemoryRepo::get_graph(&state.db, &character_id).await
 }
