@@ -57,7 +57,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE INDEX idx_messages_parent       ON messages FIELDS parent_id;
 
         -- Full-text search (replaces FTS5)
-        DEFINE ANALYZER msg_analyzer TOKENIZERS unicode FILTERS lowercase, edgengram(2, 15);
+        DEFINE ANALYZER IF NOT EXISTS msg_analyzer TOKENIZERS class FILTERS lowercase, edgengram(2, 15);
         DEFINE INDEX idx_messages_fts ON messages FIELDS content
             SEARCH ANALYZER msg_analyzer BM25;
     ")
