@@ -18,7 +18,7 @@ use crate::db::messages::MessageRepo;
 use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
 use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
-use crate::models::provider::{ProviderAdapter, ProviderConfig, ProviderType};
+use crate::models::provider::{ProviderAdapter, ProviderConfig};
 use crate::providers::unified::RigProvider;
 use crate::providers::traits::StreamChunk;
 use crate::AppState;

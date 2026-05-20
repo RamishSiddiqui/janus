@@ -24,7 +24,7 @@ pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> 
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let db = Surreal::new::<RocksDb>(&db_path).await?;
+    let db = Surreal::new::<RocksDb>(db_path).await?;
     db.use_ns("mythic").use_db("mythic").await?;
 
     schema::define_schema(&db).await?;

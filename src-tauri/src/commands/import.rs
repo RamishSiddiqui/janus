@@ -114,14 +114,12 @@ pub async fn import_character_card(
     // Convert card data to JSON value for storage
     let data_value = serde_json::to_value(&card.data)?;
 
-    // Create the character via repo
+    // Create the character via repo (spec is hardcoded in create, avatar set via update)
     let state_guard = state.read().await;
     let character = CharacterRepo::create(
         &state_guard.db,
         &character_name,
-        Some(&card.spec),
         data_value,
-        None, // avatar_path set below after file copy
     ).await?;
 
     // Extract the character ID for the avatar filename
