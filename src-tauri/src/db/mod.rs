@@ -27,7 +27,9 @@ pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> 
     let db = Surreal::new::<RocksDb>(db_path).await?;
     db.use_ns("mythic").use_db("mythic").await?;
 
+    info!("Running schema definitions...");
     schema::define_schema(&db).await?;
+    info!("Schema defined successfully, running seed...");
     seed::seed_defaults(&db).await?;
 
     info!("SurrealDB initialized successfully");
