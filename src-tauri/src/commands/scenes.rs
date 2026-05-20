@@ -11,6 +11,8 @@ use tokio::sync::RwLock;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::db::providers::ProviderRepo;
+use crate::db::scenes::SceneRepo;
 use crate::error::MythicError;
 use crate::models::provider::ImageGenParams;
 use crate::models::scene::Scene;
@@ -64,18 +66,14 @@ pub async fn generate_scene(
     let state_guard = state.read().await;
 
     // Try to find a configured image provider and generate the image
-    let row: Option<ProviderRow> = sqlx::query_as(
-        "SELECT id, name, adapter, config FROM provider_configs WHERE provider_type = 'image' AND is_default = 1 LIMIT 1"
-    )
-    .fetch_optional(&state_guard.db)
-    .await?;
+    let provider = ProviderRepo::get_default(&state_guard.db, "image").await?;
 
-    let (caption, metadata) = if let Some(provider_row) = row {
-        // We have a configured image provider — use it
-        let config: serde_json::Value = serde_json::from_str(&provider_row.config)?;
-        let base_url = config["base_url"].as_str().unwrap_or("http://localhost:8188");
-        let api_key = config["api_key"].as_str().unwrap_or("");
-        let model = config["model"].as_str().unwrap_or("default");
+    let (caption, metadata) = if let Some(provider) = provider {
+        // We have a configured image provider — use it.
+        // With SurrealDB, provider.config is already serde_json::Value — no parsing needed.
+        let base_url = provider.config["base_url"].as_str().unwrap_or("http://localhost:8188");
+        let api_key = provider.config["api_key"].as_str().unwrap_or("");
+        let model = provider.config["model"].as_str().unwrap_or("default");
 
         // Call the image generation API (OpenAI-compatible /v1/images/generations)
         let response = state_guard.http_client
@@ -119,10 +117,10 @@ pub async fn generate_scene(
 
         tokio::fs::write(&file_path, &image_bytes).await?;
 
-        let caption = format!("{} — generated via {}", prompt, provider_row.name);
+        let caption = format!("{} — generated via {}", prompt, provider.name);
         let metadata = serde_json::json!({
             "model": model,
-            "provider": provider_row.name,
+            "provider": provider.name,
             "width": params.width,
             "height": params.height,
             "steps": params.steps,
@@ -146,35 +144,23 @@ pub async fn generate_scene(
         (caption, metadata)
     };
 
-    // Save to database
-    let metadata_str = serde_json::to_string(&metadata)?;
-
-    sqlx::query(
-        "INSERT INTO scenes (id, conversation_id, message_id, media_type, prompt, file_path, caption, metadata) VALUES (?, ?, ?, 'image', ?, ?, ?, ?)"
+    // Save to database via SceneRepo
+    let scene = SceneRepo::create(
+        &state_guard.db,
+        &scene_id,
+        &conversation_id,
+        message_id.as_deref(),
+        "image",
+        &prompt,
+        &relative_path,
+        Some(&caption),
+        Some(metadata),
     )
-    .bind(&scene_id)
-    .bind(&conversation_id)
-    .bind(&message_id)
-    .bind(&prompt)
-    .bind(&relative_path)
-    .bind(&caption)
-    .bind(&metadata_str)
-    .execute(&state_guard.db)
     .await?;
 
     info!("Scene generated: {} saved to {}", scene_id, relative_path);
 
-    Ok(Scene {
-        id: scene_id,
-        conversation_id,
-        message_id,
-        media_type: "image".into(),
-        prompt,
-        file_path: relative_path,
-        caption: Some(caption),
-        metadata: Some(metadata),
-        created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    })
+    Ok(scene)
 }
 
 /// Lists all scenes for a given conversation.
@@ -184,25 +170,7 @@ pub async fn list_scenes(
     conversation_id: String,
 ) -> Result<Vec<Scene>, MythicError> {
     let state_guard = state.read().await;
-
-    let rows: Vec<SceneRow> = sqlx::query_as(
-        "SELECT id, conversation_id, message_id, media_type, prompt, file_path, caption, metadata, created_at FROM scenes WHERE conversation_id = ? ORDER BY created_at DESC"
-    )
-    .bind(&conversation_id)
-    .fetch_all(&state_guard.db)
-    .await?;
-
-    Ok(rows.into_iter().map(|r| Scene {
-        id: r.id,
-        conversation_id: r.conversation_id,
-        message_id: r.message_id,
-        media_type: r.media_type,
-        prompt: r.prompt,
-        file_path: r.file_path,
-        caption: r.caption,
-        metadata: r.metadata.and_then(|s| serde_json::from_str(&s).ok()),
-        created_at: r.created_at,
-    }).collect())
+    SceneRepo::list(&state_guard.db, &conversation_id).await
 }
 
 /// Deletes a scene and its media file.
@@ -215,14 +183,7 @@ pub async fn delete_scene(
     let state_guard = state.read().await;
 
     // Get the file path before deleting
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT file_path FROM scenes WHERE id = ?"
-    )
-    .bind(&scene_id)
-    .fetch_optional(&state_guard.db)
-    .await?;
-
-    if let Some((file_path,)) = row {
+    if let Some(file_path) = SceneRepo::get_file_path(&state_guard.db, &scene_id).await? {
         // Delete the file
         let app_data_dir = app
             .path()
@@ -234,10 +195,7 @@ pub async fn delete_scene(
         }
     }
 
-    sqlx::query("DELETE FROM scenes WHERE id = ?")
-        .bind(&scene_id)
-        .execute(&state_guard.db)
-        .await?;
+    SceneRepo::delete(&state_guard.db, &scene_id).await?;
 
     info!("Deleted scene: {}", scene_id);
     Ok(())
@@ -263,29 +221,6 @@ pub async fn get_scene_path(
 }
 
 // --- Internal helpers ---
-
-#[derive(sqlx::FromRow)]
-struct ProviderRow {
-    #[allow(dead_code)]
-    id: String,
-    name: String,
-    #[allow(dead_code)]
-    adapter: String,
-    config: String,
-}
-
-#[derive(sqlx::FromRow)]
-struct SceneRow {
-    id: String,
-    conversation_id: String,
-    message_id: Option<String>,
-    media_type: String,
-    prompt: String,
-    file_path: String,
-    caption: Option<String>,
-    metadata: Option<String>,
-    created_at: String,
-}
 
 /// Generates a simple gradient placeholder PNG when no image provider is configured.
 fn generate_placeholder_png(width: u32, height: u32) -> Result<Vec<u8>, MythicError> {
