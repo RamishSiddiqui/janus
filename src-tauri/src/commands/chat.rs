@@ -5,8 +5,17 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
-use uuid::Uuid;
 
+use surrealdb::Surreal;
+use surrealdb::engine::local::Db;
+
+use crate::db::characters::CharacterRepo;
+use crate::db::character_state::CharacterStateRepo;
+use crate::db::conversations::ConversationRepo;
+use crate::db::lorebook::LorebookRepo;
+use crate::db::memories::MemoryRepo;
+use crate::db::messages::MessageRepo;
+use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
 use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
 use crate::models::provider::{ProviderAdapter, ProviderConfig, ProviderType};
@@ -51,36 +60,21 @@ pub async fn send_message(
     debug!("[send_message] conversation={}, content_len={}", conversation_id, content.len());
 
     // 1. Save the user message
-    let user_msg_id = Uuid::new_v4().to_string();
-
     // Get current active message as parent for branching
-    let parent_id: Option<String> = sqlx::query_scalar(
-        "SELECT active_message_id FROM conversations WHERE id = ?"
-    )
-    .bind(&conversation_id)
-    .fetch_optional(&db)
-    .await?
-    .flatten();
+    let conv = ConversationRepo::get(&db, &conversation_id).await?;
+    let parent_id: Option<String> = conv.active_message_id.as_ref().map(|t| t.id.to_raw());
 
-    sqlx::query(
-        "INSERT INTO messages (id, conversation_id, role, content, parent_id)
-         VALUES (?, ?, 'user', ?, ?)"
-    )
-    .bind(&user_msg_id)
-    .bind(&conversation_id)
-    .bind(&content)
-    .bind(&parent_id)
-    .execute(&db)
-    .await?;
-
-    // Update active message pointer
-    sqlx::query(
-        "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
-    )
-    .bind(&user_msg_id)
-    .bind(&conversation_id)
-    .execute(&db)
-    .await?;
+    // MessageRepo::create generates a UUID, inserts the message, and updates
+    // the conversation's active_message_id automatically.
+    let user_msg = MessageRepo::create(
+        &db,
+        &conversation_id,
+        "user",
+        &content,
+        parent_id.as_deref(),
+        None,
+    ).await?;
+    let user_msg_id = user_msg.id.id.to_raw();
 
     // 2. Build the prompt
     debug!("[send_message] building prompt...");
@@ -89,34 +83,7 @@ pub async fn send_message(
 
     // 3. Get the active LLM provider
     let provider_config = get_default_llm_provider(&db).await?;
-    let model_id = match model {
-        Some(m) if !m.is_empty() && m != "unknown" => m,
-        _ => {
-            let stored = provider_config.config
-                .get("model")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !stored.is_empty() && stored != "unknown" {
-                stored.to_string()
-            } else {
-                // Fall back to first enabled model for this provider
-                let first_enabled: Option<(String,)> = sqlx::query_as(
-                    "SELECT model_id FROM enabled_models WHERE provider_id = ? AND enabled = 1 LIMIT 1"
-                )
-                .bind(&provider_config.id)
-                .fetch_optional(&db)
-                .await?;
-                match first_enabled {
-                    Some((m,)) => m,
-                    None => return Err(MythicError::Config(
-                        "No model selected. Go to AI Studio \u{2192} Models, enable at least one model.".to_string()
-                    )),
-                }
-            }
-        }
-    };
-
-
+    let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     let gen_params = GenerationParams {
         max_tokens: provider_config.config
@@ -131,26 +98,16 @@ pub async fn send_message(
     };
 
     // 4. Create the assistant message placeholder
-    let assistant_msg_id = Uuid::new_v4().to_string();
-
-    sqlx::query(
-        "INSERT INTO messages (id, conversation_id, role, content, parent_id)
-         VALUES (?, ?, 'assistant', '', ?)"
-    )
-    .bind(&assistant_msg_id)
-    .bind(&conversation_id)
-    .bind(&user_msg_id)
-    .execute(&db)
-    .await?;
-
-    // Update active message pointer to the assistant response
-    sqlx::query(
-        "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
-    )
-    .bind(&assistant_msg_id)
-    .bind(&conversation_id)
-    .execute(&db)
-    .await?;
+    // MessageRepo::create also updates active_message_id to this new message.
+    let assistant_msg = MessageRepo::create(
+        &db,
+        &conversation_id,
+        "assistant",
+        "",
+        Some(&user_msg_id),
+        None,
+    ).await?;
+    let assistant_msg_id = assistant_msg.id.id.to_raw();
 
     // 5. Stream or generate the response
     let use_streaming = streaming.unwrap_or(true);
@@ -192,13 +149,7 @@ pub async fn send_message(
                 }
                 StreamChunk::Done(full_text) => {
                     // Save the complete response to the database
-                    if let Err(e) = sqlx::query(
-                        "UPDATE messages SET content = ? WHERE id = ?"
-                    )
-                    .bind(&full_text)
-                    .bind(&assist_id)
-                    .execute(&db_for_save)
-                    .await {
+                    if let Err(e) = MessageRepo::update(&db_for_save, &assist_id, &full_text).await {
                         error!("Failed to save response: {}", e);
                     }
 
@@ -238,11 +189,7 @@ pub async fn send_message(
         match provider.generate(&model_id, &messages, &gen_params).await {
             Ok(full_text) => {
                 // Save to database
-                sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
-                    .bind(&full_text)
-                    .bind(&assist_id)
-                    .execute(&db_for_save)
-                    .await?;
+                MessageRepo::update(&db_for_save, &assist_id, &full_text).await?;
 
                 // Emit as a single 'done' event
                 let _ = app.emit("chat-stream", StreamEvent {
@@ -290,37 +237,29 @@ pub async fn retry_failed_message(
 
     debug!("[retry_failed_message] conversation={}, user_message={}", conversation_id, user_message_id);
 
-    // Verify the user message exists
-    let msg_exists: bool = sqlx::query_scalar(
-        "SELECT COUNT(*) > 0 FROM messages WHERE id = ? AND conversation_id = ? AND role = 'user'"
-    )
-    .bind(&user_message_id)
-    .bind(&conversation_id)
-    .fetch_one(&db)
-    .await?;
+    // Verify the user message exists and is a user message in this conversation
+    let user_msg = MessageRepo::get(&db, &user_message_id).await
+        .map_err(|_| MythicError::Validation(
+            "User message not found — cannot retry".to_string()
+        ))?;
 
-    if !msg_exists {
+    let msg_conv_id = user_msg.conversation_id.id.to_raw();
+    if msg_conv_id != conversation_id || user_msg.role != MessageRole::User {
         return Err(MythicError::Validation(
             "User message not found — cannot retry".to_string()
         ));
     }
 
-    // Delete any empty/failed assistant messages that were children of this user message
-    sqlx::query(
-        "DELETE FROM messages WHERE parent_id = ? AND role = 'assistant' AND (content = '' OR content IS NULL)"
+    // Delete any empty/failed assistant messages that were children of this user message.
+    // No repo method covers this specific pattern, so use raw SurrealQL.
+    db.query(
+        "DELETE FROM messages WHERE parent_id = type::thing('messages', $parent_id) AND role = 'assistant' AND (content = '' OR content IS NONE)"
     )
-    .bind(&user_message_id)
-    .execute(&db)
+    .bind(("parent_id", user_message_id.clone()))
     .await?;
 
     // Point the conversation back to the user message
-    sqlx::query(
-        "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
-    )
-    .bind(&user_message_id)
-    .bind(&conversation_id)
-    .execute(&db)
-    .await?;
+    ConversationRepo::set_active_message(&db, &conversation_id, &user_message_id).await?;
 
     // Build prompt from this user message
     let messages = build_prompt(
@@ -330,31 +269,7 @@ pub async fn retry_failed_message(
 
     // Get LLM provider + model
     let provider_config = get_default_llm_provider(&db).await?;
-    let model_id = match model {
-        Some(m) if !m.is_empty() && m != "unknown" => m,
-        _ => {
-            let stored = provider_config.config
-                .get("model")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !stored.is_empty() && stored != "unknown" {
-                stored.to_string()
-            } else {
-                let first_enabled: Option<(String,)> = sqlx::query_as(
-                    "SELECT model_id FROM enabled_models WHERE provider_id = ? AND enabled = 1 LIMIT 1"
-                )
-                .bind(&provider_config.id)
-                .fetch_optional(&db)
-                .await?;
-                match first_enabled {
-                    Some((m,)) => m,
-                    None => return Err(MythicError::Config(
-                        "No model selected. Go to AI Studio → Models, enable at least one model.".to_string()
-                    )),
-                }
-            }
-        }
-    };
+    let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     let gen_params = GenerationParams {
         max_tokens: provider_config.config
@@ -369,24 +284,16 @@ pub async fn retry_failed_message(
     };
 
     // Create fresh assistant placeholder
-    let assistant_msg_id = Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO messages (id, conversation_id, role, content, parent_id)
-         VALUES (?, ?, 'assistant', '', ?)"
-    )
-    .bind(&assistant_msg_id)
-    .bind(&conversation_id)
-    .bind(&user_message_id)
-    .execute(&db)
-    .await?;
-
-    sqlx::query(
-        "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
-    )
-    .bind(&assistant_msg_id)
-    .bind(&conversation_id)
-    .execute(&db)
-    .await?;
+    // MessageRepo::create also updates active_message_id automatically.
+    let assistant_msg = MessageRepo::create(
+        &db,
+        &conversation_id,
+        "assistant",
+        "",
+        Some(&user_message_id),
+        None,
+    ).await?;
+    let assistant_msg_id = assistant_msg.id.id.to_raw();
 
     // Stream or generate
     let use_streaming = streaming.unwrap_or(true);
@@ -419,11 +326,7 @@ pub async fn retry_failed_message(
                         });
                     }
                     StreamChunk::Done(full_text) => {
-                        if let Err(e) = sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
-                            .bind(&full_text)
-                            .bind(&assist_id)
-                            .execute(&db_for_save)
-                            .await {
+                        if let Err(e) = MessageRepo::update(&db_for_save, &assist_id, &full_text).await {
                             error!("Failed to save retry response: {}", e);
                         }
                         let _ = app.emit("chat-stream", StreamEvent {
@@ -449,11 +352,7 @@ pub async fn retry_failed_message(
         let provider = create_rig_provider(&provider_config)?;
         match provider.generate(&model_id, &messages, &gen_params).await {
             Ok(full_text) => {
-                sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
-                    .bind(&full_text)
-                    .bind(&assistant_msg_id)
-                    .execute(&db)
-                    .await?;
+                MessageRepo::update(&db, &assistant_msg_id, &full_text).await?;
                 let _ = app.emit("chat-stream", StreamEvent {
                     event_type: "done".to_string(),
                     content: full_text,
@@ -493,42 +392,27 @@ pub async fn regenerate_message(
     let db = state_guard.db.clone();
 
     // Get the parent of the message to regenerate from
-    let parent_id: Option<String> = sqlx::query_scalar(
-        "SELECT parent_id FROM messages WHERE id = ?"
-    )
-    .bind(&message_id)
-    .fetch_optional(&db)
-    .await?
-    .flatten();
+    let msg = MessageRepo::get(&db, &message_id).await?;
+    let parent_id: Option<String> = msg.parent_id.as_ref().map(|t| t.id.to_raw());
 
     drop(state_guard);
 
     // Delete the old response
-    sqlx::query("DELETE FROM messages WHERE id = ?")
-        .bind(&message_id)
-        .execute(&db)
-        .await?;
+    MessageRepo::delete(&db, &message_id).await?;
 
     // If the message had a parent (it was an assistant response to a user message),
     // use the parent as the last user message
     if let Some(ref pid) = parent_id {
         // Update active to the parent so send_message builds from there
-        sqlx::query(
-            "UPDATE conversations SET active_message_id = ?, updated_at = datetime('now') WHERE id = ?"
-        )
-        .bind(pid)
-        .bind(&conversation_id)
-        .execute(&db)
-        .await?;
+        ConversationRepo::set_active_message(&db, &conversation_id, pid).await?;
     }
 
     // Get the parent message content to re-send
     let parent_content: String = if let Some(ref pid) = parent_id {
-        sqlx::query_scalar("SELECT content FROM messages WHERE id = ?")
-            .bind(pid)
-            .fetch_optional(&db)
-            .await?
-            .unwrap_or_default()
+        match MessageRepo::get(&db, pid).await {
+            Ok(parent_msg) => parent_msg.content,
+            Err(_) => String::new(),
+        }
     } else {
         String::new()
     };
@@ -543,7 +427,7 @@ pub async fn regenerate_message(
 /// Builds the full prompt by combining system prompt, character data,
 /// and conversation history.
 async fn build_prompt(
-    db: &sqlx::Pool<sqlx::Sqlite>,
+    db: &Surreal<Db>,
     conversation_id: &str,
     up_to_message_id: &str,
     user_system_prompt: Option<&str>,
@@ -563,252 +447,246 @@ async fn build_prompt(
     }
 
     // Get the character and memory scope associated with this conversation
-    let conv_meta: Option<(Option<String>, String)> = sqlx::query_as(
-        "SELECT character_id, memory_scope FROM conversations WHERE id = ?"
-    )
-    .bind(conversation_id)
-    .fetch_optional(db)
-    .await?;
+    let conv = ConversationRepo::get(db, conversation_id).await.ok();
 
-    let (character_id, memory_scope) = match conv_meta {
-        Some((char_id, scope)) => (char_id, scope),
+    let (character_id, memory_scope) = match conv {
+        Some(ref c) => {
+            let char_id = c.character_id.as_ref().map(|t| t.id.to_raw());
+            (char_id, c.memory_scope.clone())
+        }
         None => (None, "character".to_string()),
     };
 
     // Build system prompt from character data
     if let Some(ref char_id) = character_id {
-        let char_data: Option<String> = sqlx::query_scalar(
-            "SELECT data FROM characters WHERE id = ?"
-        )
-        .bind(char_id)
-        .fetch_optional(db)
-        .await?
-        .flatten();
+        if let Ok(character) = CharacterRepo::get(db, char_id).await {
+            let card = &character.data;
+            let mut system_parts = Vec::new();
 
-        if let Some(data_json) = char_data {
-            if let Ok(card) = serde_json::from_str::<serde_json::Value>(&data_json) {
-                let mut system_parts = Vec::new();
-
-                // Character system prompt
-                if let Some(sys) = card.get("system_prompt").and_then(|v| v.as_str()) {
-                    if !sys.is_empty() {
-                        system_parts.push(sys.to_string());
-                    }
-                }
-
-                // Character description
-                if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
-                    if !desc.is_empty() {
-                        system_parts.push(format!("Character Description:\n{}", desc));
-                    }
-                }
-
-                // Personality
-                if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
-                    if !personality.is_empty() {
-                        system_parts.push(format!("Personality:\n{}", personality));
-                    }
-                }
-
-                // Scenario
-                if let Some(scenario) = card.get("scenario").and_then(|v| v.as_str()) {
-                    if !scenario.is_empty() {
-                        system_parts.push(format!("Scenario:\n{}", scenario));
-                    }
-                }
-
-                if !system_parts.is_empty() {
-                    prompt.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: system_parts.join("\n\n"),
-                    });
+            // Character system prompt
+            if let Some(sys) = card.get("system_prompt").and_then(|v| v.as_str()) {
+                if !sys.is_empty() {
+                    system_parts.push(sys.to_string());
                 }
             }
-        }
-    }
 
-    // Add lorebook entries that are always active
-    if let Some(ref char_id) = character_id {
-        let lorebook_entries: Vec<String> = sqlx::query_scalar(
-            "SELECT content FROM lorebook_entries
-             WHERE (character_id = ? OR character_id IS NULL)
-             AND enabled = 1 AND always_active = 1
-             ORDER BY priority DESC"
-        )
-        .bind(char_id)
-        .fetch_all(db)
-        .await?;
+            // Character description
+            if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
+                if !desc.is_empty() {
+                    system_parts.push(format!("Character Description:\n{}", desc));
+                }
+            }
 
-        for entry in lorebook_entries {
-            prompt.push(ChatMessage {
-                role: MessageRole::System,
-                content: entry,
-            });
-        }
-    }
+            // Personality
+            if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
+                if !personality.is_empty() {
+                    system_parts.push(format!("Personality:\n{}", personality));
+                }
+            }
 
-    // Walk the message tree from root to the current message.
-    // TODO: Implement proper context management strategy (sliding window,
-    // summarization, or hybrid approach) for long conversations.
-    let mut chain = Vec::new();
-    let mut current_id = Some(up_to_message_id.to_string());
+            // Scenario
+            if let Some(scenario) = card.get("scenario").and_then(|v| v.as_str()) {
+                if !scenario.is_empty() {
+                    system_parts.push(format!("Scenario:\n{}", scenario));
+                }
+            }
 
-    while let Some(ref id) = current_id {
-        let row: Option<(String, String, Option<String>)> = sqlx::query_as(
-            "SELECT role, content, parent_id FROM messages WHERE id = ?"
-        )
-        .bind(id)
-        .fetch_optional(db)
-        .await?;
-
-        match row {
-            Some((role, content, parent)) => {
-                chain.push(ChatMessage {
-                    role: match role.as_str() {
-                        "user" => MessageRole::User,
-                        "assistant" => MessageRole::Assistant,
-                        "system" => MessageRole::System,
-                        _ => MessageRole::User,
-                    },
-                    content,
+            if !system_parts.is_empty() {
+                prompt.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: system_parts.join("\n\n"),
                 });
-                current_id = parent;
             }
-            None => break,
         }
     }
 
-    chain.reverse();
-
-    // Keyword-triggered lorebook entries: scan recent messages for matching keywords
+    // Add lorebook entries — fetch all entries for this character, then filter in Rust
     if let Some(ref char_id) = character_id {
-        let keyword_entries: Vec<(String, String)> = sqlx::query_as(
-            "SELECT keys, content FROM lorebook_entries
-             WHERE (character_id = ? OR character_id IS NULL)
-             AND enabled = 1 AND always_active = 0
-             AND keys IS NOT NULL AND keys != '' AND keys != '[]'
-             ORDER BY priority DESC"
-        )
-        .bind(char_id)
-        .fetch_all(db)
-        .await?;
-
-        if !keyword_entries.is_empty() {
-            // Build a search corpus from the last N messages (for performance)
-            let scan_depth = chain.len().min(20);
-            let corpus: String = chain[chain.len().saturating_sub(scan_depth)..]
-                .iter()
-                .map(|m| m.content.to_lowercase())
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            for (keys_raw, content) in keyword_entries {
-                // keys column is a JSON array e.g. ["wolf","storm"] — fall back to CSV
-                let keywords: Vec<String> = serde_json::from_str::<Vec<String>>(&keys_raw)
-                    .unwrap_or_else(|_| {
-                        keys_raw.split(',').map(|k| k.trim().to_string()).collect()
-                    });
-
-                let triggered = keywords
-                    .iter()
-                    .map(|k| k.to_lowercase())
-                    .filter(|k| !k.is_empty())
-                    .any(|keyword| corpus.contains(&keyword));
-
-                if triggered {
+        if let Ok(all_entries) = LorebookRepo::list(db, char_id).await {
+            // Always-active entries
+            for entry in all_entries.iter() {
+                if entry.enabled && entry.always_active {
                     prompt.push(ChatMessage {
                         role: MessageRole::System,
-                        content,
+                        content: entry.content.clone(),
                     });
                 }
             }
-        }
-    }
 
-    // ── Inject saved memories as a persistent context layer ──
-    // Memories are auto-extracted facts from past conversations (events, relationships,
-    // character reveals, etc.). Injecting them here gives the AI long-term recall.
-    //
-    // Placement: after lorebook, before emotional state — the "knowledge layer".
-    // Limited to 20 most recent to avoid context overflow.
-    if memory_scope != "none" {
-        let memory_rows: Vec<(String,)> = if memory_scope == "character" {
-            // Character-scoped: all memories for this character (shared across conversations)
-            if let Some(ref char_id) = character_id {
-                sqlx::query_as(
-                    "SELECT content FROM memories
-                     WHERE character_id = ?
-                     ORDER BY created_at DESC LIMIT 20"
-                )
-                .bind(char_id)
-                .fetch_all(db)
-                .await?
-            } else {
-                Vec::new()
-            }
-        } else {
-            // Conversation-scoped: only this conversation's memories
-            sqlx::query_as(
-                "SELECT content FROM memories
-                 WHERE conversation_id = ?
-                 ORDER BY created_at DESC LIMIT 20"
-            )
-            .bind(conversation_id)
-            .fetch_all(db)
-            .await?
-        };
+            // Keyword-triggered entries will be processed after we build the message chain
+            // (we need the chain to scan for keywords)
 
-        if !memory_rows.is_empty() {
-            // Format memories as a bullet list, reversed to chronological order
-            let mut facts: Vec<String> = memory_rows.into_iter().map(|(c,)| c).collect();
-            facts.reverse(); // oldest first for natural reading order
+            // Walk the message tree using get_branch (returns root→leaf order)
+            let branch = MessageRepo::get_branch(db, up_to_message_id).await?;
+            let chain: Vec<ChatMessage> = branch.iter().map(|m| {
+                ChatMessage {
+                    role: match m.role {
+                        MessageRole::User => MessageRole::User,
+                        MessageRole::Assistant => MessageRole::Assistant,
+                        MessageRole::System => MessageRole::System,
+                    },
+                    content: m.content.clone(),
+                }
+            }).collect();
 
-            let memory_block = format!(
-                "[Remembered Facts — things you know from past interactions]\n{}",
-                facts.iter()
-                    .map(|f| format!("• {}", f))
+            // Keyword-triggered lorebook entries: scan recent messages for matching keywords
+            let keyword_entries: Vec<&crate::models::lorebook::LorebookEntry> = all_entries.iter()
+                .filter(|e| e.enabled && !e.always_active && !e.keys.is_empty())
+                .collect();
+
+            if !keyword_entries.is_empty() {
+                // Build a search corpus from the last N messages (for performance)
+                let scan_depth = chain.len().min(20);
+                let corpus: String = chain[chain.len().saturating_sub(scan_depth)..]
+                    .iter()
+                    .map(|m| m.content.to_lowercase())
                     .collect::<Vec<_>>()
-                    .join("\n")
-            );
+                    .join(" ");
 
-            prompt.push(ChatMessage {
-                role: MessageRole::System,
-                content: memory_block,
-            });
+                for entry in keyword_entries {
+                    // keys is already Vec<String> — no JSON parsing needed
+                    let triggered = entry.keys
+                        .iter()
+                        .map(|k| k.to_lowercase())
+                        .filter(|k| !k.is_empty())
+                        .any(|keyword| corpus.contains(&keyword));
+
+                    if triggered {
+                        prompt.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: entry.content.clone(),
+                        });
+                    }
+                }
+            }
+
+            // ── Inject saved memories as a persistent context layer ──
+            // Memories are auto-extracted facts from past conversations (events, relationships,
+            // character reveals, etc.). Injecting them here gives the AI long-term recall.
+            //
+            // Placement: after lorebook, before emotional state — the "knowledge layer".
+            // Limited to 20 most recent to avoid context overflow.
+            if memory_scope != "none" {
+                let memory_list = if memory_scope == "character" {
+                    MemoryRepo::list(db, Some(char_id), None).await.unwrap_or_default()
+                } else {
+                    MemoryRepo::list(db, None, Some(conversation_id)).await.unwrap_or_default()
+                };
+
+                // Take only the 20 most recent (list is already ordered DESC)
+                let memory_rows: Vec<_> = memory_list.into_iter().take(20).collect();
+
+                if !memory_rows.is_empty() {
+                    // Format memories as a bullet list, reversed to chronological order
+                    let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
+                    facts.reverse(); // oldest first for natural reading order
+
+                    let memory_block = format!(
+                        "[Remembered Facts — things you know from past interactions]\n{}",
+                        facts.iter()
+                            .map(|f| format!("• {}", f))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+
+                    prompt.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: memory_block,
+                    });
+                }
+            }
+
+            // Inject character emotional state as a dynamic context layer.
+            // Placed last in the system prompt so it's closest to the conversation history
+            // and carries the most weight in the attention window.
+            if let Ok(Some(state)) = CharacterStateRepo::get(db, char_id, conversation_id).await {
+                let state_block = format!(
+                    "[Current Emotional State]\n\
+                     Dominant emotion: {emotion}\n\
+                     Mood: {mood}/100  Trust: {trust}/100  Intensity: {arousal}/100\n\
+                     Internal state: {summary}\n\
+                     (Let this emotional state colour your response naturally — do not announce or describe it explicitly.)",
+                    emotion = state.dominant_emotion,
+                    mood = state.mood,
+                    trust = state.trust,
+                    arousal = state.arousal,
+                    summary = state.state_summary,
+                );
+                prompt.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: state_block,
+                });
+            }
+
+            prompt.extend(chain);
+        } else {
+            // Lorebook fetch failed — still build the message chain
+            let branch = MessageRepo::get_branch(db, up_to_message_id).await?;
+            let chain: Vec<ChatMessage> = branch.iter().map(|m| {
+                ChatMessage {
+                    role: match m.role {
+                        MessageRole::User => MessageRole::User,
+                        MessageRole::Assistant => MessageRole::Assistant,
+                        MessageRole::System => MessageRole::System,
+                    },
+                    content: m.content.clone(),
+                }
+            }).collect();
+
+            // Memories (character-less path or fallback)
+            if memory_scope != "none" {
+                let memory_list = MemoryRepo::list(db, None, Some(conversation_id)).await.unwrap_or_default();
+                let memory_rows: Vec<_> = memory_list.into_iter().take(20).collect();
+                if !memory_rows.is_empty() {
+                    let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
+                    facts.reverse();
+                    let memory_block = format!(
+                        "[Remembered Facts — things you know from past interactions]\n{}",
+                        facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n")
+                    );
+                    prompt.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: memory_block,
+                    });
+                }
+            }
+
+            prompt.extend(chain);
         }
-    }
+    } else {
+        // No character — just build the message chain
+        let branch = MessageRepo::get_branch(db, up_to_message_id).await?;
+        let chain: Vec<ChatMessage> = branch.iter().map(|m| {
+            ChatMessage {
+                role: match m.role {
+                    MessageRole::User => MessageRole::User,
+                    MessageRole::Assistant => MessageRole::Assistant,
+                    MessageRole::System => MessageRole::System,
+                },
+                content: m.content.clone(),
+            }
+        }).collect();
 
-    // Inject character emotional state as a dynamic context layer.
-    // Placed last in the system prompt so it's closest to the conversation history
-    // and carries the most weight in the attention window.
-    if let Some(ref char_id) = character_id {
-        let state_row: Option<(i32, i32, i32, String, String)> = sqlx::query_as(
-            "SELECT mood, trust, arousal, dominant_emotion, state_summary
-             FROM character_states
-             WHERE character_id = ? AND conversation_id = ?
-             LIMIT 1",
-        )
-        .bind(char_id)
-        .bind(conversation_id)
-        .fetch_optional(db)
-        .await?;
-
-        if let Some((mood, trust, arousal, emotion, summary)) = state_row {
-            let state_block = format!(
-                "[Current Emotional State]\n\
-                 Dominant emotion: {emotion}\n\
-                 Mood: {mood}/100  Trust: {trust}/100  Intensity: {arousal}/100\n\
-                 Internal state: {summary}\n\
-                 (Let this emotional state colour your response naturally — do not announce or describe it explicitly.)"
-            );
-            prompt.push(ChatMessage {
-                role: MessageRole::System,
-                content: state_block,
-            });
+        // Conversation-scoped memories even without a character
+        if memory_scope != "none" {
+            let memory_list = MemoryRepo::list(db, None, Some(conversation_id)).await.unwrap_or_default();
+            let memory_rows: Vec<_> = memory_list.into_iter().take(20).collect();
+            if !memory_rows.is_empty() {
+                let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
+                facts.reverse();
+                let memory_block = format!(
+                    "[Remembered Facts — things you know from past interactions]\n{}",
+                    facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n")
+                );
+                prompt.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: memory_block,
+                });
+            }
         }
-    }
 
-    prompt.extend(chain);
+        prompt.extend(chain);
+    }
 
     // ── Post-History Instructions (PHI) ──
     // Injected AFTER the conversation history as the very last system message.
@@ -830,33 +708,43 @@ async fn build_prompt(
 
 /// Finds the default LLM provider configuration from the database.
 async fn get_default_llm_provider(
-    db: &sqlx::Pool<sqlx::Sqlite>,
+    db: &Surreal<Db>,
 ) -> Result<ProviderConfig, MythicError> {
-    let row: Option<(String, String, String, String, String, bool)> = sqlx::query_as(
-        "SELECT id, name, provider_type, adapter, config, is_default
-         FROM provider_configs
-         WHERE provider_type = 'llm'
-         ORDER BY is_default DESC
-         LIMIT 1"
-    )
-    .fetch_optional(db)
-    .await?;
-
-    match row {
-        Some((id, name, _provider_type, adapter, config, is_default)) => {
-            Ok(ProviderConfig {
-                id,
-                name,
-                provider_type: ProviderType::Llm,
-                adapter: serde_json::from_value(serde_json::Value::String(adapter))
-                    .unwrap_or(ProviderAdapter::OpenAiCompatible),
-                config: serde_json::from_str(&config)?,
-                is_default,
-            })
-        }
+    match ProviderRepo::get_default(db, "llm").await? {
+        Some(config) => Ok(config),
         None => Err(MythicError::Config(
             "No LLM provider configured. Add one in Settings → Models.".to_string()
         )),
+    }
+}
+
+/// Resolves the model ID to use, falling back through stored config then enabled models.
+async fn resolve_model_id(
+    model: Option<String>,
+    provider_config: &ProviderConfig,
+    db: &Surreal<Db>,
+) -> Result<String, MythicError> {
+    match model {
+        Some(m) if !m.is_empty() && m != "unknown" => Ok(m),
+        _ => {
+            let stored = provider_config.config
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !stored.is_empty() && stored != "unknown" {
+                Ok(stored.to_string())
+            } else {
+                // Fall back to first enabled model for this provider
+                let provider_id_str = provider_config.id.id.to_raw();
+                let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id_str)).await?;
+                match enabled.into_iter().next() {
+                    Some(m) => Ok(m.model_id),
+                    None => Err(MythicError::Config(
+                        "No model selected. Go to AI Studio \u{2192} Models, enable at least one model.".to_string()
+                    )),
+                }
+            }
+        }
     }
 }
 
@@ -908,34 +796,7 @@ pub async fn generate_raw(
     drop(state_guard);
 
     let provider_config = get_default_llm_provider(&db).await?;
-    let model_id = match model {
-        Some(m) if !m.is_empty() && m != "unknown" => m,
-        _ => {
-            let stored = provider_config.config
-                .get("model")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !stored.is_empty() && stored != "unknown" {
-                stored.to_string()
-            } else {
-                // Fall back to first enabled model for this provider
-                let first_enabled: Option<(String,)> = sqlx::query_as(
-                    "SELECT model_id FROM enabled_models WHERE provider_id = ? AND enabled = 1 LIMIT 1"
-                )
-                .bind(&provider_config.id)
-                .fetch_optional(&db)
-                .await?;
-                match first_enabled {
-                    Some((m,)) => m,
-                    None => return Err(MythicError::Config(
-                        "No model selected. Go to AI Studio \u{2192} Models, enable at least one model.".to_string()
-                    )),
-                }
-            }
-        }
-    };
-
-
+    let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     let gen_params = GenerationParams {
         max_tokens: max_tokens.unwrap_or(512),
