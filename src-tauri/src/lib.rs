@@ -158,6 +158,7 @@ pub fn run() {
             commands::chat::retry_failed_message,
             commands::chat::regenerate_message,
             commands::chat::generate_raw,
+            commands::chat::get_context_stats,
             // Import
             commands::import::import_character_card,
             commands::import::get_avatar_path,

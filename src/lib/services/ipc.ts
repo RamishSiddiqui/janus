@@ -462,6 +462,32 @@ export async function onChatStream(
   });
 }
 
+// --- Context Stats ---
+
+export interface ContextStats {
+  total_budget: number;
+  fixed_tokens: number;
+  history_tokens: number;
+  summary_tokens: number;
+  total_messages: number;
+  included_messages: number;
+  evicted_messages: number;
+}
+
+export async function getContextStats(
+  conversationId: string,
+  messageId: string,
+  systemPrompt?: string,
+  postHistoryInstructions?: string,
+): Promise<ContextStats> {
+  return safeInvoke<ContextStats>('get_context_stats', {
+    conversationId,
+    messageId,
+    systemPrompt: systemPrompt ?? null,
+    postHistoryInstructions: postHistoryInstructions ?? null,
+  });
+}
+
 // --- Scenes ---
 
 export interface Scene {

@@ -525,7 +525,7 @@ pub async fn regenerate_message(
 
 /// Statistics about the context window for observability.
 /// Returned alongside the prompt so callers can log/surface token usage.
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ContextStats {
     /// Total token budget for the context window.
     pub total_budget: usize,
@@ -1123,4 +1123,47 @@ pub async fn generate_raw(
     let result = provider.generate(&model_id, &messages, &gen_params).await?;
 
     Ok(result)
+}
+
+/// Returns context window statistics for a conversation.
+/// Used by the frontend to display token usage and context budget info.
+#[tauri::command]
+pub async fn get_context_stats(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+    message_id: String,
+    system_prompt: Option<String>,
+    post_history_instructions: Option<String>,
+) -> Result<ContextStats, MythicError> {
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    drop(state_guard);
+
+    let provider_config = get_default_llm_provider(&db).await?;
+    let max_context = provider_config.config
+        .get("context_length")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(16384) as usize;
+
+    let max_tokens = provider_config.config
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(2048) as usize;
+
+    let context_budget = ContextBudget {
+        max_context_tokens: max_context,
+        reserved_for_response: max_tokens,
+        ..Default::default()
+    };
+
+    let (_, stats) = build_prompt(
+        &db,
+        &conversation_id,
+        &message_id,
+        system_prompt.as_deref(),
+        post_history_instructions.as_deref(),
+        &context_budget,
+    ).await?;
+
+    Ok(stats)
 }
