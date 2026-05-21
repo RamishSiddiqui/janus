@@ -4,6 +4,7 @@ pub mod lorebook;
 pub mod memory;
 pub mod provider;
 pub mod scene;
+pub mod summary;
 
 use serde::{Deserializer, Deserialize, Serializer};
 use surrealdb::sql::Thing;

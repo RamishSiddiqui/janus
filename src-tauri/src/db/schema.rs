@@ -227,6 +227,25 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:character_states: {}", e)))?;
 
+    // ── 11. conversation_summaries ──────────────────────────────────────
+    info!("  schema: conversation_summaries...");
+    db.query("
+        DEFINE TABLE IF NOT EXISTS conversation_summaries SCHEMAFULL;
+
+        DEFINE FIELD IF NOT EXISTS conversation_id ON conversation_summaries TYPE record<conversations>;
+        DEFINE FIELD IF NOT EXISTS summary_text ON conversation_summaries TYPE string;
+        DEFINE FIELD IF NOT EXISTS covered_message_count ON conversation_summaries TYPE int DEFAULT 0;
+        DEFINE FIELD IF NOT EXISTS token_count ON conversation_summaries TYPE int DEFAULT 0;
+        DEFINE FIELD IF NOT EXISTS window_start_message_id ON conversation_summaries TYPE option<record<messages>>;
+        DEFINE FIELD IF NOT EXISTS created_at ON conversation_summaries TYPE datetime DEFAULT time::now();
+        DEFINE FIELD IF NOT EXISTS updated_at ON conversation_summaries TYPE datetime DEFAULT time::now();
+
+        DEFINE INDEX IF NOT EXISTS idx_summary_conversation ON conversation_summaries FIELDS conversation_id UNIQUE;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:conversation_summaries: {}", e)))?;
+
     // ── Cascade delete events ───────────────────────────────────────────
     info!("  schema: cascade events...");
     db.query("
@@ -248,6 +267,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             DELETE FROM scenes WHERE conversation_id = $before.id;
             DELETE FROM memories WHERE conversation_id = $before.id;
             DELETE FROM character_states WHERE conversation_id = $before.id;
+            DELETE FROM conversation_summaries WHERE conversation_id = $before.id;
         };
     ")
     .await?

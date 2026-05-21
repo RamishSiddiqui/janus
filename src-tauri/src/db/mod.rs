@@ -15,6 +15,7 @@ pub mod providers;
 pub mod scenes;
 pub mod lorebook;
 pub mod character_state;
+pub mod summaries;
 
 pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {
     let db_path = data_dir.join("mythic_surreal");
