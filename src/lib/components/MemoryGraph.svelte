@@ -8,6 +8,8 @@
   import CharacterNode from './nodes/CharacterNode.svelte';
   import ConversationNode from './nodes/ConversationNode.svelte';
   import MemoryNode from './nodes/MemoryNode.svelte';
+  import MemoryGroupNode from './nodes/MemoryGroupNode.svelte';
+  import { groupMemories } from '$lib/utils/groupMemories';
   import SharingEdge from './edges/SharingEdge.svelte';
   import TreeEdge from './edges/TreeEdge.svelte';
   import MemoryActionPanel from './MemoryActionPanel.svelte';
@@ -22,6 +24,7 @@
 
   /* ── Action Panel state ── */
   let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
+  let selectedGroupMemories = $state<MemoryGraphData['memories']>([]);
   let selectedMemoryLinks = $derived(
     selectedMemory
       ? data.links.filter(l => l.source_memory_id === selectedMemory!.id)
@@ -29,15 +32,30 @@
   );
 
   function handleNodeClick({ event, node }: { event: MouseEvent | TouchEvent; node: Node }) {
-    // Only respond to memory nodes
-    if (node.type !== 'memory') return;
-    const memId = node.id.replace('mem-', '');
-    const mem = data.memories.find(m => m.id === memId);
-    if (mem) selectedMemory = mem;
+    // Respond to memory and memoryGroup nodes
+    if (node.type === 'memory') {
+      const memId = node.id.replace('mem-', '');
+      const mem = data.memories.find(m => m.id === memId);
+      if (mem) {
+        selectedMemory = mem;
+        selectedGroupMemories = [];
+      }
+    } else if (node.type === 'memoryGroup') {
+      const firstMemId = node.id.replace('memgroup-', '');
+      const mem = data.memories.find(m => m.id === firstMemId);
+      if (mem) {
+        selectedMemory = mem;
+        // Extract all memory IDs from the group node's data
+        const groupData = node.data as { memories: Array<{ memoryId: string }> };
+        const groupMemIds = (groupData.memories ?? []).map((gm: { memoryId: string }) => gm.memoryId);
+        selectedGroupMemories = data.memories.filter(m => groupMemIds.includes(m.id));
+      }
+    }
   }
 
   function handlePanelClose() {
     selectedMemory = null;
+    selectedGroupMemories = [];
   }
 
   async function handlePanelShare(config: {
@@ -72,6 +90,7 @@
     character: CharacterNode,
     conversation: ConversationNode,
     memory: MemoryNode,
+    memoryGroup: MemoryGroupNode,
   };
 
   const edgeTypes: any = { sharing: SharingEdge, tree: TreeEdge };
@@ -108,6 +127,7 @@
     character:    { w: 240, h: 64 },
     conversation: { w: 220, h: 56 },
     memory:       { w: 240, h: 120 },
+    memoryGroup:  { w: 240, h: 150 },
   };
 
   /* ── Dagre auto-layout ── */
@@ -332,40 +352,96 @@
       sharingPairs.add(`${tgt}->${src}`);
     });
 
-    // ── Scoped memories ──
-    g.memories.filter(m => !m.is_canon).forEach(m => {
-      const convId = m.conversation_id;
+    // ── Scoped memories (grouped) ──
+    // Map: memory_id → graph node id (either mem-X or memgroup-X)
+    const memToNodeId = new Map<string, string>();
+
+    const scopedMems = g.memories.filter(m => !m.is_canon);
+    const groups = groupMemories(scopedMems, g.links);
+
+    for (const group of groups) {
+      const convId = group.laneId === 'canon' ? null : group.laneId;
       const p = convId ? convColorMap.get(convId) : PALETTE[0];
-      if (!p) return;
+      if (!p) continue;
 
-      nodes.push({
-        id: `mem-${m.id}`,
-        type: 'memory',
-        position: { x: 0, y: 0 },
-        data: {
-          content: m.content, source: m.source, version: m.version,
-          isCanon: false, parentId: m.parent_id,
-          color: p.text, colorBg: p.bg, colorBorder: p.border,
-        },
-      });
+      if (!group.isGroup) {
+        // Single memory → normal MemoryNode
+        const m = group.memories[0].memory;
+        const nodeId = `mem-${m.id}`;
+        memToNodeId.set(m.id, nodeId);
 
-      const rootId = rootForMemory(m);
-      const parentId = m.parent_id ? `mem-${m.parent_id}` : (convId ? `conv-${convId}` : rootId);
-      const pairKey = `${parentId}->${`mem-${m.id}`}`;
-
-      // Skip tree edge if a sharing link already connects these nodes
-      if (!sharingPairs.has(pairKey)) {
-        treeEdges.push({
-          id: `e-mem-${m.id}`,
-          source: parentId,
-          target: `mem-${m.id}`,
-          sourceHandle: 'bottom',
-          targetHandle: 'top',
-          type: 'tree',
-          data: { color: p.edge },
+        nodes.push({
+          id: nodeId,
+          type: 'memory',
+          position: { x: 0, y: 0 },
+          data: {
+            content: m.content, source: m.source, version: m.version,
+            isCanon: false, parentId: m.parent_id,
+            color: p.text, colorBg: p.bg, colorBorder: p.border,
+          },
         });
+
+        // Scoped memories always connect to their conversation node
+        const rootId = rootForMemory(m);
+        const parentId = convId ? `conv-${convId}` : rootId;
+        const pairKey = `${parentId}->${nodeId}`;
+
+        if (!sharingPairs.has(pairKey)) {
+          treeEdges.push({
+            id: `e-mem-${m.id}`,
+            source: parentId,
+            target: nodeId,
+            sourceHandle: 'bottom',
+            targetHandle: 'top',
+            type: 'tree',
+            data: { color: p.edge },
+          });
+        }
+      } else {
+        // Multi-memory group → MemoryGroupNode
+        const firstMem = group.memories[0].memory;
+        const groupNodeId = `memgroup-${firstMem.id}`;
+
+        // Register all memories in this group to the group node id
+        for (const item of group.memories) {
+          memToNodeId.set(item.memory.id, groupNodeId);
+        }
+
+        nodes.push({
+          id: groupNodeId,
+          type: 'memoryGroup',
+          position: { x: 0, y: 0 },
+          data: {
+            memories: group.memories.map(item => ({
+              content: item.memory.content,
+              source: item.memory.source,
+              version: item.memory.version,
+              isCanon: item.memory.is_canon,
+              parentId: item.memory.parent_id,
+              memoryId: item.memory.id,
+            })),
+            color: p.text, colorBg: p.bg, colorBorder: p.border,
+          },
+        });
+
+        // Scoped group always connects to its conversation node
+        const rootId = rootForMemory(firstMem);
+        const parentId = convId ? `conv-${convId}` : rootId;
+
+        const pairKey = `${parentId}->${groupNodeId}`;
+        if (!sharingPairs.has(pairKey)) {
+          treeEdges.push({
+            id: `e-memgroup-${firstMem.id}`,
+            source: parentId,
+            target: groupNodeId,
+            sourceHandle: 'bottom',
+            targetHandle: 'top',
+            type: 'tree',
+            data: { color: p.edge },
+          });
+        }
       }
-    });
+    }
 
     // ── Sharing links (custom animated edge) ──
     g.links.forEach((link) => {
@@ -373,10 +449,16 @@
       const isTwoWay = link.direction === 'two_way';
       const lbl = isSync ? 'sync' : 'copy';
 
+      // Resolve source/target to group node if the memory is inside a group
+      const sourceNodeId = memToNodeId.get(link.source_memory_id) ?? `mem-${link.source_memory_id}`;
+      const targetNodeId = link.linked_memory_id
+        ? (memToNodeId.get(link.linked_memory_id) ?? `mem-${link.linked_memory_id}`)
+        : `conv-${link.target_conversation_id}`;
+
       extraEdges.push({
         id: `link-${link.id}`,
-        source: `mem-${link.source_memory_id}`,
-        target: link.linked_memory_id ? `mem-${link.linked_memory_id}` : `conv-${link.target_conversation_id}`,
+        source: sourceNodeId,
+        target: targetNodeId,
         type: 'sharing',
         sourceHandle: 'bottom',
         targetHandle: 'top',
@@ -430,6 +512,7 @@
   <!-- Memory Action Panel -->
   <MemoryActionPanel
     memory={selectedMemory}
+    groupMemories={selectedGroupMemories}
     links={data.links}
     conversations={data.conversations}
     onClose={handlePanelClose}
@@ -483,7 +566,8 @@
   /* Custom node wrappers — strip SvelteFlow defaults */
   .graph-wrap :global(.svelte-flow__node-character),
   .graph-wrap :global(.svelte-flow__node-conversation),
-  .graph-wrap :global(.svelte-flow__node-memory) {
+  .graph-wrap :global(.svelte-flow__node-memory),
+  .graph-wrap :global(.svelte-flow__node-memoryGroup) {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -493,10 +577,12 @@
   .graph-wrap :global(.svelte-flow__node-character) { border-radius: 16px !important; }
   .graph-wrap :global(.svelte-flow__node-conversation) { border-radius: 12px !important; }
   .graph-wrap :global(.svelte-flow__node-memory) { border-radius: 10px !important; }
+  .graph-wrap :global(.svelte-flow__node-memoryGroup) { border-radius: 12px !important; }
 
   .graph-wrap :global(.svelte-flow__node-character.selected),
   .graph-wrap :global(.svelte-flow__node-conversation.selected),
-  .graph-wrap :global(.svelte-flow__node-memory.selected) {
+  .graph-wrap :global(.svelte-flow__node-memory.selected),
+  .graph-wrap :global(.svelte-flow__node-memoryGroup.selected) {
     background: transparent !important;
     border: none !important;
     box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;

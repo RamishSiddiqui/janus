@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import { buildTimelineEntries, type TimelineEntry, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '$lib/utils/groupMemories';
   import Icon from './Icon.svelte';
 
   let { data }: { data: MemoryGraphData } = $props();
@@ -172,28 +173,6 @@
     return groups;
   });
 
-  // ── Timeline rows ──
-  // Each row is a horizontal slice at a point in time
-  interface TimelineRow {
-    type: 'memory' | 'link';
-    time: string;
-    sortKey: string; // for stable ordering
-    // For memory rows
-    laneId?: string;
-    memoryId?: string;
-    characterId?: string;  // owning character (for shared lane coloring)
-    content?: string;
-    category?: string;
-    source?: string;
-    version?: number;
-    parentId?: string | null;
-    // For link rows
-    linkLabel?: string;
-    fromLaneId?: string;
-    toLaneId?: string;
-    linkType?: string;
-  }
-
   // Map character_id → their exclusive lane color (for shared lane card tinting)
   let charColorMap = $derived.by(() => {
     const map = new Map<string, string>();
@@ -223,71 +202,41 @@
     return map;
   });
 
-  let rows = $derived.by(() => {
-    const result: TimelineRow[] = [];
+  // ── Timeline entries (grouped) ──
+  let rows = $derived.by(() => buildTimelineEntries(data.memories, data.links));
 
-    // Build memory rows first with stable index-based sort keys
-    const memRows: TimelineRow[] = [];
-    data.memories.forEach((m, idx) => {
-      const catMatch = m.content.match(/^\[(\w+)\]\s*/);
-      const category = catMatch ? catMatch[1].toLowerCase() : 'fact';
-      const content = catMatch ? m.content.slice(catMatch[0].length) : m.content;
+  // ── Group expand/collapse state ──
+  let expandedGroups = $state<Set<string>>(new Set());
 
-      memRows.push({
-        type: 'memory',
-        time: m.created_at,
-        sortKey: `${m.created_at}_${String(idx).padStart(4, '0')}_a`,
-        laneId: m.is_canon ? 'canon' : (m.conversation_id ?? 'canon'),
-        memoryId: m.id,
-        characterId: m.character_id ?? undefined,
-        content,
-        category,
-        source: m.source,
-        version: m.version,
-        parentId: m.parent_id,
-      });
-    });
+  function toggleGroup(groupId: string): void {
+    const next = new Set(expandedGroups);
+    if (next.has(groupId)) {
+      next.delete(groupId);
+    } else {
+      next.add(groupId);
+    }
+    expandedGroups = next;
+  }
 
-    // Sort memories by time first
-    memRows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-
-    // Build a map of memory_id → sort position
-    const memSortPos = new Map<string, number>();
-    memRows.forEach((r, i) => { if (r.memoryId) memSortPos.set(r.memoryId, i); });
-
-    result.push(...memRows);
-
-    // Link rows — insert right after their source memory
-    data.links.forEach((link, li) => {
-      const srcMem = data.memories.find(m => m.id === link.source_memory_id);
-      if (!srcMem) return;
-
-      const srcPos = memSortPos.get(link.source_memory_id) ?? 0;
-      const fromLane = memLaneMap.get(link.source_memory_id) ?? 'canon';
-      const toLane = link.target_conversation_id;
-      const label = link.link_type === 'sync'
-        ? (link.direction === 'two_way' ? '⇄ sync' : '→ sync')
-        : (link.direction === 'two_way' ? '⇄ copy' : '→ copy');
-
-      result.push({
-        type: 'link',
-        time: srcMem.created_at,
-        sortKey: `${srcMem.created_at}_${String(srcPos).padStart(4, '0')}_b${String(li).padStart(3, '0')}`,
-        fromLaneId: fromLane,
-        toLaneId: toLane,
-        linkLabel: label,
-        linkType: link.link_type,
-      });
-    });
-
-    // Sort everything by sortKey — links land right after their source memory
-    result.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-    return result;
-  });
+  /** Resolve the accent color for a memory item in context of its lane */
+  function memColor(item: MemoryItem, laneId: string): string {
+    const li = laneIndex(laneId);
+    const lane = lanes[li];
+    const isSharedLane = lane?.characterId === '__shared__';
+    const charId = item.memory.character_id ?? undefined;
+    if (isSharedLane && charId) {
+      return charColorMap.get(charId) ?? laneColor(laneId);
+    }
+    return laneColor(laneId);
+  }
 
   function fmtShort(iso: string): string {
+    if (!iso) return '';
     try {
-      const d = new Date(iso.replace('_link', ''));
+      // Strip SurrealDB datetime wrappers: d'...' or "..."
+      let cleaned = iso.replace('_link', '').replace(/^d['"]/, '').replace(/['"]$/, '').trim();
+      const d = new Date(cleaned);
+      if (isNaN(d.getTime())) return 'just now';
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } catch { return ''; }
   }
@@ -408,14 +357,13 @@
         {/each}
 
         <!-- Rows -->
-        {#each rows as row, ri (row.memoryId ?? `link-${ri}`)}
-          {#if row.type === 'memory'}
-            {@const li = laneIndex(row.laneId ?? 'canon')}
-            {@const lane = lanes[li]}
-            {@const isSharedLane = lane?.characterId === '__shared__'}
-            {@const color = isSharedLane && row.characterId
-              ? (charColorMap.get(row.characterId) ?? laneColor(row.laneId ?? 'canon'))
-              : laneColor(row.laneId ?? 'canon')}
+        {#each rows as entry, ri (entry.type === 'group' ? entry.id : `link-${ri}`)}
+          {#if entry.type === 'group'}
+            {@const group = entry as TimelineGroup}
+            {@const li = laneIndex(group.laneId)}
+            {@const primary = group.memories[0]}
+            {@const color = memColor(primary, group.laneId)}
+            {@const isExpanded = expandedGroups.has(group.id)}
             <div
               class="mem-row"
               style="
@@ -427,36 +375,76 @@
             >
               <div class="mem-cell" style="margin-left: var(--lane-offset); width: var(--lane-width);">
                 <div class="mem-dot" style="background: {color}; box-shadow: 0 0 8px {color}44;"></div>
-                <div class="mem-card">
+                <div class="mem-card" class:mem-group={group.isGroup} class:is-expanded={group.isGroup && isExpanded}>
                   <div class="card-accent" style="background: linear-gradient(180deg, {color}, {color}33);"></div>
                   <div class="card-inner">
+                    <!-- Primary (first) memory — always visible -->
                     <div class="card-head">
-                      <span class="cat-icon">{CATEGORY_ICONS[row.category ?? 'fact'] ?? '📋'}</span>
-                      <span class="card-content">{row.content}</span>
+                      <span class="cat-icon">{primary.categoryIcon}</span>
+                      <span class="card-content">{primary.content}</span>
                     </div>
                     <div class="card-meta">
-                      <span class="meta-time">{fmtShort(row.time)}</span>
-                      <span class="meta-badge" class:auto={row.source === 'auto'}>
-                        {row.source === 'auto' ? 'auto' : 'pinned'}
+                      <span class="meta-time">{fmtShort(primary.memory.created_at)}</span>
+                      <span class="meta-badge" class:auto={primary.memory.source === 'auto'}>
+                        {primary.memory.source === 'auto' ? 'auto' : 'pinned'}
                       </span>
-                      {#if (row.version ?? 1) > 1}
-                        <span class="meta-badge version">v{row.version}</span>
+                      {#if (primary.memory.version ?? 1) > 1}
+                        <span class="meta-badge version">v{primary.memory.version}</span>
                       {/if}
-                      {#if row.parentId}
+                      {#if primary.memory.parent_id}
                         <span class="meta-badge inherited">inherited</span>
                       {/if}
                     </div>
+
+                    {#if group.isGroup}
+                      <!-- Expandable group content -->
+                      <div class="group-expand-wrap" class:expanded={isExpanded}>
+                        {#each group.memories.slice(1) as item (item.memory.id)}
+                          <div class="group-divider"></div>
+                          <div class="card-head">
+                            <span class="cat-icon">{item.categoryIcon}</span>
+                            <span class="card-content">{item.content}</span>
+                          </div>
+                          <div class="card-meta">
+                            <span class="meta-time">{fmtShort(item.memory.created_at)}</span>
+                            <span class="meta-badge" class:auto={item.memory.source === 'auto'}>
+                              {item.memory.source === 'auto' ? 'auto' : 'pinned'}
+                            </span>
+                            {#if (item.memory.version ?? 1) > 1}
+                              <span class="meta-badge version">v{item.memory.version}</span>
+                            {/if}
+                            {#if item.memory.parent_id}
+                              <span class="meta-badge inherited">inherited</span>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+
+                      <!-- Expand / Collapse trigger -->
+                      <button
+                        class="group-expand-btn"
+                        type="button"
+                        onclick={() => toggleGroup(group.id)}
+                      >
+                        {#if isExpanded}
+                          Collapse ▴
+                        {:else}
+                          + {group.memories.length - 1} more {group.memories.length - 1 === 1 ? 'memory' : 'memories'} ▾
+                        {/if}
+                      </button>
+                    {/if}
                   </div>
                 </div>
               </div>
             </div>
-          {:else if row.type === 'link'}
-            {@const fromIdx = laneIndex(row.fromLaneId ?? 'canon')}
-            {@const toIdx = laneIndex(row.toLaneId ?? 'canon')}
+          {:else}
+            {@const link = entry as TimelineLinkRow}
+            {@const fromIdx = laneIndex(link.fromLaneId)}
+            {@const toIdx = laneIndex(link.toLaneId)}
             {@const minIdx = Math.min(fromIdx, toIdx)}
             {@const maxIdx = Math.max(fromIdx, toIdx)}
-            {@const isSync = row.linkType === 'sync'}
-            {@const isTwoWay = row.linkLabel?.includes('⇄')}
+            {@const isSync = link.linkType === 'sync'}
+            {@const isTwoWay = link.linkLabel.includes('⇄')}
             {@const flowColor = isSync ? 'rgba(0,242,255,0.45)' : 'rgba(139,92,246,0.4)'}
             {@const glowColor = isSync ? 'rgba(0,242,255,0.15)' : 'rgba(139,92,246,0.1)'}
             <div
@@ -480,7 +468,7 @@
                   <div class="link-dot dot-forward"></div>
                 {/if}
                 <span class="link-badge" style="--badge-color: {flowColor};">
-                  {row.linkLabel}
+                  {link.linkLabel}
                 </span>
               </div>
             </div>
@@ -976,5 +964,68 @@
     letter-spacing: 0.5px;
     white-space: nowrap;
     z-index: 2;
+  }
+
+  /* ══════ Grouped Memory Card ══════ */
+  .mem-card.mem-group {
+    box-shadow:
+      2px 2px 0 rgba(14, 14, 30, 0.8),
+      4px 4px 0 rgba(14, 14, 30, 0.6);
+  }
+
+  .mem-card.mem-group.is-expanded {
+    box-shadow:
+      0 4px 20px rgba(0, 0, 0, 0.25),
+      2px 2px 0 rgba(14, 14, 30, 0.8),
+      4px 4px 0 rgba(14, 14, 30, 0.6);
+    border-color: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+
+  /* ── Expand/collapse wrapper ── */
+  .group-expand-wrap {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .group-expand-wrap.expanded {
+    /* Generous max to accommodate any realistic group size */
+    max-height: 2000px;
+    transition: max-height 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ── Dashed divider between grouped memories ── */
+  .group-divider {
+    border-top: 1px dashed rgba(139, 92, 246, 0.08);
+    margin: 4px 0;
+  }
+
+  /* ── Expand/collapse button ── */
+  .group-expand-btn {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: none;
+    border: 1px dashed rgba(139, 92, 246, 0.08);
+    border-radius: 6px;
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    color: #5a5a7a;
+    cursor: pointer;
+    text-align: center;
+    text-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+    transition: all 180ms ease;
+  }
+
+  .group-expand-btn:hover {
+    color: #8b8ba7;
+    border-color: rgba(139, 92, 246, 0.16);
+    background: rgba(139, 92, 246, 0.03);
+  }
+
+  .group-expand-btn:active {
+    transform: scale(0.98);
   }
 </style>

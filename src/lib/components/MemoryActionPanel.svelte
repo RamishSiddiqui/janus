@@ -3,17 +3,21 @@
   import { success, error as toastError } from '$lib/stores/toast';
 
   // ── Props ──────────────────────────────────────────────────────────
+  interface MemoryShape {
+    id: string;
+    content: string;
+    source: string;
+    version: number;
+    is_canon: boolean;
+    character_id: string | null;
+    conversation_id: string | null;
+    parent_id: string | null;
+  }
+
   interface Props {
-    memory: {
-      id: string;
-      content: string;
-      source: string;
-      version: number;
-      is_canon: boolean;
-      character_id: string | null;
-      conversation_id: string | null;
-      parent_id: string | null;
-    } | null;
+    memory: MemoryShape | null;
+    /** When clicking a group node, all memories in the group are passed here */
+    groupMemories?: MemoryShape[];
     links: Array<{
       id: string;
       source_memory_id: string;
@@ -43,6 +47,7 @@
 
   let {
     memory,
+    groupMemories: groupMems = [],
     links,
     conversations,
     onClose,
@@ -51,7 +56,6 @@
     onDelete,
   }: Props = $props();
 
-  // ── Local state ────────────────────────────────────────────────────
   let selectedConvId = $state<string | null>(null);
   let linkType = $state<'copy' | 'sync'>('copy');
   let direction = $state<'one_way' | 'two_way'>('one_way');
@@ -62,6 +66,18 @@
   let isClosing = $state(false);
   let panelEl: HTMLElement | undefined = $state();
   let dropdownEl: HTMLDivElement | undefined = $state();
+  let groupPickerOpen = $state(false);
+  let selectedGroupIdx = $state(0);
+  let groupPickerEl: HTMLDivElement | undefined = $state();
+
+  // ── Active memory (supports group selection) ────────────────────────
+  let isGroupMode = $derived(groupMems.length > 1);
+  let activeMemory = $derived.by(() => {
+    if (isGroupMode && groupMems[selectedGroupIdx]) {
+      return groupMems[selectedGroupIdx];
+    }
+    return memory;
+  });
 
   // ── Category parsing (mirrors MemoryNode) ──────────────────────────
   const categoryMeta: Record<string, { icon: string; label: string }> = {
@@ -75,10 +91,11 @@
   };
 
   let parsed = $derived.by(() => {
-    if (!memory) return { category: 'fact', text: '', icon: 'file-text', label: 'Fact' };
-    const match = memory.content?.match(/^\[(\w+)\]\s*/);
+    const m = activeMemory;
+    if (!m) return { category: 'fact', text: '', icon: 'file-text', label: 'Fact' };
+    const match = m.content?.match(/^\[(\w+)\]\s*/);
     const category = match ? match[1].toLowerCase() : 'fact';
-    const text = match ? memory.content.slice(match[0].length) : memory.content;
+    const text = match ? m.content.slice(match[0].length) : m.content;
     const meta = categoryMeta[category] ?? categoryMeta.fact;
     return { category, text, ...meta };
   });
@@ -96,9 +113,8 @@
 
   let accentColor = $derived(categoryColors[parsed.category] ?? '#c4a1ff');
 
-  // ── Derived: links for THIS memory ─────────────────────────────────
   let activeLinks = $derived(
-    memory ? links.filter(l => l.source_memory_id === memory.id) : []
+    activeMemory ? links.filter(l => l.source_memory_id === activeMemory.id) : []
   );
 
   // ── Derived: conversations available to share to ───────────────────
@@ -118,9 +134,9 @@
 
   // ── Actions ────────────────────────────────────────────────────────
   function handleShare() {
-    if (!memory || !selectedConvId) return;
+    if (!activeMemory || !selectedConvId) return;
     onShare({
-      sourceMemoryId: memory.id,
+      sourceMemoryId: activeMemory.id,
       targetConversationId: selectedConvId,
       linkType,
       direction,
@@ -143,9 +159,9 @@
   }
 
   function handleDeleteMemory() {
-    if (!memory) return;
+    if (!activeMemory) return;
     if (confirmDeleteMemory) {
-      onDelete(memory.id);
+      onDelete(activeMemory.id);
       confirmDeleteMemory = false;
     } else {
       confirmDeleteMemory = true;
@@ -167,9 +183,12 @@
   }
 
   function handleBackdropClick(e: MouseEvent) {
-    // Close dropdown if clicking outside it
+    // Close dropdowns if clicking outside them
     if (dropdownEl && !dropdownEl.contains(e.target as Node)) {
       convDropdownOpen = false;
+    }
+    if (groupPickerEl && !groupPickerEl.contains(e.target as Node)) {
+      groupPickerOpen = false;
     }
   }
 
@@ -188,6 +207,8 @@
       syncMode = 'auto';
       confirmDeleteId = null;
       confirmDeleteMemory = false;
+      selectedGroupIdx = 0;
+      groupPickerOpen = false;
     }
   });
 </script>
@@ -229,18 +250,18 @@
           </div>
 
           <div class="header-badges">
-            <span class="badge source-badge" class:auto={memory.source === 'auto'}>
+            <span class="badge source-badge" class:auto={activeMemory?.source === 'auto'}>
               <Icon
-                name={memory.source === 'auto' ? 'cpu' : 'pin'}
+                name={activeMemory?.source === 'auto' ? 'cpu' : 'pin'}
                 size={10}
-                color={memory.source === 'auto' ? '#818cf8' : '#f59e0b'}
+                color={activeMemory?.source === 'auto' ? '#818cf8' : '#f59e0b'}
               />
-              {memory.source === 'auto' ? 'AI' : 'Pinned'}
+              {activeMemory?.source === 'auto' ? 'AI' : 'Pinned'}
             </span>
-            {#if memory.version > 1}
-              <span class="badge version-badge">v{memory.version}</span>
+            {#if activeMemory && activeMemory.version > 1}
+              <span class="badge version-badge">v{activeMemory.version}</span>
             {/if}
-            {#if memory.is_canon}
+            {#if activeMemory?.is_canon}
               <span class="badge canon-badge">
                 <span class="canon-dot"></span>
                 Canon
@@ -248,6 +269,46 @@
             {/if}
           </div>
         </header>
+
+        <!-- ── Group Memory Picker (only for groups) ────────────── -->
+        {#if isGroupMode}
+          <div class="group-picker-section" bind:this={groupPickerEl}>
+            <button
+              class="group-picker-trigger"
+              onclick={() => groupPickerOpen = !groupPickerOpen}
+            >
+              <span class="group-picker-count">{selectedGroupIdx + 1} of {groupMems.length}</span>
+              <span class="group-picker-label">memories in group</span>
+              <span class="group-picker-chevron" class:open={groupPickerOpen}>
+                <Icon name="chevron-down" size={11} color="#5a5a7a" />
+              </span>
+            </button>
+
+            {#if groupPickerOpen}
+              <div class="group-picker-dropdown">
+                {#each groupMems as gm, gi}
+                  {@const gmMatch = gm.content?.match(/^\[(\w+)\]\s*/)}
+                  {@const gmCat = gmMatch ? gmMatch[1].toLowerCase() : 'fact'}
+                  {@const gmText = gmMatch ? gm.content.slice(gmMatch[0].length) : gm.content}
+                  {@const gmMeta = categoryMeta[gmCat] ?? categoryMeta.fact}
+                  {@const gmColor = categoryColors[gmCat] ?? '#8b8ba7'}
+                  <button
+                    class="group-picker-option"
+                    class:active={selectedGroupIdx === gi}
+                    onclick={() => { selectedGroupIdx = gi; groupPickerOpen = false; }}
+                  >
+                    <span class="gpo-dot" style="background: {gmColor};"></span>
+                    <Icon name={gmMeta.icon} size={11} color={gmColor} />
+                    <span class="gpo-text">{gmText.length > 50 ? gmText.slice(0, 47) + '…' : gmText}</span>
+                    {#if selectedGroupIdx === gi}
+                      <Icon name="check" size={11} color="#c4a1ff" />
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
 
         <!-- ── 2. Content Preview ─────────────────────────────── -->
         <section class="content-section">
@@ -631,6 +692,129 @@
     border-radius: 50%;
     background: #fbbf24;
     box-shadow: 0 0 4px rgba(218, 165, 32, 0.5);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     Group Memory Picker
+     ═══════════════════════════════════════════════════════════════════ */
+  .group-picker-section {
+    position: relative;
+    margin-bottom: 12px;
+  }
+
+  .group-picker-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(139, 92, 246, 0.04);
+    border: 1px solid rgba(139, 92, 246, 0.08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 180ms ease-out;
+    font-family: var(--font-body, 'Inter', -apple-system, sans-serif);
+  }
+
+  .group-picker-trigger:hover {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.15);
+  }
+
+  .group-picker-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: #c4a1ff;
+    background: rgba(139, 92, 246, 0.12);
+    padding: 2px 7px;
+    border-radius: 6px;
+    min-width: 42px;
+    text-align: center;
+  }
+
+  .group-picker-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: #5a5a7a;
+    flex: 1;
+  }
+
+  .group-picker-chevron {
+    display: flex;
+    transition: transform 200ms ease;
+  }
+
+  .group-picker-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .group-picker-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(12, 12, 28, 0.97);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    border-radius: 10px;
+    padding: 4px;
+    z-index: 50;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    animation: dropIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .group-picker-dropdown::-webkit-scrollbar { width: 3px; }
+  .group-picker-dropdown::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.15);
+    border-radius: 3px;
+  }
+
+  .group-picker-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 7px;
+    background: none;
+    cursor: pointer;
+    transition: all 150ms;
+    font-family: var(--font-body, 'Inter', -apple-system, sans-serif);
+    text-align: left;
+  }
+
+  .group-picker-option:hover {
+    background: rgba(139, 92, 246, 0.08);
+  }
+
+  .group-picker-option.active {
+    background: rgba(139, 92, 246, 0.12);
+  }
+
+  .gpo-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 4px currentColor;
+  }
+
+  .gpo-text {
+    flex: 1;
+    font-size: 11px;
+    font-weight: 500;
+    color: #b8b0cc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .group-picker-option.active .gpo-text {
+    color: #e8e0ff;
   }
 
   /* ═══════════════════════════════════════════════════════════════════
