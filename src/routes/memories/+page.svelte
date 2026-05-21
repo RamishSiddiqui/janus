@@ -324,7 +324,7 @@
     {:else if graphData && activeView === 'graph'}
       <MemoryGraph data={graphData} avatars={Object.fromEntries(selectedChars.map(c => [c.id, c.avatarPath]))} onRefresh={handleRefresh} />
     {:else if graphData && activeView === 'timeline'}
-      <MemoryTimeline data={graphData} />
+      <MemoryTimeline data={graphData} onRefresh={handleRefresh} />
     {/if}
   </div>
 </div>

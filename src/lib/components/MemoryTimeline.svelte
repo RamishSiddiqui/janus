@@ -1,9 +1,16 @@
 <script lang="ts">
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import { shareMemory, unlinkMemory, deleteMemory } from '$lib/services/ipc';
   import { buildTimelineEntries, type TimelineEntry, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '$lib/utils/groupMemories';
   import Icon from './Icon.svelte';
+  import MemoryActionPanel from './MemoryActionPanel.svelte';
 
-  let { data }: { data: MemoryGraphData } = $props();
+  interface Props {
+    data: MemoryGraphData;
+    onRefresh?: () => void;
+  }
+
+  let { data, onRefresh = () => {} }: Props = $props();
 
   const PALETTE = ['#c4a1ff', '#00f2ff', '#fb7185', '#fbbf24', '#34d399', '#d580ff'];
   const CANON_COLOR = '#daa520';
@@ -248,6 +255,61 @@
   function laneColor(laneId: string): string {
     return lanes.find(l => l.id === laneId)?.color ?? '#5a5a7a';
   }
+
+  // ── Action Panel state ──
+  let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
+  let selectedGroupMemories = $state<MemoryGraphData['memories']>([]);
+  let selectedMemoryLinks = $derived(
+    selectedMemory
+      ? data.links.filter(l => l.source_memory_id === selectedMemory!.id)
+      : []
+  );
+
+  function handleMemoryClick(item: MemoryItem, group: TimelineGroup): void {
+    const mem = data.memories.find(m => m.id === item.memory.id);
+    if (!mem) return;
+    selectedMemory = mem;
+    if (group.isGroup) {
+      selectedGroupMemories = group.memories
+        .map(gi => data.memories.find(m => m.id === gi.memory.id))
+        .filter((m): m is MemoryGraphData['memories'][0] => !!m);
+    } else {
+      selectedGroupMemories = [];
+    }
+  }
+
+  function handlePanelClose(): void {
+    selectedMemory = null;
+    selectedGroupMemories = [];
+  }
+
+  async function handlePanelShare(config: {
+    sourceMemoryId: string;
+    targetConversationId: string;
+    linkType: 'copy' | 'sync';
+    direction: 'one_way' | 'two_way';
+    syncMode: 'auto' | 'manual';
+  }) {
+    await shareMemory(
+      config.sourceMemoryId,
+      config.targetConversationId,
+      config.linkType,
+      config.direction,
+      config.syncMode,
+    );
+    onRefresh();
+  }
+
+  async function handlePanelUnlink(linkId: string) {
+    await unlinkMemory(linkId);
+    onRefresh();
+  }
+
+  async function handlePanelDelete(memoryId: string) {
+    await deleteMemory(memoryId);
+    selectedMemory = null;
+    onRefresh();
+  }
 </script>
 
 <div class="tl-container">
@@ -375,7 +437,10 @@
             >
               <div class="mem-cell" style="margin-left: var(--lane-offset); width: var(--lane-width);">
                 <div class="mem-dot" style="background: {color}; box-shadow: 0 0 8px {color}44;"></div>
-                <div class="mem-card" class:mem-group={group.isGroup} class:is-expanded={group.isGroup && isExpanded}>
+                <div class="mem-card" class:mem-group={group.isGroup} class:is-expanded={group.isGroup && isExpanded} class:is-selected={selectedMemory?.id === primary.memory.id}>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="card-click-target" onclick={() => handleMemoryClick(primary, group)}>
                   <div class="card-accent" style="background: linear-gradient(180deg, {color}, {color}33);"></div>
                   <div class="card-inner">
                     <!-- Primary (first) memory — always visible -->
@@ -401,6 +466,9 @@
                       <div class="group-expand-wrap" class:expanded={isExpanded}>
                         {#each group.memories.slice(1) as item (item.memory.id)}
                           <div class="group-divider"></div>
+                          <!-- svelte-ignore a11y_click_events_have_key_events -->
+                          <!-- svelte-ignore a11y_no_static_element_interactions -->
+                          <div class="group-child-click" class:child-selected={selectedMemory?.id === item.memory.id} onclick={(e) => { e.stopPropagation(); handleMemoryClick(item, group); }}>
                           <div class="card-head">
                             <span class="cat-icon">{item.categoryIcon}</span>
                             <span class="card-content">{item.content}</span>
@@ -417,6 +485,7 @@
                               <span class="meta-badge inherited">inherited</span>
                             {/if}
                           </div>
+                          </div>
                         {/each}
                       </div>
 
@@ -424,7 +493,7 @@
                       <button
                         class="group-expand-btn"
                         type="button"
-                        onclick={() => toggleGroup(group.id)}
+                        onclick={(e) => { e.stopPropagation(); toggleGroup(group.id); }}
                       >
                         {#if isExpanded}
                           Collapse ▴
@@ -433,6 +502,7 @@
                         {/if}
                       </button>
                     {/if}
+                  </div>
                   </div>
                 </div>
               </div>
@@ -477,6 +547,18 @@
       </div>
     </div>
   {/if}
+
+  <!-- Memory Action Panel -->
+  <MemoryActionPanel
+    memory={selectedMemory}
+    groupMemories={selectedGroupMemories}
+    links={data.links}
+    conversations={data.conversations}
+    onClose={handlePanelClose}
+    onShare={handlePanelShare}
+    onUnlink={handlePanelUnlink}
+    onDelete={handlePanelDelete}
+  />
 </div>
 
 <style>
@@ -779,6 +861,33 @@
     border-color: color-mix(in srgb, var(--accent) 18%, transparent);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 1px color-mix(in srgb, var(--accent) 5%, transparent);
     transform: translateY(-1px);
+  }
+
+  .mem-card.is-selected {
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent), 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .card-click-target {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .group-child-click {
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 2px 0;
+    transition: background 150ms ease;
+  }
+
+  .group-child-click:hover {
+    background: rgba(139, 92, 246, 0.06);
+  }
+
+  .group-child-click.child-selected {
+    background: rgba(139, 92, 246, 0.12);
   }
 
   .card-accent {
