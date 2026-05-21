@@ -7,6 +7,8 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 use crate::context::budget::ContextBudget;
+use crate::context::summary::generate_rolling_summary;
+use crate::context::tokenizer::count_message_tokens;
 use crate::context::window::apply_sliding_window;
 
 use surrealdb::Surreal;
@@ -19,6 +21,7 @@ use crate::db::lorebook::LorebookRepo;
 use crate::db::memories::MemoryRepo;
 use crate::db::messages::MessageRepo;
 use crate::db::providers::ProviderRepo;
+use crate::db::summaries::SummaryRepo;
 use crate::error::MythicError;
 use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
 use crate::models::provider::{ProviderAdapter, ProviderConfig};
@@ -160,6 +163,7 @@ pub async fn send_message(
     let db_for_save = db.clone();
     let conv_id = conversation_id.clone();
     let assist_id = assistant_msg_id.clone();
+    let context_stats_clone = context_stats.clone();
 
     tokio::spawn(async move {
         while let Some(chunk) = rx.recv().await {
@@ -184,6 +188,61 @@ pub async fn send_message(
                     });
 
                     info!("Chat response completed for conversation {}", conv_id);
+
+                    // Trigger background summary generation if messages were evicted
+                    if context_stats_clone.evicted_messages > 0 {
+                        let db_summary = db_for_save.clone();
+                        let conv_summary = conv_id.clone();
+                        let assist_summary = assist_id.clone();
+                        let evicted_n = context_stats_clone.evicted_messages;
+
+                        tokio::spawn(async move {
+                            // Debounce: only summarize if >= 10 new evictions since last summary
+                            let existing = SummaryRepo::get(&db_summary, &conv_summary).await.ok().flatten();
+                            let prev_covered = existing.as_ref().map(|s| s.covered_message_count).unwrap_or(0);
+
+                            if evicted_n as u32 > prev_covered && (evicted_n as u32 - prev_covered) < 10 && existing.is_some() {
+                                return; // Not enough new evictions yet
+                            }
+
+                            // Re-fetch the full branch to get evicted messages
+                            if let Ok(branch) = MessageRepo::get_branch(&db_summary, &assist_summary).await {
+                                if branch.len() > evicted_n {
+                                    let evicted: Vec<ChatMessage> = branch[..evicted_n]
+                                        .iter()
+                                        .map(|m| ChatMessage {
+                                            role: m.role.clone(),
+                                            content: m.content.clone(),
+                                        })
+                                        .collect();
+
+                                    if let Ok(provider_config) = get_default_llm_provider(&db_summary).await {
+                                        if let Ok(provider) = create_rig_provider(&provider_config) {
+                                            let model = provider_config.config
+                                                .get("model")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("default")
+                                                .to_string();
+
+                                            let window_start_id = branch.get(evicted_n)
+                                                .map(|m| m.id.id.to_raw());
+
+                                            let _ = generate_rolling_summary(
+                                                &db_summary,
+                                                &provider,
+                                                &model,
+                                                &conv_summary,
+                                                &evicted,
+                                                existing.as_ref().map(|s| s.summary_text.as_str()),
+                                                window_start_id.as_deref(),
+                                            ).await;
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
                     break;
                 }
                 StreamChunk::Error(err) => {
@@ -679,6 +738,23 @@ async fn build_prompt(
                 });
             }
 
+            // ── Inject rolling summary (if exists) ──
+            let summary = SummaryRepo::get(db, conversation_id).await.ok().flatten();
+            let summary_tokens = if let Some(ref s) = summary {
+                let summary_message = ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "[Story So Far — summary of earlier conversation]\n{}",
+                        s.summary_text
+                    ),
+                };
+                let tokens = count_message_tokens(&summary_message);
+                prompt.push(summary_message);
+                tokens
+            } else {
+                0
+            };
+
             // ── Apply sliding window to conversation history ──
             // Build the PHI message (if any) so it can be counted in the budget
             let phi_message = post_history_instructions.and_then(|phi| {
@@ -727,7 +803,7 @@ async fn build_prompt(
                 total_budget: context_budget.max_context_tokens,
                 fixed_tokens: allocation.fixed_layers_tokens,
                 history_tokens,
-                summary_tokens: 0,
+                summary_tokens,
                 total_messages,
                 included_messages,
                 evicted_messages,
@@ -763,6 +839,23 @@ async fn build_prompt(
                     });
                 }
             }
+
+            // ── Inject rolling summary (if exists) ──
+            let summary = SummaryRepo::get(db, conversation_id).await.ok().flatten();
+            let summary_tokens = if let Some(ref s) = summary {
+                let summary_message = ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "[Story So Far — summary of earlier conversation]\n{}",
+                        s.summary_text
+                    ),
+                };
+                let tokens = count_message_tokens(&summary_message);
+                prompt.push(summary_message);
+                tokens
+            } else {
+                0
+            };
 
             // ── Apply sliding window (lorebook-fetch-failed branch) ──
             let phi_message = post_history_instructions.and_then(|phi| {
@@ -809,7 +902,7 @@ async fn build_prompt(
                 total_budget: context_budget.max_context_tokens,
                 fixed_tokens: allocation.fixed_layers_tokens,
                 history_tokens,
-                summary_tokens: 0,
+                summary_tokens,
                 total_messages,
                 included_messages,
                 evicted_messages,
@@ -846,6 +939,23 @@ async fn build_prompt(
                 });
             }
         }
+
+        // ── Inject rolling summary (if exists) ──
+        let summary = SummaryRepo::get(db, conversation_id).await.ok().flatten();
+        let summary_tokens = if let Some(ref s) = summary {
+            let summary_message = ChatMessage {
+                role: MessageRole::System,
+                content: format!(
+                    "[Story So Far — summary of earlier conversation]\n{}",
+                    s.summary_text
+                ),
+            };
+            let tokens = count_message_tokens(&summary_message);
+            prompt.push(summary_message);
+            tokens
+        } else {
+            0
+        };
 
         // ── Apply sliding window (no-character branch) ──
         let phi_message = post_history_instructions.and_then(|phi| {
@@ -892,7 +1002,7 @@ async fn build_prompt(
             total_budget: context_budget.max_context_tokens,
             fixed_tokens: allocation.fixed_layers_tokens,
             history_tokens,
-            summary_tokens: 0,
+            summary_tokens,
             total_messages,
             included_messages,
             evicted_messages,
