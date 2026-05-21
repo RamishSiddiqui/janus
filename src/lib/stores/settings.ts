@@ -18,6 +18,10 @@ export interface AppSettings {
   /** Post-History Instructions — injected AFTER conversation history, before generation.
    *  Shapes how the AI ends responses (narrative hooks, pacing, tone). */
   postHistoryInstructions: string;
+  /** Maximum context window size in tokens. Should match the model's limit. */
+  maxContextTokens: number;
+  /** Whether to auto-generate rolling summaries of evicted messages. */
+  autoSummarize: boolean;
   /** Internal version counter — bumped when managed defaults (PHI, systemPrompt) change.
    *  When saved version < current version, stale prompts are refreshed automatically. */
   _settingsVersion: number;
@@ -36,6 +40,8 @@ const defaultSettings: AppSettings = {
   autoSaveMemories: false,
   localStorageOnly: true,
   _settingsVersion: CURRENT_SETTINGS_VERSION,
+  maxContextTokens: 16384,
+  autoSummarize: true,
   systemPrompt: `You are {{char}}, a character in an immersive roleplay. Stay in character at all times. Use vivid, descriptive prose with *actions* in asterisks. Never break the fourth wall. Respond naturally to the user's actions and advance the narrative.`,
   postHistoryInstructions: `[Narrative Direction — MANDATORY]
 RULE: Never write a response that ends the scene without beginning the next one. Farewells are scene TRANSITIONS, not endings. If a goodbye, departure, time-skip, or scene conclusion occurs, you MUST continue writing past it into the next scene within the same response.

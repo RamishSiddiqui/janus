@@ -15,6 +15,8 @@
   let localStorageOnly = $state($settings.localStorageOnly);
   let systemPrompt = $state($settings.systemPrompt);
   let postHistoryInstructions = $state($settings.postHistoryInstructions);
+  let maxContextTokens = $state($settings.maxContextTokens);
+  let autoSummarize = $state($settings.autoSummarize);
 
   let showFontDropdown = $state(false);
   let dropdownStyle = $state('');
@@ -38,6 +40,8 @@
       localStorageOnly,
       systemPrompt,
       postHistoryInstructions,
+      maxContextTokens,
+      autoSummarize,
     };
     // Debounce the store write to break the reactive cycle
     if (persistTimer) clearTimeout(persistTimer);
@@ -302,6 +306,55 @@
             role="switch"
             aria-checked={autoSaveMemories}
             aria-label="Toggle auto-save memories"
+          >
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Context Management -->
+      <section class="settings-section animate-fade-in-up stagger-2b">
+        <div class="section-header">
+          <Icon name="layers" size={16} color="var(--accent-primary)" />
+          <span class="section-title">Context Management</span>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <span class="setting-name">Context Window Size</span>
+            <span class="setting-desc">Max tokens the model can see (match your model's limit)</span>
+          </div>
+          <div class="font-dropdown-wrapper">
+            <select
+              class="setting-dropdown"
+              bind:value={maxContextTokens}
+              aria-label="Context window size"
+            >
+              <option value={4096}>4K</option>
+              <option value={8192}>8K</option>
+              <option value={16384}>16K</option>
+              <option value={32768}>32K</option>
+              <option value={65536}>64K</option>
+              <option value={131072}>128K</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <span class="setting-name">Auto-Summarize</span>
+            <span class="setting-desc">{autoSummarize ? 'Evicted messages are summarized to preserve context' : 'Evicted messages are silently dropped'}</span>
+          </div>
+          <button
+            class="toggle-switch"
+            class:on={autoSummarize}
+            onclick={() => {
+              autoSummarize = !autoSummarize;
+              success(autoSummarize ? 'Auto-summarize enabled — evicted context will be preserved' : 'Auto-summarize disabled');
+            }}
+            role="switch"
+            aria-checked={autoSummarize}
+            aria-label="Toggle auto-summarize"
           >
             <span class="toggle-knob"></span>
           </button>
@@ -642,6 +695,7 @@
   .animate-fade-in-up { animation: fadeInUp 400ms ease both; }
   .stagger-1 { animation-delay: 40ms; }
   .stagger-2 { animation-delay: 100ms; }
+  .stagger-2b { animation-delay: 140ms; }
   .stagger-3 { animation-delay: 160ms; }
   .stagger-4 { animation-delay: 220ms; }
   .stagger-4b { animation-delay: 260ms; }
