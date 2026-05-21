@@ -6,6 +6,9 @@ use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
+use crate::context::budget::ContextBudget;
+use crate::context::window::apply_sliding_window;
+
 use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
 
@@ -78,10 +81,8 @@ pub async fn send_message(
 
     // 2. Build the prompt
     debug!("[send_message] building prompt...");
-    let messages = build_prompt(&db, &conversation_id, &user_msg_id, system_prompt.as_deref(), post_history_instructions.as_deref()).await?;
-    debug!("[send_message] prompt built with {} messages", messages.len());
 
-    // 3. Get the active LLM provider
+    // Get the active LLM provider early — we need context_length for the budget
     let provider_config = get_default_llm_provider(&db).await?;
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
@@ -96,6 +97,29 @@ pub async fn send_message(
             .unwrap_or(0.8) as f32,
         ..Default::default()
     };
+
+    let max_context = provider_config.config
+        .get("context_length")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(16384) as usize;
+
+    let context_budget = ContextBudget {
+        max_context_tokens: max_context,
+        reserved_for_response: gen_params.max_tokens as usize,
+        ..Default::default()
+    };
+
+    let (messages, context_stats) = build_prompt(
+        &db, &conversation_id, &user_msg_id,
+        system_prompt.as_deref(), post_history_instructions.as_deref(),
+        &context_budget,
+    ).await?;
+    debug!(
+        "[send_message] prompt built with {} messages, context stats: {:?}",
+        messages.len(), context_stats
+    );
+
+    // 3. Provider + model already resolved above (needed for context budget)
 
     // 4. Create the assistant message placeholder
     // MessageRepo::create also updates active_message_id to this new message.
@@ -261,13 +285,7 @@ pub async fn retry_failed_message(
     // Point the conversation back to the user message
     ConversationRepo::set_active_message(&db, &conversation_id, &user_message_id).await?;
 
-    // Build prompt from this user message
-    let messages = build_prompt(
-        &db, &conversation_id, &user_message_id,
-        system_prompt.as_deref(), post_history_instructions.as_deref(),
-    ).await?;
-
-    // Get LLM provider + model
+    // Get LLM provider + model (needed for context budget)
     let provider_config = get_default_llm_provider(&db).await?;
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
@@ -282,6 +300,28 @@ pub async fn retry_failed_message(
             .unwrap_or(0.8) as f32,
         ..Default::default()
     };
+
+    let max_context = provider_config.config
+        .get("context_length")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(16384) as usize;
+
+    let context_budget = ContextBudget {
+        max_context_tokens: max_context,
+        reserved_for_response: gen_params.max_tokens as usize,
+        ..Default::default()
+    };
+
+    // Build prompt from this user message
+    let (messages, context_stats) = build_prompt(
+        &db, &conversation_id, &user_message_id,
+        system_prompt.as_deref(), post_history_instructions.as_deref(),
+        &context_budget,
+    ).await?;
+    debug!(
+        "[retry_failed_message] prompt built with {} messages, context stats: {:?}",
+        messages.len(), context_stats
+    );
 
     // Create fresh assistant placeholder
     // MessageRepo::create also updates active_message_id automatically.
@@ -424,15 +464,36 @@ pub async fn regenerate_message(
 
 // --- Internal helpers ---
 
+/// Statistics about the context window for observability.
+/// Returned alongside the prompt so callers can log/surface token usage.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ContextStats {
+    /// Total token budget for the context window.
+    pub total_budget: usize,
+    /// Tokens used by fixed layers (system, character, lorebook, memories, emotion, PHI).
+    pub fixed_tokens: usize,
+    /// Tokens used by conversation history (after sliding window).
+    pub history_tokens: usize,
+    /// Tokens used by the rolling summary (0 if no summary yet).
+    pub summary_tokens: usize,
+    /// Total messages in the full conversation branch.
+    pub total_messages: usize,
+    /// Messages included in the sliding window.
+    pub included_messages: usize,
+    /// Messages evicted (not sent to the LLM).
+    pub evicted_messages: usize,
+}
+
 /// Builds the full prompt by combining system prompt, character data,
-/// and conversation history.
+/// and conversation history. Now token-budgeted via sliding window.
 async fn build_prompt(
     db: &Surreal<Db>,
     conversation_id: &str,
     up_to_message_id: &str,
     user_system_prompt: Option<&str>,
     post_history_instructions: Option<&str>,
-) -> Result<Vec<ChatMessage>, MythicError> {
+    context_budget: &ContextBudget,
+) -> Result<(Vec<ChatMessage>, ContextStats), MythicError> {
     let mut prompt = Vec::new();
 
     // Inject the user's global system prompt first (from Settings)
@@ -618,7 +679,59 @@ async fn build_prompt(
                 });
             }
 
-            prompt.extend(chain);
+            // ── Apply sliding window to conversation history ──
+            // Build the PHI message (if any) so it can be counted in the budget
+            let phi_message = post_history_instructions.and_then(|phi| {
+                let trimmed = phi.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(ChatMessage {
+                        role: MessageRole::System,
+                        content: trimmed.to_string(),
+                    })
+                }
+            });
+
+            // Collect fixed layers for budget calculation (everything in prompt so far + PHI)
+            let mut fixed_for_budget: Vec<ChatMessage> = prompt.clone();
+            if let Some(ref phi) = phi_message {
+                fixed_for_budget.push(phi.clone());
+            }
+
+            let allocation = context_budget.allocate(&fixed_for_budget);
+            let window = apply_sliding_window(&chain, allocation.messages_budget);
+
+            info!(
+                "[build_prompt] context: {}/{} tokens, {}/{} messages included, {} evicted",
+                allocation.fixed_layers_tokens + window.included_tokens,
+                context_budget.max_context_tokens,
+                window.included.len(),
+                chain.len(),
+                window.evicted_count,
+            );
+
+            let total_messages = chain.len();
+            let included_messages = window.included.len();
+            let evicted_messages = window.evicted_count;
+            let history_tokens = window.included_tokens;
+
+            prompt.extend(window.included);
+
+            // PHI goes last — after history, maximum attention weight
+            if let Some(phi) = phi_message {
+                prompt.push(phi);
+            }
+
+            return Ok((prompt, ContextStats {
+                total_budget: context_budget.max_context_tokens,
+                fixed_tokens: allocation.fixed_layers_tokens,
+                history_tokens,
+                summary_tokens: 0,
+                total_messages,
+                included_messages,
+                evicted_messages,
+            }));
         } else {
             // Lorebook fetch failed — still build the message chain
             let branch = MessageRepo::get_branch(db, up_to_message_id).await?;
@@ -651,7 +764,56 @@ async fn build_prompt(
                 }
             }
 
-            prompt.extend(chain);
+            // ── Apply sliding window (lorebook-fetch-failed branch) ──
+            let phi_message = post_history_instructions.and_then(|phi| {
+                let trimmed = phi.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(ChatMessage {
+                        role: MessageRole::System,
+                        content: trimmed.to_string(),
+                    })
+                }
+            });
+
+            let mut fixed_for_budget: Vec<ChatMessage> = prompt.clone();
+            if let Some(ref phi) = phi_message {
+                fixed_for_budget.push(phi.clone());
+            }
+
+            let allocation = context_budget.allocate(&fixed_for_budget);
+            let window = apply_sliding_window(&chain, allocation.messages_budget);
+
+            info!(
+                "[build_prompt] context: {}/{} tokens, {}/{} messages included, {} evicted",
+                allocation.fixed_layers_tokens + window.included_tokens,
+                context_budget.max_context_tokens,
+                window.included.len(),
+                chain.len(),
+                window.evicted_count,
+            );
+
+            let total_messages = chain.len();
+            let included_messages = window.included.len();
+            let evicted_messages = window.evicted_count;
+            let history_tokens = window.included_tokens;
+
+            prompt.extend(window.included);
+
+            if let Some(phi) = phi_message {
+                prompt.push(phi);
+            }
+
+            return Ok((prompt, ContextStats {
+                total_budget: context_budget.max_context_tokens,
+                fixed_tokens: allocation.fixed_layers_tokens,
+                history_tokens,
+                summary_tokens: 0,
+                total_messages,
+                included_messages,
+                evicted_messages,
+            }));
         }
     } else {
         // No character — just build the message chain
@@ -685,25 +847,57 @@ async fn build_prompt(
             }
         }
 
-        prompt.extend(chain);
-    }
+        // ── Apply sliding window (no-character branch) ──
+        let phi_message = post_history_instructions.and_then(|phi| {
+            let trimmed = phi.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(ChatMessage {
+                    role: MessageRole::System,
+                    content: trimmed.to_string(),
+                })
+            }
+        });
 
-    // ── Post-History Instructions (PHI) ──
-    // Injected AFTER the conversation history as the very last system message.
-    // This carries maximum attention weight and shapes how the AI structures
-    // its response — narrative hooks, scene transitions, pacing directives.
-    // Equivalent to SillyTavern's "Post-History Instructions" feature.
-    if let Some(phi) = post_history_instructions {
-        let trimmed = phi.trim();
-        if !trimmed.is_empty() {
-            prompt.push(ChatMessage {
-                role: MessageRole::System,
-                content: trimmed.to_string(),
-            });
+        let mut fixed_for_budget: Vec<ChatMessage> = prompt.clone();
+        if let Some(ref phi) = phi_message {
+            fixed_for_budget.push(phi.clone());
         }
-    }
 
-    Ok(prompt)
+        let allocation = context_budget.allocate(&fixed_for_budget);
+        let window = apply_sliding_window(&chain, allocation.messages_budget);
+
+        info!(
+            "[build_prompt] context: {}/{} tokens, {}/{} messages included, {} evicted",
+            allocation.fixed_layers_tokens + window.included_tokens,
+            context_budget.max_context_tokens,
+            window.included.len(),
+            chain.len(),
+            window.evicted_count,
+        );
+
+        let total_messages = chain.len();
+        let included_messages = window.included.len();
+        let evicted_messages = window.evicted_count;
+        let history_tokens = window.included_tokens;
+
+        prompt.extend(window.included);
+
+        if let Some(phi) = phi_message {
+            prompt.push(phi);
+        }
+
+        Ok((prompt, ContextStats {
+            total_budget: context_budget.max_context_tokens,
+            fixed_tokens: allocation.fixed_layers_tokens,
+            history_tokens,
+            summary_tokens: 0,
+            total_messages,
+            included_messages,
+            evicted_messages,
+        }))
+    }
 }
 
 /// Finds the default LLM provider configuration from the database.
