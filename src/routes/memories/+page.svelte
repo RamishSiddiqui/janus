@@ -6,6 +6,7 @@
   import MemoryTimeline from '$lib/components/MemoryTimeline.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { success, error as toastError } from '$lib/stores/toast';
+  import { parseCharacterData } from '$lib/utils/character';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -80,14 +81,13 @@
       const ipc = await import('$lib/services/ipc');
       const chars = await ipc.listCharacters();
       characters = chars.map(c => {
-        let parsedData: any = {};
-        try { parsedData = JSON.parse(c.data); } catch {}
+        const parsedData = parseCharacterData(c.data);
         return {
           id: c.id,
           name: parsedData?.name ?? c.name,
           avatarPath: c.avatar_path,
         };
-      });
+      }).sort((a, b) => a.name.localeCompare(b.name));
       if (selectedCharIds.length === 0 && characters.length > 0) {
         selectedCharIds = [characters[0].id];
       }

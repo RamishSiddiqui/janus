@@ -6,6 +6,7 @@
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ContextPanel from "$lib/components/ContextPanel.svelte";
+  import { parseCharacterData } from "$lib/utils/character";
   import {
     messages,
     conversations,
@@ -280,7 +281,7 @@
     try {
       const ipc = await import("$lib/services/ipc");
       const char = await ipc.getCharacter(charId);
-      const data = JSON.parse(char.data);
+      const data = parseCharacterData(char.data);
 
       characterDescription = data.description || "No description available";
 

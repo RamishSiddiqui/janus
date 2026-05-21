@@ -6,6 +6,7 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { activeConversationId, loadConversations } from '$lib/stores/chat';
   import { success, error as toastError } from '$lib/stores/toast';
+  import { parseCharacterData } from '$lib/utils/character';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -80,8 +81,7 @@
       const tagColors = ['#8B5CF6', '#00F2FF', '#BF40FF', '#F59E0B', '#10B981', '#F43F5E'];
       const mapped = await Promise.all(chars.map(async (c, i) => {
         const color = tagColors[i % tagColors.length];
-        let data: Record<string, unknown> = {};
-        try { data = JSON.parse(c.data); } catch {}
+        const data = parseCharacterData(c.data);
 
         const avatarUrl = await resolveAvatarUrl(c.avatar_path);
 
@@ -99,7 +99,7 @@
           avatarUrl,
         };
       }));
-      characters = mapped;
+      characters = mapped.sort((a, b) => a.name.localeCompare(b.name));
     } catch (err) {
       console.error('Failed to load characters:', err);
       characters = mockCharacters;
@@ -136,8 +136,7 @@
       // Add to the gallery immediately
       const tagColors = ['#8B5CF6', '#00F2FF', '#BF40FF', '#F59E0B', '#10B981', '#F43F5E'];
       const color = tagColors[characters.length % tagColors.length];
-      let data: Record<string, unknown> = {};
-      try { data = JSON.parse(newChar.data); } catch {}
+      const data = parseCharacterData(newChar.data);
 
       const avatarUrl = await resolveAvatarUrl(newChar.avatar_path);
 
@@ -215,8 +214,7 @@
     try {
       const ipc = await import('$lib/services/ipc');
       const char = await ipc.getCharacter(charId);
-      let data: Record<string, unknown> = {};
-      try { data = JSON.parse(char.data); } catch {}
+      const data = parseCharacterData(char.data);
 
       editingId = charId;
       editorName = char.name;

@@ -25,9 +25,11 @@
 
   const fontSizes = ['Small', 'Medium', 'Large'] as const;
 
-  // Persist changes back to store
+  // Persist changes back to store (debounced to avoid infinite loop)
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
-    settings.set({
+    // Read all reactive locals to track them
+    const snapshot = {
       theme,
       fontSize,
       streamingEnabled,
@@ -36,8 +38,12 @@
       localStorageOnly,
       systemPrompt,
       postHistoryInstructions,
-      _settingsVersion: $settings._settingsVersion,
-    });
+    };
+    // Debounce the store write to break the reactive cycle
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      settings.update(prev => ({ ...prev, ...snapshot }));
+    }, 50);
   });
 
   function resetSystemPrompt() {

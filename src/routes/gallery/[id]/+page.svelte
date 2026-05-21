@@ -4,6 +4,7 @@
   import { browser } from "$app/environment";
   import { activeConversationId, loadConversations } from "$lib/stores/chat";
   import { success, error as toastError } from "$lib/stores/toast";
+  import { parseCharacterData } from "$lib/utils/character";
   import MemoryGraph from "$lib/components/MemoryGraph.svelte";
   import type { MemoryGraph as MemoryGraphData } from "$lib/services/ipc";
 
@@ -111,10 +112,7 @@
       const ipc = await import("$lib/services/ipc");
       const char = await ipc.getCharacter(id);
       charName = char.name;
-      let parsed: Record<string, unknown> = {};
-      try {
-        parsed = JSON.parse(char.data);
-      } catch {}
+      const parsed = parseCharacterData(char.data);
       charData = {
         name: char.name,
         description: (parsed.description as string) || "",

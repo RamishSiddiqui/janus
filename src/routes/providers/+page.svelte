@@ -3,7 +3,8 @@
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { success } from '$lib/stores/toast';
+  import { handleIpcError } from '$lib/utils/error';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -64,7 +65,7 @@
         isConnected: undefined,
         isExpanded: p.is_default,
       }));
-    } catch { toastError('Failed to load providers'); }
+    } catch (err) { handleIpcError('load providers', err); }
     isLoading = false;
   }
 
@@ -79,7 +80,7 @@
       p.isConnected = ok;
       p.latencyMs = ok ? Date.now() - t0 : null;
       success(ok ? `${p.name} connected (${p.latencyMs}ms)` : `${p.name} unreachable`);
-    } catch { p.isConnected = false; }
+    } catch (err) { console.error('[Mythic IPC] Failed to test connection:', err); p.isConnected = false; }
     p.isTestingConnection = false;
     providers = [...providers];
   }
@@ -91,7 +92,7 @@
       await ipc.setDefaultProvider(p.id);
       providers = providers.map(r => ({ ...r, is_default: r.id === p.id }));
       success(`${p.name} set as default`);
-    } catch { toastError('Failed'); }
+    } catch (err) { handleIpcError('set default provider', err); }
   }
 
   async function deleteProvider(p: ProviderRow) {
@@ -101,7 +102,7 @@
       await ipc.deleteProvider(p.id);
       providers = providers.filter(r => r.id !== p.id);
       success(`Deleted ${p.name}`);
-    } catch { toastError('Failed to delete'); }
+    } catch (err) { handleIpcError('delete provider', err); }
   }
 
   async function saveField(p: ProviderRow, field: string, value: string) {
@@ -111,7 +112,7 @@
       const existing = await ipc.getProvider(p.id);
       const config = { ...(existing.config as Record<string, unknown>), [field]: value };
       await ipc.updateProvider(p.id, undefined, config);
-    } catch { toastError('Failed to save'); }
+    } catch (err) { handleIpcError('save provider field', err); }
   }
 
   async function addProvider() {
@@ -132,7 +133,7 @@
       showAddForm = false;
       newName = ''; newApiKey = ''; newBaseUrl = ''; newModel = '';
       success(`Added ${p.name}`);
-    } catch { toastError('Failed to add provider'); }
+    } catch (err) { handleIpcError('add provider', err); }
     isSaving = false;
   }
 

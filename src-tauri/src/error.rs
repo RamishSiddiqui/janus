@@ -71,6 +71,9 @@ impl serde::Serialize for MythicError {
     where
         S: serde::Serializer,
     {
+        // Log every IPC error so it always appears in backend traces
+        tracing::warn!("[IPC_ERROR] {}", self);
+
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("MythicError", 2)?;
 

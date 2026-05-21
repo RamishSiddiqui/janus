@@ -45,6 +45,25 @@
     hasActiveConv: boolean;
   }
 
+  // Collect unique characters across all crossover conversations for the stacked header avatar
+  interface UniqueChar { id: string; name: string; avatarUrl: string | null; avatarColor: string; }
+  let crossoverUniqueChars = $derived.by(() => {
+    const seen = new Map<string, UniqueChar>();
+    for (const conv of sharedConversations) {
+      // Primary character
+      if (conv.characterId && !seen.has(conv.characterId)) {
+        seen.set(conv.characterId, { id: conv.characterId, name: conv.characterName, avatarUrl: conv.avatarUrl, avatarColor: conv.avatarColor });
+      }
+      // Additional characters
+      for (const p of (conv.additionalCharacters ?? [])) {
+        if (!seen.has(p.id)) {
+          seen.set(p.id, { id: p.id, name: p.name, avatarUrl: p.avatarUrl, avatarColor: p.avatarColor });
+        }
+      }
+    }
+    return [...seen.values()].slice(0, 4);
+  });
+
   // Tracks which groups user has explicitly toggled. 
   // Key = characterName, value = desired state (true=open, false=closed)
   let manualToggles = $state<Map<string, boolean>>(new Map());
@@ -402,17 +421,40 @@
             </button>
           {/each}
 
-          <!-- ══ Crossovers — Multi-Character Conversations ══ -->
+          <!-- ══ Alliances — Multi-Character Conversations ══ -->
           {#if sharedConversations.length > 0}
             <div class="crossover-section" class:has-active={hasActiveShared}>
               <button class="crossover-header" onclick={() => sharedExpanded = !sharedExpanded} aria-expanded={sharedExpanded}>
-                <div class="crossover-icon">
-                  <Icon name="users" size={14} color="#00d4e0" />
-                  <div class="crossover-icon-glow"></div>
+                <!-- Stacked Avatar Cluster -->
+                <div class="crossover-avatar-stack">
+                  {#each crossoverUniqueChars.slice(0, 3) as char, i (char.id)}
+                    <div class="stack-ava" style="z-index: {10 - i}; --stack-i: {i}">
+                      <div class="stack-ava-ring">
+                        <div class="stack-ava-inner" style="background: {char.avatarColor}">
+                          {#if char.avatarUrl}
+                            <img src={char.avatarUrl} alt={char.name} />
+                          {:else}
+                            <span class="stack-ava-letter">{char.name.charAt(0)}</span>
+                          {/if}
+                        </div>
+                      </div>
+                    </div>
+                  {/each}
+                  {#if crossoverUniqueChars.length > 3}
+                    <div class="stack-ava stack-overflow" style="z-index: 6; --stack-i: 3">
+                      <div class="stack-ava-ring overflow">
+                        <div class="stack-ava-inner overflow-inner">
+                          <span class="stack-overflow-count">+{crossoverUniqueChars.length - 3}</span>
+                        </div>
+                      </div>
+                    </div>
+                  {/if}
+                  <div class="stack-glow"></div>
                 </div>
+
                 <div class="cg-info">
-                  <span class="crossover-title">Crossovers</span>
-                  <span class="cg-count">{sharedConversations.length} {sharedConversations.length === 1 ? 'chat' : 'chats'}</span>
+                  <span class="crossover-title">Alliances</span>
+                  <span class="cg-count">{sharedConversations.length} {sharedConversations.length === 1 ? 'quest' : 'quests'} · {crossoverUniqueChars.length} heroes</span>
                 </div>
                 <div class="cg-chevron" class:rotated={sharedExpanded}>
                   <Icon name="chevron-down" size={12} color="#00d4e0" />
@@ -426,22 +468,31 @@
                     <button class="crossover-conv" class:active={isActive}
                       onclick={() => { $activeConversationId = conv.id; loadMessages(conv.id); }}
                       oncontextmenu={(e) => openContextMenu(e, conv.id)}
-                      style="animation-delay: {ci * 40}ms"
+                      style="animation-delay: {ci * 50}ms"
                       aria-current={isActive ? 'true' : undefined}>
                       <div class="crossover-accent"></div>
+                      
+                      <!-- Conversation-level stacked avatars -->
                       <div class="crossover-badges">
-                        <div class="crossover-ava" style="background:{conv.avatarColor}">
+                        <div class="crossover-ava primary" style="background:{conv.avatarColor}">
                           {#if conv.avatarUrl}<img src={conv.avatarUrl} alt={conv.characterName} />{/if}
                         </div>
-                        {#each conv.additionalCharacters!.slice(0, 3) as p, pi}
-                          <div class="crossover-ava" style="background:{p.avatarColor}; margin-left: -8px; z-index: {5 - pi}">
+                        {#each (conv.additionalCharacters ?? []).slice(0, 2) as p, pi}
+                          <div class="crossover-ava" style="background:{p.avatarColor}; --ava-i: {pi + 1}">
                             {#if p.avatarUrl}<img src={p.avatarUrl} alt={p.name} />{/if}
                           </div>
                         {/each}
                       </div>
+
                       <div class="crossover-body">
                         <span class="crossover-conv-title">{conv.preview || 'Untitled'}</span>
-                        <span class="crossover-members">{conv.characterName} & {conv.additionalCharacters!.map(c => c.name).join(', ')}</span>
+                        <div class="crossover-member-pills">
+                          <span class="member-pill primary-pill">{conv.characterName}</span>
+                          {#each (conv.additionalCharacters ?? []) as p}
+                            <span class="member-pill-sep">×</span>
+                            <span class="member-pill">{p.name}</span>
+                          {/each}
+                        </div>
                       </div>
                       <span class="cg-conv-time">{conv.time}</span>
                     </button>
@@ -630,6 +681,7 @@
   .sb-nav {
     display: flex; flex-direction: column; gap: 2px; flex-shrink: 0;
     position: relative; z-index: 1;
+    overflow: hidden;
   }
   .sb-nav-item {
     display: flex; align-items: center; gap: 11px;
@@ -749,6 +801,7 @@
     flex-shrink: 0;
     position: relative;
     z-index: 1;
+    padding-top: 2px;
   }
 
   /* ── Divider ── */
@@ -815,7 +868,8 @@
   /* ── Conversation List ── */
   .sb-convos {
     display: flex; flex-direction: column; gap: 6px;
-    overflow-y: auto; flex: 1; min-height: 0;
+    overflow-y: auto; flex: 1 1 0;
+    min-height: 80px;
     position: relative; z-index: 1; padding-right: 2px;
   }
   .sb-convos::-webkit-scrollbar { width: 3px; }
@@ -830,6 +884,7 @@
     border: 1px solid transparent;
     overflow: hidden;
     transition: all 250ms var(--ease-out);
+    flex-shrink: 0;
   }
   .char-group.has-active {
     background: rgba(139,92,246,0.03);
@@ -874,119 +929,206 @@
     transform: scale(1.06);
   }
 
-  /* ══ Crossovers Section ══ */
+  /* ══ Alliances / Crossovers Section ══ */
   .crossover-section {
-    border-radius: 14px;
-    background: rgba(0,212,224,0.02);
-    border: 1px solid rgba(0,212,224,0.06);
+    border-radius: 16px;
+    background: linear-gradient(165deg, rgba(0,212,224,0.03) 0%, rgba(139,92,246,0.02) 100%);
+    border: 1px solid rgba(0,212,224,0.08);
     overflow: hidden;
-    transition: all 250ms var(--ease-out);
+    transition: all 300ms var(--ease-out);
+    position: relative;
+    flex-shrink: 0;
   }
+  .crossover-section::before {
+    content: ''; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+    background: radial-gradient(ellipse 100% 60% at 20% -20%, rgba(0,212,224,0.08) 0%, transparent 60%);
+    opacity: 0; transition: opacity 300ms;
+  }
+  .crossover-section:hover::before { opacity: 1; }
   .crossover-section.has-active {
-    background: rgba(0,212,224,0.04);
-    border-color: rgba(0,212,224,0.12);
+    background: linear-gradient(165deg, rgba(0,212,224,0.05) 0%, rgba(139,92,246,0.03) 100%);
+    border-color: rgba(0,212,224,0.15);
+    box-shadow: 0 4px 24px rgba(0,212,224,0.06), inset 0 1px 0 rgba(0,212,224,0.06);
   }
 
   .crossover-header {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; width: 100%; text-align: left; border: none;
     background: transparent; font-family: var(--font-body);
-    cursor: pointer; border-radius: 14px;
-    transition: all 180ms var(--ease-out);
+    cursor: pointer; border-radius: 16px;
+    transition: all 200ms var(--ease-out);
+    min-width: 0;
   }
   .crossover-header:hover { background: rgba(0,212,224,0.06); }
-  .crossover-header:active { transform: scale(0.98); }
+  .crossover-header:active { transform: scale(0.985); }
 
-  .crossover-icon {
+  /* ── Stacked Avatar Cluster (Group Header) ── */
+  .crossover-avatar-stack {
+    display: flex; align-items: center; flex-shrink: 0;
+    position: relative; height: 32px;
+    padding-right: 2px;
+  }
+  .stack-ava {
     position: relative;
-    width: 36px; height: 36px; min-width: 36px; display: flex;
-    align-items: center; justify-content: center;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(0,212,224,0.12), rgba(139,92,246,0.06));
-    border: 1.5px solid rgba(0,212,224,0.15);
+    margin-left: calc(var(--stack-i, 0) * -8px);
+    transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                margin-left 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .crossover-icon-glow {
-    position: absolute; inset: -4px; border-radius: 14px;
-    background: radial-gradient(circle, rgba(0,212,224,0.2) 0%, transparent 70%);
-    pointer-events: none; opacity: 0.5;
-    animation: crossoverPulse 3s ease-in-out infinite;
+  .crossover-header:hover .stack-ava {
+    margin-left: calc(var(--stack-i, 0) * -5px);
+    transform: translateY(-1px);
   }
-  @keyframes crossoverPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+
+  .stack-ava-ring {
+    width: 28px; height: 28px; border-radius: 50%;
+    padding: 1.5px;
+    background: linear-gradient(135deg, #00d4e0, #8B5CF6);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,212,224,0.1);
+    transition: box-shadow 250ms var(--ease-out);
+  }
+  .crossover-header:hover .stack-ava-ring {
+    box-shadow: 0 4px 12px rgba(0,212,224,0.25), 0 0 0 1px rgba(0,212,224,0.2);
+  }
+  .stack-ava-ring.overflow {
+    background: linear-gradient(135deg, rgba(0,212,224,0.3), rgba(139,92,246,0.3));
+  }
+
+  .stack-ava-inner {
+    width: 100%; height: 100%; border-radius: 50%;
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+  }
+  .stack-ava-inner img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .stack-ava-letter {
+    font-size: 11px; font-weight: 700; color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .overflow-inner {
+    background: rgba(12,12,30,0.8) !important;
+  }
+  .stack-overflow-count {
+    font-size: 10px; font-weight: 700; color: #00d4e0;
+    font-family: var(--font-mono);
+  }
+
+  .stack-glow {
+    position: absolute; inset: -4px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,212,224,0.12) 0%, transparent 70%);
+    pointer-events: none; opacity: 0.3;
+    animation: stackPulse 3.5s ease-in-out infinite;
+  }
+  @keyframes stackPulse { 0%,100% { opacity: 0.2; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.04); } }
 
   .crossover-title {
-    font-size: var(--text-md); font-weight: 600; color: #00d4e0;
-    letter-spacing: -0.1px;
+    font-size: var(--text-md); font-weight: 700; letter-spacing: -0.2px;
+    background: linear-gradient(135deg, #00d4e0 20%, #00f2ff 60%, #8B5CF6 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
-  .crossover-section.has-active .crossover-title { color: #00f2ff; }
+  .crossover-section.has-active .crossover-title {
+    background: linear-gradient(135deg, #00f2ff 0%, #8B5CF6 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
 
   .crossover-list {
     display: flex; flex-direction: column; gap: 2px;
-    padding: 2px 6px 8px;
-    animation: listExpand 250ms var(--ease-out) both;
+    padding: 2px 4px 8px;
+    animation: listExpand 280ms var(--ease-out) both;
+    min-width: 0;
   }
 
   .crossover-conv {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px;
     border-radius: 10px; width: 100%; text-align: left;
     border: none; background: transparent;
     font-family: var(--font-body); cursor: pointer;
     position: relative; overflow: hidden;
-    transition: all 150ms var(--ease-out);
-    animation: convFadeIn 200ms var(--ease-out) both;
+    transition: all 180ms var(--ease-out);
+    animation: convFadeIn 220ms var(--ease-out) both;
+    min-width: 0;
   }
-  .crossover-conv:hover { background: rgba(0,212,224,0.06); }
+  .crossover-conv:hover {
+    background: rgba(0,212,224,0.06);
+  }
   .crossover-conv.active {
-    background: rgba(0,212,224,0.08);
-    box-shadow: inset 0 0 0 1px rgba(0,212,224,0.1);
+    background: linear-gradient(90deg, rgba(0,212,224,0.1) 0%, rgba(139,92,246,0.05) 100%);
+    box-shadow: inset 0 0 0 1px rgba(0,212,224,0.12);
   }
 
-  /* Cyan accent bar */
+  /* Cyan-violet accent bar */
   .crossover-accent {
     position: absolute; left: 0; top: 50%; transform: translateY(-50%);
     width: 3px; height: 0; border-radius: 3px;
     background: linear-gradient(180deg, #00f2ff, #8B5CF6);
-    transition: height 200ms var(--ease-spring), box-shadow 200ms var(--ease-out);
+    transition: height 250ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 250ms var(--ease-out);
   }
   .crossover-conv.active .crossover-accent {
-    height: 24px;
-    box-shadow: 0 0 10px rgba(0,242,255,0.3);
+    height: 26px;
+    box-shadow: 0 0 12px rgba(0,242,255,0.35), 0 0 4px rgba(139,92,246,0.3);
   }
 
-  /* Overlapping avatar badges */
+  /* Conversation-level overlapping avatar badges */
   .crossover-badges {
     display: flex; align-items: center; flex-shrink: 0;
   }
   .crossover-ava {
-    width: 26px; height: 26px; border-radius: 50%;
+    width: 24px; height: 24px; border-radius: 50%;
     overflow: hidden; flex-shrink: 0;
-    border: 2px solid #0c0c1e;
-    transition: transform 200ms var(--ease-spring);
+    border: 2px solid rgba(12,12,30,0.9);
+    margin-left: calc(var(--ava-i, 0) * -8px);
+    z-index: calc(10 - var(--ava-i, 0));
+    transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                margin-left 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                border-color 200ms;
   }
-  .crossover-ava:first-child { z-index: 10; }
+  .crossover-ava.primary { z-index: 10; --ava-i: 0; }
   .crossover-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .crossover-conv:hover .crossover-ava { transform: scale(1.08); }
+
+  .crossover-conv:hover .crossover-ava {
+    margin-left: calc(var(--ava-i, 0) * -5px);
+    transform: scale(1.08);
+  }
+  .crossover-conv.active .crossover-ava {
+    border-color: rgba(0,212,224,0.3);
+  }
 
   .crossover-body {
     flex: 1; min-width: 0;
-    display: flex; flex-direction: column; gap: 1px;
+    display: flex; flex-direction: column; gap: 2px;
+    overflow: hidden;
   }
   .crossover-conv-title {
     font-size: var(--text-sm); font-weight: 500; color: #8b8ba7;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: color 150ms;
+    max-width: 100%;
   }
   .crossover-conv:hover .crossover-conv-title { color: #c8c8e0; }
   .crossover-conv.active .crossover-conv-title { color: #e0f7fa; font-weight: 600; }
 
-  .crossover-members {
-    font-size: 9px; font-weight: 500; color: #4a7a7e;
-    font-family: var(--font-mono); letter-spacing: 0.2px;
+  /* Member pills */
+  .crossover-member-pills {
+    display: flex; align-items: center; gap: 3px;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .member-pill {
+    font-size: 9px; font-weight: 600; color: #4a7a7e;
+    font-family: var(--font-mono); letter-spacing: 0.1px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: color 150ms;
   }
-  .crossover-conv:hover .crossover-members { color: #6aafb5; }
-  .crossover-conv.active .crossover-members { color: #00d4e0; }
+  .member-pill.primary-pill { color: #00a0aa; }
+  .member-pill-sep {
+    font-size: 8px; color: #3a5a5e; font-weight: 700;
+  }
+  .crossover-conv:hover .member-pill { color: #6aafb5; }
+  .crossover-conv:hover .member-pill.primary-pill { color: #00d4e0; }
+  .crossover-conv:hover .member-pill-sep { color: #5a8a8e; }
+  .crossover-conv.active .member-pill { color: #00b8c4; }
+  .crossover-conv.active .member-pill.primary-pill { color: #00f2ff; }
+  .crossover-conv.active .member-pill-sep { color: #00d4e0; }
 
   .cg-active-dot {
     position: absolute; bottom: -2px; right: -2px;
@@ -996,7 +1138,7 @@
   }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.3); } 50% { box-shadow: 0 0 0 5px rgba(16,185,129,0); } }
 
-  .cg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .cg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
   .cg-name {
     font-size: var(--text-md); font-weight: 600; color: #c8c8e0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1116,6 +1258,7 @@
   .cg-conv.ungrouped {
     padding-left: 12px;
     margin-bottom: 2px;
+    flex-shrink: 0;
   }
 
   /* Empty */

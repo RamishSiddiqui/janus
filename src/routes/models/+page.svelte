@@ -3,7 +3,8 @@
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { success } from '$lib/stores/toast';
+  import { handleIpcError } from '$lib/utils/error';
   import type { ModelEntry } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -54,7 +55,7 @@
         allModels = models;
         providers = pList.map(p => ({ id: p.id, name: p.name }));
       }
-    } catch { toastError('Failed to load models'); }
+    } catch (err) { handleIpcError('load models', err); }
     isLoading = false;
   }
 
@@ -70,7 +71,7 @@
           ? { ...x, enabled: newState } : x
       );
       success(newState ? `Enabled ${m.model_id}` : `Disabled ${m.model_id}`);
-    } catch { toastError('Failed to update model'); }
+    } catch (err) { handleIpcError('toggle model', err); }
     togglingId = null;
   }
 

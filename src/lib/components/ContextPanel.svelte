@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import SceneDisplay from './SceneDisplay.svelte';
   import { success, error as toastError } from '$lib/stores/toast';
+  import { parseCharacterData } from '$lib/utils/character';
   import type { LorebookEntry } from '$lib/types';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -134,7 +135,7 @@
       } else {
         // Fallback: parse from character card's embedded lorebook
         const char = await ipc.getCharacter(charId);
-        const data = JSON.parse(char.data);
+        const data = parseCharacterData(char.data);
 
         if (data.character_book?.entries?.length) {
           lorebookEntries = data.character_book.entries.map((entry: any, i: number) => ({

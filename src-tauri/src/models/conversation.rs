@@ -67,7 +67,7 @@ pub struct Conversation {
     pub character_id: Option<Thing>,
 
     /// ID of the active (latest) message in the current branch
-    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
     pub active_message_id: Option<Thing>,
 
     /// Controls how auto-extracted memories are scoped:

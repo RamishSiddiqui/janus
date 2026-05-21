@@ -8,6 +8,7 @@ import type { Message, ConversationPreview } from '$lib/types';
 import { browser } from '$app/environment';
 import { error as toastError } from '$lib/stores/toast';
 import { settings } from '$lib/stores/settings';
+import { parseCharacterData } from '$lib/utils/character';
 import type { CharacterState } from '$lib/services/ipc';
 
 // Detect if we're running inside Tauri (desktop app) or browser (dev mode)
@@ -298,8 +299,8 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
                 } catch { /* missing */ }
               }
             }
-            let charDesc = '';
-            try { charDesc = JSON.parse(char.data)?.description || ''; } catch {}
+            const charData = parseCharacterData(char.data);
+            const charDesc = (charData.description as string) || '';
             additionalCharacters.push({
               id: char.id,
               name: char.name,
@@ -891,7 +892,7 @@ export async function createConversation(characterId: string, title?: string) {
     if (characterId) {
       try {
         const char = await ipc.getCharacter(characterId);
-        const data = JSON.parse(char.data);
+        const data = parseCharacterData(char.data);
         const greeting = data.first_mes?.trim();
         if (greeting) {
           // Create the greeting as an assistant message

@@ -36,6 +36,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS active_message_id        ON conversations TYPE option<record<messages>>;
         DEFINE FIELD IF NOT EXISTS memory_scope             ON conversations TYPE string DEFAULT 'character'
             ASSERT $value IN ['character', 'conversation', 'none'];
+        DEFINE FIELD IF NOT EXISTS shared_character_ids     ON conversations TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS parent_conversation_id   ON conversations TYPE option<record<conversations>>;
         DEFINE FIELD IF NOT EXISTS branch_point_message_id  ON conversations TYPE option<record<messages>>;
         DEFINE FIELD IF NOT EXISTS created_at               ON conversations TYPE datetime DEFAULT time::now();
@@ -104,10 +105,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     // ── 5. memory_link (graph edge table) ───────────────────────────────
     info!("  schema: memory_link...");
     db.query("
-        DEFINE TABLE IF NOT EXISTS memory_link SCHEMAFULL;
+        DEFINE TABLE IF NOT EXISTS memory_link TYPE RELATION FROM memories TO conversations SCHEMAFULL;
 
-        DEFINE FIELD IF NOT EXISTS in           ON memory_link TYPE record<memories>;
-        DEFINE FIELD IF NOT EXISTS out          ON memory_link TYPE record<conversations>;
         DEFINE FIELD IF NOT EXISTS link_type    ON memory_link TYPE string ASSERT $value IN ['copy', 'sync'];
         DEFINE FIELD IF NOT EXISTS direction    ON memory_link TYPE string ASSERT $value IN ['one_way', 'two_way'];
         DEFINE FIELD IF NOT EXISTS sync_mode    ON memory_link TYPE string ASSERT $value IN ['auto', 'manual'];
@@ -259,6 +258,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE EVENT IF NOT EXISTS cascade_memory_delete ON TABLE memories
             WHEN $event = 'DELETE' THEN {
             DELETE FROM memory_link WHERE in = $before.id;
+            DELETE FROM memory_link WHERE linked_memory_id = $before.id;
         };
     ")
     .await?

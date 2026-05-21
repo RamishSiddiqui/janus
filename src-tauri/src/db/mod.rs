@@ -34,7 +34,14 @@ pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> 
 
     info!("Debugging conversation list...");
     match crate::db::conversations::ConversationRepo::list(&db, 10, 0).await {
-        Ok(convs) => info!("Successfully listed {} conversations", convs.len()),
+        Ok(convs) => {
+            info!("Successfully listed {} conversations", convs.len());
+            for c in &convs {
+                if c.shared_character_ids.is_some() {
+                    info!("  SHARED CONV: {} (id={}) shared_ids={:?}", c.title, c.id, c.shared_character_ids);
+                }
+            }
+        },
         Err(e) => info!("FAILED TO LIST CONVERSATIONS: {:?}", e),
     }
     match crate::db::conversations::ConversationRepo::count(&db).await {

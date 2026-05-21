@@ -208,29 +208,33 @@ impl MemoryRepo {
         };
 
         // Create the RELATE edge
+        let src_thing = surrealdb::sql::Thing::from(("memories", source_memory_id));
+        let tgt_thing = surrealdb::sql::Thing::from(("conversations", target_conversation_id));
+
         let link: Option<MemoryLink> = if let Some(ref copy_id) = linked_memory_id {
+            let copy_thing = surrealdb::sql::Thing::from(("memories", copy_id.as_str()));
             let mut result = db
-                .query("RELATE type::thing('memories', $source_mem_id) -> memory_link -> type::thing('conversations', $target_conv_id) SET
+                .query("RELATE $src -> memory_link -> $tgt SET
                     link_type = $link_type,
                     direction = $direction,
                     sync_mode = $sync_mode,
-                    linked_memory_id = type::thing('memories', $copy_id)")
-                .bind(("source_mem_id", source_memory_id.to_string()))
-                .bind(("target_conv_id", target_conversation_id.to_string()))
+                    linked_memory_id = $copy_thing")
+                .bind(("src", src_thing))
+                .bind(("tgt", tgt_thing))
                 .bind(("link_type", link_type.to_string()))
                 .bind(("direction", direction.to_string()))
                 .bind(("sync_mode", sync_mode.to_string()))
-                .bind(("copy_id", copy_id.clone()))
+                .bind(("copy_thing", copy_thing))
                 .await?;
             result.take(0)?
         } else {
             let mut result = db
-                .query("RELATE type::thing('memories', $source_mem_id) -> memory_link -> type::thing('conversations', $target_conv_id) SET
+                .query("RELATE $src -> memory_link -> $tgt SET
                     link_type = $link_type,
                     direction = $direction,
                     sync_mode = $sync_mode")
-                .bind(("source_mem_id", source_memory_id.to_string()))
-                .bind(("target_conv_id", target_conversation_id.to_string()))
+                .bind(("src", src_thing))
+                .bind(("tgt", tgt_thing))
                 .bind(("link_type", link_type.to_string()))
                 .bind(("direction", direction.to_string()))
                 .bind(("sync_mode", sync_mode.to_string()))

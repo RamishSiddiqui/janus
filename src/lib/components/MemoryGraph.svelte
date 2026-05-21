@@ -3,12 +3,14 @@
   import '@xyflow/svelte/dist/style.css';
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import { shareMemory, unlinkMemory, deleteMemory } from '$lib/services/ipc';
   import Dagre from '@dagrejs/dagre';
   import CharacterNode from './nodes/CharacterNode.svelte';
   import ConversationNode from './nodes/ConversationNode.svelte';
   import MemoryNode from './nodes/MemoryNode.svelte';
   import SharingEdge from './edges/SharingEdge.svelte';
   import TreeEdge from './edges/TreeEdge.svelte';
+  import MemoryActionPanel from './MemoryActionPanel.svelte';
 
   interface Props {
     data: MemoryGraphData;
@@ -17,6 +19,54 @@
   }
 
   let { data, avatars = {}, onRefresh }: Props = $props();
+
+  /* ── Action Panel state ── */
+  let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
+  let selectedMemoryLinks = $derived(
+    selectedMemory
+      ? data.links.filter(l => l.source_memory_id === selectedMemory!.id)
+      : []
+  );
+
+  function handleNodeClick({ event, node }: { event: MouseEvent | TouchEvent; node: Node }) {
+    // Only respond to memory nodes
+    if (node.type !== 'memory') return;
+    const memId = node.id.replace('mem-', '');
+    const mem = data.memories.find(m => m.id === memId);
+    if (mem) selectedMemory = mem;
+  }
+
+  function handlePanelClose() {
+    selectedMemory = null;
+  }
+
+  async function handlePanelShare(config: {
+    sourceMemoryId: string;
+    targetConversationId: string;
+    linkType: 'copy' | 'sync';
+    direction: 'one_way' | 'two_way';
+    syncMode: 'auto' | 'manual';
+  }) {
+    await shareMemory(
+      config.sourceMemoryId,
+      config.targetConversationId,
+      config.linkType,
+      config.direction,
+      config.syncMode,
+    );
+    onRefresh();
+  }
+
+  async function handlePanelUnlink(linkId: string) {
+    await unlinkMemory(linkId);
+    onRefresh();
+  }
+
+  async function handlePanelDelete(memoryId: string) {
+    await deleteMemory(memoryId);
+    selectedMemory = null;
+    onRefresh();
+  }
 
   const nodeTypes: any = {
     character: CharacterNode,
@@ -366,6 +416,7 @@
     defaultEdgeOptions={{ type: 'smoothstep' }}
     elevateEdgesOnSelect={false}
     {edgeTypes}
+    onnodeclick={handleNodeClick}
   >
     <Controls position="bottom-left" />
     <Background variant={BackgroundVariant.Dots} gap={24} size={0.6} patternColor="rgba(139,92,246,0.06)" />
@@ -375,6 +426,17 @@
       position="bottom-right"
     />
   </SvelteFlow>
+
+  <!-- Memory Action Panel -->
+  <MemoryActionPanel
+    memory={selectedMemory}
+    links={data.links}
+    conversations={data.conversations}
+    onClose={handlePanelClose}
+    onShare={handlePanelShare}
+    onUnlink={handlePanelUnlink}
+    onDelete={handlePanelDelete}
+  />
 
   <!-- Legend overlay -->
   <div class="legend">

@@ -16,11 +16,15 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
     if already_seeded {
         return Ok(());
     }
+    // All seed data is dev-only. Production ships blank.
+    #[cfg(debug_assertions)]
+    {
+        seed_providers(db).await?;
+        seed_characters(db).await?;
+        seed_memories(db).await?;
+        tracing::info!("Seeded dev data (providers, characters, memories)");
+    }
 
-    seed_providers(db).await?;
-    seed_characters(db).await?;
-
-    tracing::info!("Seeded default providers and characters");
     Ok(())
 }
 
@@ -49,7 +53,7 @@ async fn seed_providers(db: &Surreal<Db>) -> Result<(), MythicError> {
         .bind(("data", json!({
             "name": "SiliconFlow",
             "provider_type": "image",
-            "adapter": "siliconflow",
+            "adapter": "silicon_flow",
             "config": {
                 "base_url": "https://api.siliconflow.cn/v1",
                 "model": "FLUX.1-schnell",
@@ -64,7 +68,7 @@ async fn seed_providers(db: &Surreal<Db>) -> Result<(), MythicError> {
         .bind(("data", json!({
             "name": "SiliconFlow",
             "provider_type": "video",
-            "adapter": "siliconflow",
+            "adapter": "silicon_flow",
             "config": {
                 "base_url": "https://api.siliconflow.cn/v1",
                 "model": "Wan2.1-T2V-14B",
@@ -336,5 +340,162 @@ async fn seed_characters(db: &Surreal<Db>) -> Result<(), MythicError> {
         "avatar_path": "avatars/echo.jpg"
     })).await?;
 
+    Ok(())
+}
+
+/// Seeds conversations, memories, and memory links for demo/testing.
+async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
+    // ── Conversations ──
+    let conversations = vec![
+        ("conv-aria-main",     "Aria — College Arrival",       "char-aria-silverleaf"),
+        ("conv-aria-branch1",  "Aria — Dark Forest Encounter", "char-aria-silverleaf"),
+        ("conv-aria-branch2",  "Aria — Tournament Arc",        "char-aria-silverleaf"),
+        ("conv-aria-branch3",  "Aria — Crystal Caverns",       "char-aria-silverleaf"),
+        ("conv-roran-main",    "Roran — Forge Apprenticeship", "char-roran-ironfist"),
+        ("conv-roran-branch",  "Roran — Dragon Slayer Route",  "char-roran-ironfist"),
+        ("conv-roran-branch2", "Roran — Runic Mastery",        "char-roran-ironfist"),
+        ("conv-finn-main",     "Finn — Shadow Academy",        "char-finn-shadowcloak"),
+        ("conv-finn-branch",   "Finn — The Heist",             "char-finn-shadowcloak"),
+        ("conv-saff-main",     "Saffron — Library of Echoes",  "char-saffron-emberheart"),
+        ("conv-saff-b1",       "Saffron — Desert Expedition",  "char-saffron-emberheart"),
+        ("conv-saff-b2",       "Saffron — Astral Projection",  "char-saffron-emberheart"),
+        ("conv-saff-b3",       "Saffron — The Lost Archive",   "char-saffron-emberheart"),
+        ("conv-shared-forge",  "The Forge Alliance",           "char-aria-silverleaf"),
+        ("conv-shared-heist",  "Midnight Heist",               "char-aria-silverleaf"),
+    ];
+    for (id, title, char_id) in &conversations {
+        db.query("CREATE type::thing('conversations', $id) CONTENT { title: $title, character_id: type::thing('characters', $char_id) }")
+            .bind(("id", id.to_string())).bind(("title", title.to_string())).bind(("char_id", char_id.to_string()))
+            .await?;
+    }
+
+    // ── Set shared_character_ids for multi-character conversations ──
+    // The Forge Alliance: Aria (primary) + Roran
+    db.query("UPDATE type::thing('conversations', 'conv-shared-forge') SET shared_character_ids = 'char-roran-ironfist'")
+        .await?;
+    // Midnight Heist: Aria (primary) + Finn
+    db.query("UPDATE type::thing('conversations', 'conv-shared-heist') SET shared_character_ids = 'char-finn-shadowcloak'")
+        .await?;
+
+    // ── Canon memories (character-level) ──
+    let canon: Vec<(&str, &str, &str, &str, i32)> = vec![
+        ("mem-aria-c1", "char-aria-silverleaf", "[trait] Half-elf with green eyes, pointed ears, untamed elemental magic. She feels the pulse of mana like a second heartbeat.", "user", 1),
+        ("mem-aria-c2", "char-aria-silverleaf", "[relationship] Has a complicated relationship with her elven mother who abandoned her at the College gates at age seven.", "user", 2),
+        ("mem-aria-c3", "char-aria-silverleaf", "[event] Accidentally destroyed a classroom with uncontrolled fire magic during orientation — earned the nickname \"Cinder\".", "auto", 1),
+        ("mem-aria-c4", "char-aria-silverleaf", "[goal] Prove that half-elves can master elemental convergence — a feat no mixed-blood has achieved in three centuries.", "user", 1),
+        ("mem-roran-c1", "char-roran-ironfist", "[trait] Son of a royal blacksmith, broad-shouldered, calloused hands. Speaks with quiet intensity.", "user", 1),
+        ("mem-roran-c2", "char-roran-ironfist", "[goal] Wants to forge an unbreakable sword using runic enchantment — a technique lost for centuries.", "user", 1),
+        ("mem-roran-c3", "char-roran-ironfist", "[relationship] Respects Aria for her determination but worries her magic is too unstable for combat.", "user", 1),
+        ("mem-lila-c1", "char-lila-stormwhisper", "[trait] Farm girl who once commanded lightning. Freckled, red-haired, fiercely stubborn.", "user", 1),
+        ("mem-lila-c2", "char-lila-stormwhisper", "[event] Was struck by lightning at age twelve — instead of dying, she absorbed the bolt.", "auto", 1),
+        ("mem-lila-c3", "char-lila-stormwhisper", "[goal] Prove she belongs at the College despite having no formal magical education.", "user", 1),
+        ("mem-lila-c4", "char-lila-stormwhisper", "[relationship] Looks up to Saffron as a mentor figure — the first person who took her seriously.", "user", 1),
+        ("mem-finn-c1", "char-finn-shadowcloak", "[trait] Charming rogue from a line of thieves. Mastering illusion magic to enhance his natural stealth.", "user", 1),
+        ("mem-finn-c2", "char-finn-shadowcloak", "[fact] Finn's family sigil is a crescent moon — each member earns it by completing their first solo heist.", "user", 1),
+        ("mem-saff-c1", "char-saffron-emberheart", "[trait] Brilliant scholar who has read more books than half the faculty. Obsessed with recovering lost magic.", "user", 1),
+        ("mem-saff-c2", "char-saffron-emberheart", "[goal] Find the Codex Ignis — a legendary text believed to contain the secret of elemental fusion.", "user", 1),
+    ];
+    for (id, char_id, content, source, version) in &canon {
+        db.query("CREATE type::thing('memories', $id) CONTENT { character_id: type::thing('characters', $char_id), content: $content, source: $source, version: $version, is_canon: true }")
+            .bind(("id", id.to_string())).bind(("char_id", char_id.to_string()))
+            .bind(("content", content.to_string())).bind(("source", source.to_string())).bind(("version", *version))
+            .await?;
+    }
+
+    // ── Conversation-scoped memories ──
+    // (id, char_id, conv_id, content, source, parent_id, version)
+    let mems: Vec<(&str, &str, &str, &str, &str, Option<&str>, i32)> = vec![
+        ("mem-aria-m1","char-aria-silverleaf","conv-aria-main","[event] Met the user at the College courtyard while carrying a stack of elemental theory textbooks.","auto",Some("mem-aria-c1"),1),
+        ("mem-aria-m2","char-aria-silverleaf","conv-aria-main","[relationship] User helped Aria find the Elemental Studies hall — she felt grateful and opened up about her past.","auto",None,1),
+        ("mem-aria-m3","char-aria-silverleaf","conv-aria-main","[preference] User prefers to be called by their first name, not title.","user",None,1),
+        ("mem-aria-b1-1","char-aria-silverleaf","conv-aria-branch1","[event] Aria and the user ventured into the Forbidden Forest to gather moonpetal herbs for a potion exam.","auto",Some("mem-aria-c1"),1),
+        ("mem-aria-b1-2","char-aria-silverleaf","conv-aria-branch1","[event] Encountered a shadow wraith — Aria discovered she can channel raw emotion into elemental bursts.","auto",None,1),
+        ("mem-aria-b1-3","char-aria-silverleaf","conv-aria-branch1","[relationship] User saved Aria from the shadow wraith, creating a deep bond of trust.","user",None,3),
+        ("mem-aria-b1-4","char-aria-silverleaf","conv-aria-branch1","[discovery] Found an ancient Elven waystone in the forest that reacted to Aria's half-blood magic.","auto",Some("mem-aria-b1-2"),1),
+        ("mem-aria-b2-1","char-aria-silverleaf","conv-aria-branch2","[event] Aria entered the College tournament to prove half-elves can compete at the highest level.","auto",Some("mem-aria-c3"),1),
+        ("mem-aria-b2-2","char-aria-silverleaf","conv-aria-branch2","[event] Defeated a pure-blood elf student using a creative fusion of fire and ice — shocking the judges.","auto",None,1),
+        ("mem-aria-b2-3","char-aria-silverleaf","conv-aria-branch2","[goal] Wants to reach the tournament finals to earn a direct audience with the Archmage.","user",Some("mem-aria-c4"),1),
+        ("mem-aria-b3-1","char-aria-silverleaf","conv-aria-branch3","[event] Explored the Crystal Caverns beneath the College, where mana crystallizes into physical form.","auto",None,1),
+        ("mem-aria-b3-2","char-aria-silverleaf","conv-aria-branch3","[discovery] Aria's half-elf blood causes mana crystals to resonate at unique frequencies — potentially a new school of magic.","auto",Some("mem-aria-b3-1"),1),
+        ("mem-aria-b3-3","char-aria-silverleaf","conv-aria-branch3","[fact] The Crystal Caverns are forbidden to students, but Aria found a secret entrance through the old library.","user",None,1),
+        ("mem-roran-m1","char-roran-ironfist","conv-roran-main","[event] User visited Roran at the College forge and discussed ancient metallurgy techniques.","auto",Some("mem-roran-c1"),1),
+        ("mem-roran-m2","char-roran-ironfist","conv-roran-main","[discovery] Found a rare runestone that may hold the key to Aetherium alloy — a metal that bonds with magic.","user",None,3),
+        ("mem-roran-m3","char-roran-ironfist","conv-roran-main","[preference] Roran prefers working in silence; background noise disrupts his attunement to the metal.","auto",None,1),
+        ("mem-roran-br1","char-roran-ironfist","conv-roran-branch","[event] Roran took a dangerous quest to slay a dragon threatening the village near the College.","auto",Some("mem-roran-c2"),1),
+        ("mem-roran-br2","char-roran-ironfist","conv-roran-branch","[trait] Roran gained a scar across his right cheek from the dragon's claw — wears it with pride.","auto",None,1),
+        ("mem-roran-br3","char-roran-ironfist","conv-roran-branch","[event] Used the dragon's heartfire to temper his first runic blade — it glows faintly blue.","auto",Some("mem-roran-br1"),1),
+        ("mem-roran-b2-1","char-roran-ironfist","conv-roran-branch2","[discovery] Deciphered an ancient runic formula that allows metal to absorb elemental energy without shattering.","auto",Some("mem-roran-m2"),1),
+        ("mem-roran-b2-2","char-roran-ironfist","conv-roran-branch2","[event] Successfully enchanted a practice dagger — but the rune destabilized after three uses.","auto",Some("mem-roran-b2-1"),1),
+        ("mem-finn-m1","char-finn-shadowcloak","conv-finn-main","[event] Enrolled in the Shadow Academy's covert ops program under a false identity.","auto",Some("mem-finn-c1"),1),
+        ("mem-finn-m2","char-finn-shadowcloak","conv-finn-main","[event] Passed the first trial by pickpocketing the headmaster's seal without detection.","auto",Some("mem-finn-m1"),1),
+        ("mem-finn-m3","char-finn-shadowcloak","conv-finn-main","[discovery] Learned that the Academy is a front for an underground resistance movement.","auto",Some("mem-finn-m2"),4),
+        ("mem-finn-m4","char-finn-shadowcloak","conv-finn-main","[relationship] Befriended a fellow student named Mira who is secretly a royal spy.","user",Some("mem-finn-m3"),1),
+        ("mem-finn-m5","char-finn-shadowcloak","conv-finn-main","[goal] Must decide whether to expose the resistance or join their cause.","user",Some("mem-finn-m3"),1),
+        ("mem-finn-h1","char-finn-shadowcloak","conv-finn-branch","[event] Finn planned a heist on the College treasury to steal a shadow crystal.","auto",Some("mem-finn-c2"),1),
+        ("mem-finn-h2","char-finn-shadowcloak","conv-finn-branch","[event] The heist went sideways — Aria Silverleaf caught him, but chose not to report him.","auto",Some("mem-finn-h1"),1),
+        ("mem-saff-m1","char-saffron-emberheart","conv-saff-main","[event] Discovered a hidden section in the College library that only reveals itself at midnight.","auto",Some("mem-saff-c1"),1),
+        ("mem-saff-m2","char-saffron-emberheart","conv-saff-main","[discovery] Found a fragment of the Codex Ignis — it mentions a key hidden in the Crystal Caverns.","user",Some("mem-saff-m1"),1),
+        ("mem-saff-d1","char-saffron-emberheart","conv-saff-b1","[event] Led an expedition to the Scorched Wastes, following a map from the Codex fragment.","auto",Some("mem-saff-c2"),1),
+        ("mem-saff-d2","char-saffron-emberheart","conv-saff-b1","[fact] The desert ruins contain inscriptions in pre-Elven script that only Saffron can partially read.","auto",None,1),
+        ("mem-saff-a1","char-saffron-emberheart","conv-saff-b2","[event] Attempted astral projection to commune with the original authors of the Codex — partially succeeded.","auto",Some("mem-saff-m2"),1),
+        ("mem-saff-l1","char-saffron-emberheart","conv-saff-b3","[discovery] Located the Lost Archive beneath the desert — a vast underground library sealed for millennia.","auto",Some("mem-saff-d1"),1),
+        ("mem-saff-l2","char-saffron-emberheart","conv-saff-b3","[relationship] Met the Archive's guardian — an ancient golem that tests visitors with riddles.","user",None,1),
+        ("mem-aria-forge1","char-aria-silverleaf","conv-shared-forge","[event] Aria asked Roran to forge a focus crystal amplifier for her elemental convergence experiments.","auto",Some("mem-aria-c4"),1),
+        ("mem-aria-forge2","char-aria-silverleaf","conv-shared-forge","[relationship] Aria and Roran developed mutual respect — he tempers her recklessness, she inspires his ambition.","user",None,1),
+        ("mem-roran-forge1","char-roran-ironfist","conv-shared-forge","[event] Roran agreed to help Aria, realizing her elemental magic could be the key to stable runic enchantment.","auto",Some("mem-roran-c2"),1),
+        ("mem-roran-forge2","char-roran-ironfist","conv-shared-forge","[discovery] The fusion of Aria's fire magic and Roran's runecraft created a prototype that held for ten minutes.","auto",Some("mem-roran-forge1"),1),
+        ("mem-aria-heist1","char-aria-silverleaf","conv-shared-heist","[event] Caught Finn attempting to steal from the restricted section. Chose to help him instead of reporting.","auto",None,1),
+        ("mem-aria-heist2","char-aria-silverleaf","conv-shared-heist","[relationship] Finn owes Aria a favor — an uneasy alliance between a mage and a rogue.","user",Some("mem-aria-heist1"),1),
+        ("mem-finn-heist1","char-finn-shadowcloak","conv-shared-heist","[event] Aria caught Finn during the heist but offered a deal — she keeps quiet if he teaches her shadow step.","auto",Some("mem-finn-c1"),1),
+        ("mem-finn-heist2","char-finn-shadowcloak","conv-shared-heist","[fact] Aria's elemental aura makes her impossible to sneak up on — Finn finds this both annoying and impressive.","auto",None,1),
+    ];
+    for (id, char_id, conv_id, content, source, parent_id, version) in &mems {
+        if let Some(pid) = parent_id {
+            db.query("CREATE type::thing('memories', $id) CONTENT { character_id: type::thing('characters', $char_id), conversation_id: type::thing('conversations', $conv_id), content: $content, source: $source, parent_id: type::thing('memories', $pid), version: $version, is_canon: false }")
+                .bind(("id", id.to_string())).bind(("char_id", char_id.to_string())).bind(("conv_id", conv_id.to_string()))
+                .bind(("content", content.to_string())).bind(("source", source.to_string())).bind(("pid", pid.to_string())).bind(("version", *version))
+                .await?;
+        } else {
+            db.query("CREATE type::thing('memories', $id) CONTENT { character_id: type::thing('characters', $char_id), conversation_id: type::thing('conversations', $conv_id), content: $content, source: $source, version: $version, is_canon: false }")
+                .bind(("id", id.to_string())).bind(("char_id", char_id.to_string())).bind(("conv_id", conv_id.to_string()))
+                .bind(("content", content.to_string())).bind(("source", source.to_string())).bind(("version", *version))
+                .await?;
+        }
+    }
+
+    // ── Memory links (RELATE edges) ──
+    let links: Vec<(&str, &str, &str, &str, &str, Option<&str>)> = vec![
+        ("mem-aria-c1","conv-aria-branch1","copy","one_way","manual",Some("mem-aria-b1-1")),
+        ("mem-aria-c2","conv-aria-branch2","copy","one_way","manual",Some("mem-aria-b2-1")),
+        ("mem-aria-m2","conv-aria-branch2","sync","one_way","auto",None),
+        ("mem-aria-b1-4","conv-aria-branch3","sync","two_way","auto",Some("mem-aria-b3-2")),
+        ("mem-roran-m2","conv-roran-branch","sync","two_way","auto",None),
+        ("mem-roran-m2","conv-roran-branch2","copy","one_way","manual",Some("mem-roran-b2-1")),
+        ("mem-saff-m2","conv-saff-b1","sync","one_way","auto",None),
+        ("mem-saff-d1","conv-saff-b3","copy","one_way","manual",Some("mem-saff-l1")),
+        ("mem-saff-m2","conv-saff-b2","sync","two_way","auto",Some("mem-saff-a1")),
+        ("mem-aria-m2","conv-shared-forge","sync","two_way","auto",Some("mem-roran-forge2")),
+        ("mem-finn-h2","conv-shared-heist","copy","one_way","manual",Some("mem-finn-heist1")),
+        ("mem-finn-m3","conv-finn-branch","sync","one_way","auto",None),
+    ];
+    for (src, tgt, lt, dir, sm, lm) in &links {
+        let src_thing = surrealdb::sql::Thing::from(("memories", src.to_owned()));
+        let tgt_thing = surrealdb::sql::Thing::from(("conversations", tgt.to_owned()));
+        if let Some(linked) = lm {
+            let lm_thing = surrealdb::sql::Thing::from(("memories", linked.to_owned()));
+            db.query("RELATE $src -> memory_link -> $tgt SET link_type=$lt, direction=$dir, sync_mode=$sm, linked_memory_id=$lm")
+                .bind(("src", src_thing)).bind(("tgt", tgt_thing))
+                .bind(("lt", lt.to_string())).bind(("dir", dir.to_string())).bind(("sm", sm.to_string())).bind(("lm", lm_thing))
+                .await?;
+        } else {
+            db.query("RELATE $src -> memory_link -> $tgt SET link_type=$lt, direction=$dir, sync_mode=$sm")
+                .bind(("src", src_thing)).bind(("tgt", tgt_thing))
+                .bind(("lt", lt.to_string())).bind(("dir", dir.to_string())).bind(("sm", sm.to_string()))
+                .await?;
+        }
+    }
+
+    tracing::info!("Seeded {} conversations, {} canon + {} conversation memories, {} memory links",
+        conversations.len(), canon.len(), mems.len(), links.len());
     Ok(())
 }
