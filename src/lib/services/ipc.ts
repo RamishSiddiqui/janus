@@ -351,6 +351,18 @@ export interface ModelEntry {
   model_type: string;
   context_length: number | null;
   enabled: boolean;
+  // Rich metadata (populated from OpenRouter API)
+  display_name: string | null;
+  description: string | null;
+  pricing_prompt: string | null;
+  pricing_completion: string | null;
+  is_free: boolean;
+  max_completion_tokens: number | null;
+  input_modalities: string[];
+  output_modalities: string[];
+  supports_tools: boolean;
+  supports_vision: boolean;
+  supports_reasoning: boolean;
 }
 
 export async function listAllModels(): Promise<ModelEntry[]> {

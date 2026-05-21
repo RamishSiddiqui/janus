@@ -253,10 +253,6 @@
                   <Icon name="alert-circle" size={14} color="#F43F5E" />
                   <span class="error-label">Generation failed</span>
                 </div>
-                <button class="retry-btn" onclick={retryLastMessage}>
-                  <Icon name="refresh-cw" size={12} color="#FFFFFF" />
-                  <span>Retry</span>
-                </button>
               </div>
             {:else if message.isStreaming}
               <!-- During streaming: use direct DOM updates via $effect (no Svelte diffing) -->
@@ -396,10 +392,6 @@
                   <Icon name="alert-circle" size={14} color="#F43F5E" />
                   <span class="error-label">Failed to send</span>
                 </div>
-                <button class="retry-btn" onclick={retryLastMessage}>
-                  <Icon name="refresh-cw" size={12} color="#FFFFFF" />
-                  <span>Retry</span>
-                </button>
               </div>
             {:else}
               {@html formatRoleplayContent(message.content)}
@@ -521,22 +513,6 @@
     font-size: 13px; color: #c8c8e0; line-height: 1.5;
     opacity: 0.7;
   }
-  .retry-btn {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 6px 14px; border-radius: 8px;
-    background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(191,64,255,0.15));
-    border: 1px solid rgba(139,92,246,0.25);
-    color: #e0e0f0; font-size: 12px; font-weight: 600;
-    font-family: var(--font-body); cursor: pointer;
-    transition: all 200ms ease; width: fit-content;
-  }
-  .retry-btn:hover {
-    background: linear-gradient(135deg, rgba(139,92,246,0.35), rgba(191,64,255,0.25));
-    border-color: rgba(139,92,246,0.4);
-    box-shadow: 0 2px 12px rgba(139,92,246,0.2);
-    transform: translateY(-1px);
-  }
-  .retry-btn:active { transform: translateY(0); }
   .user-error { align-items: flex-end; }
 
   /* ───────────────────────────────────────────────
@@ -701,14 +677,17 @@
   }
   .msg-text.dim { opacity: 0.2; filter: blur(1px); }
 
-  /* Roleplay action text — italic, muted, spaced */
+  /* Roleplay action text — italic, muted */
   .msg-text :global(.rp-action) {
     color: rgba(139, 139, 175, 0.72);
     font-style: italic;
-    display: block;
-    margin: 6px 0;
     font-size: 13.5px;
     letter-spacing: 0.02em;
+  }
+  /* Block-level action paragraphs (set by formatter for full-line actions) */
+  .msg-text :global(.rp-action-block) {
+    display: block;
+    margin: 6px 0;
   }
   .user-text {
     color: rgba(255, 255, 255, 0.96);

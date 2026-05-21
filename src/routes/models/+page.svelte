@@ -18,30 +18,55 @@
   let filterProvider = $state('all');
   let filterType = $state('all');
   let filterStatus = $state('all');
+  let filterPricing = $state('all');
   let filterSearch = $state('');
+  let filterCaps = $state<Set<string>>(new Set());
 
-  // Toggling state
+  // Sorting
+  let sortBy = $state<'name' | 'price-asc' | 'price-desc' | 'context-desc' | 'context-asc'>('name');
+
+  // Toggling / expanded
   let togglingId = $state<string | null>(null);
+  let expandedId = $state<string | null>(null);
 
-  // Derived filtered list
+  // Derived filtered + sorted list
   let filtered = $derived(() => {
     let list = allModels;
     if (filterProvider !== 'all') list = list.filter(m => m.provider_id === filterProvider);
     if (filterType !== 'all') list = list.filter(m => m.model_type === filterType);
     if (filterStatus === 'enabled') list = list.filter(m => m.enabled);
     else if (filterStatus === 'disabled') list = list.filter(m => !m.enabled);
+    if (filterPricing === 'free') list = list.filter(m => m.is_free);
+    else if (filterPricing === 'paid') list = list.filter(m => !m.is_free);
+    if (filterCaps.has('vision')) list = list.filter(m => m.supports_vision);
+    if (filterCaps.has('tools')) list = list.filter(m => m.supports_tools);
+    if (filterCaps.has('reasoning')) list = list.filter(m => m.supports_reasoning);
     if (filterSearch.trim()) {
       const q = filterSearch.toLowerCase();
-      list = list.filter(m => m.model_id.toLowerCase().includes(q) || m.provider_name.toLowerCase().includes(q));
+      list = list.filter(m =>
+        m.model_id.toLowerCase().includes(q) ||
+        m.provider_name.toLowerCase().includes(q) ||
+        (m.display_name && m.display_name.toLowerCase().includes(q)) ||
+        (m.description && m.description.toLowerCase().includes(q))
+      );
+    }
+    // Sort
+    list = [...list];
+    switch (sortBy) {
+      case 'name': list.sort((a, b) => (a.display_name ?? a.model_id).localeCompare(b.display_name ?? b.model_id)); break;
+      case 'price-asc': list.sort((a, b) => priceNum(a.pricing_prompt) - priceNum(b.pricing_prompt)); break;
+      case 'price-desc': list.sort((a, b) => priceNum(b.pricing_prompt) - priceNum(a.pricing_prompt)); break;
+      case 'context-desc': list.sort((a, b) => (b.context_length ?? 0) - (a.context_length ?? 0)); break;
+      case 'context-asc': list.sort((a, b) => (a.context_length ?? 0) - (b.context_length ?? 0)); break;
     }
     return list;
   });
 
   let enabledCount = $derived(allModels.filter(m => m.enabled).length);
+  let freeCount = $derived(allModels.filter(m => m.is_free).length);
+  let maxCtx = $derived(Math.max(...allModels.map(m => m.context_length ?? 0), 1));
 
-  onMount(async () => {
-    await loadAll();
-  });
+  onMount(async () => { await loadAll(); });
 
   async function loadAll() {
     isLoading = true;
@@ -70,30 +95,64 @@
         x.provider_id === m.provider_id && x.model_id === m.model_id
           ? { ...x, enabled: newState } : x
       );
-      success(newState ? `Enabled ${m.model_id}` : `Disabled ${m.model_id}`);
+      success(newState ? `Enabled ${m.display_name ?? m.model_id}` : `Disabled ${m.display_name ?? m.model_id}`);
     } catch (err) { handleIpcError('toggle model', err); }
     togglingId = null;
   }
 
-  function ctxLabel(n: number | null) {
-    if (!n) return '—';
-    return n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
+  function toggleCap(cap: string) {
+    const next = new Set(filterCaps);
+    if (next.has(cap)) next.delete(cap); else next.add(cap);
+    filterCaps = next;
   }
 
-  function adapterBadgeColor(a: string) {
+  function priceNum(s: string | null): number {
+    if (!s) return 999;
+    const n = parseFloat(s);
+    return isNaN(n) ? 999 : n;
+  }
+
+  function formatPrice(s: string | null): string {
+    if (!s || s === '0') return 'Free';
+    const perToken = parseFloat(s);
+    if (isNaN(perToken)) return '—';
+    const perMillion = perToken * 1_000_000;
+    if (perMillion < 0.01) return '<$0.01';
+    if (perMillion < 1) return `$${perMillion.toFixed(2)}`;
+    return `$${perMillion.toFixed(2)}`;
+  }
+
+  function ctxLabel(n: number | null): string {
+    if (!n) return '—';
+    return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
+  }
+
+  function ctxPercent(n: number | null): number {
+    if (!n || !maxCtx) return 0;
+    return Math.min((n / maxCtx) * 100, 100);
+  }
+
+  function modelSlug(id: string): string {
+    return id.includes('/') ? id.split('/').slice(1).join('/') : id;
+  }
+
+  function modelOrg(id: string): string {
+    return id.includes('/') ? id.split('/')[0] : '';
+  }
+
+  function adapterColor(a: string): string {
     const map: Record<string, string> = {
       open_router: '#8B5CF6', ollama: '#10B981',
       open_ai_compatible: '#3B82F6', openai_compatible: '#3B82F6',
-      silicon_flow: '#F59E0B',
+      silicon_flow: '#F59E0B', anthropic: '#D97706', gemini: '#4285F4',
+      deepseek: '#06B6D4', groq: '#F97316', cohere: '#8B5CF6',
+      perplexity: '#10B981', xai: '#EF4444', together: '#6366F1',
     };
     return map[a] ?? '#6b6b8a';
   }
 
   function typeIcon(t: string) {
     return t === 'llm' ? 'message-circle' : t === 'image' ? 'image' : 'video';
-  }
-  function typeColor(t: string) {
-    return t === 'llm' ? '#8B5CF6' : t === 'image' ? '#bf40ff' : '#00f2ff';
   }
 </script>
 
@@ -104,9 +163,17 @@
   <header class="hdr">
     <div class="hdr-left">
       <h1 class="hdr-title">Models</h1>
-      <span class="hdr-sub">
-        {#if isLoading}Loading…{:else}{allModels.length} available · <span class="enabled-count">{enabledCount} enabled</span>{/if}
-      </span>
+      <div class="hdr-stats">
+        {#if isLoading}
+          <span class="stat">Loading…</span>
+        {:else}
+          <span class="stat">{allModels.length} <span class="stat-label">available</span></span>
+          <span class="stat-sep">·</span>
+          <span class="stat stat-enabled">{enabledCount} <span class="stat-label">enabled</span></span>
+          <span class="stat-sep">·</span>
+          <span class="stat stat-free">{freeCount} <span class="stat-label">free</span></span>
+        {/if}
+      </div>
     </div>
     <button class="btn-refresh" onclick={loadAll} disabled={isLoading} aria-label="Refresh models">
       <Icon name="refresh-cw" size={13} color={isLoading ? '#4a4a6a' : '#8B5CF6'} />
@@ -116,38 +183,74 @@
 
   <!-- Sticky Filter Bar -->
   <div class="filter-bar">
-    <!-- Search -->
-    <div class="search-wrap">
-      <svg class="search-icon" viewBox="0 0 20 20" fill="none">
-        <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M12.5 12.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-      <input class="search-input" bind:value={filterSearch} placeholder="Search models…" />
-      {#if filterSearch}<button class="search-clear" onclick={() => filterSearch = ''}>✕</button>{/if}
+    <!-- Row 1: Search + Provider + Sort -->
+    <div class="filter-row">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none">
+          <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M12.5 12.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input class="search-input" bind:value={filterSearch} placeholder="Search models, providers…" />
+        {#if filterSearch}<button class="search-clear" onclick={() => filterSearch = ''}>✕</button>{/if}
+      </div>
+
+      <select class="filter-select" bind:value={filterProvider} aria-label="Filter by provider">
+        <option value="all">All Providers</option>
+        {#each providers as p}<option value={p.id}>{p.name}</option>{/each}
+      </select>
+
+      <select class="filter-select" bind:value={sortBy} aria-label="Sort by">
+        <option value="name">Sort: Name A→Z</option>
+        <option value="price-asc">Sort: Price Low→High</option>
+        <option value="price-desc">Sort: Price High→Low</option>
+        <option value="context-desc">Sort: Context ↓</option>
+        <option value="context-asc">Sort: Context ↑</option>
+      </select>
     </div>
 
-    <!-- Provider filter -->
-    <select class="filter-select" bind:value={filterProvider} aria-label="Filter by provider">
-      <option value="all">All Providers</option>
-      {#each providers as p}<option value={p.id}>{p.name}</option>{/each}
-    </select>
+    <!-- Row 2: Chips -->
+    <div class="filter-row">
+      <div class="chip-group" role="group" aria-label="Filter by type">
+        {#each ['all','llm','image','video'] as t}
+          <button class="chip" class:chip-active={filterType === t} onclick={() => filterType = t}>
+            {#if t === 'all'}All Types{:else if t === 'llm'}💬 Chat{:else if t === 'image'}🖼 Image{:else}🎬 Video{/if}
+          </button>
+        {/each}
+      </div>
 
-    <!-- Type chips -->
-    <div class="chip-group" role="group" aria-label="Filter by type">
-      {#each ['all','llm','image','video'] as t}
-        <button class="chip" class:chip-active={filterType === t} onclick={() => filterType = t}>
-          {t === 'all' ? 'All Types' : t === 'llm' ? '💬 Chat' : t === 'image' ? '🖼 Image' : '🎬 Video'}
-        </button>
-      {/each}
-    </div>
+      <div class="chip-divider"></div>
 
-    <!-- Status chips -->
-    <div class="chip-group" role="group" aria-label="Filter by status">
-      {#each [['all','All'],['enabled','Enabled'],['disabled','Disabled']] as [val, label]}
-        <button class="chip" class:chip-active={filterStatus === val} onclick={() => filterStatus = val}>
-          {label}
+      <div class="chip-group" role="group" aria-label="Filter by status">
+        {#each [['all','All'],['enabled','Enabled'],['disabled','Disabled']] as [val, label]}
+          <button class="chip" class:chip-active={filterStatus === val} onclick={() => filterStatus = val}>
+            {label}
+          </button>
+        {/each}
+      </div>
+
+      <div class="chip-divider"></div>
+
+      <div class="chip-group" role="group" aria-label="Filter by pricing">
+        {#each [['all','All Pricing'],['free','🆓 Free'],['paid','💰 Paid']] as [val, label]}
+          <button class="chip" class:chip-active={filterPricing === val} onclick={() => filterPricing = val}>
+            {label}
+          </button>
+        {/each}
+      </div>
+
+      <div class="chip-divider"></div>
+
+      <div class="chip-group" role="group" aria-label="Filter by capabilities">
+        <button class="chip cap-chip" class:chip-active={filterCaps.has('vision')} onclick={() => toggleCap('vision')}>
+          👁 Vision
         </button>
-      {/each}
+        <button class="chip cap-chip" class:chip-active={filterCaps.has('tools')} onclick={() => toggleCap('tools')}>
+          🔧 Tools
+        </button>
+        <button class="chip cap-chip" class:chip-active={filterCaps.has('reasoning')} onclick={() => toggleCap('reasoning')}>
+          🧠 Reasoning
+        </button>
+      </div>
     </div>
   </div>
 
@@ -158,31 +261,35 @@
         <div class="thead">
           <span class="th th-model">Model</span>
           <span class="th th-provider">Provider</span>
-          <span class="th th-type">Type</span>
+          <span class="th th-caps">Capabilities</span>
+          <span class="th th-price">Input / Output</span>
           <span class="th th-ctx">Context</span>
-          <span class="th th-status">Status</span>
           <span class="th th-action"></span>
         </div>
-        {#each Array(8) as _, i}
+        {#each Array(10) as _, i}
           <div class="trow skeleton-row" style="animation-delay:{i*40}ms">
             <Skeleton variant="text" width="55%" height="12px" />
-            <Skeleton variant="text" width="30%" height="11px" />
-            <Skeleton variant="text" width="15%" height="11px" />
-            <Skeleton variant="text" width="10%" height="11px" />
             <Skeleton variant="text" width="20%" height="11px" />
+            <Skeleton variant="text" width="25%" height="11px" />
+            <Skeleton variant="text" width="15%" height="11px" />
+            <Skeleton variant="text" width="15%" height="11px" />
           </div>
         {/each}
       </div>
     {:else if filtered().length === 0}
       <div class="empty-state">
         {#if allModels.length === 0}
-          <div class="empty-icon">🤖</div>
+          <div class="empty-icon">
+            <Icon name="cpu" size={48} color="#3a3a5a" />
+          </div>
           <span class="empty-title">No models found</span>
           <span class="empty-sub">Add and test a provider in the Providers section first.</span>
         {:else}
-          <div class="empty-icon">🔍</div>
+          <div class="empty-icon">
+            <Icon name="search" size={48} color="#3a3a5a" />
+          </div>
           <span class="empty-title">No models match your filters</span>
-          <button class="chip chip-active" onclick={() => { filterProvider='all'; filterType='all'; filterStatus='all'; filterSearch=''; }}>Clear Filters</button>
+          <button class="chip chip-active" onclick={() => { filterProvider='all'; filterType='all'; filterStatus='all'; filterPricing='all'; filterSearch=''; filterCaps = new Set(); }}>Clear Filters</button>
         {/if}
       </div>
     {:else}
@@ -190,46 +297,149 @@
         <div class="thead">
           <span class="th th-model">Model</span>
           <span class="th th-provider">Provider</span>
-          <span class="th th-type">Type</span>
+          <span class="th th-caps">Capabilities</span>
+          <span class="th th-price">Input / Output <span class="th-unit">(per 1M tokens)</span></span>
           <span class="th th-ctx">Context</span>
-          <span class="th th-status">Status</span>
           <span class="th th-action"></span>
         </div>
         {#each filtered() as m, i (`${m.provider_id}::${m.model_id}`)}
           {@const rowKey = `${m.provider_id}::${m.model_id}`}
           {@const isToggling = togglingId === rowKey}
-          <div class="trow" class:trow-enabled={m.enabled} style="animation-delay:{Math.min(i*18,400)}ms">
+          {@const isExpanded = expandedId === rowKey}
+          <div
+            class="trow"
+            class:trow-enabled={m.enabled}
+            class:trow-free={m.is_free}
+            class:trow-expanded={isExpanded}
+            style="animation-delay:{Math.min(i*15,350)}ms"
+            onclick={() => expandedId = isExpanded ? null : rowKey}
+            role="button"
+            tabindex="0"
+          >
             {#if m.enabled}<span class="row-accent"></span>{/if}
+
+            <!-- Model Column -->
             <span class="td td-model">
-              <span class="model-id">{m.model_id.includes('/') ? m.model_id.split('/').slice(1).join('/') : m.model_id}</span>
+              <div class="model-info">
+                <span class="model-name-row">
+                  <span class="model-name">{m.display_name ?? modelSlug(m.model_id)}</span>
+                  {#if m.is_free}<span class="free-badge">FREE</span>{/if}
+                </span>
+                {#if m.display_name}
+                  <span class="model-slug">{m.model_id}</span>
+                {/if}
+              </div>
             </span>
+
+            <!-- Provider Column -->
             <span class="td td-provider">
-              <span class="provider-badge" style="color:{adapterBadgeColor(m.adapter)};background:color-mix(in srgb,{adapterBadgeColor(m.adapter)} 12%,transparent)">
+              <span class="provider-badge" style="color:{adapterColor(m.adapter)};background:color-mix(in srgb,{adapterColor(m.adapter)} 12%,transparent)">
                 {m.provider_name}
               </span>
             </span>
-            <span class="td td-type">
-              <span class="type-chip" style="color:{typeColor(m.model_type)}">
-                <Icon name={typeIcon(m.model_type)} size={11} color={typeColor(m.model_type)} />
-                {m.model_type}
-              </span>
+
+            <!-- Capabilities Column -->
+            <span class="td td-caps">
+              <div class="cap-badges">
+                {#if m.supports_vision}<span class="cap-badge cap-vision" title="Vision">👁</span>{/if}
+                {#if m.supports_tools}<span class="cap-badge cap-tools" title="Tool Use">🔧</span>{/if}
+                {#if m.supports_reasoning}<span class="cap-badge cap-reasoning" title="Reasoning">🧠</span>{/if}
+                {#if !m.supports_vision && !m.supports_tools && !m.supports_reasoning}
+                  <span class="cap-none">—</span>
+                {/if}
+              </div>
             </span>
-            <span class="td td-ctx">{ctxLabel(m.context_length)}</span>
-            <span class="td td-status">
-              {#if m.enabled}
-                <span class="status-pill pill-on">● Enabled</span>
+
+            <!-- Pricing Column -->
+            <span class="td td-price">
+              {#if m.is_free}
+                <span class="price-free">Free</span>
+              {:else if m.pricing_prompt}
+                <span class="price-group">
+                  <span class="price-in">{formatPrice(m.pricing_prompt)}</span>
+                  <span class="price-sep">/</span>
+                  <span class="price-out">{formatPrice(m.pricing_completion)}</span>
+                </span>
               {:else}
-                <span class="status-pill pill-off">○ Disabled</span>
+                <span class="price-na">—</span>
               {/if}
             </span>
-            <span class="td td-action">
-              <button class="toggle-btn" class:toggle-on={m.enabled} class:toggle-spinning={isToggling}
-                onclick={() => toggleModel(m)} disabled={isToggling}
-                aria-label={m.enabled ? 'Disable model' : 'Enable model'}>
-                {#if isToggling}…{:else if m.enabled}Disable{:else}Enable{/if}
+
+            <!-- Context Column -->
+            <span class="td td-ctx">
+              <div class="ctx-col">
+                <span class="ctx-label">{ctxLabel(m.context_length)}</span>
+                {#if m.context_length}
+                  <div class="ctx-bar-bg">
+                    <div class="ctx-bar-fill" style="width:{ctxPercent(m.context_length)}%"></div>
+                  </div>
+                {/if}
+              </div>
+            </span>
+
+            <!-- Action Column -->
+            <span class="td td-action" onclick={(e) => e.stopPropagation()}>
+              <button
+                class="toggle-btn"
+                class:toggle-on={m.enabled}
+                class:toggle-spinning={isToggling}
+                onclick={(e) => { e.stopPropagation(); toggleModel(m); }}
+                disabled={isToggling}
+                aria-label={m.enabled ? 'Disable model' : 'Enable model'}
+              >
+                {#if isToggling}
+                  <span class="toggle-spinner"></span>
+                {:else}
+                  <span class="toggle-track">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                {/if}
               </button>
             </span>
           </div>
+
+          <!-- Expanded Detail Row -->
+          {#if isExpanded}
+            <div class="detail-row" style="animation-delay:0ms">
+              <div class="detail-grid">
+                {#if m.description}
+                  <div class="detail-block detail-desc">
+                    <span class="detail-label">Description</span>
+                    <p class="detail-text">{m.description}</p>
+                  </div>
+                {/if}
+                <div class="detail-block">
+                  <span class="detail-label">Model ID</span>
+                  <span class="detail-mono">{m.model_id}</span>
+                </div>
+                {#if m.max_completion_tokens}
+                  <div class="detail-block">
+                    <span class="detail-label">Max Output</span>
+                    <span class="detail-value">{ctxLabel(m.max_completion_tokens)} tokens</span>
+                  </div>
+                {/if}
+                {#if m.input_modalities.length > 0}
+                  <div class="detail-block">
+                    <span class="detail-label">Input</span>
+                    <span class="detail-value">{m.input_modalities.join(', ')}</span>
+                  </div>
+                {/if}
+                {#if m.output_modalities.length > 0}
+                  <div class="detail-block">
+                    <span class="detail-label">Output</span>
+                    <span class="detail-value">{m.output_modalities.join(', ')}</span>
+                  </div>
+                {/if}
+                <div class="detail-block">
+                  <span class="detail-label">Type</span>
+                  <span class="detail-value" style="text-transform:capitalize">
+                    <Icon name={typeIcon(m.model_type)} size={12} color="#8B5CF6" />
+                    {m.model_type}
+                  </span>
+                </div>
+              </div>
+            </div>
+          {/if}
         {/each}
       </div>
     {/if}
@@ -239,59 +449,59 @@
 <style>
   .page {
     flex: 1; display: flex; flex-direction: column; overflow: hidden;
-    background: linear-gradient(175deg, #0b0b1e, #080814 60%, #06060f);
+    background: linear-gradient(175deg, #0b0b1e 0%, #080814 40%, #06060f 100%);
   }
 
-  /* Header */
+  /* ── Header ── */
   .hdr {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 22px 28px 18px; flex-shrink: 0; position: relative;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 24px 28px 20px; flex-shrink: 0; position: relative;
   }
   .hdr::after {
     content: ''; position: absolute; bottom: 0; left: 28px; right: 28px; height: 1px;
     background: linear-gradient(90deg, transparent, rgba(139,92,246,0.2), transparent);
   }
-  .hdr-left { display: flex; flex-direction: column; gap: 3px; }
+  .hdr-left { display: flex; flex-direction: column; gap: 6px; }
   .hdr-title {
-    font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin: 0;
-    background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
+    font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin: 0;
+    background: linear-gradient(135deg, #f0e8ff, #c4a1ff 50%, #8B5CF6);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .hdr-sub { font-size: 12px; color: #4a4a6a; }
-  .enabled-count { color: #10B981; font-weight: 600; }
+  .hdr-stats { display: flex; align-items: center; gap: 6px; }
+  .stat { font-size: 13px; font-weight: 700; color: #c0c0d8; }
+  .stat-label { font-weight: 400; color: #4a4a6a; }
+  .stat-sep { color: #2a2a4a; }
+  .stat-enabled { color: #10B981; }
+  .stat-free { color: #06B6D4; }
 
   .btn-refresh {
     display: flex; align-items: center; gap: 6px;
-    padding: 7px 14px; border-radius: 9px;
+    padding: 8px 16px; border-radius: 10px;
     border: 1px solid rgba(139,92,246,0.15); background: rgba(139,92,246,0.06);
     color: #8B5CF6; font-size: 12px; font-weight: 600; font-family: var(--font-body);
-    cursor: pointer; transition: all 150ms;
+    cursor: pointer; transition: all 180ms;
   }
-  .btn-refresh:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25); }
+  .btn-refresh:hover { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.3); transform: translateY(-1px); }
   .btn-refresh:disabled { opacity: 0.4; pointer-events: none; }
 
-  /* Filter bar */
+  /* ── Filter Bar ── */
   .filter-bar {
-    display: flex; align-items: center; gap: 10px;
-    padding: 12px 28px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 14px 28px; flex-shrink: 0;
     border-bottom: 1px solid rgba(139,92,246,0.06);
-    flex-wrap: wrap;
+    background: rgba(8,8,20,0.5); backdrop-filter: blur(12px);
   }
+  .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-  .search-wrap {
-    position: relative; display: flex; align-items: center; flex: 0 0 220px;
-  }
-  .search-icon {
-    position: absolute; left: 10px; width: 14px; height: 14px;
-    color: #4a4a6a; pointer-events: none;
-  }
+  .search-wrap { position: relative; display: flex; align-items: center; flex: 1 1 240px; max-width: 320px; }
+  .search-icon { position: absolute; left: 11px; width: 14px; height: 14px; color: #4a4a6a; pointer-events: none; }
   .search-input {
-    width: 100%; height: 34px; padding: 0 30px 0 32px; border-radius: 9px;
-    background: rgba(12,12,28,0.8); border: 1px solid rgba(139,92,246,0.1);
+    width: 100%; height: 34px; padding: 0 30px 0 34px; border-radius: 10px;
+    background: rgba(12,12,28,0.9); border: 1px solid rgba(139,92,246,0.1);
     color: #e0e0f0; font-size: 12px; font-family: var(--font-mono); outline: none;
-    transition: border-color 180ms;
+    transition: border-color 200ms, box-shadow 200ms;
   }
-  .search-input:focus { border-color: rgba(139,92,246,0.35); }
+  .search-input:focus { border-color: rgba(139,92,246,0.4); box-shadow: 0 0 0 3px rgba(139,92,246,0.08); }
   .search-input::placeholder { color: #3a3a5a; }
   .search-clear {
     position: absolute; right: 8px; background: none; border: none;
@@ -299,111 +509,205 @@
   }
 
   .filter-select {
-    height: 34px; padding: 0 28px 0 10px; border-radius: 9px;
-    background: rgba(12,12,28,0.8); border: 1px solid rgba(139,92,246,0.1);
+    height: 34px; padding: 0 28px 0 10px; border-radius: 10px;
+    background: rgba(12,12,28,0.9); border: 1px solid rgba(139,92,246,0.1);
     color: #c0c0d8; font-size: 12px; font-family: var(--font-body); outline: none;
     appearance: none; cursor: pointer;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b6b8a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
     background-position: right 6px center; background-repeat: no-repeat; background-size: 14px;
-    transition: border-color 180ms;
+    transition: border-color 200ms;
   }
-  .filter-select:focus { border-color: rgba(139,92,246,0.35); }
+  .filter-select:focus { border-color: rgba(139,92,246,0.4); }
 
   .chip-group { display: flex; gap: 4px; }
+  .chip-divider { width: 1px; height: 20px; background: rgba(139,92,246,0.1); margin: 0 4px; }
   .chip {
     padding: 5px 11px; border-radius: 99px; font-size: 11px; font-weight: 600;
     border: 1px solid rgba(139,92,246,0.1); background: transparent;
     color: #5a5a7a; cursor: pointer; font-family: var(--font-body);
-    transition: all 140ms;
+    transition: all 160ms; white-space: nowrap;
   }
   .chip:hover { background: rgba(139,92,246,0.06); color: #9d7af5; }
   .chip-active { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.25); color: #c4a1ff; }
+  .cap-chip.chip-active { background: rgba(6,182,212,0.12); border-color: rgba(6,182,212,0.25); color: #06B6D4; }
 
-  /* Table */
+  /* ── Table ── */
   .table-wrap { flex: 1; overflow-y: auto; padding: 0 28px 28px; }
   .table-wrap::-webkit-scrollbar { width: 4px; }
   .table-wrap::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 4px; }
-
   .table { display: flex; flex-direction: column; gap: 0; }
 
   .thead {
     display: grid;
-    grid-template-columns: 1fr 140px 90px 70px 110px 90px;
-    padding: 8px 14px; position: sticky; top: 0; z-index: 1;
-    background: rgba(8,8,20,0.9); backdrop-filter: blur(8px);
+    grid-template-columns: 1.4fr 130px 120px 160px 120px 60px;
+    padding: 10px 16px; position: sticky; top: 0; z-index: 2;
+    background: rgba(8,8,20,0.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(139,92,246,0.08);
   }
   .th {
     font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
     text-transform: uppercase; color: #3a3a5a; font-family: var(--font-mono);
   }
+  .th-unit { font-weight: 400; letter-spacing: 0.5px; font-size: 9px; color: #2a2a4a; }
 
   .trow {
     display: grid;
-    grid-template-columns: 1fr 140px 90px 70px 110px 90px;
-    align-items: center; padding: 9px 14px;
-    border-radius: 9px; position: relative;
-    border: 1px solid transparent;
-    transition: background 140ms, border-color 140ms;
-    animation: rowIn 200ms ease both;
+    grid-template-columns: 1.4fr 130px 120px 160px 120px 60px;
+    align-items: center; padding: 10px 16px;
+    border-radius: 10px; position: relative;
+    border: 1px solid transparent; cursor: pointer;
+    transition: background 160ms, border-color 160ms, transform 120ms;
+    animation: rowIn 220ms ease both;
   }
-  @keyframes rowIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
-  .trow:hover { background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.08); }
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .trow:hover { background: rgba(139,92,246,0.04); border-color: rgba(139,92,246,0.08); }
   .trow:hover .toggle-btn { opacity: 1; }
-  .trow-enabled { background: rgba(139,92,246,0.03); }
-  .trow-enabled:hover { background: rgba(139,92,246,0.07); }
+  .trow-enabled { background: rgba(139,92,246,0.025); }
+  .trow-enabled:hover { background: rgba(139,92,246,0.06); }
+  .trow-free { }
+  .trow-expanded { background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.12); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 
-  .skeleton-row { display: flex; align-items: center; gap: 16px; padding: 11px 14px; animation: rowIn 200ms ease both; }
+  .skeleton-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; animation: rowIn 200ms ease both; }
 
   .row-accent {
     position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-    width: 2px; height: 60%; border-radius: 0 2px 2px 0;
-    background: linear-gradient(180deg, #8B5CF6, #bf40ff);
-    box-shadow: 0 0 8px rgba(139,92,246,0.6);
+    width: 2.5px; height: 55%; border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, #8B5CF6, #06B6D4);
+    box-shadow: 0 0 10px rgba(139,92,246,0.5);
   }
 
   .td { display: flex; align-items: center; overflow: hidden; }
 
-  .model-id {
-    font-size: 12px; font-family: var(--font-mono); color: #c8c8e0;
+  /* Model column */
+  .model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .model-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .model-name {
+    font-size: 12.5px; font-weight: 600; color: #dcdcf0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+  .model-slug {
+    font-size: 10px; font-family: var(--font-mono); color: #3a3a5a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .free-badge {
+    display: inline-flex; flex-shrink: 0;
+    padding: 1px 5px; border-radius: 3px; font-size: 8px; font-weight: 800;
+    letter-spacing: 0.8px; color: #06B6D4;
+    background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.2);
+  }
 
+  /* Provider badge */
   .provider-badge {
-    padding: 2px 8px; border-radius: 99px;
+    padding: 3px 9px; border-radius: 99px;
     font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
     white-space: nowrap;
   }
 
-  .type-chip {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 11px; font-weight: 600; text-transform: capitalize;
+  /* Capabilities */
+  .cap-badges { display: flex; gap: 4px; }
+  .cap-badge {
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 7px; font-size: 13px;
+    background: rgba(20,20,40,0.8); border: 1px solid rgba(139,92,246,0.08);
+    transition: transform 160ms, border-color 160ms;
+  }
+  .cap-badge:hover { transform: scale(1.12); border-color: rgba(139,92,246,0.2); }
+  .cap-none { color: #2a2a4a; font-size: 12px; }
+
+  /* Pricing */
+  .price-group { display: flex; align-items: center; gap: 3px; font-family: var(--font-mono); }
+  .price-in { font-size: 11px; color: #10B981; font-weight: 600; }
+  .price-sep { font-size: 10px; color: #2a2a4a; }
+  .price-out { font-size: 11px; color: #F59E0B; font-weight: 600; }
+  .price-free {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.5px;
+    color: #06B6D4;
+    text-shadow: 0 0 12px rgba(6,182,212,0.4);
+  }
+  .price-na { font-size: 11px; color: #2a2a4a; }
+
+  /* Context */
+  .ctx-col { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+  .ctx-label { font-size: 11px; font-family: var(--font-mono); color: #6b6b8a; font-weight: 600; }
+  .ctx-bar-bg {
+    width: 100%; max-width: 80px; height: 3px; border-radius: 2px;
+    background: rgba(139,92,246,0.08); overflow: hidden;
+  }
+  .ctx-bar-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, #8B5CF6, #06B6D4);
+    transition: width 400ms ease;
   }
 
-  .td-ctx { font-size: 11px; font-family: var(--font-mono); color: #4a4a6a; }
-
-  .status-pill { font-size: 11px; font-weight: 600; }
-  .pill-on { color: #10B981; }
-  .pill-off { color: #4a4a6a; }
-
+  /* Toggle */
   .toggle-btn {
-    padding: 4px 11px; border-radius: 7px;
-    border: 1px solid rgba(139,92,246,0.15); background: transparent;
-    color: #8B5CF6; font-size: 11px; font-weight: 700; font-family: var(--font-body);
-    cursor: pointer; opacity: 0; transition: all 140ms;
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 22px; padding: 0;
+    border-radius: 11px; border: none; cursor: pointer;
+    background: rgba(30,30,55,0.8); opacity: 0.5;
+    transition: all 180ms;
   }
-  .toggle-btn:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.3); }
-  .toggle-on { color: #F43F5E; border-color: rgba(244,63,94,0.2); }
-  .toggle-on:hover { background: rgba(244,63,94,0.08); }
-  .toggle-spinning { opacity: 1; color: #5a5a7a; }
+  .toggle-btn:hover { opacity: 1; }
+  .trow:hover .toggle-btn { opacity: 0.8; }
+  .toggle-on { background: rgba(16,185,129,0.2); opacity: 1; }
+  .toggle-track {
+    width: 100%; height: 100%; border-radius: 11px;
+    position: relative; display: flex; align-items: center;
+    padding: 0 2px;
+  }
+  .toggle-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #4a4a6a;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .toggle-on .toggle-thumb {
+    transform: translateX(18px);
+    background: #10B981;
+    box-shadow: 0 0 8px rgba(16,185,129,0.5);
+  }
+  .toggle-spinning { opacity: 0.4; pointer-events: none; }
+  .toggle-spinner {
+    width: 12px; height: 12px; border: 2px solid rgba(139,92,246,0.2);
+    border-top-color: #8B5CF6; border-radius: 50%;
+    animation: spin 600ms linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .toggle-btn:disabled { pointer-events: none; }
 
-  /* Empty */
+  /* ── Detail Row ── */
+  .detail-row {
+    padding: 14px 16px 16px; margin-top: -1px;
+    border: 1px solid rgba(139,92,246,0.12); border-top: none;
+    border-radius: 0 0 10px 10px;
+    background: rgba(139,92,246,0.03);
+    animation: detailIn 200ms ease both;
+  }
+  @keyframes detailIn {
+    from { opacity: 0; transform: translateY(-4px); max-height: 0; }
+    to { opacity: 1; transform: translateY(0); max-height: 300px; }
+  }
+  .detail-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px 24px;
+  }
+  .detail-block { display: flex; flex-direction: column; gap: 3px; }
+  .detail-desc { grid-column: 1 / -1; }
+  .detail-label { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #3a3a5a; }
+  .detail-text { font-size: 12px; color: #6b6b8a; line-height: 1.5; margin: 0; }
+  .detail-mono { font-size: 11px; font-family: var(--font-mono); color: #8B5CF6; word-break: break-all; }
+  .detail-value { font-size: 12px; color: #c0c0d8; display: flex; align-items: center; gap: 4px; }
+
+  /* ── Empty State ── */
   .empty-state {
-    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
     padding: 80px 20px; text-align: center;
   }
-  .empty-icon { font-size: 40px; opacity: 0.35; }
+  .empty-icon { opacity: 0.4; }
   .empty-title { font-size: 15px; font-weight: 700; color: #6b6b8a; }
   .empty-sub { font-size: 13px; color: #4a4a6a; max-width: 300px; }
 </style>

@@ -240,6 +240,7 @@ impl RigProvider {
                 let mut stream = agent.stream_chat(&prompt, history).await;
 
                 let mut full_text = String::new();
+                let mut sent_final = false;
                 while let Some(item) = stream.next().await {
                     match item {
                         Ok(MultiTurnStreamItem::StreamAssistantItem(
@@ -248,26 +249,75 @@ impl RigProvider {
                             full_text.push_str(&text.text);
                             if tx.send(StreamChunk::Delta(text.text.clone())).await.is_err() {
                                 debug!("[RigProvider] channel closed, stopping stream");
+                                sent_final = true;
                                 break;
                             }
                         }
+                        Ok(MultiTurnStreamItem::StreamAssistantItem(
+                            StreamedAssistantContent::Reasoning(ref reasoning)
+                        )) => {
+                            // Some models (e.g. reasoning models) send their content
+                            // through Reasoning blocks instead of Text blocks.
+                            let text = reasoning.display_text();
+                            if !text.is_empty() {
+                                full_text.push_str(&text);
+                                if tx.send(StreamChunk::Delta(text)).await.is_err() {
+                                    debug!("[RigProvider] channel closed, stopping stream");
+                                    sent_final = true;
+                                    break;
+                                }
+                            }
+                        }
+                        Ok(MultiTurnStreamItem::StreamAssistantItem(
+                            StreamedAssistantContent::ReasoningDelta { ref reasoning, .. }
+                        )) => {
+                            // Incremental reasoning deltas — forward text to frontend
+                            if !reasoning.is_empty() {
+                                full_text.push_str(reasoning);
+                                if tx.send(StreamChunk::Delta(reasoning.clone())).await.is_err() {
+                                    debug!("[RigProvider] channel closed, stopping stream");
+                                    sent_final = true;
+                                    break;
+                                }
+                            }
+                        }
                         Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-                            // FinalResponse contains the concatenated text
-                            // and signals stream completion
                             let final_text = if full_text.is_empty() {
                                 fin.response().to_string()
                             } else {
                                 full_text.clone()
                             };
-                            let _ = tx.send(StreamChunk::Done(final_text)).await;
+                            
+                            if final_text.trim().is_empty() {
+                                let _ = tx.send(StreamChunk::Error("Received empty response from the provider. Please verify your API key and model settings.".to_string())).await;
+                            } else {
+                                let _ = tx.send(StreamChunk::Done(final_text)).await;
+                            }
+                            sent_final = true;
                             break;
                         }
-                        Ok(_) => {} // ToolCallDelta, Reasoning, etc — skip
+                        Ok(_) => {
+                            // ToolCallDelta, Final, etc. — skip silently
+                        }
                         Err(e) => {
                             error!("[RigProvider] stream error: {e}");
                             let _ = tx.send(StreamChunk::Error(format!("{e}"))).await;
                             return Ok(());
                         }
+                    }
+                }
+
+                // If the stream closed without a FinalResponse (provider returned
+                // None / dropped the connection), we still need to notify the frontend.
+                if !sent_final {
+                    if full_text.trim().is_empty() {
+                        error!("[RigProvider] stream ended without FinalResponse and no text received");
+                        let _ = tx.send(StreamChunk::Error(
+                            "Provider stream closed without a response. Please verify your API key and model settings.".to_string()
+                        )).await;
+                    } else {
+                        debug!("[RigProvider] stream ended without FinalResponse, but text was received — treating as done");
+                        let _ = tx.send(StreamChunk::Done(full_text)).await;
                     }
                 }
                 Ok(())
@@ -326,6 +376,10 @@ impl RigProvider {
 
                 let response = agent.chat(&prompt, &mut history).await
                     .map_err(|e| MythicError::Provider(format!("{e}")))?;
+
+                if response.trim().is_empty() {
+                    return Err(MythicError::Provider("Received empty response from the provider. Please verify your API key and model settings.".to_string()));
+                }
 
                 Ok(response)
             }};

@@ -28,7 +28,7 @@ pub struct Message {
 
     /// Parent message ID — enables conversation branching.
     /// If None, this is a root message.
-    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
     pub parent_id: Option<Thing>,
 
     /// JSON metadata for attached images, generation params, etc.

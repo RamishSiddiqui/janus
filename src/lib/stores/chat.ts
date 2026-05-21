@@ -491,16 +491,38 @@ export async function loadMessages(conversationId: string) {
     }
 
     // Build full annotated message list (kept in memory for scroll-up pagination)
-    fullActivePath = activePath.map(m => {
+    let foundStreamError = false;
+    let streamErrorState: { conversationId: string, lastUserContent: string, userMessageId?: string } | null = null;
+
+    fullActivePath = activePath.map((m, index) => {
       const key = m.parent_id ?? '__root__';
       const siblings = byParent.get(key) ?? [];
       const siblingIndex = siblings.findIndex(s => s.id === m.id);
       const convSibling = convSiblingOverrides.get(m.id);
 
+      // Check if this is a failed assistant message (empty content)
+      const isFailedAssistant = m.role === 'assistant' && (!m.content || m.content.trim() === '');
+      
+      // If the very last message in the conversation is a failed assistant message,
+      // we need to restore the global retry state so the user can easily retry it.
+      if (isFailedAssistant && index === activePath.length - 1) {
+        foundStreamError = true;
+        // Find the preceding user message to grab its ID and content for the retry payload
+        const prevUser = activePath[index - 1];
+        if (prevUser && prevUser.role === 'user') {
+          streamErrorState = {
+            conversationId,
+            lastUserContent: prevUser.content,
+            userMessageId: prevUser.id
+          };
+        }
+      }
+
       return {
         id: m.id,
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: isFailedAssistant ? 'Generation failed' : m.content,
+        isError: isFailedAssistant,
         parent_id: m.parent_id,
         // In-conversation siblings (old message-tree branching)
         siblingIds: siblings.length > 1 ? siblings.map(s => s.id) : undefined,
@@ -522,6 +544,13 @@ export async function loadMessages(conversationId: string) {
     const initialSlice = fullActivePath.slice(fullActivePath.length - currentRenderCount);
     messages.set(initialSlice);
     hasMoreMessages.set(currentRenderCount < fullActivePath.length);
+
+    // Restore retry state if the last message was a failure
+    if (foundStreamError && streamErrorState) {
+      lastStreamError.set(streamErrorState);
+    } else {
+      lastStreamError.set(null); // Clear it if the last message is successful
+    }
 
     // Pre-load emotional state for immediate HUD display on conversation open
     try {
@@ -697,17 +726,23 @@ export async function sendMessage(conversationId: string, content: string, model
         streamBuffer.reset();
         console.error('Stream error:', event.content);
         toastError(`AI response failed: ${event.content}`);
-        // Mark the last assistant message as failed so UI shows a retry button
+        // Mark or create the assistant message as failed so UI shows the error bubble
         messages.update(msgs => {
-          const last = msgs[msgs.length - 1];
-          if (last && last.role === 'assistant') {
-            return msgs.map((m, i) => i === msgs.length - 1
+          const exists = msgs.some(m => m.id === event.message_id);
+          if (exists) {
+            return msgs.map(m => m.id === event.message_id
               ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
               : m
             );
+          } else {
+            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
           }
-          return msgs;
         });
+        
+        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content || 'Generation failed', isError: true };
+        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
+        if (apIdx >= 0) fullActivePath[apIdx] = assistantMsg;
+        else { fullActivePath.push(assistantMsg); currentRenderCount++; }
         // The real user_message_id was set after sendMessage returned (line ~706)
         // Grab it from the current messages array to pass to retry
         const realUserMsgId = get(messages).filter(m => m.role === 'user').pop()?.id;
@@ -802,6 +837,22 @@ export async function retryLastMessage() {
       } else if (event.event_type === 'error') {
         streamBuffer.reset();
         toastError(`AI response failed: ${event.content}`);
+        messages.update(msgs => {
+          const exists = msgs.some(m => m.id === event.message_id);
+          if (exists) {
+            return msgs.map(m => m.id === event.message_id
+              ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
+              : m
+            );
+          } else {
+            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
+          }
+        });
+        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content || 'Generation failed', isError: true };
+        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
+        if (apIdx >= 0) fullActivePath[apIdx] = assistantMsg;
+        else { fullActivePath.push(assistantMsg); currentRenderCount++; }
+
         lastStreamError.set({ conversationId: err.conversationId, lastUserContent: err.lastUserContent, userMessageId: err.userMessageId });
         isStreaming.set(false);
         unlisten();
@@ -857,6 +908,17 @@ export async function regenerateMessage(conversationId: string, messageId: strin
         streamBuffer.reset();
         console.error('Regeneration stream error:', event.content);
         toastError(`Regeneration failed: ${event.content}`);
+        messages.update(msgs => {
+          const exists = msgs.some(m => m.id === event.message_id);
+          if (exists) {
+            return msgs.map(m => m.id === event.message_id
+              ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
+              : m
+            );
+          } else {
+            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
+          }
+        });
         isStreaming.set(false);
         unlisten();
       }

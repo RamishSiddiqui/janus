@@ -170,7 +170,7 @@ impl ProviderRepo {
         provider_type: &str,
     ) -> Result<Option<ProviderConfig>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM provider_configs WHERE provider_type = $ptype AND is_default = true LIMIT 1")
+            .query("SELECT * FROM provider_configs WHERE provider_type = $ptype ORDER BY is_default DESC, name ASC LIMIT 1")
             .bind(("ptype", provider_type.to_string()))
             .await?;
         let providers: Vec<ProviderConfig> = result.take(0)?;

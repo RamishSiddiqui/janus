@@ -246,6 +246,18 @@ pub struct ModelEntry {
     pub model_type:    String,
     pub context_length: Option<u32>,
     pub enabled:       bool,
+    // ── Rich metadata (populated from OpenRouter API) ──
+    pub display_name:          Option<String>,
+    pub description:           Option<String>,
+    pub pricing_prompt:        Option<String>,
+    pub pricing_completion:    Option<String>,
+    pub is_free:               bool,
+    pub max_completion_tokens: Option<u32>,
+    pub input_modalities:      Vec<String>,
+    pub output_modalities:     Vec<String>,
+    pub supports_tools:        bool,
+    pub supports_vision:       bool,
+    pub supports_reasoning:    bool,
 }
 
 /// Fetches models from ALL configured providers in parallel and merges them
@@ -285,6 +297,22 @@ pub async fn list_all_models(
         let http_c = http.clone();
 
         tasks.push(tokio::spawn(async move {
+            struct RawModel {
+                model_id: String,
+                context_length: Option<u32>,
+                display_name: Option<String>,
+                description: Option<String>,
+                pricing_prompt: Option<String>,
+                pricing_completion: Option<String>,
+                is_free: bool,
+                max_completion_tokens: Option<u32>,
+                input_modalities: Vec<String>,
+                output_modalities: Vec<String>,
+                supports_tools: bool,
+                supports_vision: bool,
+                supports_reasoning: bool,
+            }
+
             let (url, is_ollama) = match adapter.as_str() {
                 "ollama" => {
                     let base = if base_url.is_empty() { "http://localhost:11434".to_string() } else { base_url };
@@ -315,11 +343,18 @@ pub async fn list_all_models(
                 Err(_) => return vec![],
             };
 
-            let entries: Vec<(String, Option<u32>)> = if is_ollama {
+            let entries: Vec<RawModel> = if is_ollama {
                 body.get("models")
                     .and_then(|v| v.as_array())
                     .map(|arr| arr.iter().filter_map(|m| {
-                        Some((m.get("name")?.as_str()?.to_string(), None))
+                        Some(RawModel {
+                            model_id: m.get("name")?.as_str()?.to_string(),
+                            context_length: None, display_name: None, description: None,
+                            pricing_prompt: None, pricing_completion: None, is_free: false,
+                            max_completion_tokens: None, input_modalities: vec![],
+                            output_modalities: vec![], supports_tools: false,
+                            supports_vision: false, supports_reasoning: false,
+                        })
                     }).collect())
                     .unwrap_or_default()
             } else {
@@ -328,13 +363,74 @@ pub async fn list_all_models(
                     .map(|arr| arr.iter().filter_map(|m| {
                         let id = m.get("id")?.as_str()?.to_string();
                         let ctx = m.get("context_length").and_then(|v| v.as_u64()).map(|v| v as u32);
-                        Some((id, ctx))
+                        let name = m.get("name").and_then(|v| v.as_str()).map(String::from);
+                        let desc = m.get("description").and_then(|v| v.as_str()).map(|s| {
+                            let chars: String = s.chars().take(200).collect();
+                            if chars.len() < s.len() { format!("{}...", chars) } else { chars }
+                        });
+
+                        // Pricing
+                        let pricing = m.get("pricing");
+                        let p_prompt = pricing.and_then(|p| p.get("prompt")).and_then(|v| v.as_str()).map(String::from);
+                        let p_completion = pricing.and_then(|p| p.get("completion")).and_then(|v| v.as_str()).map(String::from);
+                        let is_free = p_prompt.as_deref() == Some("0") && p_completion.as_deref() == Some("0");
+
+                        // Top provider
+                        let max_comp = m.get("top_provider")
+                            .and_then(|tp| tp.get("max_completion_tokens"))
+                            .and_then(|v| v.as_u64()).map(|v| v as u32);
+
+                        // Architecture / modalities
+                        let arch = m.get("architecture");
+                        let input_mods: Vec<String> = arch.and_then(|a| a.get("input_modalities"))
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                            .unwrap_or_default();
+                        let output_mods: Vec<String> = arch.and_then(|a| a.get("output_modalities"))
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                            .unwrap_or_default();
+
+                        // Supported parameters
+                        let params: Vec<String> = m.get("supported_parameters")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                            .unwrap_or_default();
+                        let supports_tools = params.iter().any(|p| p == "tools");
+                        let supports_vision = input_mods.iter().any(|m| m == "image");
+                        let supports_reasoning = params.iter().any(|p| p == "reasoning" || p == "include_reasoning");
+
+                        Some(RawModel {
+                            model_id: id, context_length: ctx, display_name: name, description: desc,
+                            pricing_prompt: p_prompt, pricing_completion: p_completion, is_free,
+                            max_completion_tokens: max_comp, input_modalities: input_mods,
+                            output_modalities: output_mods, supports_tools, supports_vision, supports_reasoning,
+                        })
                     }).collect())
                     .unwrap_or_default()
             };
 
-            entries.into_iter().map(|(model_id, context_length)| {
-                (provider_id.clone(), provider_name.clone(), adapter.clone(), provider_type.clone(), model_id, context_length)
+            entries.into_iter().map(|raw| {
+                ModelEntry {
+                    model_id: raw.model_id,
+                    provider_id: provider_id.clone(),
+                    provider_name: provider_name.clone(),
+                    adapter: adapter.clone(),
+                    model_type: provider_type.clone(),
+                    context_length: raw.context_length,
+                    enabled: false, // will be set below
+                    display_name: raw.display_name,
+                    description: raw.description,
+                    pricing_prompt: raw.pricing_prompt,
+                    pricing_completion: raw.pricing_completion,
+                    is_free: raw.is_free,
+                    max_completion_tokens: raw.max_completion_tokens,
+                    input_modalities: raw.input_modalities,
+                    output_modalities: raw.output_modalities,
+                    supports_tools: raw.supports_tools,
+                    supports_vision: raw.supports_vision,
+                    supports_reasoning: raw.supports_reasoning,
+                }
             }).collect::<Vec<_>>()
         }));
     }
@@ -343,17 +439,9 @@ pub async fn list_all_models(
     let mut all_entries: Vec<ModelEntry> = Vec::new();
     for task in tasks {
         if let Ok(rows) = task.await {
-            for (provider_id, provider_name, adapter, model_type, model_id, context_length) in rows {
-                let enabled = *enabled_map.get(&(provider_id.clone(), model_id.clone())).unwrap_or(&false);
-                all_entries.push(ModelEntry {
-                    model_id,
-                    provider_id,
-                    provider_name,
-                    adapter,
-                    model_type,
-                    context_length,
-                    enabled,
-                });
+            for mut entry in rows {
+                entry.enabled = *enabled_map.get(&(entry.provider_id.clone(), entry.model_id.clone())).unwrap_or(&false);
+                all_entries.push(entry);
             }
         }
     }
@@ -403,6 +491,17 @@ pub async fn list_enabled_models(
                 model_type: r.model_type,
                 context_length: None,
                 enabled: true,
+                display_name: None,
+                description: None,
+                pricing_prompt: None,
+                pricing_completion: None,
+                is_free: false,
+                max_completion_tokens: None,
+                input_modalities: vec![],
+                output_modalities: vec![],
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: false,
             });
         }
     }

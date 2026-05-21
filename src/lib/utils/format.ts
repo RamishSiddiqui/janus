@@ -14,14 +14,22 @@ export function formatRoleplayContent(text: string): string {
   // First escape any raw HTML the user may have typed
   const escaped = escapeHtml(text);
 
-  // Apply roleplay formatting
-  const formatted = escaped
-    .replace(/\*([^*]+)\*/g, '<em class="rp-action">$1</em>')
-    // Double newlines → paragraph break (always a visible break)
+  // Split into lines to detect block-level vs inline actions
+  const lines = escaped.split('\n');
+  const formattedLines = lines.map(line => {
+    const trimmed = line.trim();
+    // Full-line action: the entire line is wrapped in asterisks (block display)
+    if (/^\*[^*]+\*$/.test(trimmed)) {
+      return trimmed.replace(/^\*([^*]+)\*$/, '<em class="rp-action rp-action-block">$1</em>');
+    }
+    // Mixed line: inline emphasis within dialogue/text (inline display)
+    return line.replace(/\*([^*]+)\*/g, '<em class="rp-action">$1</em>');
+  });
+
+  const formatted = formattedLines.join('\n')
+    // Double newlines → paragraph break
     .replace(/\n{2,}/g, '<br/><br/>')
-    // Single newline → space (prose continuation, not a hard break)
-    // This prevents words like "I'll" from being stranded on their own line
-    // when the LLM inserts soft line-wraps in its streaming output.
+    // Single newline → space (prose continuation)
     .replace(/\n/g, ' ');
 
   // Sanitize the final output
