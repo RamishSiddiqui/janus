@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { settings } from '$lib/stores/settings';
   import { success, error as toastError, info as toastInfo } from '$lib/stores/toast';
@@ -60,6 +61,25 @@
     }
     isRebuilding = false;
   }
+
+  // Load the enabled embedding model from the backend
+  async function loadEnabledEmbeddingModel() {
+    if (!isTauri) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const models = await ipc.listEmbeddingModels();
+      const enabled = models.filter(m => m.enabled);
+      if (enabled.length > 0) {
+        ragEmbeddingModel = enabled[0].model_id;
+      }
+    } catch (err) {
+      console.warn('[Settings] Failed to load enabled embedding model:', err);
+    }
+  }
+
+  onMount(() => {
+    loadEnabledEmbeddingModel();
+  });
 
   $effect(() => {
     if (ragEnabled && isTauri) {
