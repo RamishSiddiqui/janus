@@ -141,6 +141,7 @@
     const map: Record<string, string> = {
       open_router: 'OpenRouter', ollama: 'Ollama',
       open_ai_compatible: 'OpenAI Compatible', openai_compatible: 'OpenAI Compatible',
+      lm_studio: 'LM Studio',
       silicon_flow: 'SiliconFlow', anthropic: 'Anthropic', gemini: 'Gemini',
       cohere: 'Cohere', deepseek: 'DeepSeek', groq: 'Groq',
       perplexity: 'Perplexity', xai: 'xAI', hugging_face: 'HuggingFace',
@@ -218,6 +219,7 @@
               </optgroup>
               <optgroup label="Local / Self-hosted">
                 <option value="ollama">Ollama</option>
+                <option value="lm_studio">LM Studio</option>
                 <option value="open_ai_compatible">OpenAI Compatible</option>
               </optgroup>
               <optgroup label="Image">

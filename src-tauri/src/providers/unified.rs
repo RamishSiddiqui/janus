@@ -57,7 +57,7 @@ impl RigProvider {
         let key = api_key.unwrap_or("");
 
         match adapter {
-            "openai" | "openai_compatible" | "open_ai_compatible" => {
+            "openai" | "openai_compatible" | "open_ai_compatible" | "lm_studio" | "lmstudio" => {
                 let client = if let Some(url) = base_url {
                     openai::Client::builder()
                         .api_key(key)
@@ -171,8 +171,8 @@ impl RigProvider {
             }
             other => Err(MythicError::Config(format!(
                 "Unsupported LLM provider adapter: '{}'. Supported: openai, anthropic, openrouter, \
-                 gemini, ollama, cohere, deepseek, groq, perplexity, xai, huggingface, hyperbolic, \
-                 moonshot, together",
+                 gemini, ollama, lm_studio, cohere, deepseek, groq, perplexity, xai, huggingface, \
+                 hyperbolic, moonshot, together",
                 other
             ))),
         }
