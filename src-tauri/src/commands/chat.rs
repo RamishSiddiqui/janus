@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 use crate::context::budget::ContextBudget;
+use crate::context::rag::{embed_and_store, query_relevant_context};
 use crate::context::summary::generate_rolling_summary;
 use crate::context::tokenizer::count_message_tokens;
 use crate::context::window::apply_sliding_window;
@@ -88,6 +89,27 @@ pub async fn send_message(
     // Get the active LLM provider early — we need context_length for the budget
     let provider_config = get_default_llm_provider(&db).await?;
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
+
+    // Background: embed user message for vector RAG
+    {
+        let db_embed = db.clone();
+        let embed_conv = conversation_id.clone();
+        let embed_msg = user_msg_id.clone();
+        let embed_content = content.clone();
+        let embed_provider_config = provider_config.clone();
+        tokio::spawn(async move {
+            if let Ok(provider) = create_rig_provider(&embed_provider_config) {
+                let embed_model = embed_provider_config.config
+                    .get("embedding_model")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("text-embedding-3-small");
+                let _ = embed_and_store(
+                    &db_embed, &provider, embed_model,
+                    &embed_msg, &embed_conv, &embed_content,
+                ).await;
+            }
+        });
+    }
 
     let gen_params = GenerationParams {
         max_tokens: provider_config.config
@@ -179,6 +201,28 @@ pub async fn send_message(
                     // Save the complete response to the database
                     if let Err(e) = MessageRepo::update(&db_for_save, &assist_id, &full_text).await {
                         error!("Failed to save response: {}", e);
+                    }
+
+                    // Background: embed assistant message for vector RAG
+                    {
+                        let db_embed = db_for_save.clone();
+                        let embed_conv = conv_id.clone();
+                        let embed_msg = assist_id.clone();
+                        let embed_content = full_text.clone();
+                        tokio::spawn(async move {
+                            if let Ok(provider_config) = get_default_llm_provider(&db_embed).await {
+                                if let Ok(provider) = create_rig_provider(&provider_config) {
+                                    let embed_model = provider_config.config
+                                        .get("embedding_model")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("text-embedding-3-small");
+                                    let _ = embed_and_store(
+                                        &db_embed, &provider, embed_model,
+                                        &embed_msg, &embed_conv, &embed_content,
+                                    ).await;
+                                }
+                            }
+                        });
                     }
 
                     let _ = app.emit("chat-stream", StreamEvent {
@@ -541,6 +585,8 @@ pub struct ContextStats {
     pub included_messages: usize,
     /// Messages evicted (not sent to the LLM).
     pub evicted_messages: usize,
+    /// Tokens used by RAG-retrieved context (0 if RAG disabled or no results).
+    pub rag_tokens: usize,
 }
 
 /// Builds the full prompt by combining system prompt, character data,
@@ -794,6 +840,52 @@ async fn build_prompt(
 
             prompt.extend(window.included);
 
+            // Vector RAG: retrieve semantically relevant evicted messages
+            let rag_tokens = if window.evicted_count > 0 {
+                let last_user_content = chain.iter().rev()
+                    .find(|m| m.role == MessageRole::User)
+                    .map(|m| m.content.clone())
+                    .unwrap_or_default();
+
+                if !last_user_content.is_empty() {
+                    let rag_results = match get_default_llm_provider(db).await {
+                        Ok(pc) => match create_rig_provider(&pc) {
+                            Ok(provider) => {
+                                let embed_model = pc.config
+                                    .get("embedding_model")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("text-embedding-3-small");
+                                let exclude_ids: Vec<String> = vec![];
+                                query_relevant_context(
+                                    db, &provider, embed_model,
+                                    conversation_id, &last_user_content,
+                                    5, 0.7, &exclude_ids,
+                                ).await.unwrap_or_default()
+                            }
+                            Err(_) => vec![],
+                        },
+                        Err(_) => vec![],
+                    };
+
+                    if !rag_results.is_empty() {
+                        let rag_text = rag_results.iter()
+                            .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                            .collect::<Vec<_>>()
+                            .join("\n\n");
+                        let rag_message = ChatMessage {
+                            role: MessageRole::System,
+                            content: format!(
+                                "[Relevant Past Context — retrieved from earlier in this conversation]\n{}",
+                                rag_text
+                            ),
+                        };
+                        let tokens = count_message_tokens(&rag_message);
+                        prompt.push(rag_message);
+                        tokens
+                    } else { 0 }
+                } else { 0 }
+            } else { 0 };
+
             // PHI goes last — after history, maximum attention weight
             if let Some(phi) = phi_message {
                 prompt.push(phi);
@@ -807,6 +899,7 @@ async fn build_prompt(
                 total_messages,
                 included_messages,
                 evicted_messages,
+                rag_tokens,
             }));
         } else {
             // Lorebook fetch failed — still build the message chain
@@ -894,6 +987,52 @@ async fn build_prompt(
 
             prompt.extend(window.included);
 
+            // Vector RAG: retrieve semantically relevant evicted messages
+            let rag_tokens = if window.evicted_count > 0 {
+                let last_user_content = chain.iter().rev()
+                    .find(|m| m.role == MessageRole::User)
+                    .map(|m| m.content.clone())
+                    .unwrap_or_default();
+
+                if !last_user_content.is_empty() {
+                    let rag_results = match get_default_llm_provider(db).await {
+                        Ok(pc) => match create_rig_provider(&pc) {
+                            Ok(provider) => {
+                                let embed_model = pc.config
+                                    .get("embedding_model")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("text-embedding-3-small");
+                                let exclude_ids: Vec<String> = vec![];
+                                query_relevant_context(
+                                    db, &provider, embed_model,
+                                    conversation_id, &last_user_content,
+                                    5, 0.7, &exclude_ids,
+                                ).await.unwrap_or_default()
+                            }
+                            Err(_) => vec![],
+                        },
+                        Err(_) => vec![],
+                    };
+
+                    if !rag_results.is_empty() {
+                        let rag_text = rag_results.iter()
+                            .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                            .collect::<Vec<_>>()
+                            .join("\n\n");
+                        let rag_message = ChatMessage {
+                            role: MessageRole::System,
+                            content: format!(
+                                "[Relevant Past Context — retrieved from earlier in this conversation]\n{}",
+                                rag_text
+                            ),
+                        };
+                        let tokens = count_message_tokens(&rag_message);
+                        prompt.push(rag_message);
+                        tokens
+                    } else { 0 }
+                } else { 0 }
+            } else { 0 };
+
             if let Some(phi) = phi_message {
                 prompt.push(phi);
             }
@@ -906,6 +1045,7 @@ async fn build_prompt(
                 total_messages,
                 included_messages,
                 evicted_messages,
+                rag_tokens,
             }));
         }
     } else {
@@ -994,6 +1134,52 @@ async fn build_prompt(
 
         prompt.extend(window.included);
 
+        // Vector RAG: retrieve semantically relevant evicted messages
+        let rag_tokens = if window.evicted_count > 0 {
+            let last_user_content = chain.iter().rev()
+                .find(|m| m.role == MessageRole::User)
+                .map(|m| m.content.clone())
+                .unwrap_or_default();
+
+            if !last_user_content.is_empty() {
+                let rag_results = match get_default_llm_provider(db).await {
+                    Ok(pc) => match create_rig_provider(&pc) {
+                        Ok(provider) => {
+                            let embed_model = pc.config
+                                .get("embedding_model")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("text-embedding-3-small");
+                            let exclude_ids: Vec<String> = vec![];
+                            query_relevant_context(
+                                db, &provider, embed_model,
+                                conversation_id, &last_user_content,
+                                5, 0.7, &exclude_ids,
+                            ).await.unwrap_or_default()
+                        }
+                        Err(_) => vec![],
+                    },
+                    Err(_) => vec![],
+                };
+
+                if !rag_results.is_empty() {
+                    let rag_text = rag_results.iter()
+                        .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    let rag_message = ChatMessage {
+                        role: MessageRole::System,
+                        content: format!(
+                            "[Relevant Past Context — retrieved from earlier in this conversation]\n{}",
+                            rag_text
+                        ),
+                    };
+                    let tokens = count_message_tokens(&rag_message);
+                    prompt.push(rag_message);
+                    tokens
+                } else { 0 }
+            } else { 0 }
+        } else { 0 };
+
         if let Some(phi) = phi_message {
             prompt.push(phi);
         }
@@ -1006,12 +1192,13 @@ async fn build_prompt(
             total_messages,
             included_messages,
             evicted_messages,
+            rag_tokens,
         }))
     }
 }
 
 /// Finds the default LLM provider configuration from the database.
-async fn get_default_llm_provider(
+pub(crate) async fn get_default_llm_provider(
     db: &Surreal<Db>,
 ) -> Result<ProviderConfig, MythicError> {
     match ProviderRepo::get_default(db, "llm").await? {
@@ -1053,7 +1240,7 @@ async fn resolve_model_id(
 }
 
 /// Creates a unified rig-backed LLM provider from DB config.
-fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider, MythicError> {
+pub(crate) fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider, MythicError> {
     // Convert enum to string for RigProvider::from_config
     let adapter_str = match config.adapter {
         ProviderAdapter::Ollama => "ollama",

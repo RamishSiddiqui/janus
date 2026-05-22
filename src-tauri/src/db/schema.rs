@@ -246,6 +246,34 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:conversation_summaries: {}", e)))?;
 
+    // ── 12. message_embeddings ──────────────────────────────────────────
+    info!("  schema: message_embeddings...");
+    db.query("
+        DEFINE TABLE IF NOT EXISTS message_embeddings SCHEMAFULL;
+
+        DEFINE FIELD IF NOT EXISTS message_id ON message_embeddings TYPE record<messages>;
+        DEFINE FIELD IF NOT EXISTS conversation_id ON message_embeddings TYPE record<conversations>;
+        DEFINE FIELD IF NOT EXISTS embedding ON message_embeddings TYPE array<float>;
+        DEFINE FIELD IF NOT EXISTS model_name ON message_embeddings TYPE string;
+        DEFINE FIELD IF NOT EXISTS created_at ON message_embeddings TYPE datetime DEFAULT time::now();
+
+        DEFINE INDEX IF NOT EXISTS idx_me_message ON message_embeddings FIELDS message_id UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_me_conversation ON message_embeddings FIELDS conversation_id;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings: {}", e)))?;
+
+    // MTREE vector index (separate to isolate errors)
+    info!("  schema: message_embeddings MTREE...");
+    db.query("
+        DEFINE INDEX IF NOT EXISTS idx_me_embedding ON message_embeddings
+            FIELDS embedding MTREE DIMENSION 1536 DIST COSINE TYPE F32;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_mtree: {}", e)))?;
+
     // ── Cascade delete events ───────────────────────────────────────────
     info!("  schema: cascade events...");
     db.query("
@@ -268,6 +296,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             DELETE FROM memories WHERE conversation_id = $before.id;
             DELETE FROM character_states WHERE conversation_id = $before.id;
             DELETE FROM conversation_summaries WHERE conversation_id = $before.id;
+            DELETE FROM message_embeddings WHERE conversation_id = $before.id;
         };
     ")
     .await?

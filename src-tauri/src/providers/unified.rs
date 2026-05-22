@@ -402,6 +402,50 @@ impl RigProvider {
             Self::Together(c) => complete_with!(c),
         }
     }
+
+    /// Generate embeddings for a batch of texts.
+    /// Uses rig-core's EmbeddingsClient trait — works across providers
+    /// that support embeddings.
+    pub async fn generate_embedding(
+        &self,
+        model_id: &str,
+        texts: Vec<String>,
+    ) -> Result<Vec<Vec<f64>>, MythicError> {
+        debug!(
+            "[RigProvider::generate_embedding] provider={}, model={}, text_count={}",
+            self.name(), model_id, texts.len()
+        );
+
+        macro_rules! embed_with {
+            ($client:expr) => {{
+                use rig_core::client::EmbeddingsClient;
+                use rig_core::embeddings::EmbeddingModel;
+                let model = $client.embedding_model(model_id);
+                let embeddings = model.embed_texts(texts).await
+                    .map_err(|e| MythicError::Provider(format!("Embedding error: {e}")))?;
+                Ok(embeddings.iter().map(|e| e.vec.clone()).collect())
+            }};
+        }
+
+        match self {
+            Self::OpenAI(c) => embed_with!(c),
+            Self::OpenRouter(c) => embed_with!(c),
+            Self::Ollama(c) => embed_with!(c),
+            Self::Cohere(c) => {
+                use rig_core::embeddings::EmbeddingModel;
+                let model = c.embedding_model(model_id, "search_document");
+                let embeddings = model.embed_texts(texts).await
+                    .map_err(|e| MythicError::Provider(format!("Embedding error: {e}")))?;
+                Ok(embeddings.iter().map(|e| e.vec.clone()).collect())
+            }
+            Self::Gemini(c) => embed_with!(c),
+            Self::Together(c) => embed_with!(c),
+            _ => Err(MythicError::Config(format!(
+                "Provider '{}' does not support embeddings. Use OpenAI, OpenRouter, Ollama, Gemini, Cohere, or Together.",
+                self.name()
+            ))),
+        }
+    }
 }
 
 // ── Helper functions ───────────────────────────────────────────────
