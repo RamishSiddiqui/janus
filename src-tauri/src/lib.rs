@@ -186,6 +186,9 @@ pub fn run() {
             // Character State
             commands::character_state::get_character_state,
             commands::character_state::upsert_character_state,
+            // Embeddings
+            commands::embeddings::get_embedding_index_status,
+            commands::embeddings::rebuild_embedding_index,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Mythic");

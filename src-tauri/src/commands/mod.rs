@@ -8,3 +8,4 @@ pub mod import;
 pub mod scenes;
 pub mod lorebook;
 pub mod character_state;
+pub mod embeddings;

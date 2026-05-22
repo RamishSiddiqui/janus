@@ -18,6 +18,55 @@
   let maxContextTokens = $state($settings.maxContextTokens);
   let autoSummarize = $state($settings.autoSummarize);
 
+  // Memory / RAG settings
+  let ragEnabled = $state($settings.ragEnabled ?? false);
+  let ragEmbeddingModel = $state($settings.ragEmbeddingModel ?? 'openai/text-embedding-3-small');
+  let ragTopK = $state($settings.ragTopK ?? 5);
+  let ragMinSimilarity = $state($settings.ragMinSimilarity ?? 0.7);
+
+  // Embedding index status (loaded from backend)
+  let indexStatus = $state<{
+    total_messages: number;
+    embedded_messages: number;
+    index_model: string | null;
+    needs_rebuild: boolean;
+    coverage_percent: number;
+  } | null>(null);
+  let isLoadingIndex = $state(false);
+  let isRebuilding = $state(false);
+
+  async function loadIndexStatus() {
+    if (!isTauri) return;
+    isLoadingIndex = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      indexStatus = await ipc.getEmbeddingIndexStatus(null, ragEmbeddingModel);
+    } catch (err) {
+      console.warn('[Memory] Failed to load index status:', err);
+    }
+    isLoadingIndex = false;
+  }
+
+  async function rebuildIndex() {
+    if (!isTauri || isRebuilding) return;
+    isRebuilding = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      indexStatus = await ipc.rebuildEmbeddingIndex(null, ragEmbeddingModel);
+      success('Embedding index rebuilt successfully');
+    } catch (err) {
+      toastError('Failed to rebuild index');
+      console.error('[Memory] Rebuild failed:', err);
+    }
+    isRebuilding = false;
+  }
+
+  $effect(() => {
+    if (ragEnabled && isTauri) {
+      loadIndexStatus();
+    }
+  });
+
   let showFontDropdown = $state(false);
   let dropdownStyle = $state('');
   let showClearConfirm = $state(false);
@@ -42,6 +91,10 @@
       postHistoryInstructions,
       maxContextTokens,
       autoSummarize,
+      ragEnabled,
+      ragEmbeddingModel,
+      ragTopK,
+      ragMinSimilarity,
     };
     // Debounce the store write to break the reactive cycle
     if (persistTimer) clearTimeout(persistTimer);
@@ -359,6 +412,150 @@
             <span class="toggle-knob"></span>
           </button>
         </div>
+      </section>
+
+      <!-- Memory (Vector RAG) -->
+      <section class="settings-section animate-fade-in-up stagger-2c">
+        <div class="section-header">
+          <Icon name="database" size={16} color="var(--accent-primary)" />
+          <span class="section-title">Memory</span>
+          <span class="memory-badge" class:memory-active={ragEnabled}>{ragEnabled ? 'Active' : 'Disabled'}</span>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <span class="setting-name">Semantic Memory</span>
+            <span class="setting-desc">{ragEnabled ? 'Messages are embedded and searchable by meaning' : 'Enable to index conversations for intelligent recall'}</span>
+          </div>
+          <button
+            class="toggle-switch"
+            class:on={ragEnabled}
+            onclick={() => {
+              ragEnabled = !ragEnabled;
+              success(ragEnabled ? 'Semantic memory enabled — messages will be indexed' : 'Semantic memory disabled');
+            }}
+            role="switch"
+            aria-checked={ragEnabled}
+            aria-label="Toggle semantic memory"
+          >
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+
+        {#if ragEnabled}
+          <div class="memory-config" style="animation: slideDown 220ms cubic-bezier(0.34,1.56,0.64,1)">
+            <!-- Embedding Model -->
+            <div class="setting-row">
+              <div class="setting-label">
+                <span class="setting-name">Embedder Model</span>
+                <span class="setting-desc">Model used to create vector representations</span>
+              </div>
+              <div class="font-dropdown-wrapper">
+                <input
+                  class="setting-input mono"
+                  bind:value={ragEmbeddingModel}
+                  placeholder="openai/text-embedding-3-small"
+                  aria-label="Embedding model"
+                />
+              </div>
+            </div>
+
+            <!-- Retrieval Settings -->
+            <div class="retrieval-row">
+              <div class="retrieval-field">
+                <span class="retrieval-label">Top-K Results</span>
+                <select class="setting-dropdown" bind:value={ragTopK} aria-label="Top-K results">
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                  <option value={8}>8</option>
+                  <option value={10}>10</option>
+                </select>
+              </div>
+              <div class="retrieval-field">
+                <span class="retrieval-label">Min Similarity</span>
+                <select class="setting-dropdown" bind:value={ragMinSimilarity} aria-label="Minimum similarity">
+                  <option value={0.5}>50%</option>
+                  <option value={0.6}>60%</option>
+                  <option value={0.7}>70%</option>
+                  <option value={0.8}>80%</option>
+                  <option value={0.9}>90%</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Index Status Panel -->
+            <div class="index-panel">
+              <div class="index-header">
+                <span class="index-title">Index Status</span>
+                <button class="index-refresh-btn" onclick={loadIndexStatus} disabled={isLoadingIndex}>
+                  <Icon name="refresh-cw" size={11} color={isLoadingIndex ? '#4a4a6a' : '#a78bfa'} />
+                </button>
+              </div>
+
+              {#if isLoadingIndex}
+                <div class="index-loading">
+                  <div class="index-spinner"></div>
+                  <span>Checking index...</span>
+                </div>
+              {:else if indexStatus}
+                <div class="index-stats">
+                  <div class="index-stat">
+                    <span class="stat-value">{indexStatus.embedded_messages}</span>
+                    <span class="stat-label">Indexed</span>
+                  </div>
+                  <div class="index-stat">
+                    <span class="stat-value">{indexStatus.total_messages}</span>
+                    <span class="stat-label">Total</span>
+                  </div>
+                  <div class="index-stat">
+                    <span class="stat-value">{indexStatus.coverage_percent.toFixed(0)}%</span>
+                    <span class="stat-label">Coverage</span>
+                  </div>
+                </div>
+
+                <!-- Progress bar -->
+                <div class="index-progress">
+                  <div class="index-progress-fill" style="width: {indexStatus.coverage_percent}%"></div>
+                </div>
+
+                <!-- Rebuild Warning -->
+                {#if indexStatus.needs_rebuild}
+                  <div class="rebuild-warning">
+                    <Icon name="alert-triangle" size={13} color="#F59E0B" />
+                    <div class="rebuild-text">
+                      <span class="rebuild-title">Model Mismatch</span>
+                      <span class="rebuild-desc">
+                        Index built with <code>{indexStatus.index_model}</code>, but <code>{ragEmbeddingModel}</code> is selected.
+                        Rebuild to use the new model.
+                      </span>
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Rebuild Button -->
+                <button
+                  class="rebuild-btn"
+                  class:rebuilding={isRebuilding}
+                  onclick={rebuildIndex}
+                  disabled={isRebuilding}
+                >
+                  {#if isRebuilding}
+                    <div class="btn-spinner"></div>
+                    Rebuilding...
+                  {:else}
+                    <Icon name="refresh-cw" size={13} color="#e0e0f0" />
+                    {indexStatus.needs_rebuild ? 'Rebuild Index' : 'Rebuild Index'}
+                  {/if}
+                </button>
+              {:else}
+                <div class="index-empty">
+                  <span>No index data available</span>
+                  <span class="index-empty-hint">Start chatting to begin building the index</span>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
       </section>
     </div>
 
@@ -696,10 +893,11 @@
   .stagger-1 { animation-delay: 40ms; }
   .stagger-2 { animation-delay: 100ms; }
   .stagger-2b { animation-delay: 140ms; }
-  .stagger-3 { animation-delay: 160ms; }
-  .stagger-4 { animation-delay: 220ms; }
-  .stagger-4b { animation-delay: 260ms; }
-  .stagger-5 { animation-delay: 300ms; }
+  .stagger-2c { animation-delay: 160ms; }
+  .stagger-3 { animation-delay: 180ms; }
+  .stagger-4 { animation-delay: 240ms; }
+  .stagger-4b { animation-delay: 280ms; }
+  .stagger-5 { animation-delay: 320ms; }
 
   .phi-description {
     font-size: var(--text-sm); color: #5a5a7a; line-height: 1.6;
@@ -707,5 +905,161 @@
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Memory Section ── */
+  .memory-badge {
+    margin-left: auto; padding: 2px 8px; border-radius: 99px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+    font-family: var(--font-mono);
+    background: rgba(74,74,106,0.15); color: #4a4a6a;
+    transition: all 250ms;
+  }
+  .memory-badge.memory-active {
+    background: rgba(16,185,129,0.12); color: #10B981;
+  }
+
+  .memory-config {
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .setting-input {
+    width: 220px; height: 34px; padding: 0 12px; border-radius: 10px;
+    background: rgba(14,14,30,0.6); border: 1px solid rgba(139,92,246,0.08);
+    font-size: 12px; font-weight: 600; font-family: var(--font-body);
+    color: #e0e0f0; outline: none; transition: border-color 200ms;
+  }
+  .setting-input:focus { border-color: rgba(139,92,246,0.3); }
+  .setting-input.mono { font-family: var(--font-mono); }
+
+  .retrieval-row {
+    display: flex; gap: 12px;
+  }
+  .retrieval-field {
+    display: flex; flex-direction: column; gap: 5px; flex: 1;
+  }
+  .retrieval-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #4a4a6a;
+    font-family: var(--font-mono);
+  }
+
+  /* Index Status Panel */
+  .index-panel {
+    padding: 14px 16px; border-radius: 12px;
+    background: rgba(10,10,24,0.5);
+    border: 1px solid rgba(139,92,246,0.06);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .index-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .index-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #6b6b8a;
+    font-family: var(--font-mono);
+  }
+  .index-refresh-btn {
+    width: 26px; height: 26px; border-radius: 7px;
+    border: 1px solid rgba(139,92,246,0.08);
+    background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 150ms;
+  }
+  .index-refresh-btn:hover { background: rgba(139,92,246,0.08); }
+  .index-refresh-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .index-stats {
+    display: flex; gap: 12px;
+  }
+  .index-stat {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 2px; padding: 8px; border-radius: 8px;
+    background: rgba(139,92,246,0.04);
+  }
+  .stat-value {
+    font-size: 18px; font-weight: 800; color: #e0e0f0;
+    font-family: var(--font-mono); letter-spacing: -0.5px;
+  }
+  .stat-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #4a4a6a;
+    font-family: var(--font-mono);
+  }
+
+  .index-progress {
+    height: 4px; border-radius: 99px;
+    background: rgba(139,92,246,0.08); overflow: hidden;
+  }
+  .index-progress-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #8B5CF6, #bf40ff);
+    transition: width 500ms cubic-bezier(0.34,1.56,0.64,1);
+  }
+
+  /* Rebuild Warning */
+  .rebuild-warning {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 14px; border-radius: 10px;
+    background: rgba(245,158,11,0.06);
+    border: 1px solid rgba(245,158,11,0.15);
+  }
+  .rebuild-text {
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .rebuild-title {
+    font-size: 12px; font-weight: 700; color: #F59E0B;
+  }
+  .rebuild-desc {
+    font-size: 11px; color: #8b8ba7; line-height: 1.5;
+  }
+  .rebuild-desc code {
+    padding: 1px 5px; border-radius: 4px;
+    background: rgba(139,92,246,0.1); color: #a78bfa;
+    font-size: 10px; font-family: var(--font-mono);
+  }
+
+  .rebuild-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 10px; border-radius: 10px;
+    background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.12);
+    color: #e0e0f0; font-size: 12px; font-weight: 600;
+    font-family: var(--font-body); cursor: pointer;
+    transition: all 180ms ease;
+  }
+  .rebuild-btn:hover { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.22); }
+  .rebuild-btn:disabled { opacity: 0.5; cursor: default; }
+  .rebuild-btn.rebuilding { color: #a78bfa; }
+
+  .btn-spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(139,92,246,0.2);
+    border-top-color: #a78bfa;
+    animation: spin 700ms linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .index-loading {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 0; color: #6b6b8a; font-size: 12px;
+  }
+  .index-spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(139,92,246,0.15);
+    border-top-color: #a78bfa;
+    animation: spin 700ms linear infinite;
+  }
+
+  .index-empty {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px; padding: 16px 0; text-align: center;
+    color: #4a4a6a; font-size: 12px;
+  }
+  .index-empty-hint {
+    font-size: 10px; color: #3a3a5a;
   }
 </style>

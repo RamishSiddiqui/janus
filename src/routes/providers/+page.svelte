@@ -376,6 +376,41 @@
                     onblur={(e) => saveField(p, 'base_url', e.currentTarget.value)} />
                 </div>
               {/if}
+
+              <!-- Embedder Config -->
+              <div class="embedder-section">
+                <div class="embedder-header">
+                  <Icon name="cpu" size={12} color="#a78bfa" />
+                  <span class="embedder-title">Embedder</span>
+                  <span class="embedder-hint">Model used for semantic memory indexing</span>
+                </div>
+                <div class="pfield">
+                  <span class="pflabel">Embedding Model</span>
+                  {#if p.config.embedding_model}
+                    <input class="pfinput mono" value={p.config.embedding_model}
+                      onblur={(e) => {
+                        const v = e.currentTarget.value;
+                        p.config.embedding_model = v;
+                        providers = [...providers];
+                        saveField(p, 'embedding_model', v);
+                      }} />
+                  {:else}
+                    <div class="field-empty-wrap">
+                      <span class="field-empty-chip">No embedder set</span>
+                      <input class="pfinput mono field-empty-input"
+                        placeholder={p.adapter === 'open_router' ? 'openai/text-embedding-3-small' : p.adapter === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-small'}
+                        onblur={(e) => {
+                          const v = e.currentTarget.value.trim();
+                          if (v) {
+                            p.config.embedding_model = v;
+                            providers = [...providers];
+                            saveField(p, 'embedding_model', v);
+                          }
+                        }} />
+                    </div>
+                  {/if}
+                </div>
+              </div>
             </div>
           {/if}
 
@@ -599,5 +634,25 @@
     flex-shrink: 0; padding: 2px 7px; border-radius: 99px;
     background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2);
     color: #10B981; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  }
+
+  /* ── Embedder Section ── */
+  .embedder-section {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 14px 16px; margin-top: 4px; border-radius: 10px;
+    background: rgba(139,92,246,0.03);
+    border: 1px solid rgba(139,92,246,0.06);
+    border-left: 2px solid rgba(139,92,246,0.2);
+  }
+  .embedder-header {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .embedder-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #a78bfa;
+    font-family: var(--font-mono);
+  }
+  .embedder-hint {
+    font-size: 10px; color: #4a4a6a; margin-left: auto;
   }
 </style>

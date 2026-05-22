@@ -726,3 +726,33 @@ export async function generateRaw(
     temperature: temperature ?? null,
   });
 }
+
+// --- Embedding Index ---
+
+export interface EmbeddingIndexStatus {
+  total_messages: number;
+  embedded_messages: number;
+  index_model: string | null;
+  needs_rebuild: boolean;
+  coverage_percent: number;
+}
+
+export async function getEmbeddingIndexStatus(
+  conversationId?: string | null,
+  selectedModel?: string,
+): Promise<EmbeddingIndexStatus> {
+  return safeInvoke<EmbeddingIndexStatus>('get_embedding_index_status', {
+    conversationId: conversationId ?? null,
+    selectedModel: selectedModel ?? null,
+  });
+}
+
+export async function rebuildEmbeddingIndex(
+  conversationId?: string | null,
+  embeddingModel?: string,
+): Promise<EmbeddingIndexStatus> {
+  return safeInvoke<EmbeddingIndexStatus>('rebuild_embedding_index', {
+    conversationId: conversationId ?? null,
+    embeddingModel: embeddingModel ?? 'openai/text-embedding-3-small',
+  });
+}

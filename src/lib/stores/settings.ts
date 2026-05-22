@@ -22,6 +22,14 @@ export interface AppSettings {
   maxContextTokens: number;
   /** Whether to auto-generate rolling summaries of evicted messages. */
   autoSummarize: boolean;
+  /** Whether vector RAG (semantic memory) is enabled. */
+  ragEnabled: boolean;
+  /** Embedding model to use for RAG. */
+  ragEmbeddingModel: string;
+  /** Number of top results to retrieve from vector search. */
+  ragTopK: number;
+  /** Minimum cosine similarity threshold for RAG results. */
+  ragMinSimilarity: number;
   /** Internal version counter — bumped when managed defaults (PHI, systemPrompt) change.
    *  When saved version < current version, stale prompts are refreshed automatically. */
   _settingsVersion: number;
@@ -42,6 +50,10 @@ const defaultSettings: AppSettings = {
   _settingsVersion: CURRENT_SETTINGS_VERSION,
   maxContextTokens: 16384,
   autoSummarize: true,
+  ragEnabled: false,
+  ragEmbeddingModel: 'openai/text-embedding-3-small',
+  ragTopK: 5,
+  ragMinSimilarity: 0.7,
   systemPrompt: `You are {{char}}, a character in an immersive roleplay. Stay in character at all times. Use vivid, descriptive prose with *actions* in asterisks. Never break the fourth wall. Respond naturally to the user's actions and advance the narrative.`,
   postHistoryInstructions: `[Narrative Direction — MANDATORY]
 RULE: Never write a response that ends the scene without beginning the next one. Farewells are scene TRANSITIONS, not endings. If a goodbye, departure, time-skip, or scene conclusion occurs, you MUST continue writing past it into the next scene within the same response.
