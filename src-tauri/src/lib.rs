@@ -151,6 +151,7 @@ pub fn run() {
             commands::providers::test_provider_connection,
             commands::providers::list_provider_models,
             commands::providers::list_all_models,
+            commands::providers::list_embedding_models,
             commands::providers::toggle_model_enabled,
             commands::providers::list_enabled_models,
             // Chat

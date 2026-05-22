@@ -450,6 +450,146 @@ pub async fn list_all_models(
     Ok(all_entries)
 }
 
+/// Fetches **embedding** models from all configured providers in parallel.
+///
+/// For OpenRouter: uses the dedicated `/api/v1/embeddings/models` endpoint.
+/// For Ollama/LM Studio/OpenAI-compatible: fetches standard model lists and
+/// filters for model IDs containing "embed".
+#[tauri::command]
+pub async fn list_embedding_models(
+    state: State<'_, Arc<RwLock<AppState>>>,
+) -> Result<Vec<ModelEntry>, MythicError> {
+    let (providers, enabled_map, http) = {
+        let state_guard = state.read().await;
+        let providers = ProviderRepo::list(&state_guard.db, None).await?;
+        let enabled_map = ProviderRepo::get_all_enabled_states(&state_guard.db).await?;
+        let http = state_guard.http_client.clone();
+        (providers, enabled_map, http)
+    };
+
+    let mut tasks = Vec::new();
+    for provider in &providers {
+        let config = &provider.config;
+        let base_url = config.get("base_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let adapter = serde_json::to_value(&provider.adapter)
+            .ok()
+            .and_then(|v| v.as_str().map(String::from))
+            .unwrap_or_default();
+        let provider_id = provider.id.id.to_raw();
+        let provider_name = provider.name.clone();
+        let http_c = http.clone();
+
+        tasks.push(tokio::spawn(async move {
+            // Determine URL based on adapter
+            let (url, is_ollama, is_embedding_endpoint) = match adapter.as_str() {
+                "open_router" => (
+                    "https://openrouter.ai/api/v1/embeddings/models".to_string(),
+                    false,
+                    true, // dedicated embedding endpoint — all results are embedding models
+                ),
+                "ollama" => {
+                    let base = if base_url.is_empty() { "http://localhost:11434".to_string() } else { base_url };
+                    (format!("{}/api/tags", base), true, false)
+                }
+                _ => {
+                    if base_url.is_empty() { return vec![]; }
+                    (format!("{}/v1/models", base_url.trim_end_matches('/')), false, false)
+                }
+            };
+
+            let mut req = http_c.get(&url).timeout(std::time::Duration::from_secs(8));
+            if !api_key.is_empty() {
+                req = req.header("Authorization", format!("Bearer {}", api_key));
+                if adapter == "open_router" {
+                    req = req
+                        .header("HTTP-Referer", "https://mythic.app")
+                        .header("X-Title", "Mythic");
+                }
+            }
+
+            let body: serde_json::Value = match req.send().await {
+                Ok(resp) => match resp.json::<serde_json::Value>().await {
+                    Ok(v) => v,
+                    Err(_) => return vec![],
+                },
+                Err(_) => return vec![],
+            };
+
+            // Parse models from response
+            let raw_models: Vec<(String, Option<String>, Option<u32>, Option<String>, Option<String>, bool)> = if is_ollama {
+                body.get("models")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|m| {
+                        let id = m.get("name")?.as_str()?.to_string();
+                        Some((id, None, None, None, None, false))
+                    }).collect())
+                    .unwrap_or_default()
+            } else {
+                body.get("data")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let name = m.get("name").and_then(|v| v.as_str()).map(String::from);
+                        let ctx = m.get("context_length").and_then(|v| v.as_u64()).map(|v| v as u32);
+                        let pricing = m.get("pricing");
+                        let p_prompt = pricing.and_then(|p| p.get("prompt")).and_then(|v| v.as_str()).map(String::from);
+                        let p_completion = pricing.and_then(|p| p.get("completion")).and_then(|v| v.as_str()).map(String::from);
+                        let is_free = p_prompt.as_deref() == Some("0") && p_completion.as_deref() == Some("0");
+                        Some((id, name, ctx, p_prompt, p_completion, is_free))
+                    }).collect())
+                    .unwrap_or_default()
+            };
+
+            // Filter: if this is a dedicated embedding endpoint, keep all;
+            // otherwise only keep models with "embed" in their ID
+            raw_models.into_iter()
+                .filter(|(id, name, ..)| {
+                    if is_embedding_endpoint { return true; }
+                    let id_lower = id.to_lowercase();
+                    let name_lower = name.as_deref().unwrap_or("").to_lowercase();
+                    id_lower.contains("embed") || name_lower.contains("embed")
+                })
+                .map(|(model_id, display_name, context_length, pricing_prompt, pricing_completion, is_free)| {
+                    ModelEntry {
+                        model_id,
+                        provider_id: provider_id.clone(),
+                        provider_name: provider_name.clone(),
+                        adapter: adapter.clone(),
+                        model_type: "embedding".to_string(),
+                        context_length,
+                        enabled: false,
+                        display_name,
+                        description: None,
+                        pricing_prompt,
+                        pricing_completion,
+                        is_free,
+                        max_completion_tokens: None,
+                        input_modalities: vec![],
+                        output_modalities: vec![],
+                        supports_tools: false,
+                        supports_vision: false,
+                        supports_reasoning: false,
+                    }
+                })
+                .collect::<Vec<_>>()
+        }));
+    }
+
+    let mut all_entries: Vec<ModelEntry> = Vec::new();
+    for task in tasks {
+        if let Ok(rows) = task.await {
+            for mut entry in rows {
+                entry.enabled = *enabled_map.get(&(entry.provider_id.clone(), entry.model_id.clone())).unwrap_or(&false);
+                all_entries.push(entry);
+            }
+        }
+    }
+
+    info!("list_embedding_models: {} total across {} providers", all_entries.len(), providers.len());
+    Ok(all_entries)
+}
+
 /// Toggles a model's enabled state in the `enabled_models` table.
 /// Uses SurrealDB UPSERT for clean first-time toggling.
 #[tauri::command]

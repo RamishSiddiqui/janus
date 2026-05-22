@@ -68,18 +68,10 @@
       const ipc = await import('$lib/services/ipc');
       if (isTauri) {
         const [models, pList] = await Promise.all([
-          ipc.listAllModels(),
+          ipc.listEmbeddingModels(),
           ipc.listProviders(),
         ]);
-        // Filter to only embedding models:
-        // 1. model_id contains "embed" (covers text-embedding-*, embed-*, nomic-embed-*, etc.)
-        // 2. or output_modalities contains "embedding"
-        allModels = models.filter(m => {
-          const id = m.model_id.toLowerCase();
-          const name = (m.display_name ?? '').toLowerCase();
-          return id.includes('embed') || name.includes('embed') ||
-            m.output_modalities.some(mod => mod.toLowerCase() === 'embedding');
-        });
+        allModels = models;
         providers = pList.map(p => ({ id: p.id, name: p.name }));
       }
     } catch (err) { handleIpcError('load models', err); }

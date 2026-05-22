@@ -369,6 +369,10 @@ export async function listAllModels(): Promise<ModelEntry[]> {
   return safeInvoke<ModelEntry[]>('list_all_models');
 }
 
+export async function listEmbeddingModels(): Promise<ModelEntry[]> {
+  return safeInvoke<ModelEntry[]>('list_embedding_models');
+}
+
 export async function toggleModelEnabled(
   providerId: string,
   modelId: string,
