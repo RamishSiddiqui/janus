@@ -32,6 +32,9 @@
     index_model: string | null;
     needs_rebuild: boolean;
     coverage_percent: number;
+    index_dimension: number | null;
+    selected_dimension: number | null;
+    dimension_mismatch: boolean;
   } | null>(null);
   let isLoadingIndex = $state(false);
   let isRebuilding = $state(false);
@@ -533,15 +536,74 @@
                   <div class="index-progress-fill" style="width: {indexStatus.coverage_percent}%"></div>
                 </div>
 
-                <!-- Rebuild Warning -->
-                {#if indexStatus.needs_rebuild}
+                <!-- Dimension Mismatch Warning -->
+                {#if indexStatus.dimension_mismatch && indexStatus.index_dimension && indexStatus.selected_dimension}
+                  <div class="dim-mismatch-alert">
+                    <div class="dim-mismatch-glow"></div>
+                    <div class="dim-mismatch-content">
+                      <div class="dim-mismatch-header">
+                        <div class="dim-mismatch-icon-wrap">
+                          <svg class="dim-mismatch-icon" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 9v4m0 4h.01M4.93 19h14.14c1.34 0 2.18-1.45 1.51-2.6L13.51 4.24a1.73 1.73 0 00-3.02 0L3.42 16.4C2.75 17.55 3.59 19 4.93 19z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                          </svg>
+                        </div>
+                        <div class="dim-mismatch-title-group">
+                          <span class="dim-mismatch-title">Dimension Mismatch</span>
+                          <span class="dim-mismatch-severity">Incompatible</span>
+                        </div>
+                      </div>
+
+                      <div class="dim-mismatch-body">
+                        <p class="dim-mismatch-desc">
+                          Your stored embeddings use a different vector size than the currently selected model.
+                          Existing embeddings cannot be used for similarity search with the new model.
+                        </p>
+
+                        <div class="dim-compare">
+                          <div class="dim-compare-item dim-old">
+                            <span class="dim-compare-label">Stored Index</span>
+                            <div class="dim-compare-value-wrap">
+                              <span class="dim-compare-value">{indexStatus.index_dimension}</span>
+                              <span class="dim-compare-unit">dims</span>
+                            </div>
+                            {#if indexStatus.index_model}
+                              <span class="dim-compare-model">{indexStatus.index_model}</span>
+                            {/if}
+                          </div>
+
+                          <div class="dim-compare-arrow">
+                            <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+                              <path d="M5 12h14m0 0l-4-4m4 4l-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                          </div>
+
+                          <div class="dim-compare-item dim-new">
+                            <span class="dim-compare-label">Selected Model</span>
+                            <div class="dim-compare-value-wrap">
+                              <span class="dim-compare-value">{indexStatus.selected_dimension}</span>
+                              <span class="dim-compare-unit">dims</span>
+                            </div>
+                            <span class="dim-compare-model">{ragEmbeddingModel}</span>
+                          </div>
+                        </div>
+
+                        <div class="dim-mismatch-resolution">
+                          <span class="dim-resolution-title">How to resolve</span>
+                          <span class="dim-resolution-text">Click <strong>Rebuild Index</strong> below to re-embed all messages with the new model. This will delete existing embeddings and create new ones with the correct dimensions.</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                <!-- Model Mismatch (same dimensions, different model) -->
+                {:else if indexStatus.needs_rebuild && !indexStatus.dimension_mismatch}
                   <div class="rebuild-warning">
                     <Icon name="alert-triangle" size={13} color="#F59E0B" />
                     <div class="rebuild-text">
-                      <span class="rebuild-title">Model Mismatch</span>
+                      <span class="rebuild-title">Model Changed</span>
                       <span class="rebuild-desc">
                         Index built with <code>{indexStatus.index_model}</code>, but <code>{ragEmbeddingModel}</code> is selected.
-                        Rebuild to use the new model.
+                        Rebuild to use the new model for consistent results.
                       </span>
                     </div>
                   </div>
@@ -550,16 +612,17 @@
                 <!-- Rebuild Button -->
                 <button
                   class="rebuild-btn"
+                  class:rebuild-urgent={indexStatus.dimension_mismatch}
                   class:rebuilding={isRebuilding}
                   onclick={rebuildIndex}
                   disabled={isRebuilding}
                 >
                   {#if isRebuilding}
                     <div class="btn-spinner"></div>
-                    Rebuilding...
+                    Rebuilding…
                   {:else}
-                    <Icon name="refresh-cw" size={13} color="#e0e0f0" />
-                    {indexStatus.needs_rebuild ? 'Rebuild Index' : 'Rebuild Index'}
+                    <Icon name="refresh-cw" size={13} color={indexStatus.dimension_mismatch ? '#F59E0B' : '#e0e0f0'} />
+                    {indexStatus.dimension_mismatch ? 'Rebuild Index (Required)' : indexStatus.needs_rebuild ? 'Rebuild Index' : 'Rebuild Index'}
                   {/if}
                 </button>
               {:else}
@@ -1030,12 +1093,145 @@
     transition: width 500ms cubic-bezier(0.34,1.56,0.64,1);
   }
 
-  /* Rebuild Warning */
+  /* ── Dimension Mismatch Alert ── */
+  .dim-mismatch-alert {
+    position: relative; border-radius: 14px; overflow: hidden;
+    animation: dimAlertIn 350ms cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes dimAlertIn {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .dim-mismatch-glow {
+    position: absolute; inset: 0; border-radius: 14px; z-index: 0;
+    background: conic-gradient(from 180deg at 50% 50%,
+      rgba(245,158,11,0.25), rgba(239,68,68,0.2), rgba(245,158,11,0.25),
+      rgba(239,68,68,0.2), rgba(245,158,11,0.25));
+    animation: glowRotate 6s linear infinite;
+    filter: blur(1px);
+  }
+  @keyframes glowRotate {
+    to { transform: rotate(360deg); }
+  }
+  .dim-mismatch-content {
+    position: relative; z-index: 1; margin: 1px; border-radius: 13px;
+    background: linear-gradient(175deg, rgba(20,16,10,0.97), rgba(12,10,8,0.98));
+    backdrop-filter: blur(20px);
+  }
+  .dim-mismatch-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px 0;
+  }
+  .dim-mismatch-icon-wrap {
+    width: 32px; height: 32px; border-radius: 9px;
+    background: rgba(245,158,11,0.12);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .dim-mismatch-icon {
+    width: 18px; height: 18px; color: #F59E0B;
+    animation: iconPulse 2s ease-in-out infinite;
+  }
+  @keyframes iconPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .dim-mismatch-title-group {
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .dim-mismatch-title {
+    font-size: 13px; font-weight: 800; color: #F59E0B;
+    letter-spacing: -0.2px;
+  }
+  .dim-mismatch-severity {
+    font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: #EF4444;
+    font-family: var(--font-mono);
+  }
+  .dim-mismatch-body {
+    padding: 10px 14px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .dim-mismatch-desc {
+    font-size: 11px; color: #8b8ba7; line-height: 1.6; margin: 0;
+  }
+
+  /* ── Dimension Comparison ── */
+  .dim-compare {
+    display: flex; align-items: center; gap: 0;
+  }
+  .dim-compare-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 4px; padding: 10px 8px; border-radius: 10px;
+    transition: all 200ms;
+  }
+  .dim-old {
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.12);
+  }
+  .dim-new {
+    background: rgba(16,185,129,0.06);
+    border: 1px solid rgba(16,185,129,0.12);
+  }
+  .dim-compare-label {
+    font-size: 8px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; font-family: var(--font-mono);
+  }
+  .dim-old .dim-compare-label { color: #EF4444; }
+  .dim-new .dim-compare-label { color: #10B981; }
+  .dim-compare-value-wrap {
+    display: flex; align-items: baseline; gap: 3px;
+  }
+  .dim-compare-value {
+    font-size: 22px; font-weight: 900; letter-spacing: -1px;
+    font-family: var(--font-mono);
+  }
+  .dim-old .dim-compare-value { color: #F87171; }
+  .dim-new .dim-compare-value { color: #34D399; }
+  .dim-compare-unit {
+    font-size: 9px; font-weight: 700; color: #4a4a6a;
+    font-family: var(--font-mono); letter-spacing: 0.5px;
+  }
+  .dim-compare-model {
+    font-size: 9px; font-family: var(--font-mono); color: #5a5a7a;
+    max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; text-align: center;
+  }
+  .dim-compare-arrow {
+    color: #3a3a5a; flex-shrink: 0; padding: 0 4px;
+    animation: arrowBounce 1.5s ease-in-out infinite;
+  }
+  @keyframes arrowBounce {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(3px); }
+  }
+
+  /* ── Resolution Box ── */
+  .dim-mismatch-resolution {
+    padding: 8px 10px; border-radius: 8px;
+    background: rgba(139,92,246,0.04);
+    border-left: 2px solid rgba(139,92,246,0.3);
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .dim-resolution-title {
+    font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: #8B5CF6;
+    font-family: var(--font-mono);
+  }
+  .dim-resolution-text {
+    font-size: 11px; color: #6b6b8a; line-height: 1.5;
+  }
+  .dim-resolution-text strong {
+    color: #a78bfa; font-weight: 700;
+  }
+
+  /* ── Rebuild Warning (model-only mismatch) ── */
   .rebuild-warning {
     display: flex; align-items: flex-start; gap: 10px;
     padding: 10px 14px; border-radius: 10px;
     background: rgba(245,158,11,0.06);
     border: 1px solid rgba(245,158,11,0.15);
+    animation: dimAlertIn 250ms ease both;
   }
   .rebuild-text {
     display: flex; flex-direction: column; gap: 3px;
@@ -1052,6 +1248,7 @@
     font-size: 10px; font-family: var(--font-mono);
   }
 
+  /* ── Rebuild Button ── */
   .rebuild-btn {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     width: 100%; padding: 10px; border-radius: 10px;
@@ -1063,6 +1260,20 @@
   .rebuild-btn:hover { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.22); }
   .rebuild-btn:disabled { opacity: 0.5; cursor: default; }
   .rebuild-btn.rebuilding { color: #a78bfa; }
+  .rebuild-btn.rebuild-urgent {
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.25);
+    color: #F59E0B;
+    animation: urgentPulse 2s ease-in-out infinite;
+  }
+  .rebuild-btn.rebuild-urgent:hover {
+    background: rgba(245,158,11,0.18);
+    border-color: rgba(245,158,11,0.35);
+  }
+  @keyframes urgentPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+    50% { box-shadow: 0 0 0 4px rgba(245,158,11,0.08); }
+  }
 
   .btn-spinner {
     width: 14px; height: 14px; border-radius: 50%;

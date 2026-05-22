@@ -264,15 +264,17 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings: {}", e)))?;
 
-    // MTREE vector index (separate to isolate errors)
-    info!("  schema: message_embeddings MTREE...");
+    // Add dimension field to track embedding dimensions per record
+    info!("  schema: message_embeddings dimension field...");
     db.query("
-        DEFINE INDEX IF NOT EXISTS idx_me_embedding ON message_embeddings
-            FIELDS embedding MTREE DIMENSION 1536 DIST COSINE TYPE F32;
+        DEFINE FIELD IF NOT EXISTS dimension ON message_embeddings TYPE int DEFAULT 0;
     ")
     .await?
     .check()
-    .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_mtree: {}", e)))?;
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_dimension: {}", e)))?;
+
+    // NOTE: MTREE index is created dynamically via `ensure_mtree_index()`
+    // when the first embedding is stored, using the actual vector dimension.
 
     // ── Cascade delete events ───────────────────────────────────────────
     info!("  schema: cascade events...");

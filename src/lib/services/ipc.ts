@@ -739,6 +739,12 @@ export interface EmbeddingIndexStatus {
   index_model: string | null;
   needs_rebuild: boolean;
   coverage_percent: number;
+  /** Dimension of existing stored embeddings (null if none exist) */
+  index_dimension: number | null;
+  /** Dimension of the currently selected embedding model */
+  selected_dimension: number | null;
+  /** True when stored embeddings have different dimensions than the selected model */
+  dimension_mismatch: boolean;
 }
 
 export async function getEmbeddingIndexStatus(

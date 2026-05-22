@@ -30,6 +30,43 @@ pub struct EmbeddingIndexStatus {
     pub needs_rebuild: bool,
     /// Percentage of messages embedded (0-100)
     pub coverage_percent: f64,
+    /// Dimension of existing embeddings (None if no embeddings exist)
+    pub index_dimension: Option<usize>,
+    /// Dimension of the currently selected embedding model (from known dimensions map)
+    pub selected_dimension: Option<usize>,
+    /// Whether dimensions mismatch between stored and selected model
+    pub dimension_mismatch: bool,
+}
+
+/// Returns the known embedding dimension for common models.
+fn get_model_dimension(model_id: &str) -> Option<usize> {
+    let id = model_id.to_lowercase();
+    if id.contains("text-embedding-3-small") { return Some(1536); }
+    if id.contains("text-embedding-3-large") { return Some(3072); }
+    if id.contains("text-embedding-ada-002") { return Some(1536); }
+    if id.contains("nomic-embed-text") { return Some(768); }
+    if id.contains("mxbai-embed-large") { return Some(1024); }
+    if id.contains("all-minilm") { return Some(384); }
+    if id.contains("bge-large") { return Some(1024); }
+    if id.contains("bge-base") { return Some(768); }
+    if id.contains("bge-m3") { return Some(1024); }
+    if id.contains("gte-base") { return Some(768); }
+    if id.contains("gte-large") { return Some(1024); }
+    if id.contains("e5-large") { return Some(1024); }
+    if id.contains("e5-base") { return Some(768); }
+    if id.contains("embed-english-v3") || id.contains("embed-multilingual-v3") { return Some(1024); }
+    if id.contains("gemini-embedding") { return Some(768); }
+    if id.contains("mistral-embed") { return Some(1024); }
+    if id.contains("codestral-embed") { return Some(1024); }
+    if id.contains("nemotron-embed") { return Some(4096); }
+    if id.contains("pplx-embed") { return Some(4096); }
+    if id.contains("qwen3-embedding-8b") { return Some(4096); }
+    if id.contains("qwen3-embedding-4b") { return Some(2048); }
+    if id.contains("multi-qa-mpnet") { return Some(768); }
+    if id.contains("all-mpnet") { return Some(768); }
+    if id.contains("paraphrase-minilm") { return Some(384); }
+    if id.contains("m2-bert") { return Some(768); }
+    None
 }
 
 /// Inner helper that operates on a raw `Surreal<Db>` reference.
@@ -85,11 +122,24 @@ async fn get_embedding_index_status_inner(
     let model_rows: Vec<ModelRow> = model_result.take(0)?;
     let index_model = model_rows.into_iter().next().map(|r| r.model_name);
 
-    // Check if rebuild is needed (stored model differs from the one the user selected)
-    let needs_rebuild = match (&index_model, &selected_model) {
+    // Get stored dimension from existing embeddings
+    let index_dimension = EmbeddingRepo::get_index_dimension(db, conversation_id.as_deref()).await?;
+
+    // Get the expected dimension for the selected model
+    let selected_dimension = selected_model.as_deref().and_then(get_model_dimension);
+
+    // Check if dimensions mismatch
+    let dimension_mismatch = match (index_dimension, selected_dimension) {
         (Some(stored), Some(selected)) => stored != selected,
         _ => false,
     };
+
+    // Check if rebuild is needed (stored model differs from the one the user selected,
+    // or dimensions mismatch)
+    let needs_rebuild = match (&index_model, &selected_model) {
+        (Some(stored), Some(selected)) => stored != selected,
+        _ => false,
+    } || dimension_mismatch;
 
     let coverage_percent = if total_messages > 0 {
         (embedded_messages as f64 / total_messages as f64) * 100.0
@@ -103,6 +153,9 @@ async fn get_embedding_index_status_inner(
         index_model,
         needs_rebuild,
         coverage_percent,
+        index_dimension,
+        selected_dimension,
+        dimension_mismatch,
     })
 }
 
@@ -150,6 +203,11 @@ pub async fn rebuild_embedding_index(
         None => {
             db.query("DELETE FROM message_embeddings").await?;
         }
+    }
+
+    // Ensure the MTREE index matches the new model's dimension
+    if let Some(dim) = get_model_dimension(&embedding_model) {
+        EmbeddingRepo::ensure_mtree_index(&db, dim).await?;
     }
 
     // Fetch all user/assistant messages in scope

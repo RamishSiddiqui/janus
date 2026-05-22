@@ -7,6 +7,49 @@ use crate::error::MythicError;
 pub struct EmbeddingRepo;
 
 impl EmbeddingRepo {
+    /// Ensures the MTREE index exists with the correct dimension.
+    /// If the index exists with a different dimension, it is dropped and recreated.
+    pub async fn ensure_mtree_index(
+        db: &Surreal<Db>,
+        dimension: usize,
+    ) -> Result<(), MythicError> {
+        // Drop existing index (safe if it doesn't exist)
+        let _ = db.query("REMOVE INDEX IF EXISTS idx_me_embedding ON message_embeddings").await;
+
+        // Create with the correct dimension
+        let query = format!(
+            "DEFINE INDEX idx_me_embedding ON message_embeddings FIELDS embedding MTREE DIMENSION {} DIST COSINE TYPE F32",
+            dimension
+        );
+        db.query(&query).await?.check()
+            .map_err(|e| MythicError::DatabaseOp(format!("ensure_mtree_index({}): {}", dimension, e)))?;
+
+        tracing::info!("[embeddings] MTREE index set to dimension {}", dimension);
+        Ok(())
+    }
+
+    /// Returns the dimension of existing embeddings, or None if no embeddings exist.
+    pub async fn get_index_dimension(
+        db: &Surreal<Db>,
+        conversation_id: Option<&str>,
+    ) -> Result<Option<usize>, MythicError> {
+        let query = match conversation_id {
+            Some(conv_id) => format!(
+                "SELECT dimension FROM message_embeddings WHERE conversation_id = type::thing('conversations', '{}') LIMIT 1",
+                conv_id
+            ),
+            None => "SELECT dimension FROM message_embeddings LIMIT 1".to_string(),
+        };
+
+        let mut result = db.query(&query).await?;
+
+        #[derive(serde::Deserialize)]
+        struct DimRow { dimension: i64 }
+
+        let rows: Vec<DimRow> = result.take(0)?;
+        Ok(rows.into_iter().next().map(|r| r.dimension as usize))
+    }
+
     /// Store an embedding for a message.
     pub async fn store(
         db: &Surreal<Db>,
@@ -17,21 +60,24 @@ impl EmbeddingRepo {
     ) -> Result<(), MythicError> {
         // Convert f64 to f32 for storage efficiency (MTREE index uses F32)
         let embedding_f32: Vec<f32> = embedding.iter().map(|&v| v as f32).collect();
+        let dimension = embedding_f32.len() as i64;
 
         db.query(
             "CREATE message_embeddings SET \
                 message_id = type::thing('messages', $msg_id), \
                 conversation_id = type::thing('conversations', $conv_id), \
                 embedding = $embedding, \
-                model_name = $model"
+                model_name = $model, \
+                dimension = $dim"
         )
         .bind(("msg_id", message_id.to_string()))
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("embedding", embedding_f32))
         .bind(("model", model_name.to_string()))
+        .bind(("dim", dimension))
         .await?;
 
-        debug!("[embeddings] Stored embedding for message {}", message_id);
+        debug!("[embeddings] Stored embedding for message {} (dim={})", message_id, dimension);
         Ok(())
     }
 
