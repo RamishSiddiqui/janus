@@ -3,79 +3,63 @@
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { success } from '$lib/stores/toast';
   import { handleIpcError } from '$lib/utils/error';
+  import type { ModelEntry } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   // ── State ──────────────────────────────────────────────────
-  interface EmbedRow {
-    id: string;
-    name: string;
-    adapter: string;
-    config: Record<string, string>;
-    isEditing?: boolean;
-    isSaving?: boolean;
-    isTesting?: boolean;
-    testLatency?: number | null;
-    testOk?: boolean | null;
-    editModel?: string;
-  }
-
-  let allRows = $state<EmbedRow[]>([]);
+  let allModels = $state<ModelEntry[]>([]);
   let isLoading = $state(true);
+  let providers = $state<Array<{ id: string; name: string }>>([]);
+
+  // Filters
+  let filterProvider = $state('all');
+  let filterStatus = $state('all');
+  let filterPricing = $state('all');
   let filterSearch = $state('');
+
+  // Sorting
+  let sortBy = $state<'name' | 'price-asc' | 'price-desc' | 'context-desc' | 'context-asc'>('name');
+
+  // Toggling / expanded
+  let togglingId = $state<string | null>(null);
   let expandedId = $state<string | null>(null);
 
-  const embeddingAdapters = new Set([
-    'open_router', 'open_ai_compatible', 'openai_compatible', 'ollama',
-    'lm_studio', 'gemini', 'cohere', 'together',
-  ]);
-
-  // Derived filtered list
+  // Derived filtered + sorted list
   let filtered = $derived(() => {
-    let list = allRows;
+    let list = allModels;
+    if (filterProvider !== 'all') list = list.filter(m => m.provider_id === filterProvider);
+    if (filterStatus === 'enabled') list = list.filter(m => m.enabled);
+    else if (filterStatus === 'disabled') list = list.filter(m => !m.enabled);
+    if (filterPricing === 'free') list = list.filter(m => m.is_free);
+    else if (filterPricing === 'paid') list = list.filter(m => !m.is_free);
     if (filterSearch.trim()) {
       const q = filterSearch.toLowerCase();
-      list = list.filter(r =>
-        r.name.toLowerCase().includes(q) ||
-        r.adapter.toLowerCase().includes(q) ||
-        (r.config.embedding_model || '').toLowerCase().includes(q) ||
-        adapterLabel(r.adapter).toLowerCase().includes(q)
+      list = list.filter(m =>
+        m.model_id.toLowerCase().includes(q) ||
+        m.provider_name.toLowerCase().includes(q) ||
+        (m.display_name && m.display_name.toLowerCase().includes(q)) ||
+        (m.description && m.description.toLowerCase().includes(q))
       );
+    }
+    // Sort
+    list = [...list];
+    switch (sortBy) {
+      case 'name': list.sort((a, b) => (a.display_name ?? a.model_id).localeCompare(b.display_name ?? b.model_id)); break;
+      case 'price-asc': list.sort((a, b) => priceNum(a.pricing_prompt) - priceNum(b.pricing_prompt)); break;
+      case 'price-desc': list.sort((a, b) => priceNum(b.pricing_prompt) - priceNum(a.pricing_prompt)); break;
+      case 'context-desc': list.sort((a, b) => (b.context_length ?? 0) - (a.context_length ?? 0)); break;
+      case 'context-asc': list.sort((a, b) => (a.context_length ?? 0) - (b.context_length ?? 0)); break;
     }
     return list;
   });
 
-  let configuredCount = $derived(allRows.filter(r => !!r.config.embedding_model).length);
+  let enabledCount = $derived(allModels.filter(m => m.enabled).length);
+  let freeCount = $derived(allModels.filter(m => m.is_free).length);
+  let maxCtx = $derived(Math.max(...allModels.map(m => m.context_length ?? 0), 1));
 
-  // ── Adapter metadata ──────────────────────────────────────
-  const adapterMeta: Record<string, { label: string; color: string }> = {
-    open_router:        { label: 'OpenRouter',        color: '#8B5CF6' },
-    open_ai_compatible: { label: 'OpenAI Compatible', color: '#3B82F6' },
-    openai_compatible:  { label: 'OpenAI Compatible', color: '#3B82F6' },
-    ollama:             { label: 'Ollama',            color: '#10B981' },
-    lm_studio:          { label: 'LM Studio',        color: '#06B6D4' },
-    gemini:             { label: 'Gemini',            color: '#4285F4' },
-    cohere:             { label: 'Cohere',            color: '#D97706' },
-    together:           { label: 'Together',          color: '#6366F1' },
-  };
-  function adapterLabel(a: string) { return adapterMeta[a]?.label ?? a; }
-  function adapterColor(a: string) { return adapterMeta[a]?.color ?? '#6b6b8a'; }
-
-  const suggestedModels: Record<string, { model: string; dims: number }> = {
-    open_router:        { model: 'openai/text-embedding-3-small', dims: 1536 },
-    open_ai_compatible: { model: 'text-embedding-3-small',        dims: 1536 },
-    openai_compatible:  { model: 'text-embedding-3-small',        dims: 1536 },
-    ollama:             { model: 'nomic-embed-text',              dims: 768 },
-    lm_studio:          { model: 'nomic-embed-text',              dims: 768 },
-    gemini:             { model: 'text-embedding-004',            dims: 768 },
-    cohere:             { model: 'embed-english-v3.0',            dims: 1024 },
-    together:           { model: 'togethercomputer/m2-bert-80M-8k-retrieval', dims: 768 },
-  };
-  function suggested(a: string) { return suggestedModels[a] ?? { model: 'text-embedding-3-small', dims: 1536 }; }
-
-  // ── Lifecycle ─────────────────────────────────────────────
   onMount(async () => { await loadAll(); });
 
   async function loadAll() {
@@ -83,76 +67,81 @@
     try {
       const ipc = await import('$lib/services/ipc');
       if (isTauri) {
-        const pList = await ipc.listProviders();
-        allRows = pList
-          .filter(p => embeddingAdapters.has(p.adapter))
-          .map(p => ({
-            id: p.id, name: p.name, adapter: p.adapter,
-            config: p.config as Record<string, string>,
-          }));
+        const [models, pList] = await Promise.all([
+          ipc.listAllModels(),
+          ipc.listProviders(),
+        ]);
+        // Filter to only embedding models:
+        // 1. model_id contains "embed" (covers text-embedding-*, embed-*, nomic-embed-*, etc.)
+        // 2. or output_modalities contains "embedding"
+        allModels = models.filter(m => {
+          const id = m.model_id.toLowerCase();
+          const name = (m.display_name ?? '').toLowerCase();
+          return id.includes('embed') || name.includes('embed') ||
+            m.output_modalities.some(mod => mod.toLowerCase() === 'embedding');
+        });
+        providers = pList.map(p => ({ id: p.id, name: p.name }));
       }
-    } catch (err) { handleIpcError('load providers', err); }
+    } catch (err) { handleIpcError('load models', err); }
     isLoading = false;
   }
 
-  // ── Actions ───────────────────────────────────────────────
-  function startEdit(row: EmbedRow) {
-    row.isEditing = true;
-    row.editModel = row.config.embedding_model || suggested(row.adapter).model;
-    allRows = [...allRows];
-  }
-
-  function cancelEdit(row: EmbedRow) {
-    row.isEditing = false;
-    row.editModel = undefined;
-    allRows = [...allRows];
-  }
-
-  async function saveModel(row: EmbedRow) {
-    if (!isTauri || !row.editModel?.trim()) return;
-    row.isSaving = true;
-    allRows = [...allRows];
+  async function toggleModel(m: ModelEntry) {
+    const key = `${m.provider_id}::${m.model_id}`;
+    togglingId = key;
     try {
       const ipc = await import('$lib/services/ipc');
-      const existing = await ipc.getProvider(row.id);
-      const config = { ...(existing.config as Record<string, unknown>), embedding_model: row.editModel };
-      await ipc.updateProvider(row.id, undefined, config);
-      row.config = { ...row.config, embedding_model: row.editModel! };
-      row.isEditing = false;
-      row.editModel = undefined;
-      success(`Saved ${row.name} embedding model`);
-    } catch (err) { handleIpcError('save model', err); }
-    row.isSaving = false;
-    allRows = [...allRows];
+      const newState = !m.enabled;
+      await ipc.toggleModelEnabled(m.provider_id, m.model_id, m.model_type, newState);
+      allModels = allModels.map(x =>
+        x.provider_id === m.provider_id && x.model_id === m.model_id
+          ? { ...x, enabled: newState } : x
+      );
+      success(newState ? `Enabled ${m.display_name ?? m.model_id}` : `Disabled ${m.display_name ?? m.model_id}`);
+    } catch (err) { handleIpcError('toggle model', err); }
+    togglingId = null;
   }
 
-  async function testConnection(row: EmbedRow) {
-    if (!isTauri || row.isTesting) return;
-    const model = row.config.embedding_model || suggested(row.adapter).model;
-    if (!model) return;
-    row.isTesting = true;
-    row.testOk = null;
-    row.testLatency = null;
-    allRows = [...allRows];
-    const t0 = Date.now();
-    try {
-      const ipc = await import('$lib/services/ipc');
-      await ipc.getEmbeddingIndexStatus(null, model);
-      row.testOk = true;
-      row.testLatency = Date.now() - t0;
-      success(`${row.name}: connected (${row.testLatency}ms)`);
-    } catch {
-      row.testOk = false;
-      row.testLatency = Date.now() - t0;
-      toastError(`${row.name}: connection failed`);
-    }
-    row.isTesting = false;
-    allRows = [...allRows];
+  function priceNum(s: string | null): number {
+    if (!s) return 999;
+    const n = parseFloat(s);
+    return isNaN(n) ? 999 : n;
   }
 
-  function useSuggested(row: EmbedRow) {
-    row.editModel = suggested(row.adapter).model;
-    allRows = [...allRows];
+  function formatPrice(s: string | null): string {
+    if (!s || s === '0') return 'Free';
+    const perToken = parseFloat(s);
+    if (isNaN(perToken)) return '—';
+    const perMillion = perToken * 1_000_000;
+    if (perMillion < 0.01) return '<$0.01';
+    if (perMillion < 1) return `$${perMillion.toFixed(2)}`;
+    return `$${perMillion.toFixed(2)}`;
+  }
+
+  function ctxLabel(n: number | null): string {
+    if (!n) return '—';
+    return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
+  }
+
+  function ctxPercent(n: number | null): number {
+    if (!n || !maxCtx) return 0;
+    return Math.min((n / maxCtx) * 100, 100);
+  }
+
+  function modelSlug(id: string): string {
+    return id.includes('/') ? id.split('/').slice(1).join('/') : id;
+  }
+
+  function adapterColor(a: string): string {
+    const map: Record<string, string> = {
+      open_router: '#8B5CF6', ollama: '#10B981',
+      open_ai_compatible: '#3B82F6', openai_compatible: '#3B82F6',
+      silicon_flow: '#F59E0B', anthropic: '#D97706', gemini: '#4285F4',
+      deepseek: '#06B6D4', groq: '#F97316', cohere: '#8B5CF6',
+      perplexity: '#10B981', xai: '#EF4444', together: '#6366F1',
+      lm_studio: '#06B6D4',
+    };
+    return map[a] ?? '#6b6b8a';
   }
 </script>
 
@@ -167,47 +156,84 @@
         {#if isLoading}
           <span class="stat">Loading…</span>
         {:else}
-          <span class="stat">{allRows.length} <span class="stat-label">available</span></span>
+          <span class="stat">{allModels.length} <span class="stat-label">available</span></span>
           <span class="stat-sep">·</span>
-          <span class="stat stat-enabled">{configuredCount} <span class="stat-label">configured</span></span>
+          <span class="stat stat-enabled">{enabledCount} <span class="stat-label">enabled</span></span>
+          <span class="stat-sep">·</span>
+          <span class="stat stat-free">{freeCount} <span class="stat-label">free</span></span>
         {/if}
       </div>
     </div>
-    <button class="btn-refresh" onclick={loadAll} disabled={isLoading} aria-label="Refresh">
+    <button class="btn-refresh" onclick={loadAll} disabled={isLoading} aria-label="Refresh models">
       <Icon name="refresh-cw" size={13} color={isLoading ? '#4a4a6a' : '#8B5CF6'} />
       Refresh
     </button>
   </header>
 
-  <!-- Filter Bar -->
+  <!-- Sticky Filter Bar -->
   <div class="filter-bar">
+    <!-- Row 1: Search + Provider + Sort -->
     <div class="filter-row">
       <div class="search-wrap">
         <svg class="search-icon" viewBox="0 0 20 20" fill="none">
           <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
           <path d="M12.5 12.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
-        <input class="search-input" bind:value={filterSearch} placeholder="Search providers, models…" />
+        <input class="search-input" bind:value={filterSearch} placeholder="Search models, providers…" />
         {#if filterSearch}<button class="search-clear" onclick={() => filterSearch = ''}>✕</button>{/if}
+      </div>
+
+      <select class="filter-select" bind:value={filterProvider} aria-label="Filter by provider">
+        <option value="all">All Providers</option>
+        {#each providers as p}<option value={p.id}>{p.name}</option>{/each}
+      </select>
+
+      <select class="filter-select" bind:value={sortBy} aria-label="Sort by">
+        <option value="name">Sort: Name A→Z</option>
+        <option value="price-asc">Sort: Price Low→High</option>
+        <option value="price-desc">Sort: Price High→Low</option>
+        <option value="context-desc">Sort: Context ↓</option>
+        <option value="context-asc">Sort: Context ↑</option>
+      </select>
+    </div>
+
+    <!-- Row 2: Chips -->
+    <div class="filter-row">
+      <div class="chip-group" role="group" aria-label="Filter by status">
+        {#each [['all','All'],['enabled','Enabled'],['disabled','Disabled']] as [val, label]}
+          <button class="chip" class:chip-active={filterStatus === val} onclick={() => filterStatus = val}>
+            {label}
+          </button>
+        {/each}
+      </div>
+
+      <div class="chip-divider"></div>
+
+      <div class="chip-group" role="group" aria-label="Filter by pricing">
+        {#each [['all','All Pricing'],['free','🆓 Free'],['paid','💰 Paid']] as [val, label]}
+          <button class="chip" class:chip-active={filterPricing === val} onclick={() => filterPricing = val}>
+            {label}
+          </button>
+        {/each}
       </div>
     </div>
   </div>
 
-  <!-- Table -->
+  <!-- Model Table -->
   <div class="table-wrap">
     {#if isLoading}
       <div class="table">
         <div class="thead">
+          <span class="th th-model">Model</span>
           <span class="th th-provider">Provider</span>
-          <span class="th th-model">Embedding Model</span>
-          <span class="th th-dims">Dimensions</span>
-          <span class="th th-status">Status</span>
+          <span class="th th-price">Input / Output</span>
+          <span class="th th-ctx">Context</span>
           <span class="th th-action"></span>
         </div>
-        {#each Array(4) as _, i}
+        {#each Array(10) as _, i}
           <div class="trow skeleton-row" style="animation-delay:{i*40}ms">
-            <Skeleton variant="text" width="30%" height="12px" />
-            <Skeleton variant="text" width="50%" height="12px" />
+            <Skeleton variant="text" width="55%" height="12px" />
+            <Skeleton variant="text" width="20%" height="11px" />
             <Skeleton variant="text" width="15%" height="11px" />
             <Skeleton variant="text" width="15%" height="11px" />
           </div>
@@ -215,126 +241,110 @@
       </div>
     {:else if filtered().length === 0}
       <div class="empty-state">
-        {#if allRows.length === 0}
+        {#if allModels.length === 0}
           <div class="empty-icon">
             <Icon name="cpu" size={48} color="#3a3a5a" />
           </div>
-          <span class="empty-title">No embedding providers found</span>
-          <span class="empty-sub">Add a provider that supports embeddings (OpenRouter, Ollama, Gemini, etc.) in the <a href="/providers" class="empty-link">Providers</a> section.</span>
+          <span class="empty-title">No embedding models found</span>
+          <span class="empty-sub">Add a provider that supports embedding models (OpenRouter, Ollama, etc.) in the Providers section first.</span>
         {:else}
           <div class="empty-icon">
             <Icon name="search" size={48} color="#3a3a5a" />
           </div>
-          <span class="empty-title">No models match your search</span>
-          <button class="chip chip-active" onclick={() => filterSearch = ''}>Clear Search</button>
+          <span class="empty-title">No models match your filters</span>
+          <button class="chip chip-active" onclick={() => { filterProvider='all'; filterStatus='all'; filterPricing='all'; filterSearch=''; }}>Clear Filters</button>
         {/if}
       </div>
     {:else}
       <div class="table">
         <div class="thead">
+          <span class="th th-model">Model</span>
           <span class="th th-provider">Provider</span>
-          <span class="th th-model">Embedding Model</span>
-          <span class="th th-dims">Dimensions</span>
-          <span class="th th-status">Status</span>
+          <span class="th th-price">Input / Output <span class="th-unit">(per 1M tokens)</span></span>
+          <span class="th th-ctx">Context</span>
           <span class="th th-action"></span>
         </div>
-        {#each filtered() as row, i (row.id)}
-          {@const isExpanded = expandedId === row.id}
-          {@const hasModel = !!row.config.embedding_model}
+        {#each filtered() as m, i (`${m.provider_id}::${m.model_id}`)}
+          {@const rowKey = `${m.provider_id}::${m.model_id}`}
+          {@const isToggling = togglingId === rowKey}
+          {@const isExpanded = expandedId === rowKey}
           <div
             class="trow"
-            class:trow-enabled={hasModel}
+            class:trow-enabled={m.enabled}
+            class:trow-free={m.is_free}
             class:trow-expanded={isExpanded}
             style="animation-delay:{Math.min(i*15,350)}ms"
-            onclick={() => expandedId = isExpanded ? null : row.id}
+            onclick={() => expandedId = isExpanded ? null : rowKey}
             role="button"
             tabindex="0"
           >
-            {#if hasModel}<span class="row-accent"></span>{/if}
-
-            <!-- Provider Column -->
-            <span class="td td-provider">
-              <span class="provider-badge" style="color:{adapterColor(row.adapter)};background:color-mix(in srgb,{adapterColor(row.adapter)} 12%,transparent)">
-                {row.name}
-              </span>
-            </span>
+            {#if m.enabled}<span class="row-accent"></span>{/if}
 
             <!-- Model Column -->
             <span class="td td-model">
-              {#if row.isEditing}
-                <div class="edit-wrap" onclick={(e) => e.stopPropagation()}>
-                  <input
-                    class="edit-input"
-                    bind:value={row.editModel}
-                    placeholder={suggested(row.adapter).model}
-                    spellcheck="false"
-                    onkeydown={(e) => { if (e.key === 'Enter') saveModel(row); if (e.key === 'Escape') cancelEdit(row); }}
-                  />
-                  <button class="edit-btn save" onclick={() => saveModel(row)} disabled={row.isSaving}>
-                    {#if row.isSaving}<span class="toggle-spinner"></span>{:else}<Icon name="check" size={12} color="#10B981" />{/if}
-                  </button>
-                  <button class="edit-btn cancel" onclick={() => cancelEdit(row)}>
-                    <Icon name="x" size={12} color="#F43F5E" />
-                  </button>
-                </div>
+              <div class="model-info">
+                <span class="model-name-row">
+                  <span class="model-name">{m.display_name ?? modelSlug(m.model_id)}</span>
+                  {#if m.is_free}<span class="free-badge">FREE</span>{/if}
+                </span>
+                {#if m.display_name}
+                  <span class="model-slug">{m.model_id}</span>
+                {/if}
+              </div>
+            </span>
+
+            <!-- Provider Column -->
+            <span class="td td-provider">
+              <span class="provider-badge" style="color:{adapterColor(m.adapter)};background:color-mix(in srgb,{adapterColor(m.adapter)} 12%,transparent)">
+                {m.provider_name}
+              </span>
+            </span>
+
+            <!-- Pricing Column -->
+            <span class="td td-price">
+              {#if m.is_free}
+                <span class="price-free">Free</span>
+              {:else if m.pricing_prompt}
+                <span class="price-group">
+                  <span class="price-in">{formatPrice(m.pricing_prompt)}</span>
+                  <span class="price-sep">/</span>
+                  <span class="price-out">{formatPrice(m.pricing_completion)}</span>
+                </span>
               {:else}
-                <div class="model-info">
-                  <span class="model-name">{row.config.embedding_model || '—'}</span>
-                  {#if !hasModel}
-                    <span class="model-slug">not configured</span>
-                  {/if}
-                </div>
+                <span class="price-na">—</span>
               {/if}
             </span>
 
-            <!-- Dimensions Column -->
-            <span class="td td-dims">
-              <span class="dims-label">{suggested(row.adapter).dims}d</span>
-            </span>
-
-            <!-- Status Column -->
-            <span class="td td-status">
-              {#if hasModel}
-                <span class="status-badge status-ok">
-                  <span class="status-dot"></span>
-                  Configured
-                </span>
-              {:else}
-                <span class="status-badge status-none">Not set</span>
-              {/if}
-              {#if row.testOk === true}
-                <span class="test-pill test-ok">
-                  <Icon name="check-circle" size={11} color="#10B981" />
-                  {row.testLatency}ms
-                </span>
-              {:else if row.testOk === false}
-                <span class="test-pill test-fail">
-                  <Icon name="x-circle" size={11} color="#F43F5E" />
-                  Failed
-                </span>
-              {/if}
+            <!-- Context Column -->
+            <span class="td td-ctx">
+              <div class="ctx-col">
+                <span class="ctx-label">{ctxLabel(m.context_length)}</span>
+                {#if m.context_length}
+                  <div class="ctx-bar-bg">
+                    <div class="ctx-bar-fill" style="width:{ctxPercent(m.context_length)}%"></div>
+                  </div>
+                {/if}
+              </div>
             </span>
 
             <!-- Action Column -->
             <span class="td td-action" onclick={(e) => e.stopPropagation()}>
-              <div class="action-btns">
-                <button class="action-btn" title="Edit model" onclick={() => startEdit(row)} aria-label="Edit model">
-                  <Icon name="edit-2" size={13} color="#6b6b8a" />
-                </button>
-                <button
-                  class="action-btn"
-                  title="Test connection"
-                  onclick={() => testConnection(row)}
-                  disabled={row.isTesting}
-                  aria-label="Test connection"
-                >
-                  {#if row.isTesting}
-                    <span class="toggle-spinner"></span>
-                  {:else}
-                    <Icon name="activity" size={13} color="#6b6b8a" />
-                  {/if}
-                </button>
-              </div>
+              <button
+                class="toggle-btn"
+                class:toggle-on={m.enabled}
+                class:toggle-spinning={isToggling}
+                onclick={(e) => { e.stopPropagation(); toggleModel(m); }}
+                disabled={isToggling}
+                aria-label={m.enabled ? 'Disable model' : 'Enable model'}
+              >
+                {#if isToggling}
+                  <span class="toggle-spinner"></span>
+                {:else}
+                  <span class="toggle-track">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                {/if}
+              </button>
             </span>
           </div>
 
@@ -342,25 +352,40 @@
           {#if isExpanded}
             <div class="detail-row" style="animation-delay:0ms">
               <div class="detail-grid">
-                <div class="detail-block">
-                  <span class="detail-label">Provider ID</span>
-                  <span class="detail-mono">{row.id}</span>
-                </div>
-                <div class="detail-block">
-                  <span class="detail-label">Adapter</span>
-                  <span class="detail-value">{adapterLabel(row.adapter)}</span>
-                </div>
+                {#if m.description}
+                  <div class="detail-block detail-desc">
+                    <span class="detail-label">Description</span>
+                    <p class="detail-text">{m.description}</p>
+                  </div>
+                {/if}
                 <div class="detail-block">
                   <span class="detail-label">Model ID</span>
-                  <span class="detail-mono">{row.config.embedding_model || 'not set'}</span>
+                  <span class="detail-mono">{m.model_id}</span>
                 </div>
+                {#if m.context_length}
+                  <div class="detail-block">
+                    <span class="detail-label">Max Input</span>
+                    <span class="detail-value">{ctxLabel(m.context_length)} tokens</span>
+                  </div>
+                {/if}
+                {#if m.input_modalities.length > 0}
+                  <div class="detail-block">
+                    <span class="detail-label">Input</span>
+                    <span class="detail-value">{m.input_modalities.join(', ')}</span>
+                  </div>
+                {/if}
+                {#if m.output_modalities.length > 0}
+                  <div class="detail-block">
+                    <span class="detail-label">Output</span>
+                    <span class="detail-value">{m.output_modalities.join(', ')}</span>
+                  </div>
+                {/if}
                 <div class="detail-block">
-                  <span class="detail-label">Suggested Model</span>
-                  <button class="suggest-btn" onclick={(e) => { e.stopPropagation(); startEdit(row); useSuggested(row); }}>
-                    <code>{suggested(row.adapter).model}</code>
-                    <span class="suggest-dims">{suggested(row.adapter).dims}d</span>
-                    <Icon name="arrow-right" size={10} color="#8B5CF6" />
-                  </button>
+                  <span class="detail-label">Type</span>
+                  <span class="detail-value">
+                    <Icon name="cpu" size={12} color="#8B5CF6" />
+                    Embedding
+                  </span>
                 </div>
               </div>
             </div>
@@ -397,6 +422,7 @@
   .stat-label { font-weight: 400; color: #4a4a6a; }
   .stat-sep { color: #2a2a4a; }
   .stat-enabled { color: #10B981; }
+  .stat-free { color: #06B6D4; }
 
   .btn-refresh {
     display: flex; align-items: center; gap: 6px;
@@ -432,6 +458,28 @@
     color: #4a4a6a; cursor: pointer; font-size: 11px; padding: 2px 4px;
   }
 
+  .filter-select {
+    height: 34px; padding: 0 28px 0 10px; border-radius: 10px;
+    background: rgba(12,12,28,0.9); border: 1px solid rgba(139,92,246,0.1);
+    color: #c0c0d8; font-size: 12px; font-family: var(--font-body); outline: none;
+    appearance: none; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b6b8a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 6px center; background-repeat: no-repeat; background-size: 14px;
+    transition: border-color 200ms;
+  }
+  .filter-select:focus { border-color: rgba(139,92,246,0.4); }
+
+  .chip-group { display: flex; gap: 4px; }
+  .chip-divider { width: 1px; height: 20px; background: rgba(139,92,246,0.1); margin: 0 4px; }
+  .chip {
+    padding: 5px 11px; border-radius: 99px; font-size: 11px; font-weight: 600;
+    border: 1px solid rgba(139,92,246,0.1); background: transparent;
+    color: #5a5a7a; cursor: pointer; font-family: var(--font-body);
+    transition: all 160ms; white-space: nowrap;
+  }
+  .chip:hover { background: rgba(139,92,246,0.06); color: #9d7af5; }
+  .chip-active { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.25); color: #c4a1ff; }
+
   /* ── Table ── */
   .table-wrap { flex: 1; overflow-y: auto; padding: 0 28px 28px; }
   .table-wrap::-webkit-scrollbar { width: 4px; }
@@ -440,7 +488,7 @@
 
   .thead {
     display: grid;
-    grid-template-columns: 160px 1fr 90px 160px 80px;
+    grid-template-columns: 1.4fr 130px 160px 120px 60px;
     padding: 10px 16px; position: sticky; top: 0; z-index: 2;
     background: rgba(8,8,20,0.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(139,92,246,0.08);
@@ -449,10 +497,11 @@
     font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
     text-transform: uppercase; color: #3a3a5a; font-family: var(--font-mono);
   }
+  .th-unit { font-weight: 400; letter-spacing: 0.5px; font-size: 9px; color: #2a2a4a; }
 
   .trow {
     display: grid;
-    grid-template-columns: 160px 1fr 90px 160px 80px;
+    grid-template-columns: 1.4fr 130px 160px 120px 60px;
     align-items: center; padding: 10px 16px;
     border-radius: 10px; position: relative;
     border: 1px solid transparent; cursor: pointer;
@@ -464,8 +513,10 @@
     to { opacity: 1; transform: translateY(0); }
   }
   .trow:hover { background: rgba(139,92,246,0.04); border-color: rgba(139,92,246,0.08); }
+  .trow:hover .toggle-btn { opacity: 1; }
   .trow-enabled { background: rgba(139,92,246,0.025); }
   .trow-enabled:hover { background: rgba(139,92,246,0.06); }
+  .trow-free { }
   .trow-expanded { background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.12); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 
   .skeleton-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; animation: rowIn 200ms ease both; }
@@ -479,6 +530,25 @@
 
   .td { display: flex; align-items: center; overflow: hidden; }
 
+  /* Model column */
+  .model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .model-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .model-name {
+    font-size: 12.5px; font-weight: 600; color: #dcdcf0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+  .model-slug {
+    font-size: 10px; font-family: var(--font-mono); color: #3a3a5a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .free-badge {
+    display: inline-flex; flex-shrink: 0;
+    padding: 1px 5px; border-radius: 3px; font-size: 8px; font-weight: 800;
+    letter-spacing: 0.8px; color: #06B6D4;
+    background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.2);
+  }
+
   /* Provider badge */
   .provider-badge {
     padding: 3px 9px; border-radius: 99px;
@@ -486,84 +556,66 @@
     white-space: nowrap;
   }
 
-  /* Model column */
-  .model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .model-name {
-    font-size: 12.5px; font-weight: 600; color: #dcdcf0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    line-height: 1.3; font-family: var(--font-mono);
+  /* Pricing */
+  .price-group { display: flex; align-items: center; gap: 3px; font-family: var(--font-mono); }
+  .price-in { font-size: 11px; color: #10B981; font-weight: 600; }
+  .price-sep { font-size: 10px; color: #2a2a4a; }
+  .price-out { font-size: 11px; color: #F59E0B; font-weight: 600; }
+  .price-free {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.5px;
+    color: #06B6D4;
+    text-shadow: 0 0 12px rgba(6,182,212,0.4);
   }
-  .model-slug {
-    font-size: 10px; font-family: var(--font-mono); color: #3a3a5a;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .price-na { font-size: 11px; color: #2a2a4a; }
+
+  /* Context */
+  .ctx-col { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+  .ctx-label { font-size: 11px; font-family: var(--font-mono); color: #6b6b8a; font-weight: 600; }
+  .ctx-bar-bg {
+    width: 100%; max-width: 80px; height: 3px; border-radius: 2px;
+    background: rgba(139,92,246,0.08); overflow: hidden;
+  }
+  .ctx-bar-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, #8B5CF6, #06B6D4);
+    transition: width 400ms ease;
   }
 
-  /* Dims */
-  .dims-label {
-    font-size: 11px; font-family: var(--font-mono); color: #6b6b8a; font-weight: 600;
-  }
-
-  /* Status */
-  .status-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 8px; border-radius: 99px;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
-  }
-  .status-ok {
-    color: #10B981; background: rgba(16,185,129,0.1);
-  }
-  .status-none {
-    color: #4a4a6a; background: rgba(255,255,255,0.03);
-  }
-  .status-dot {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: #10B981; box-shadow: 0 0 6px rgba(16,185,129,0.5);
-  }
-
-  .test-pill {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 7px; border-radius: 99px;
-    font-size: 10px; font-weight: 600; font-family: var(--font-mono);
-    margin-left: 6px;
-    animation: pop 200ms cubic-bezier(0.34,1.56,0.64,1);
-  }
-  @keyframes pop { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-  .test-ok { color: #10B981; background: rgba(16,185,129,0.08); }
-  .test-fail { color: #F43F5E; background: rgba(244,63,94,0.08); }
-
-  /* Actions */
-  .action-btns { display: flex; gap: 4px; }
-  .action-btn {
-    width: 30px; height: 30px; border-radius: 8px;
-    border: 1px solid rgba(139,92,246,0.08); background: transparent;
+  /* Toggle */
+  .toggle-btn {
     display: flex; align-items: center; justify-content: center;
-    cursor: pointer; transition: all 160ms; opacity: 0.5;
+    width: 40px; height: 22px; padding: 0;
+    border-radius: 11px; border: none; cursor: pointer;
+    background: rgba(30,30,55,0.8); opacity: 0.5;
+    transition: all 180ms;
   }
-  .action-btn:hover { background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.16); opacity: 1; }
-  .action-btn:disabled { opacity: 0.25; pointer-events: none; }
-  .trow:hover .action-btn { opacity: 0.7; }
-
-  /* Inline edit */
-  .edit-wrap {
-    display: flex; align-items: center; gap: 4px; width: 100%;
+  .toggle-btn:hover { opacity: 1; }
+  .trow:hover .toggle-btn { opacity: 0.8; }
+  .toggle-on { background: rgba(16,185,129,0.2); opacity: 1; }
+  .toggle-track {
+    width: 100%; height: 100%; border-radius: 11px;
+    position: relative; display: flex; align-items: center;
+    padding: 0 2px;
   }
-  .edit-input {
-    flex: 1; height: 30px; padding: 0 10px; border-radius: 7px;
-    background: rgba(12,12,28,0.9); border: 1px solid rgba(139,92,246,0.25);
-    color: #e0e0f0; font-size: 11.5px; font-family: var(--font-mono);
-    outline: none;
+  .toggle-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #4a4a6a;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   }
-  .edit-input:focus { border-color: rgba(139,92,246,0.5); box-shadow: 0 0 0 2px rgba(139,92,246,0.08); }
-  .edit-btn {
-    width: 28px; height: 28px; border-radius: 6px; border: none;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; transition: all 150ms; flex-shrink: 0;
+  .toggle-on .toggle-thumb {
+    transform: translateX(18px);
+    background: #10B981;
+    box-shadow: 0 0 8px rgba(16,185,129,0.5);
   }
-  .edit-btn.save { background: rgba(16,185,129,0.1); }
-  .edit-btn.save:hover { background: rgba(16,185,129,0.2); }
-  .edit-btn.cancel { background: rgba(244,63,94,0.08); }
-  .edit-btn.cancel:hover { background: rgba(244,63,94,0.15); }
-  .edit-btn:disabled { opacity: 0.4; pointer-events: none; }
+  .toggle-spinning { opacity: 0.4; pointer-events: none; }
+  .toggle-spinner {
+    width: 12px; height: 12px; border: 2px solid rgba(139,92,246,0.2);
+    border-top-color: #8B5CF6; border-radius: 50%;
+    animation: spin 600ms linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toggle-btn:disabled { pointer-events: none; }
 
   /* ── Detail Row ── */
   .detail-row {
@@ -582,42 +634,11 @@
     gap: 12px 24px;
   }
   .detail-block { display: flex; flex-direction: column; gap: 3px; }
+  .detail-desc { grid-column: 1 / -1; }
   .detail-label { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #3a3a5a; }
+  .detail-text { font-size: 12px; color: #6b6b8a; line-height: 1.5; margin: 0; }
   .detail-mono { font-size: 11px; font-family: var(--font-mono); color: #8B5CF6; word-break: break-all; }
   .detail-value { font-size: 12px; color: #c0c0d8; display: flex; align-items: center; gap: 4px; }
-
-  .suggest-btn {
-    display: flex; align-items: center; gap: 6px;
-    padding: 4px 10px; border-radius: 6px; width: fit-content;
-    background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.12);
-    cursor: pointer; transition: all 160ms; font-family: var(--font-body);
-  }
-  .suggest-btn:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25); }
-  .suggest-btn code {
-    font-size: 11px; color: #c4a1ff; font-family: var(--font-mono);
-    background: none; padding: 0;
-  }
-  .suggest-dims {
-    font-size: 9px; font-family: var(--font-mono); color: #4a4a6a;
-    padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.03);
-  }
-
-  /* Spinner */
-  .toggle-spinner {
-    width: 12px; height: 12px; border: 2px solid rgba(139,92,246,0.2);
-    border-top-color: #8B5CF6; border-radius: 50%;
-    animation: spin 600ms linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Chip (for clear filters) */
-  .chip {
-    padding: 5px 11px; border-radius: 99px; font-size: 11px; font-weight: 600;
-    border: 1px solid rgba(139,92,246,0.1); background: transparent;
-    color: #5a5a7a; cursor: pointer; font-family: var(--font-body);
-    transition: all 160ms; white-space: nowrap;
-  }
-  .chip-active { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.25); color: #c4a1ff; }
 
   /* ── Empty State ── */
   .empty-state {
@@ -626,7 +647,5 @@
   }
   .empty-icon { opacity: 0.4; }
   .empty-title { font-size: 15px; font-weight: 700; color: #6b6b8a; }
-  .empty-sub { font-size: 13px; color: #4a4a6a; max-width: 340px; line-height: 1.5; }
-  .empty-link { color: #8B5CF6; text-decoration: none; font-weight: 600; }
-  .empty-link:hover { text-decoration: underline; }
+  .empty-sub { font-size: 13px; color: #4a4a6a; max-width: 300px; }
 </style>
