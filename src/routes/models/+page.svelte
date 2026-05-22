@@ -77,7 +77,7 @@
           ipc.listAllModels(),
           ipc.listProviders(),
         ]);
-        allModels = models;
+        allModels = models.filter(m => m.model_type !== 'embedding');
         providers = pList.map(p => ({ id: p.id, name: p.name }));
       }
     } catch (err) { handleIpcError('load models', err); }

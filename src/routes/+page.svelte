@@ -229,7 +229,7 @@
           // Fall back to first enabled model for this provider
           try {
             const enabled = await ipc.listEnabledModels(active.id);
-            defaultModel = enabled[0]?.model_id ?? "";
+            defaultModel = enabled.filter(e => e.model_type !== 'embedding')[0]?.model_id ?? "";
           } catch {
             /* ignore */
           }
@@ -249,7 +249,7 @@
     try {
       const ipc = await import("$lib/services/ipc");
       const enabled = await ipc.listEnabledModels(activeProviderId);
-      availableModels = enabled.map((e) => e.model_id);
+      availableModels = enabled.filter(e => e.model_type !== 'embedding').map((e) => e.model_id);
     } catch {
       availableModels = [];
     }
