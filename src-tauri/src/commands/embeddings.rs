@@ -59,7 +59,7 @@ fn get_model_dimension(model_id: &str) -> Option<usize> {
     if id.contains("gemini-embedding") { return Some(768); }
     if id.contains("mistral-embed") { return Some(1024); }
     if id.contains("codestral-embed") { return Some(1024); }
-    if id.contains("nemotron-embed") { return Some(4096); }
+    if id.contains("nemotron-embed") { return Some(2048); }
     if id.contains("pplx-embed") { return Some(4096); }
     if id.contains("qwen3-embedding-8b") { return Some(4096); }
     if id.contains("qwen3-embedding-4b") { return Some(2048); }
@@ -216,8 +216,9 @@ pub async fn rebuild_embedding_index(
         }
     }
 
-    // Ensure the MTREE index matches the new model's dimension
-    if let Some(dim) = get_model_dimension(&embedding_model) {
+    // Ensure MTREE index if we know the dimension upfront
+    let known_dim = get_model_dimension(&embedding_model);
+    if let Some(dim) = known_dim {
         EmbeddingRepo::ensure_mtree_index(&db, dim).await?;
     }
 
@@ -258,12 +259,23 @@ pub async fn rebuild_embedding_index(
     // Process in batches of 10
     let batch_size = 10;
     let mut embedded = 0;
+    let mut mtree_ensured = known_dim.is_some();
 
     for chunk in messages.chunks(batch_size) {
         let texts: Vec<String> = chunk.iter().map(|m| m.content.clone()).collect();
 
         match provider.generate_embedding(&embedding_model, texts).await {
             Ok(embeddings) => {
+                // On first successful batch, detect actual dimension and ensure MTREE
+                if !mtree_ensured {
+                    if let Some(first) = embeddings.first() {
+                        let actual_dim = first.len();
+                        info!("[rebuild_index] Detected embedding dimension: {}", actual_dim);
+                        EmbeddingRepo::ensure_mtree_index(&db, actual_dim).await?;
+                        mtree_ensured = true;
+                    }
+                }
+
                 for (msg, embedding) in chunk.iter().zip(embeddings.iter()) {
                     let msg_id = msg.id.id.to_raw();
                     let conv_id = msg.conversation_id.id.to_raw();
