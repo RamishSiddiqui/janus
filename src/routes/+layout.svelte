@@ -18,8 +18,9 @@
     { path: '/',          label: 'Chats',     icon: 'message-circle' },
     { path: '/gallery',   label: 'Characters', icon: 'users' },
     { path: '/memories',  label: 'Memories',  icon: 'brain' },
-    { path: '/providers', label: 'Providers', icon: 'plug',   group: 'ai-studio' },
-    { path: '/models',    label: 'Models',    icon: 'layers', group: 'ai-studio' },
+    { path: '/providers',  label: 'Providers',  icon: 'plug',   group: 'ai-studio' },
+    { path: '/models',     label: 'Models',     icon: 'layers', group: 'ai-studio' },
+    { path: '/embedders',  label: 'Embedders',  icon: 'zap',    group: 'ai-studio' },
     { path: '/settings',  label: 'Settings',  icon: 'settings' },
   ] as const satisfies readonly NavItem[];
 
