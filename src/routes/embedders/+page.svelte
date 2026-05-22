@@ -16,22 +16,14 @@
     config: Record<string, string>;
   }
 
-  interface IndexStatus {
-    total_messages: number;
-    embedded_messages: number;
-    index_model: string | null;
-    needs_rebuild: boolean;
-    coverage_percent: number;
-  }
+
 
   // ── State ─────────────────────────────────────────────────
   let providers = $state<ProviderRow[]>([]);
   let isLoading = $state(true);
   let selectedProviderId = $state<string | null>(null);
   let embeddingModel = $state('');
-  let indexStatus = $state<IndexStatus | null>(null);
-  let isLoadingIndex = $state(false);
-  let isRebuilding = $state(false);
+
   let isTesting = $state(false);
   let testResult = $state<{ ok: boolean; dims: number; latency: number } | null>(null);
 
@@ -106,32 +98,7 @@
     return map[a] ?? '#6b6b8a';
   }
 
-  async function loadIndexStatus() {
-    if (!isTauri || !selectedProviderId) return;
-    isLoadingIndex = true;
-    try {
-      const ipc = await import('$lib/services/ipc');
-      indexStatus = await ipc.getEmbeddingIndexStatus(null, embeddingModel || undefined);
-    } catch (err) {
-      console.warn('[Embedders] Index status failed:', err);
-      indexStatus = null;
-    }
-    isLoadingIndex = false;
-  }
 
-  async function rebuildIndex() {
-    if (!isTauri || isRebuilding || !embeddingModel.trim()) return;
-    isRebuilding = true;
-    try {
-      const ipc = await import('$lib/services/ipc');
-      indexStatus = await ipc.rebuildEmbeddingIndex(null, embeddingModel);
-      success(`Index rebuilt with ${embeddingModel}`);
-    } catch (err) {
-      toastError('Rebuild failed');
-      handleIpcError('rebuild index', err);
-    }
-    isRebuilding = false;
-  }
 
   async function testEmbedding() {
     if (!isTauri || isTesting || !embeddingModel.trim()) return;
@@ -142,9 +109,8 @@
       const ipc = await import('$lib/services/ipc');
       // Use a simple test embedding via rebuild with 0 messages
       // For now just check index status as a connectivity test
-      const status = await ipc.getEmbeddingIndexStatus(null, embeddingModel);
+      await ipc.getEmbeddingIndexStatus(null, embeddingModel);
       testResult = { ok: true, dims: 0, latency: Date.now() - t0 };
-      indexStatus = status;
       success(`Embedder connected (${testResult.latency}ms)`);
     } catch (err) {
       testResult = { ok: false, dims: 0, latency: Date.now() - t0 };
@@ -171,11 +137,10 @@
     } catch (err) { handleIpcError('save embedding model', err); }
   }
 
-  // When provider changes, load its embedding model and index status
+  // When provider changes, load its embedding model
   $effect(() => {
     if (selectedProvider) {
       embeddingModel = selectedProvider.config.embedding_model || suggestModel(selectedProvider.adapter);
-      loadIndexStatus();
     }
   });
 </script>
@@ -306,115 +271,6 @@
             </div>
           </div>
 
-          <!-- Index Status -->
-          <div class="section-card" style="animation: slideDown 220ms cubic-bezier(0.34,1.56,0.64,1); animation-delay: 60ms">
-            <div class="section-header">
-              <Icon name="database" size={14} color="#a78bfa" />
-              <span class="section-title">Vector Index</span>
-              <button class="refresh-icon-btn" onclick={loadIndexStatus} disabled={isLoadingIndex} aria-label="Refresh index status">
-                <Icon name="refresh-cw" size={11} color={isLoadingIndex ? '#4a4a6a' : '#a78bfa'} />
-              </button>
-            </div>
-
-            {#if isLoadingIndex}
-              <div class="index-loading">
-                <span class="spinner"></span>
-                <span>Checking index…</span>
-              </div>
-            {:else if indexStatus}
-              <!-- Stats Grid -->
-              <div class="stats-grid">
-                <div class="stat-card">
-                  <span class="stat-value">{indexStatus.embedded_messages}</span>
-                  <span class="stat-label">Indexed</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-value">{indexStatus.total_messages}</span>
-                  <span class="stat-label">Total</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-value">{indexStatus.coverage_percent.toFixed(0)}%</span>
-                  <span class="stat-label">Coverage</span>
-                </div>
-              </div>
-
-              <!-- Progress -->
-              <div class="progress-wrap">
-                <div class="progress-bar">
-                  <div class="progress-fill" style="width: {indexStatus.coverage_percent}%"></div>
-                </div>
-                <span class="progress-label">
-                  {indexStatus.embedded_messages} of {indexStatus.total_messages} messages embedded
-                </span>
-              </div>
-
-              <!-- Current model -->
-              {#if indexStatus.index_model}
-                <div class="index-model-row">
-                  <span class="index-model-label">Built with</span>
-                  <code class="index-model-value">{indexStatus.index_model}</code>
-                  {#if indexStatus.needs_rebuild}
-                    <span class="mismatch-badge">
-                      <Icon name="alert-triangle" size={10} color="#F59E0B" />
-                      Mismatch
-                    </span>
-                  {:else}
-                    <span class="match-badge">
-                      <Icon name="check" size={10} color="#10B981" />
-                      Current
-                    </span>
-                  {/if}
-                </div>
-              {/if}
-
-              <!-- Rebuild Warning -->
-              {#if indexStatus.needs_rebuild}
-                <div class="rebuild-warning">
-                  <Icon name="alert-triangle" size={14} color="#F59E0B" />
-                  <div class="rebuild-text">
-                    <span class="rebuild-title">Model Mismatch</span>
-                    <span class="rebuild-desc">
-                      Index was built with <code>{indexStatus.index_model}</code> but <code>{embeddingModel}</code> is selected.
-                      Rebuild to align embeddings.
-                    </span>
-                  </div>
-                </div>
-              {/if}
-
-              <!-- Rebuild Button -->
-              <button
-                class="rebuild-btn"
-                class:rebuilding={isRebuilding}
-                onclick={rebuildIndex}
-                disabled={isRebuilding || !embeddingModel.trim()}
-              >
-                {#if isRebuilding}
-                  <span class="spinner"></span>
-                  Rebuilding Index…
-                {:else}
-                  <Icon name="refresh-cw" size={13} color="#e0e0f0" />
-                  {indexStatus.needs_rebuild ? 'Rebuild Index (Model Changed)' : 'Rebuild Index'}
-                {/if}
-              </button>
-            {:else}
-              <div class="index-empty">
-                <div class="index-empty-icon">
-                  <Icon name="inbox" size={28} color="#3a3a5a" />
-                </div>
-                <span class="index-empty-title">No index data</span>
-                <span class="index-empty-sub">Start chatting with semantic memory enabled to build the index automatically, or rebuild manually.</span>
-                <button class="rebuild-btn small" onclick={rebuildIndex} disabled={isRebuilding || !embeddingModel.trim()}>
-                  {#if isRebuilding}
-                    <span class="spinner"></span>
-                    Building…
-                  {:else}
-                    <Icon name="play" size={13} color="#e0e0f0" />
-                    Build Index Now
-                  {/if}
-                </button>
-              </div>
-            {/if}
-          </div>
         {/if}
       </div>
     {/if}
@@ -604,126 +460,7 @@
   .test-ok { color: #10B981; }
   .test-fail { color: #F43F5E; }
 
-  /* ── Index Status ── */
-  .stats-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-  }
-  .stat-card {
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
-    padding: 12px 8px; border-radius: 10px;
-    background: rgba(139,92,246,0.04);
-    border: 1px solid rgba(139,92,246,0.04);
-    transition: border-color 200ms;
-  }
-  .stat-card:hover { border-color: rgba(139,92,246,0.1); }
-  .stat-value {
-    font-size: 22px; font-weight: 800; color: #e0e0f0;
-    font-family: var(--font-mono); letter-spacing: -1px;
-    line-height: 1;
-  }
-  .stat-label {
-    font-size: 9px; font-weight: 700; letter-spacing: 0.8px;
-    text-transform: uppercase; color: #4a4a6a;
-    font-family: var(--font-mono);
-  }
 
-  .progress-wrap {
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .progress-bar {
-    height: 4px; border-radius: 99px;
-    background: rgba(139,92,246,0.08); overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%; border-radius: 99px;
-    background: linear-gradient(90deg, #8B5CF6, #bf40ff);
-    transition: width 600ms cubic-bezier(0.34,1.56,0.64,1);
-  }
-  .progress-label {
-    font-size: 10px; color: #4a4a6a; font-family: var(--font-mono);
-  }
-
-  .index-model-row {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px; border-radius: 8px;
-    background: rgba(10,10,24,0.4);
-  }
-  .index-model-label {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
-    text-transform: uppercase; color: #4a4a6a;
-    font-family: var(--font-mono);
-  }
-  .index-model-value {
-    font-size: 11px; font-family: var(--font-mono); color: #a78bfa;
-    padding: 2px 6px; border-radius: 4px;
-    background: rgba(139,92,246,0.08);
-  }
-  .mismatch-badge, .match-badge {
-    display: flex; align-items: center; gap: 4px;
-    margin-left: auto; padding: 2px 8px; border-radius: 99px;
-    font-size: 9px; font-weight: 700; font-family: var(--font-mono);
-  }
-  .mismatch-badge {
-    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
-    color: #F59E0B;
-  }
-  .match-badge {
-    background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2);
-    color: #10B981;
-  }
-
-  /* Rebuild Warning */
-  .rebuild-warning {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 12px 14px; border-radius: 10px;
-    background: rgba(245,158,11,0.05);
-    border: 1px solid rgba(245,158,11,0.12);
-  }
-  .rebuild-text { display: flex; flex-direction: column; gap: 3px; }
-  .rebuild-title { font-size: 12px; font-weight: 700; color: #F59E0B; }
-  .rebuild-desc { font-size: 11px; color: #8b8ba7; line-height: 1.5; }
-  .rebuild-desc code {
-    padding: 1px 5px; border-radius: 4px;
-    background: rgba(139,92,246,0.1); color: #a78bfa;
-    font-size: 10px; font-family: var(--font-mono);
-  }
-
-  .rebuild-btn {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    width: 100%; padding: 11px; border-radius: 10px;
-    background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.12);
-    color: #e0e0f0; font-size: 12px; font-weight: 600;
-    font-family: var(--font-body); cursor: pointer;
-    transition: all 180ms ease;
-  }
-  .rebuild-btn:hover { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.22); }
-  .rebuild-btn:disabled { opacity: 0.4; cursor: default; }
-  .rebuild-btn.rebuilding { color: #a78bfa; }
-  .rebuild-btn.small { width: auto; padding: 9px 20px; }
-
-  /* Index Empty */
-  .index-empty {
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
-    padding: 20px 0; text-align: center;
-  }
-  .index-empty-icon { opacity: 0.5; margin-bottom: 4px; }
-  .index-empty-title { font-size: 13px; font-weight: 700; color: #6b6b8a; }
-  .index-empty-sub { font-size: 11px; color: #4a4a6a; max-width: 320px; line-height: 1.5; }
-
-  .index-loading {
-    display: flex; align-items: center; gap: 10px;
-    padding: 16px 0; color: #6b6b8a; font-size: 12px;
-  }
-
-  .refresh-icon-btn {
-    margin-left: auto; width: 26px; height: 26px; border-radius: 7px;
-    border: 1px solid rgba(139,92,246,0.08);
-    background: transparent; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 150ms;
-  }
-  .refresh-icon-btn:hover { background: rgba(139,92,246,0.08); }
-  .refresh-icon-btn:disabled { opacity: 0.4; cursor: default; }
 
   /* ── Spinner ── */
   .spinner {
