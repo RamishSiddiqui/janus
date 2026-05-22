@@ -224,14 +224,14 @@ pub async fn rebuild_embedding_index(
     // Fetch all user/assistant messages in scope
     let messages_query = match &conversation_id {
         Some(conv_id) => format!(
-            "SELECT id, conversation_id, content FROM messages \
+            "SELECT id, conversation_id, content, created_at FROM messages \
              WHERE conversation_id = type::thing('conversations', '{}') \
              AND role IN ['user', 'assistant'] \
              ORDER BY created_at",
             conv_id
         ),
         None => {
-            "SELECT id, conversation_id, content FROM messages \
+            "SELECT id, conversation_id, content, created_at FROM messages \
              WHERE role IN ['user', 'assistant'] \
              ORDER BY created_at"
                 .to_string()
