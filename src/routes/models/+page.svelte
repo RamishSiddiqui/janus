@@ -156,13 +156,13 @@
   }
 </script>
 
-<svelte:head><title>Models — Mythic</title></svelte:head>
+<svelte:head><title>LLM Models — Mythic</title></svelte:head>
 
 <div class="page">
   <!-- Header -->
   <header class="hdr">
     <div class="hdr-left">
-      <h1 class="hdr-title">Models</h1>
+      <h1 class="hdr-title">LLM Models</h1>
       <div class="hdr-stats">
         {#if isLoading}
           <span class="stat">Loading…</span>

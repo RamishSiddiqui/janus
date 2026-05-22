@@ -444,11 +444,11 @@
 
         {#if ragEnabled}
           <div class="memory-config" style="animation: slideDown 220ms cubic-bezier(0.34,1.56,0.64,1)">
-            <!-- Embedding Model (read-only — configured in Embedders page) -->
+            <!-- Embedding Model (read-only — configured in Embedding Models page) -->
             <div class="setting-row">
               <div class="setting-label">
                 <span class="setting-name">Embedder Model</span>
-                <span class="setting-desc">Configured in <a href="/embedders" class="settings-link">AI Studio → Embedders</a></span>
+                <span class="setting-desc">Configured in <a href="/embedders" class="settings-link">AI Studio → Embedding Models</a></span>
               </div>
               <div class="font-dropdown-wrapper">
                 <span class="setting-value-readonly mono">{ragEmbeddingModel || 'Not configured'}</span>
