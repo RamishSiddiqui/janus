@@ -135,6 +135,11 @@
     };
     return map[a] ?? '#6b6b8a';
   }
+
+  function dimLabel(n: number | null): string {
+    if (!n) return '—';
+    return n.toLocaleString();
+  }
 </script>
 
 <svelte:head><title>Embedding Models — Mythic</title></svelte:head>
@@ -218,6 +223,7 @@
         <div class="thead">
           <span class="th th-model">Model</span>
           <span class="th th-provider">Provider</span>
+          <span class="th th-dims">Dimensions</span>
           <span class="th th-price">Input / Output</span>
           <span class="th th-ctx">Context</span>
           <span class="th th-action"></span>
@@ -252,6 +258,7 @@
         <div class="thead">
           <span class="th th-model">Model</span>
           <span class="th th-provider">Provider</span>
+          <span class="th th-dims">Dimensions</span>
           <span class="th th-price">Input / Output <span class="th-unit">(per 1M tokens)</span></span>
           <span class="th th-ctx">Context</span>
           <span class="th th-action"></span>
@@ -290,6 +297,16 @@
               <span class="provider-badge" style="color:{adapterColor(m.adapter)};background:color-mix(in srgb,{adapterColor(m.adapter)} 12%,transparent)">
                 {m.provider_name}
               </span>
+            </span>
+
+            <!-- Dimensions Column -->
+            <span class="td td-dims">
+              {#if m.embedding_dimensions}
+                <span class="dims-value">{dimLabel(m.embedding_dimensions)}</span>
+                <span class="dims-unit">dims</span>
+              {:else}
+                <span class="dims-unknown">—</span>
+              {/if}
             </span>
 
             <!-- Pricing Column -->
@@ -370,6 +387,15 @@
                   <div class="detail-block">
                     <span class="detail-label">Output</span>
                     <span class="detail-value">{m.output_modalities.join(', ')}</span>
+                  </div>
+                {/if}
+                {#if m.embedding_dimensions}
+                  <div class="detail-block">
+                    <span class="detail-label">Embedding Dimensions</span>
+                    <span class="detail-value">
+                      <span style="color:#c4a1ff;font-family:var(--font-mono);font-weight:700">{dimLabel(m.embedding_dimensions)}</span>
+                      dimensions
+                    </span>
                   </div>
                 {/if}
                 <div class="detail-block">
@@ -480,7 +506,7 @@
 
   .thead {
     display: grid;
-    grid-template-columns: 1.4fr 130px 160px 120px 60px;
+    grid-template-columns: 1.4fr 130px 100px 160px 120px 60px;
     padding: 10px 16px; position: sticky; top: 0; z-index: 2;
     background: rgba(8,8,20,0.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(139,92,246,0.08);
@@ -493,7 +519,7 @@
 
   .trow {
     display: grid;
-    grid-template-columns: 1.4fr 130px 160px 120px 60px;
+    grid-template-columns: 1.4fr 130px 100px 160px 120px 60px;
     align-items: center; padding: 10px 16px;
     border-radius: 10px; position: relative;
     border: 1px solid transparent; cursor: pointer;
@@ -559,6 +585,19 @@
     text-shadow: 0 0 12px rgba(6,182,212,0.4);
   }
   .price-na { font-size: 11px; color: #2a2a4a; }
+
+  /* Dimensions */
+  .td-dims { display: flex; align-items: center; gap: 4px; }
+  .dims-value {
+    font-size: 12px; font-family: var(--font-mono); font-weight: 700;
+    color: #c4a1ff;
+    text-shadow: 0 0 12px rgba(139,92,246,0.3);
+  }
+  .dims-unit {
+    font-size: 9px; font-weight: 500; letter-spacing: 0.5px;
+    text-transform: uppercase; color: #4a4a6a;
+  }
+  .dims-unknown { font-size: 11px; color: #2a2a4a; }
 
   /* Context */
   .ctx-col { display: flex; flex-direction: column; gap: 4px; width: 100%; }

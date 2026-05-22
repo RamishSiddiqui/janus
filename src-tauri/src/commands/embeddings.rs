@@ -40,7 +40,7 @@ pub struct EmbeddingIndexStatus {
 }
 
 /// Returns the known embedding dimension for common models.
-fn get_model_dimension(model_id: &str) -> Option<usize> {
+pub(crate) fn get_model_dimension(model_id: &str) -> Option<usize> {
     let id = model_id.to_lowercase();
     if id.contains("text-embedding-3-small") { return Some(1536); }
     if id.contains("text-embedding-3-large") { return Some(3072); }

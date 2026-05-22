@@ -363,6 +363,7 @@ export interface ModelEntry {
   supports_tools: boolean;
   supports_vision: boolean;
   supports_reasoning: boolean;
+  embedding_dimensions: number | null;
 }
 
 export async function listAllModels(): Promise<ModelEntry[]> {

@@ -258,6 +258,8 @@ pub struct ModelEntry {
     pub supports_tools:        bool,
     pub supports_vision:       bool,
     pub supports_reasoning:    bool,
+    /// Embedding vector dimensions (populated for embedding models)
+    pub embedding_dimensions:  Option<u32>,
 }
 
 /// Fetches models from ALL configured providers in parallel and merges them
@@ -430,6 +432,7 @@ pub async fn list_all_models(
                     supports_tools: raw.supports_tools,
                     supports_vision: raw.supports_vision,
                     supports_reasoning: raw.supports_reasoning,
+                    embedding_dimensions: None,
                 }
             }).collect::<Vec<_>>()
         }));
@@ -551,6 +554,7 @@ pub async fn list_embedding_models(
                     id_lower.contains("embed") || name_lower.contains("embed")
                 })
                 .map(|(model_id, display_name, context_length, pricing_prompt, pricing_completion, is_free)| {
+                    let dims = super::embeddings::get_model_dimension(&model_id).map(|d| d as u32);
                     ModelEntry {
                         model_id,
                         provider_id: provider_id.clone(),
@@ -570,6 +574,7 @@ pub async fn list_embedding_models(
                         supports_tools: false,
                         supports_vision: false,
                         supports_reasoning: false,
+                        embedding_dimensions: dims,
                     }
                 })
                 .collect::<Vec<_>>()
@@ -642,6 +647,7 @@ pub async fn list_enabled_models(
                 supports_tools: false,
                 supports_vision: false,
                 supports_reasoning: false,
+                embedding_dimensions: None,
             });
         }
     }
