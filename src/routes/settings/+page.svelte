@@ -444,19 +444,14 @@
 
         {#if ragEnabled}
           <div class="memory-config" style="animation: slideDown 220ms cubic-bezier(0.34,1.56,0.64,1)">
-            <!-- Embedding Model -->
+            <!-- Embedding Model (read-only — configured in Embedders page) -->
             <div class="setting-row">
               <div class="setting-label">
                 <span class="setting-name">Embedder Model</span>
-                <span class="setting-desc">Model used to create vector representations</span>
+                <span class="setting-desc">Configured in <a href="/embedders" class="settings-link">AI Studio → Embedders</a></span>
               </div>
               <div class="font-dropdown-wrapper">
-                <input
-                  class="setting-input mono"
-                  bind:value={ragEmbeddingModel}
-                  placeholder="openai/text-embedding-3-small"
-                  aria-label="Embedding model"
-                />
+                <span class="setting-value-readonly mono">{ragEmbeddingModel || 'Not configured'}</span>
               </div>
             </div>
 
@@ -935,6 +930,20 @@
   }
   .setting-input:focus { border-color: rgba(139,92,246,0.3); }
   .setting-input.mono { font-family: var(--font-mono); }
+
+  .setting-value-readonly {
+    display: inline-flex; align-items: center;
+    height: 34px; padding: 0 14px; border-radius: 10px;
+    background: rgba(14,14,30,0.4); border: 1px dashed rgba(139,92,246,0.1);
+    font-size: 12px; font-weight: 600; color: #a78bfa;
+    letter-spacing: 0.2px; user-select: all;
+  }
+  .setting-value-readonly.mono { font-family: var(--font-mono); }
+  .settings-link {
+    color: #8B5CF6; text-decoration: none; font-weight: 600;
+    transition: color 150ms;
+  }
+  .settings-link:hover { color: #c4a1ff; text-decoration: underline; }
 
   .retrieval-row {
     display: flex; gap: 12px;
