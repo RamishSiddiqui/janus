@@ -12,10 +12,11 @@ use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
 
 use crate::db::embeddings::EmbeddingRepo;
+use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
 use crate::AppState;
 
-use super::chat::{create_rig_provider, get_default_llm_provider};
+use super::chat::create_rig_provider;
 
 /// Embedding index status for the frontend Memory settings.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -191,8 +192,18 @@ pub async fn rebuild_embedding_index(
     let db = state_guard.db.clone();
     drop(state_guard);
 
-    // Get the provider
-    let provider_config = get_default_llm_provider(&db).await?;
+    // Find the provider that has this embedding model enabled
+    // (NOT the default LLM provider, which may not support embeddings)
+    let all_enabled = ProviderRepo::list_enabled_models(&db, None).await?;
+    let embedding_entry = all_enabled
+        .iter()
+        .find(|m| m.model_id == embedding_model && m.model_type == "embedding")
+        .ok_or_else(|| MythicError::Config(format!(
+            "Embedding model '{}' is not enabled. Go to AI Studio → Embedding Models and enable it.",
+            embedding_model
+        )))?;
+
+    let provider_config = ProviderRepo::get(&db, &embedding_entry.provider_id).await?;
     let provider = create_rig_provider(&provider_config)?;
 
     // Delete existing embeddings for the scope
