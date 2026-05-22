@@ -1,6 +1,6 @@
 # Mythic — Production Tracker
 
-> **Single source of truth.** Every claim in this document has been verified against the actual codebase as of 2026-05-18. Emoji legend: ✅ working · 🟡 partial · ❌ missing · 🔇 backend-only (no frontend)
+> **Single source of truth.** Every claim in this document has been verified against the actual codebase as of 2026-05-22. Emoji legend: ✅ working · 🟡 partial · ❌ missing · 🔇 backend-only (no frontend)
 
 ---
 
@@ -9,22 +9,40 @@
 ```
 src-tauri/                       Rust backend (Tauri v2)
 ├── src/
-│   ├── lib.rs                   App setup, invoke_handler registration
-│   ├── commands/                11 modules, 54 IPC commands
+│   ├── lib.rs                   App setup, invoke_handler registration (60+ cmds)
+│   ├── commands/                12 modules, 60+ IPC commands
 │   │   ├── characters.rs        CRUD (5 cmds)
 │   │   ├── conversations.rs     CRUD + messages + scope + search (10 cmds)
 │   │   ├── messages.rs          create/update/delete/branch/siblings (5 cmds)
-│   │   ├── chat.rs              send/regenerate/generate_raw (3 cmds)
-│   │   ├── providers.rs         CRUD + health + models (11 cmds)
+│   │   ├── chat.rs              send/regenerate/retry/generate_raw/context_stats (5 cmds)
+│   │   ├── providers.rs         CRUD + health + models + embeddings (13 cmds)
 │   │   ├── import.rs            card import + avatar path (2 cmds)
 │   │   ├── lorebook.rs          CRUD (4 cmds)
 │   │   ├── memories.rs          CRUD + promote/share/unlink/graph (8 cmds)
 │   │   ├── scenes.rs            generate/list/delete/path (4 cmds)
-│   │   └── character_state.rs   get/upsert emotional state (2 cmds)
-│   ├── providers/               Ollama, OpenAI, OpenRouter adapters
-│   ├── db.rs                    SQLite + sqlx migrations
-│   └── models.rs                DB model structs
-├── migrations/                  12 SQL migrations (001–012)
+│   │   ├── character_state.rs   get/upsert emotional state (2 cmds)
+│   │   └── embeddings.rs        index status + rebuild (2 cmds)
+│   ├── context/                 Context management pipeline
+│   │   ├── budget.rs            Token budget calculator with layer-aware allocation
+│   │   ├── window.rs            Token-budgeted sliding window
+│   │   ├── summary.rs           Rolling summary generator
+│   │   ├── rag.rs               Vector RAG — embed_and_store + query_relevant_context
+│   │   └── tokenizer.rs         Token counting (tiktoken-rs cl100k_base)
+│   ├── providers/
+│   │   └── unified.rs           RigProvider — 14 adapters (streaming + embedding)
+│   ├── db/
+│   │   ├── schema.rs            SurrealDB schema (12 tables)
+│   │   ├── seed.rs              Seed characters
+│   │   ├── providers.rs         ProviderRepo + EnabledModelRow
+│   │   ├── embeddings.rs        EmbeddingRepo — MTREE index + store/query
+│   │   ├── conversations.rs     ConversationRepo
+│   │   ├── messages.rs          MessageRepo (tree walk)
+│   │   ├── memories.rs          MemoryRepo
+│   │   ├── lorebook.rs          LorebookRepo
+│   │   ├── characters.rs        CharacterRepo
+│   │   ├── character_state.rs   CharacterStateRepo
+│   │   └── summaries.rs         SummaryRepo
+│   └── models/                  DB model structs
 └── avatars/                     Bundled seed character images
 
 src/                             Svelte 5 frontend (SvelteKit)
@@ -34,15 +52,16 @@ src/                             Svelte 5 frontend (SvelteKit)
 │   ├── gallery/+page.svelte     Character gallery (masonry cards)
 │   ├── gallery/[id]/+page.svelte Character profile page (5 tabs)
 │   ├── providers/+page.svelte   Provider management (3-col)
-│   ├── models/+page.svelte      Model browser + enable/disable
+│   ├── models/+page.svelte      LLM Models browser + enable/disable
+│   ├── embedders/+page.svelte   Embedding Models browser + dimensions + enable/disable
 │   ├── memories/+page.svelte    Memory graph + timeline views
-│   └── settings/+page.svelte    Preferences (theme/streaming/privacy)
+│   └── settings/+page.svelte    Preferences (context management, RAG, theme, privacy)
 ├── lib/
 │   ├── components/              13 Svelte components
 │   │   ├── Sidebar.svelte       Nav + character-grouped convos
 │   │   ├── ChatMessage.svelte   Bubbles + branch nav + EmotionHUD
 │   │   ├── ChatHeader.svelte    Active chat topbar
-│   │   ├── ChatInput.svelte     Compose box + model picker
+│   │   ├── ChatInput.svelte     Compose box + model picker (LLM-only filter)
 │   │   ├── ContextPanel.svelte  Right panel: lorebook + scenes
 │   │   ├── MemoryGraph.svelte   SvelteFlow graph visualization
 │   │   ├── MemoryTimeline.svelte Timeline lane view
@@ -54,7 +73,7 @@ src/                             Svelte 5 frontend (SvelteKit)
 │   │   ├── memory-extractor.ts  LLM-powered fact extraction
 │   │   └── emotion-updater.ts   Post-response emotion analysis
 │   └── stores/
-│       ├── chat.ts              Conversation + message state
+│       ├── chat.ts              Conversation + message state (StreamBuffer @ 60fps)
 │       ├── settings.ts          User preferences (localStorage)
 │       └── toast.ts             Notification store
 └── app.css                      Global design system (731 lines)
@@ -72,13 +91,14 @@ src/                             Svelte 5 frontend (SvelteKit)
 | **Message Persistence** | Chat page tree render | `messages.rs` | ✅ | Parent-child tree structure |
 | **Streaming Chat** | Token-by-token display | `chat.rs` mpsc→events | ✅ | `chat-stream` event bus |
 | **Non-Streaming Chat** | Full response at once | `chat.rs` `generate()` | ✅ | Toggled in settings |
-| **Prompt Building** | Automatic from card | `build_prompt()` | ✅ | System + desc + personality + scenario |
+| **Prompt Building** | Automatic from card | `build_prompt()` 10-layer pipeline | ✅ | System + character + lorebook + memories + emotion + summary + window + RAG + PHI |
 | **Send Message** | ChatInput | `send_message` | ✅ | |
 | **Regenerate Response** | ↻ button on AI bubbles | `regenerate_message` | ✅ | Creates sibling branch |
+| **Retry Failed Message** | Retry banner on error | `retry_failed_message` | ✅ | Retries from saved user message |
 | **Message Editing** | Pencil icon on user bubbles | `update_message` | ✅ | Inline textarea |
 | **Message Deletion** | Trash icon on message hover | `delete_message` | ✅ | `handleDelete()` → `ipc.deleteMessage()` + store removal |
 | **First Message (Greeting)** | Auto-sent on new conv | Store logic | ✅ | `first_mes` from character card |
-| **Model Picker** | Dropdown in ChatInput | Adapter dispatch | ✅ | Ollama/OpenRouter/OpenAI |
+| **Model Picker** | Dropdown in ChatInput | Adapter dispatch | ✅ | LLM-only filter (embedding models excluded) |
 | **Retry on Error** | Retry button in error state | — | ✅ | Shows on stream failure |
 
 ### 2.2 · Message Branching
@@ -149,7 +169,7 @@ src/                             Svelte 5 frontend (SvelteKit)
 
 | Feature | Frontend | Backend | Status | Notes |
 |---|---|---|---|---|
-| **FTS5 Message Search** | ❌ **No UI anywhere** | `search_messages` (FTS5) | 🔇 | Backend registered + IPC wrapper (`searchMessages`) exists in ipc.ts, but **zero components call it**. No search box in Sidebar, no search overlay in Chat |
+| **FTS Message Search** | ❌ **No UI anywhere** | `search_messages` (BM25 + edgengram) | 🔇 | Backend registered + IPC wrapper exists, but **zero components call it**. No search box in Sidebar |
 
 ### 2.9 · Providers & Models
 
@@ -157,13 +177,28 @@ src/                             Svelte 5 frontend (SvelteKit)
 |---|---|---|---|---|
 | **Provider CRUD** | `/providers` page (3-col) | `providers.rs` | ✅ | Add/edit/delete/test |
 | **Health Check** | Green/red dot + latency | `test_provider_connection` | ✅ | HTTP ping |
-| **Multi-Provider** | Adapter dropdown | `create_llm_provider()` | ✅ | Ollama/OpenRouter/OpenAI |
+| **Multi-Provider** | Adapter dropdown | `create_rig_provider()` | ✅ | 14 adapters via rig-core |
 | **Set Default Provider** | Star button | `set_default_provider` | ✅ | |
-| **Model Browser** | `/models` page + filters | `list_all_models` | ✅ | Provider/type/status filter |
+| **LLM Model Browser** | `/models` page (renamed "LLM Models") | `list_all_models` | ✅ | Filter/sort/status, embedding models excluded |
+| **Embedding Model Browser** | `/embedders` page ("Embedding Models") | `list_embedding_models` | ✅ | Real API data from OpenRouter, dimensions column, filter/sort |
 | **Enable/Disable Models** | Toggle switch per model | `toggle_model_enabled` | ✅ | Persisted in `enabled_models` table |
-| **Model List (Chat)** | Dropdown in ChatInput | `list_enabled_models` | ✅ | Shows only enabled models |
+| **Model List (Chat)** | Dropdown in ChatInput | `list_enabled_models` | ✅ | LLM-only filter (no embedding models) |
+| **Embedding Dimensions** | Dimensions column in Embedders page | `get_model_dimension()` lookup + dynamic detection | ✅ | 25+ models mapped, fallback detects from API response |
 
-### 2.10 · Settings & Data
+### 2.10 · Context Management *(NEW)*
+
+| Feature | Frontend | Backend | Status | Notes |
+|---|---|---|---|---|
+| **Token Budget Calculator** | Context stats in settings | `context/budget.rs` | ✅ | Layer-aware allocation: 90% safety, 20% summary / 80% messages |
+| **Sliding Window** | Automatic | `context/window.rs` | ✅ | Walks backwards from latest, always includes last message |
+| **Rolling Summaries** | Automatic | `context/summary.rs` | ✅ | Narrative-preserving, injected as "Story So Far" |
+| **Vector RAG** | Settings UI (index status + rebuild) | `context/rag.rs` | ✅ | Embed on save, retrieve top-5 similar (≥70%) when messages evicted |
+| **Token Counting** | — | `context/tokenizer.rs` | ✅ | tiktoken-rs cl100k_base |
+| **Embedding Index** | Rebuild button in Settings | `embeddings.rs` | ✅ | Dynamic MTREE dimensions, provider-aware rebuild |
+| **Dimension Mismatch Warning** | Awwwards-level alert banner | Frontend checks | ✅ | Shows when model change causes dimension conflict |
+| **Context Stats** | Settings page display | `get_context_stats` | ✅ | Total budget, fixed tokens, history tokens, evicted count |
+
+### 2.11 · Settings & Data
 
 | Feature | Frontend | Backend | Status | Notes |
 |---|---|---|---|---|
@@ -171,6 +206,7 @@ src/                             Svelte 5 frontend (SvelteKit)
 | **Font Size** | Small/Medium/Large dropdown | `--app-font-size` CSS var | ✅ | Scales all typography |
 | **Streaming Toggle** | On/off switch | `generate` vs `generate_stream` | ✅ | |
 | **System Prompt Override** | Textarea in Settings | `build_prompt()` | ✅ | {{char}}/{{user}} placeholders |
+| **Context Management UI** | Dedicated section in Settings | Token budget + RAG status | ✅ | Embedding model selection, index rebuild, dimension warnings |
 | **Local Storage Only** | Privacy toggle + confirm | Feature gating | ✅ | `isLocalOnly()` utility |
 | **Export Data** | Button → JSON file | File dialog | ✅ | Conversations + characters + settings |
 | **Import Data** | Button → file picker | File dialog | ✅ | Restores settings (not full DB restore) |
@@ -218,13 +254,16 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | `set_default_provider` | ✅ | ✅ | ✅ |
 | `test_provider_connection` | ✅ | ✅ | ✅ |
 | `list_provider_models` | ✅ | ✅ | ✅ |
-| `list_all_models` | ✅ | ✅ Models page | ✅ |
-| `toggle_model_enabled` | ✅ | ✅ Models page | ✅ |
-| `list_enabled_models` | ✅ | ✅ ChatInput | ✅ |
+| `list_all_models` | ✅ | ✅ LLM Models page | ✅ |
+| `list_embedding_models` | ✅ | ✅ Embedding Models page | ✅ |
+| `toggle_model_enabled` | ✅ | ✅ Both model pages | ✅ |
+| `list_enabled_models` | ✅ | ✅ ChatInput (LLM-only) | ✅ |
 | **Chat** | | | |
 | `send_message` | ✅ | ✅ | ✅ |
 | `regenerate_message` | ✅ | ✅ | ✅ |
+| `retry_failed_message` | ✅ | ✅ | ✅ |
 | `generate_raw` | ✅ | ✅ Extractors | ✅ |
+| `get_context_stats` | ✅ | ✅ Settings | ✅ |
 | **Import** | | | |
 | `import_character_card` | ✅ | ✅ Gallery | ✅ |
 | `get_avatar_path` | ✅ | ✅ | ✅ |
@@ -250,8 +289,11 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | **Character State** | | | |
 | `get_character_state` | ✅ | ✅ Chat store | ✅ |
 | `upsert_character_state` | ✅ | ✅ Emotion updater | ✅ |
+| **Embeddings** | | | |
+| `get_embedding_index_status` | ✅ | ✅ Settings | ✅ |
+| `rebuild_embedding_index` | ✅ | ✅ Settings | ✅ |
 
-**Summary:** 54 commands registered → 44 fully wired (81%) · 8 backend-only (15%) · 2 orphaned (4%)
+**Summary:** 60+ commands registered → 50+ fully wired (83%) · 7 backend-only (12%) · 1 orphaned (2%)
 
 ---
 
@@ -261,7 +303,7 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 
 - [x] Strict CSP in `tauri.conf.json`
 - [x] Input validation: `validate_string_length()` + `validate_required_string()` in Rust
-- [x] No raw SQL injection vectors (sqlx parameterized queries throughout)
+- [x] Parameterized queries throughout (SurrealDB bind variables)
 
 ### 4.2 · Error Handling UX 🟢
 
@@ -292,13 +334,18 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 
 - [x] CASCADE delete: conversations → messages → lorebook on character delete
 - [x] Blob URL revocation (prevents memory leaks)
-- [ ] Periodic VACUUM/optimize *(deferred — low priority)*
+- [x] Dynamic MTREE index lifecycle management (drop + recreate on dimension change)
+- [ ] Periodic DB cleanup *(deferred — low priority)*
 
 ### 4.6 · Performance 🟢
 
 - [x] Blob URL revocation before creating new ones
 - [x] Debounced sidebar search (150ms)
 - [x] Conversation list pagination (30 per page, Load More)
+- [x] rAF-batched streaming (StreamBuffer caps reactivity at ~60fps)
+- [x] Background embedding via `tokio::spawn` (non-blocking chat flow)
+- [x] Token budget with 90% safety margin for cross-provider tolerance
+- [x] Batched embedding rebuild (10 messages per API call)
 
 ### 4.7 · Build & Release 🟢
 
@@ -328,9 +375,10 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | **Gallery Page** | ✅ | Masonry layout, gradient cards, staggered entrance |
 | **Character Profile** | ✅ | Glassmorphism cards, gradient stats, violet glow, animated tabs |
 | **Providers Page** | ✅ | 3-column cards, health indicators, gradient header |
-| **Models Page** | ✅ | Filter bar, toggle switches, provider grouping |
+| **LLM Models Page** | ✅ | Filter bar, toggle switches, provider grouping (embedding models excluded) |
+| **Embedding Models Page** | ✅ | Dimensions column, real API data, filter/sort, toggle switches |
 | **Memories Page** | ✅ | Graph + timeline views, character picker, stat strip |
-| **Settings Page** | ✅ | Gradient toggles, glass sections, premium dropdowns |
+| **Settings Page** | ✅ | Context management, RAG status, dimension mismatch warnings, gradient toggles |
 | **Toast Notifications** | ✅ | Backdrop-blur, gradient border glow, spring animation |
 | **Skeleton Loaders** | ✅ | Purple shimmer gradient |
 | **Scrollbars** | ✅ | 4px purple-tinted globally |
@@ -338,6 +386,7 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | **Fonts** | ✅ | Inter 400–800 + Geist Mono |
 | **Branch Navigator** | ✅ | Dot-track + arrows in message toolbar |
 | **EmotionHUD** | ✅ | Colour-coded pill, 3-bar meter — **verified rendering** |
+| **Dimension Warning** | ✅ | Awwwards-level alert banner when embedding dimensions mismatch |
 
 ---
 
@@ -372,29 +421,32 @@ These features have full backend support AND IPC wrappers — they only need com
 | Item | Status |
 |---|---|
 | MemoryGraph SvelteFlow TS errors | Non-blocking warnings |
-| Periodic DB VACUUM | Deferred (low priority) |
+| Periodic DB cleanup | Deferred (low priority) |
 | `set_memory_scope` orphaned (no IPC wrapper) | Needs frontend integration |
 | `get_message_branch` unused | Available but no consumer |
 | EmotionHUD visual verification | ✅ Confirmed rendering |
+| RAG provider fallback | Currently uses default LLM provider for RAG query embedding — should use embedding provider |
 
 ---
 
-## 7 · Database Migrations
+## 7 · Database Schema (SurrealDB)
 
-| # | File | Purpose |
-|---|---|---|
-| 001 | `initial_schema.sql` | Characters, conversations, messages, providers, lorebook |
-| 002 | `scenes.sql` | Scene generation table |
-| 003 | `seed_defaults.sql` | Seed characters (Aria, Kael, Lyra, Selene, Zephyr) |
-| 004 | `memories.sql` | Memory table + character/conversation FKs |
-| 005 | `fts_messages.sql` | FTS5 full-text search on messages |
-| 006 | `memory_scope.sql` | Per-conversation memory scope flag |
-| 007 | `memory_management.sql` | Memory links table (copy/sync/one_way/two_way) |
-| 008 | `seed_memory_test_data.sql` | Test memories for development |
-| 009 | `enforce_copy_one_way.sql` | Constraint: copy links always one_way |
-| 010 | `character_states.sql` | Emotional state table (mood/trust/arousal) |
-| 011 | `enabled_models.sql` | Model enable/disable tracking per provider |
-| 012 | `clear_placeholder_models.sql` | Clean up placeholder model entries |
+> **Migrated from SQLite to SurrealDB** (embedded, `schema.rs` + `seed.rs`)
+
+| Table | Purpose |
+|---|---|
+| `characters` | SCHEMAFULL, indexed on `updated_at` |
+| `conversations` | Character-linked, memory_scope, branch support (parent + branch_point) |
+| `messages` | Tree structure (parent_id), FTS index with BM25 + edgengram analyzer |
+| `memories` | Character/conversation scoped, versioned, canon flag |
+| `memory_link` | RELATION table with copy/sync link types, enforced via DB event |
+| `lorebook_entries` | Keyword-triggered + always_active entries |
+| `provider_configs` | llm/image/video types, adapter string, flexible config JSON |
+| `enabled_models` | Unique index on (provider_id, model_id), model_type field |
+| `scenes` | Image/video generation records |
+| `character_states` | Mood/trust/arousal emotional state, unique per character+conversation |
+| `conversation_summaries` | Rolling summary with covered_message_count |
+| `message_embeddings` | Vector storage with dimension tracking, dynamic MTREE COSINE index |
 
 ---
 
