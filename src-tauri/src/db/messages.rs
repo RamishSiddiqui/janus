@@ -165,4 +165,66 @@ impl MessageRepo {
 
         Ok(siblings)
     }
+
+    /// Creates a message attributed to a specific character.
+    /// Used for multi-character conversations where each parsed segment
+    /// gets its own message with character_id and character_name.
+    pub async fn create_with_character(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+        role: &str,
+        content: &str,
+        parent_id: Option<&str>,
+        character_id: &str,
+        character_name: &str,
+    ) -> Result<Message, MythicError> {
+        let id = uuid::Uuid::new_v4().to_string();
+
+        let created: Option<Message> = if let Some(pid) = parent_id {
+            let mut result = db
+                .query("CREATE type::thing('messages', $id) CONTENT {
+                    conversation_id: type::thing('conversations', $conv_id),
+                    role: $role,
+                    content: $content,
+                    parent_id: type::thing('messages', $parent_id),
+                    character_id: type::thing('characters', $char_id),
+                    character_name: $char_name,
+                }")
+                .bind(("id", id.clone()))
+                .bind(("conv_id", conversation_id.to_string()))
+                .bind(("role", role.to_string()))
+                .bind(("content", content.to_string()))
+                .bind(("parent_id", pid.to_string()))
+                .bind(("char_id", character_id.to_string()))
+                .bind(("char_name", character_name.to_string()))
+                .await?;
+            result.take(0)?
+        } else {
+            let mut result = db
+                .query("CREATE type::thing('messages', $id) CONTENT {
+                    conversation_id: type::thing('conversations', $conv_id),
+                    role: $role,
+                    content: $content,
+                    character_id: type::thing('characters', $char_id),
+                    character_name: $char_name,
+                }")
+                .bind(("id", id.clone()))
+                .bind(("conv_id", conversation_id.to_string()))
+                .bind(("role", role.to_string()))
+                .bind(("content", content.to_string()))
+                .bind(("char_id", character_id.to_string()))
+                .bind(("char_name", character_name.to_string()))
+                .await?;
+            result.take(0)?
+        };
+
+        // Update the conversation's active_message_id
+        db.query("UPDATE type::thing('conversations', $conv_id) SET active_message_id = type::thing('messages', $msg_id), updated_at = time::now()")
+            .bind(("conv_id", conversation_id.to_string()))
+            .bind(("msg_id", id.clone()))
+            .await?;
+
+        created.ok_or_else(|| MythicError::DatabaseOp("Failed to create character message".into()))
+    }
 }
+

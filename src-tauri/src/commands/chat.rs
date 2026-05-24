@@ -4,10 +4,12 @@
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::context::budget::ContextBudget;
-use crate::context::rag::{embed_and_store, query_relevant_context};
+use crate::context::rag::{embed_and_store, query_relevant_context, query_relevant_memories};
+use crate::context::response_parser::{parse_multi_character_response, resolve_character_id};
+use crate::context::scene_extractor::extract_scene_state;
 use crate::context::summary::generate_rolling_summary;
 use crate::context::tokenizer::count_message_tokens;
 use crate::context::window::apply_sliding_window;
@@ -17,11 +19,13 @@ use surrealdb::engine::local::Db;
 
 use crate::db::characters::CharacterRepo;
 use crate::db::character_state::CharacterStateRepo;
+use crate::db::conversation_characters::ConversationCharacterRepo;
 use crate::db::conversations::ConversationRepo;
 use crate::db::lorebook::LorebookRepo;
 use crate::db::memories::MemoryRepo;
 use crate::db::messages::MessageRepo;
 use crate::db::providers::ProviderRepo;
+use crate::db::scene_states::SceneStateRepo;
 use crate::db::summaries::SummaryRepo;
 use crate::error::MythicError;
 use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
@@ -83,6 +87,20 @@ pub async fn send_message(
     ).await?;
     let user_msg_id = user_msg.id.id.to_raw();
 
+    // Extract character_id early — needed for embed calls and build_prompt
+    let conv_character_id: Option<String> = conv.character_id.as_ref().map(|t| t.id.to_raw());
+
+    // Resolve multi-character list for this conversation (empty = single-char mode)
+    let conv_chars = ConversationCharacterRepo::list(&db, &conversation_id).await.unwrap_or_default();
+    let multi_char_names: Vec<String> = conv_chars.iter()
+        .filter(|c| c.is_active)
+        .map(|c| c.character_name.clone())
+        .collect();
+    let multi_char_pairs: Vec<(String, String)> = conv_chars.iter()
+        .filter(|c| c.is_active)
+        .map(|c| (c.character_name.clone(), c.character_id.id.to_raw()))
+        .collect();
+
     // 2. Build the prompt
     debug!("[send_message] building prompt...");
 
@@ -97,16 +115,21 @@ pub async fn send_message(
         let embed_msg = user_msg_id.clone();
         let embed_content = content.clone();
         let embed_provider_config = provider_config.clone();
+        let embed_char_id = conv_character_id.clone();
+        let app_embed = app.clone();
         tokio::spawn(async move {
             if let Ok(provider) = create_rig_provider(&embed_provider_config) {
                 let embed_model = embed_provider_config.config
                     .get("embedding_model")
                     .and_then(|v| v.as_str())
                     .unwrap_or("text-embedding-3-small");
-                let _ = embed_and_store(
+                if embed_and_store(
                     &db_embed, &provider, embed_model,
                     &embed_msg, &embed_conv, &embed_content,
-                ).await;
+                    embed_char_id.as_deref(),
+                ).await.is_ok() {
+                    let _ = app_embed.emit("embedding_updated", ());
+                }
             }
         });
     }
@@ -186,6 +209,10 @@ pub async fn send_message(
     let conv_id = conversation_id.clone();
     let assist_id = assistant_msg_id.clone();
     let context_stats_clone = context_stats.clone();
+    let stream_char_id = conv_character_id.clone();
+    let stream_mc_names = multi_char_names.clone();
+    let stream_mc_pairs = multi_char_pairs.clone();
+    let stream_user_msg_id = user_msg_id.clone();
 
     tokio::spawn(async move {
         while let Some(chunk) = rx.recv().await {
@@ -203,12 +230,109 @@ pub async fn send_message(
                         error!("Failed to save response: {}", e);
                     }
 
+                    // ── Multi-character response parsing ──
+                    let mut multi_char_handled = false;
+                    // If this is a multi-char conversation, parse the response into
+                    // per-character segments and create individual messages.
+                    if stream_mc_names.len() > 1 {
+                        let fallback = stream_mc_names.first()
+                            .cloned()
+                            .unwrap_or_else(|| "Character".to_string());
+
+                        let segments = parse_multi_character_response(
+                            &full_text, &stream_mc_names, &fallback,
+                        );
+
+                        if segments.len() > 1 {
+                            info!("[multi-char] Parsed {} character segments", segments.len());
+
+                            // Delete the combined parent message — it will be replaced
+                            // by individual per-character messages chained sequentially.
+                            let _ = MessageRepo::delete(&db_for_save, &assist_id).await;
+
+                            // Create individual character messages in a chain:
+                            // user_msg → segment[0] → segment[1] → … → segment[N]
+                            let mut prev_parent = stream_user_msg_id.clone();
+                            for segment in &segments {
+                                if let Some(char_id) = resolve_character_id(
+                                    &segment.character_name, &stream_mc_pairs,
+                                ) {
+                                    // Resolve the full canonical character name from pairs
+                                    // (parser might return abbreviated names like "Roran"
+                                    // instead of "Roran Ironfist")
+                                    let full_name = stream_mc_pairs.iter()
+                                        .find(|(_, id)| *id == char_id)
+                                        .map(|(name, _)| name.clone())
+                                        .unwrap_or_else(|| segment.character_name.clone());
+
+                                    match MessageRepo::create_with_character(
+                                        &db_for_save,
+                                        &conv_id,
+                                        "assistant",
+                                        &segment.content,
+                                        Some(&prev_parent),
+                                        &char_id,
+                                        &full_name,
+                                    ).await {
+                                        Ok(created) => {
+                                            // Next segment's parent is this segment
+                                            // IMPORTANT: use to_raw() not to_string() — to_string()
+                                            // wraps the UUID in backticks which breaks parent_id lookups
+                                            prev_parent = created.id.id.to_raw();
+                                        }
+                                        Err(e) => {
+                                            warn!("[multi-char] Failed to create segment for {}: {}", full_name, e);
+                                        }
+                                    }
+                                }
+                            }
+
+                            multi_char_handled = true;
+
+                            // Emit multi-char event for frontend rendering
+                            let _ = app.emit("multi-char-response", serde_json::json!({
+                                "conversation_id": conv_id,
+                                "segments": segments,
+                                "parent_message_id": assist_id,
+                            }));
+                        } else if segments.len() == 1 {
+                            // Single character responded — still need to strip the
+                            // [CharName]: prefix and set character attribution on the
+                            // existing message so the UI shows the name badge properly.
+                            let seg = &segments[0];
+                            if let Some(char_id) = resolve_character_id(
+                                &seg.character_name, &stream_mc_pairs,
+                            ) {
+                                info!("[multi-char] Single segment by {}, updating in-place", seg.character_name);
+                                let _ = db_for_save.query(
+                                    "UPDATE type::thing('messages', $id) SET content = $content, character_id = type::thing('characters', $char_id), character_name = $char_name"
+                                )
+                                    .bind(("id", assist_id.clone()))
+                                    .bind(("content", seg.content.clone()))
+                                    .bind(("char_id", char_id))
+                                    .bind(("char_name", seg.character_name.clone()))
+                                    .await;
+
+                                multi_char_handled = true;
+
+                                // Emit single-segment event so the frontend updates the live message
+                                let _ = app.emit("multi-char-response", serde_json::json!({
+                                    "conversation_id": conv_id,
+                                    "segments": segments,
+                                    "parent_message_id": assist_id,
+                                }));
+                            }
+                        }
+                    }
+
                     // Background: embed assistant message for vector RAG
                     {
                         let db_embed = db_for_save.clone();
                         let embed_conv = conv_id.clone();
                         let embed_msg = assist_id.clone();
                         let embed_content = full_text.clone();
+                        let embed_char_id = stream_char_id.clone();
+                        let app_embed = app.clone();
                         tokio::spawn(async move {
                             if let Ok(provider_config) = get_default_llm_provider(&db_embed).await {
                                 if let Ok(provider) = create_rig_provider(&provider_config) {
@@ -216,18 +340,80 @@ pub async fn send_message(
                                         .get("embedding_model")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("text-embedding-3-small");
-                                    let _ = embed_and_store(
+                                    if embed_and_store(
                                         &db_embed, &provider, embed_model,
                                         &embed_msg, &embed_conv, &embed_content,
-                                    ).await;
+                                        embed_char_id.as_deref(),
+                                    ).await.is_ok() {
+                                        let _ = app_embed.emit("embedding_updated", ());
+                                    }
                                 }
                             }
                         });
                     }
 
+                    // Background: extract and update scene state from the AI response.
+                    // Runs a cheap secondary LLM call (max_tokens=300, temp=0.1) to parse
+                    // location/time/weather/characters from the narrative.
+                    {
+                        let db_scene = db_for_save.clone();
+                        let scene_conv_id = conv_id.clone();
+                        let scene_response = full_text.clone();
+                        let app_scene = app.clone();
+                        tokio::spawn(async move {
+                            if let Ok(provider_config) = get_default_llm_provider(&db_scene).await {
+                                if let Ok(provider) = create_rig_provider(&provider_config) {
+                                    let model = provider_config.config
+                                        .get("model")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("default")
+                                        .to_string();
+
+                                    // Get current scene state as JSON for context
+                                    let current_json = match SceneStateRepo::get(&db_scene, &scene_conv_id).await {
+                                        Ok(Some(s)) => serde_json::to_string(&s).ok(),
+                                        _ => None,
+                                    };
+
+                                    match extract_scene_state(
+                                        &provider, &model, &scene_response,
+                                        current_json.as_deref(),
+                                    ).await {
+                                        Ok(update) => {
+                                            let changed = update.scene_changed;
+                                            if let Ok(new_state) = SceneStateRepo::upsert(
+                                                &db_scene, &scene_conv_id, &update
+                                            ).await {
+                                                info!("[scene_flow] Updated scene: {} (changed={})",
+                                                    new_state.location_name, changed);
+                                                if changed {
+                                                    let _ = app_scene.emit("scene_state_changed",
+                                                        serde_json::to_value(&new_state).unwrap_or_default());
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            debug!("[scene_flow] Extraction failed (non-fatal): {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // When multi-char segments were processed, emit done
+                    // with empty content — the multi-char-response event
+                    // already handled rendering. Sending full_text here would
+                    // cause the frontend done handler to re-create the combined
+                    // message and show duplicates.
+                    let done_content = if multi_char_handled {
+                        String::new()
+                    } else {
+                        full_text
+                    };
                     let _ = app.emit("chat-stream", StreamEvent {
                         event_type: "done".to_string(),
-                        content: full_text,
+                        content: done_content,
                         message_id: assist_id.clone(),
                     });
 
@@ -623,8 +809,119 @@ async fn build_prompt(
         None => (None, "character".to_string()),
     };
 
-    // Build system prompt from character data
-    if let Some(ref char_id) = character_id {
+    // ── Check for multi-character mode ──
+    // If conversation_characters has entries, use multi-char prompt building.
+    // Otherwise, fall back to the existing single-character path.
+    let conv_chars = ConversationCharacterRepo::list(db, conversation_id).await.unwrap_or_default();
+    let active_conv_chars: Vec<_> = conv_chars.iter().filter(|c| c.is_active).collect();
+    let is_multi_char = !active_conv_chars.is_empty();
+
+    if is_multi_char {
+        // ── Multi-character mode: inject all character cards ──
+        info!("[build_prompt] Multi-char mode: {} active characters", active_conv_chars.len());
+
+        for conv_char in &active_conv_chars {
+            let char_id_raw = conv_char.character_id.id.to_raw();
+            if let Ok(character) = CharacterRepo::get(db, &char_id_raw).await {
+                let card = &character.data;
+                let name = &conv_char.character_name;
+                let role = &conv_char.role;
+
+                match role.as_str() {
+                    "primary" => {
+                        // Full character card for primary
+                        let mut parts = Vec::new();
+                        parts.push(format!("[Primary Character — {}]", name));
+
+                        if let Some(sys) = card.get("system_prompt").and_then(|v| v.as_str()) {
+                            if !sys.is_empty() { parts.push(sys.to_string()); }
+                        }
+                        if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
+                            if !desc.is_empty() { parts.push(format!("Description: {}", desc)); }
+                        }
+                        if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
+                            if !personality.is_empty() { parts.push(format!("Personality: {}", personality)); }
+                        }
+                        if let Some(scenario) = card.get("scenario").and_then(|v| v.as_str()) {
+                            if !scenario.is_empty() { parts.push(format!("Scenario: {}", scenario)); }
+                        }
+
+                        prompt.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: parts.join("\n"),
+                        });
+                    }
+                    "secondary" => {
+                        // Condensed card for secondary characters
+                        let mut parts = Vec::new();
+                        parts.push(format!("[Character — {}]", name));
+
+                        if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
+                            if !desc.is_empty() { parts.push(format!("Description: {}", desc)); }
+                        }
+                        if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
+                            if !personality.is_empty() { parts.push(format!("Personality: {}", personality)); }
+                        }
+                        parts.push(format!("(Talkativeness: {}/100)", conv_char.talkativeness));
+
+                        prompt.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: parts.join("\n"),
+                        });
+                    }
+                    _ => {
+                        // Minimal card for NPCs
+                        let mut parts = Vec::new();
+                        parts.push(format!("[NPC — {}]", name));
+
+                        if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
+                            if !desc.is_empty() { parts.push(desc.to_string()); }
+                        }
+                        parts.push("(Minor character — respond briefly when directly involved)".to_string());
+
+                        prompt.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: parts.join("\n"),
+                        });
+                    }
+                }
+            }
+        }
+
+        // ── Group Scene Directive ──
+        let char_names: Vec<String> = active_conv_chars.iter()
+            .map(|c| c.character_name.clone())
+            .collect();
+        let group_directive = format!(
+            "[Group Scene Directive]\n\
+             You are narrating a group roleplay scene. Multiple characters are present: {}.\n\
+             When responding, write for ALL characters who are relevant to the current moment.\n\n\
+             CRITICAL — Response format: You MUST prefix EVERY character's section with their full name \
+             in square brackets followed by a colon. This is mandatory and must never be omitted.\n\n\
+             Example format:\n\
+             [Aria Silverleaf]: *Aria's actions and dialogue here*\n\n\
+             [Finn Shadowcloak]: *Finn's actions and dialogue here*\n\n\
+             Rules:\n\
+             - EVERY section of your response MUST start with [FullCharacterName]: — never write \
+             character dialogue or actions without this prefix tag\n\
+             - When one character speaks TO or about another character present in the scene, \
+             the addressed character MUST respond in the same generation. Do not wait for {{{{user}}}} input \
+             between character exchanges\n\
+             - Write natural back-and-forth dialogue between characters when the scene calls for it\n\
+             - Only respond as characters listed above, never as {{{{user}}}}\n\
+             - Each character must maintain their distinct voice, personality, and speech patterns\n\
+             - Characters with higher talkativeness should respond more frequently and at greater length\n\
+             - If a character has nothing meaningful to add, they may be omitted — but characters who are \
+             directly addressed, challenged, or asked a question must always respond\n\
+             - Never generate {{{{user}}}}'s dialogue or actions",
+            char_names.join(", ")
+        );
+        prompt.push(ChatMessage {
+            role: MessageRole::System,
+            content: group_directive,
+        });
+    } else if let Some(ref char_id) = character_id {
+        // ── Single-character mode (existing behavior) ──
         if let Ok(character) = CharacterRepo::get(db, char_id).await {
             let card = &character.data;
             let mut system_parts = Vec::new();
@@ -727,45 +1024,169 @@ async fn build_prompt(
             }
 
             // ── Inject saved memories as a persistent context layer ──
-            // Memories are auto-extracted facts from past conversations (events, relationships,
-            // character reveals, etc.). Injecting them here gives the AI long-term recall.
+            // Two retrieval modes:
+            // 1. Semantic: query vector DB for memories relevant to current message (preferred)
+            // 2. Fallback: recency-ordered list if no memory embeddings exist yet
             //
             // Placement: after lorebook, before emotional state — the "knowledge layer".
-            // Limited to 20 most recent to avoid context overflow.
+            // Token-capped to context_budget.max_memory_tokens.
             if memory_scope != "none" {
-                let memory_list = if memory_scope == "character" {
-                    MemoryRepo::list(db, Some(char_id), None).await.unwrap_or_default()
+                // Get the last user message for semantic query
+                let last_user_content = chain.iter().rev()
+                    .find(|m| m.role == MessageRole::User)
+                    .map(|m| m.content.clone())
+                    .unwrap_or_default();
+
+                if is_multi_char {
+                    // ── Multi-character memory injection ──
+                    // Each character gets their own attributed memory block
+                    for conv_char in &active_conv_chars {
+                        let cc_char_id = conv_char.character_id.id.to_raw();
+                        let char_memories = MemoryRepo::list_for_character_in_conv(
+                            db, &cc_char_id, conversation_id,
+                        ).await.unwrap_or_default();
+
+                        if !char_memories.is_empty() {
+                            let facts: Vec<String> = char_memories.iter()
+                                .take(10) // cap per character
+                                .map(|m| m.content.clone())
+                                .collect();
+
+                            let memory_block = format!(
+                                "[{}'s Memories]\n{}",
+                                conv_char.character_name,
+                                facts.iter()
+                                    .map(|f| format!("• {}", f))
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                            );
+                            prompt.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: memory_block,
+                            });
+                        }
+                    }
                 } else {
-                    MemoryRepo::list(db, None, Some(conversation_id)).await.unwrap_or_default()
-                };
+                    // ── Single-character memory injection (existing behavior) ──
+                    let mut memory_facts: Vec<String> = Vec::new();
 
-                // Take only the 20 most recent (list is already ordered DESC)
-                let memory_rows: Vec<_> = memory_list.into_iter().take(20).collect();
+                    // Try semantic retrieval first
+                    if !last_user_content.is_empty() {
+                        if let Ok(pc) = get_default_llm_provider(db).await {
+                            if let Ok(provider) = create_rig_provider(&pc) {
+                                let embed_model = pc.config
+                                    .get("embedding_model")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("text-embedding-3-small");
+                                if let Ok(results) = query_relevant_memories(
+                                    db, &provider, embed_model,
+                                    char_id, &last_user_content,
+                                    10,   // top 10 relevant memories
+                                    0.4,  // lower threshold — facts are short
+                                ).await {
+                                    if !results.is_empty() {
+                                        memory_facts = results.iter()
+                                            .map(|r| r.content.clone())
+                                            .collect();
+                                        info!("[build_prompt] Semantic memory retrieval: {} memories", memory_facts.len());
+                                    }
+                                }
+                            }
+                        }
+                    }
 
-                if !memory_rows.is_empty() {
-                    // Format memories as a bullet list, reversed to chronological order
-                    let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
-                    facts.reverse(); // oldest first for natural reading order
+                    // Fallback: recency-ordered list if semantic retrieval yielded nothing
+                    if memory_facts.is_empty() {
+                        let memory_list = if memory_scope == "character" {
+                            MemoryRepo::list(db, Some(char_id), None).await.unwrap_or_default()
+                        } else {
+                            // Fix: conversation scope now includes canon memories
+                            MemoryRepo::list_with_canon(db, conversation_id).await.unwrap_or_default()
+                        };
 
-                    let memory_block = format!(
-                        "[Remembered Facts — things you know from past interactions]\n{}",
-                        facts.iter()
-                            .map(|f| format!("• {}", f))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    );
+                        memory_facts = memory_list.into_iter()
+                            .take(15)
+                            .map(|m| m.content)
+                            .collect();
 
-                    prompt.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: memory_block,
-                    });
+                        if !memory_facts.is_empty() {
+                            memory_facts.reverse(); // oldest first for natural reading
+                            info!("[build_prompt] Recency memory fallback: {} memories", memory_facts.len());
+                        }
+                    }
+
+                    if !memory_facts.is_empty() {
+                        let memory_block = format!(
+                            "[Remembered Facts — things you know from past interactions]\n{}",
+                            memory_facts.iter()
+                                .map(|f| format!("• {}", f))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        );
+
+                        let memory_message = ChatMessage {
+                            role: MessageRole::System,
+                            content: memory_block,
+                        };
+
+                        // Enforce token cap — truncate if over budget
+                        let mem_tokens = count_message_tokens(&memory_message);
+                        if mem_tokens <= context_budget.max_memory_tokens {
+                            prompt.push(memory_message);
+                        } else {
+                            // Progressively drop facts until under budget
+                            let mut facts = memory_facts;
+                            while facts.len() > 1 {
+                                facts.pop();
+                                let truncated_block = format!(
+                                    "[Remembered Facts — things you know from past interactions]\n{}",
+                                    facts.iter()
+                                        .map(|f| format!("• {}", f))
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                );
+                                let truncated_msg = ChatMessage {
+                                    role: MessageRole::System,
+                                    content: truncated_block,
+                                };
+                                if count_message_tokens(&truncated_msg) <= context_budget.max_memory_tokens {
+                                    prompt.push(truncated_msg);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             // Inject character emotional state as a dynamic context layer.
             // Placed last in the system prompt so it's closest to the conversation history
             // and carries the most weight in the attention window.
-            if let Ok(Some(state)) = CharacterStateRepo::get(db, char_id, conversation_id).await {
+            if is_multi_char {
+                // ── Multi-character emotional states ──
+                let mut state_parts: Vec<String> = Vec::new();
+                for conv_char in &active_conv_chars {
+                    let cc_char_id = conv_char.character_id.id.to_raw();
+                    if let Ok(Some(state)) = CharacterStateRepo::get(db, &cc_char_id, conversation_id).await {
+                        state_parts.push(format!(
+                            "  {} — {} (mood:{}/100 trust:{}/100 intensity:{}/100) — {}",
+                            conv_char.character_name,
+                            state.dominant_emotion,
+                            state.mood, state.trust, state.arousal,
+                            state.state_summary,
+                        ));
+                    }
+                }
+                if !state_parts.is_empty() {
+                    prompt.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!(
+                            "[Current Emotional States]\n{}\n(Let these emotional states colour each character's response naturally.)",
+                            state_parts.join("\n")
+                        ),
+                    });
+                }
+            } else if let Ok(Some(state)) = CharacterStateRepo::get(db, char_id, conversation_id).await {
                 let state_block = format!(
                     "[Current Emotional State]\n\
                      Dominant emotion: {emotion}\n\
@@ -781,6 +1202,35 @@ async fn build_prompt(
                 prompt.push(ChatMessage {
                     role: MessageRole::System,
                     content: state_block,
+                });
+            }
+
+            // ── Inject current scene state ──
+            // Placed after emotional state, before summary — gives the AI spatial awareness
+            // of where the story is happening (location, time, weather, characters present).
+            if let Ok(Some(scene)) = SceneStateRepo::get(db, conversation_id).await {
+                let chars_list = if scene.characters_present.is_empty() {
+                    "unspecified".to_string()
+                } else {
+                    scene.characters_present.join(", ")
+                };
+                let scene_block = format!(
+                    "[Current Scene]\n\
+                     Location: {name} — {desc}\n\
+                     Time: {time} | Weather: {weather}\n\
+                     Present: {chars}\n\
+                     Atmosphere: {ambient}\n\
+                     (Maintain scene consistency. Describe transitions naturally when the story moves to a new location or time.)",
+                    name = scene.location_name,
+                    desc = scene.location_description,
+                    time = scene.time_period,
+                    weather = scene.weather,
+                    chars = chars_list,
+                    ambient = scene.ambient_details,
+                );
+                prompt.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: scene_block,
                 });
             }
 
@@ -841,6 +1291,10 @@ async fn build_prompt(
             prompt.extend(window.included);
 
             // Vector RAG: retrieve semantically relevant evicted messages
+            // Fixes applied:
+            // - Dedup: exclude messages already in the sliding window
+            // - Budget: cap RAG injection to allocation.rag_budget tokens
+            // - Cross-conv: when memory_scope = "character", search all conversations
             let rag_tokens = if window.evicted_count > 0 {
                 let last_user_content = chain.iter().rev()
                     .find(|m| m.role == MessageRole::User)
@@ -848,6 +1302,13 @@ async fn build_prompt(
                     .unwrap_or_default();
 
                 if !last_user_content.is_empty() {
+                    // Collect IDs of messages in the sliding window for dedup
+                    let include_from = chain.len().saturating_sub(included_messages);
+                    let window_msg_ids: Vec<String> = branch[include_from..]
+                        .iter()
+                        .map(|m| m.id.id.to_raw())
+                        .collect();
+
                     let rag_results = match get_default_llm_provider(db).await {
                         Ok(pc) => match create_rig_provider(&pc) {
                             Ok(provider) => {
@@ -855,11 +1316,19 @@ async fn build_prompt(
                                     .get("embedding_model")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("text-embedding-3-small");
-                                let exclude_ids: Vec<String> = vec![];
+
+                                // Choose scope: character-wide or conversation-only
+                                let (conv_scope, char_scope) = if memory_scope == "character" {
+                                    (None, character_id.as_deref())
+                                } else {
+                                    (Some(conversation_id as &str), None)
+                                };
+
                                 query_relevant_context(
                                     db, &provider, embed_model,
-                                    conversation_id, &last_user_content,
-                                    5, 0.7, &exclude_ids,
+                                    conv_scope, char_scope,
+                                    &last_user_content,
+                                    5, 0.7, &window_msg_ids,
                                 ).await.unwrap_or_default()
                             }
                             Err(_) => vec![],
@@ -875,13 +1344,43 @@ async fn build_prompt(
                         let rag_message = ChatMessage {
                             role: MessageRole::System,
                             content: format!(
-                                "[Relevant Past Context — retrieved from earlier in this conversation]\n{}",
+                                "[Relevant Past Context — retrieved from earlier conversation history]\n{}",
                                 rag_text
                             ),
                         };
                         let tokens = count_message_tokens(&rag_message);
-                        prompt.push(rag_message);
-                        tokens
+
+                        // Enforce RAG budget cap
+                        if tokens <= allocation.rag_budget {
+                            prompt.push(rag_message);
+                            tokens
+                        } else {
+                            // Try with fewer results until within budget
+                            let mut truncated = rag_results.clone();
+                            while truncated.len() > 1 {
+                                truncated.pop();
+                                let text = truncated.iter()
+                                    .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                                    .collect::<Vec<_>>()
+                                    .join("\n\n");
+                                let msg = ChatMessage {
+                                    role: MessageRole::System,
+                                    content: format!(
+                                        "[Relevant Past Context — retrieved from earlier conversation history]\n{}",
+                                        text
+                                    ),
+                                };
+                                let t = count_message_tokens(&msg);
+                                if t <= allocation.rag_budget {
+                                    prompt.push(msg);
+                                    break;
+                                }
+                            }
+                            // Return whatever tokens we actually used
+                            prompt.last()
+                                .map(|m| count_message_tokens(m))
+                                .unwrap_or(0)
+                        }
                     } else { 0 }
                 } else { 0 }
             } else { 0 };
@@ -917,8 +1416,9 @@ async fn build_prompt(
 
             // Memories (character-less path or fallback)
             if memory_scope != "none" {
-                let memory_list = MemoryRepo::list(db, None, Some(conversation_id)).await.unwrap_or_default();
-                let memory_rows: Vec<_> = memory_list.into_iter().take(20).collect();
+                // Use list_with_canon to include canon facts regardless of scope
+                let memory_list = MemoryRepo::list_with_canon(db, conversation_id).await.unwrap_or_default();
+                let memory_rows: Vec<_> = memory_list.into_iter().take(15).collect();
                 if !memory_rows.is_empty() {
                     let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
                     facts.reverse();
@@ -926,10 +1426,14 @@ async fn build_prompt(
                         "[Remembered Facts — things you know from past interactions]\n{}",
                         facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n")
                     );
-                    prompt.push(ChatMessage {
+                    let memory_message = ChatMessage {
                         role: MessageRole::System,
                         content: memory_block,
-                    });
+                    };
+                    // Enforce token cap
+                    if count_message_tokens(&memory_message) <= context_budget.max_memory_tokens {
+                        prompt.push(memory_message);
+                    }
                 }
             }
 
@@ -987,7 +1491,7 @@ async fn build_prompt(
 
             prompt.extend(window.included);
 
-            // Vector RAG: retrieve semantically relevant evicted messages
+            // Vector RAG: retrieve semantically relevant evicted messages (fallback path)
             let rag_tokens = if window.evicted_count > 0 {
                 let last_user_content = chain.iter().rev()
                     .find(|m| m.role == MessageRole::User)
@@ -995,6 +1499,13 @@ async fn build_prompt(
                     .unwrap_or_default();
 
                 if !last_user_content.is_empty() {
+                    // Collect IDs of messages in the sliding window for dedup
+                    let include_from = chain.len().saturating_sub(included_messages);
+                    let window_msg_ids: Vec<String> = branch[include_from..]
+                        .iter()
+                        .map(|m| m.id.id.to_raw())
+                        .collect();
+
                     let rag_results = match get_default_llm_provider(db).await {
                         Ok(pc) => match create_rig_provider(&pc) {
                             Ok(provider) => {
@@ -1002,11 +1513,11 @@ async fn build_prompt(
                                     .get("embedding_model")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("text-embedding-3-small");
-                                let exclude_ids: Vec<String> = vec![];
                                 query_relevant_context(
                                     db, &provider, embed_model,
-                                    conversation_id, &last_user_content,
-                                    5, 0.7, &exclude_ids,
+                                    Some(conversation_id), None,
+                                    &last_user_content,
+                                    5, 0.7, &window_msg_ids,
                                 ).await.unwrap_or_default()
                             }
                             Err(_) => vec![],
@@ -1022,13 +1533,16 @@ async fn build_prompt(
                         let rag_message = ChatMessage {
                             role: MessageRole::System,
                             content: format!(
-                                "[Relevant Past Context — retrieved from earlier in this conversation]\n{}",
+                                "[Relevant Past Context — retrieved from earlier conversation history]\n{}",
                                 rag_text
                             ),
                         };
                         let tokens = count_message_tokens(&rag_message);
-                        prompt.push(rag_message);
-                        tokens
+                        // Enforce RAG budget cap
+                        if tokens <= allocation.rag_budget {
+                            prompt.push(rag_message);
+                            tokens
+                        } else { 0 }
                     } else { 0 }
                 } else { 0 }
             } else { 0 };
@@ -1134,7 +1648,7 @@ async fn build_prompt(
 
         prompt.extend(window.included);
 
-        // Vector RAG: retrieve semantically relevant evicted messages
+        // Vector RAG: retrieve semantically relevant evicted messages (non-character path)
         let rag_tokens = if window.evicted_count > 0 {
             let last_user_content = chain.iter().rev()
                 .find(|m| m.role == MessageRole::User)
@@ -1142,6 +1656,7 @@ async fn build_prompt(
                 .unwrap_or_default();
 
             if !last_user_content.is_empty() {
+                let exclude_ids: Vec<String> = vec![];
                 let rag_results = match get_default_llm_provider(db).await {
                     Ok(pc) => match create_rig_provider(&pc) {
                         Ok(provider) => {
@@ -1149,10 +1664,10 @@ async fn build_prompt(
                                 .get("embedding_model")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("text-embedding-3-small");
-                            let exclude_ids: Vec<String> = vec![];
                             query_relevant_context(
                                 db, &provider, embed_model,
-                                conversation_id, &last_user_content,
+                                Some(conversation_id), None,
+                                &last_user_content,
                                 5, 0.7, &exclude_ids,
                             ).await.unwrap_or_default()
                         }
@@ -1169,13 +1684,15 @@ async fn build_prompt(
                     let rag_message = ChatMessage {
                         role: MessageRole::System,
                         content: format!(
-                            "[Relevant Past Context — retrieved from earlier in this conversation]\n{}",
+                            "[Relevant Past Context — retrieved from earlier conversation history]\n{}",
                             rag_text
                         ),
                     };
                     let tokens = count_message_tokens(&rag_message);
-                    prompt.push(rag_message);
-                    tokens
+                    if tokens <= allocation.rag_budget {
+                        prompt.push(rag_message);
+                        tokens
+                    } else { 0 }
                 } else { 0 }
             } else { 0 }
         } else { 0 };
@@ -1225,13 +1742,14 @@ async fn resolve_model_id(
             if !stored.is_empty() && stored != "unknown" {
                 Ok(stored.to_string())
             } else {
-                // Fall back to first enabled model for this provider
+                // Fall back to first enabled LLM model for this provider
+                // (explicitly exclude embedding models)
                 let provider_id_str = provider_config.id.id.to_raw();
                 let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id_str)).await?;
-                match enabled.into_iter().next() {
+                match enabled.into_iter().find(|m| m.model_type != "embedding") {
                     Some(m) => Ok(m.model_id),
                     None => Err(MythicError::Config(
-                        "No model selected. Go to AI Studio \u{2192} Models, enable at least one model.".to_string()
+                        "No chat model selected. Go to LLM Models, enable at least one non-embedding model.".to_string()
                     )),
                 }
             }

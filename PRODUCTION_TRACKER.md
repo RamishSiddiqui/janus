@@ -143,15 +143,16 @@ src/                             Svelte 5 frontend (SvelteKit)
 
 | Feature | Frontend | Backend | Status | Notes |
 |---|---|---|---|---|
-| **Memory CRUD** | ❌ No direct CRUD UI | `memories.rs` 4 cmds | 🟡 | IPC wrappers exist (`listMemories`, `createMemory`, `updateMemory`, `deleteMemory`), but NO component calls them directly. ContextPanel has zero memory UI |
+| **Memory CRUD** | ContextPanel + MemoryGraph + MemoryTimeline | `memories.rs` | ✅ | Create (extractor), delete (3 components), share/unlink (graph + timeline) |
 | **Auto-Save Memories** | Toggle in Settings | `memory-extractor.ts` | ✅ | Two-tier: LLM + heuristic fallback, throttled every 3rd message |
 | **Memory Graph Visualizer** | `/memories` page + Profile tab | `get_memory_graph` | ✅ | SvelteFlow force-directed layout |
 | **Memory Timeline** | `/memories` page toggle | `MemoryTimeline.svelte` | ✅ | Lane-based chronological view |
-| **Promote to Canon** | ❌ No UI | `promote_to_canon` | 🔇 | IPC wrapper exists, no component calls it |
-| **Share Memory** | ❌ No UI | `share_memory` | 🔇 | IPC wrapper exists, no component calls it |
-| **Unlink Memory** | ❌ No UI | `unlink_memory` | 🔇 | IPC wrapper exists, no component calls it |
+| **Promote to Canon** | Badge display in MemoryActionPanel | `promote_to_canon` | 🟡 | Canon badge renders, but no promote button in UI |
+| **Share Memory** | MemoryGraph + MemoryTimeline | `share_memory` | ✅ | Cross-character sharing |
+| **Unlink Memory** | MemoryGraph + MemoryTimeline | `unlink_memory` | ✅ | Remove memory links |
 | **Update Memory** | ❌ No UI | `update_memory` | 🔇 | IPC wrapper exists, no component calls it |
-| **Memory Scope Control** | ❌ No UI | `set_memory_scope` | 🔇 | Backend registered in lib.rs, **no IPC wrapper in ipc.ts**, no UI |
+| **Delete Memory** | ContextPanel + MemoryGraph + MemoryTimeline | `delete_memory` | ✅ | Delete from 3 different views |
+| **Memory Scope Control** | ContextPanel dropdown | `set_memory_scope` | ✅ | Per-conversation scope toggle | |
 
 ### 2.7 · Scenes
 
@@ -169,7 +170,7 @@ src/                             Svelte 5 frontend (SvelteKit)
 
 | Feature | Frontend | Backend | Status | Notes |
 |---|---|---|---|---|
-| **FTS Message Search** | ❌ **No UI anywhere** | `search_messages` (BM25 + edgengram) | 🔇 | Backend registered + IPC wrapper exists, but **zero components call it**. No search box in Sidebar |
+| **FTS Message Search** | Sidebar search box | `search_messages` (BM25 + edgengram) | ✅ | Sidebar calls `ipc.searchMessages()` with query + limit |
 
 ### 2.9 · Providers & Models
 
@@ -237,8 +238,8 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | `get_conversation_messages` | ✅ | ✅ Chat + Profile | ✅ |
 | `set_active_message` | ✅ | ✅ Branch switch | ✅ |
 | `update_conversation` | ✅ | ✅ Rename | ✅ |
-| `set_memory_scope` | ❌ None | ❌ | 🔇 Orphaned |
-| `search_messages` | ✅ | ❌ None | 🔇 No UI |
+| `set_memory_scope` | ✅ | ✅ ContextPanel | ✅ |
+| `search_messages` | ✅ | ✅ Sidebar search | ✅ |
 | **Messages** | | | |
 | `create_message` | ✅ | ❌ (backend-internal) | N/A |
 | `update_message` | ✅ | ✅ Edit inline | ✅ |
@@ -281,10 +282,10 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | `list_memories` | ✅ | ✅ Profile stats | ✅ |
 | `create_memory` | ✅ | ✅ Extractor service | ✅ |
 | `update_memory` | ✅ | ❌ No UI | 🔇 |
-| `delete_memory` | ✅ | ❌ No UI | 🔇 |
-| `promote_to_canon` | ✅ | ❌ No UI | 🔇 |
-| `share_memory` | ✅ | ❌ No UI | 🔇 |
-| `unlink_memory` | ✅ | ❌ No UI | 🔇 |
+| `delete_memory` | ✅ | ✅ ContextPanel + MemoryGraph + MemoryTimeline | ✅ |
+| `promote_to_canon` | ✅ | ❌ No promote button | 🟡 |
+| `share_memory` | ✅ | ✅ MemoryGraph + MemoryTimeline | ✅ |
+| `unlink_memory` | ✅ | ✅ MemoryGraph + MemoryTimeline | ✅ |
 | `get_memory_graph` | ✅ | ✅ MemoryGraph | ✅ |
 | **Character State** | | | |
 | `get_character_state` | ✅ | ✅ Chat store | ✅ |
@@ -293,7 +294,7 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 | `get_embedding_index_status` | ✅ | ✅ Settings | ✅ |
 | `rebuild_embedding_index` | ✅ | ✅ Settings | ✅ |
 
-**Summary:** 60+ commands registered → 50+ fully wired (83%) · 7 backend-only (12%) · 1 orphaned (2%)
+**Summary:** 60+ commands registered → 55+ fully wired (90%) · 3 backend-only (5%) · 0 orphaned (0%)
 
 ---
 

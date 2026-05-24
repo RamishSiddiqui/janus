@@ -2,6 +2,8 @@
   import { onMount, tick } from "svelte";
   import { browser } from "$app/environment";
   import ChatHeader from "$lib/components/ChatHeader.svelte";
+  import SceneStateBar from "$lib/components/SceneStateBar.svelte";
+  import type { SceneState } from "$lib/services/ipc";
   import Icon from "$lib/components/Icon.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
@@ -35,6 +37,9 @@
   // Branching mode — set when user clicks "Branch from here" on a message
   let branchFromId: string | null = $state(null);
   let branchFromContent: string = $state(""); // preview text of the branch-point message
+
+  // Scene state for the current conversation
+  let currentSceneState: SceneState | null = $state(null);
 
   // ── Smart Auto-Scroll ──
   // Respects user intent: if they scroll up to read, don't yank them down.
@@ -187,6 +192,31 @@
   let additionalCharacters = $derived(
     $activeConversation?.additionalCharacters ?? [],
   );
+
+  // Build a character_id → avatarUrl map for multi-char avatar resolution
+  let characterAvatarMap = $derived.by(() => {
+    const map = new Map<string, string | null>();
+    // Primary character
+    if (characterId && avatarUrl) {
+      map.set(characterId, avatarUrl);
+    }
+    // Additional characters
+    for (const ac of additionalCharacters) {
+      if (ac.id && ac.avatarUrl) {
+        map.set(ac.id, ac.avatarUrl);
+      }
+    }
+    return map;
+  });
+
+  // Resolve per-message avatar: use character-specific avatar if available
+  function resolveMessageAvatar(message: { character_id?: string | null; role?: string }): string | null {
+    if (message.role !== 'assistant') return null;
+    if (message.character_id && characterAvatarMap.has(message.character_id)) {
+      return characterAvatarMap.get(message.character_id) ?? null;
+    }
+    return avatarUrl; // fallback to primary character avatar
+  }
   let modelName = $state("No provider configured");
   let selectedModel = $state("");
   let availableModels: string[] = $state([]);
@@ -242,7 +272,35 @@
     } catch {
       /* fallback already set */
     }
+
+    // Listen for scene_state_changed events from backend
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('scene_state_changed', () => {
+        const convId = $activeConversationId;
+        if (convId) loadSceneState(convId);
+      });
+    });
   });
+
+  // Load scene state whenever the active conversation changes
+  $effect(() => {
+    const convId = $activeConversationId;
+    if (convId && isTauri) {
+      loadSceneState(convId);
+    } else {
+      currentSceneState = null;
+    }
+  });
+
+  async function loadSceneState(convId: string) {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      currentSceneState = await ipc.getSceneState(convId);
+    } catch (err) {
+      console.error('Failed to load scene state:', err);
+      currentSceneState = null;
+    }
+  }
 
   async function refreshModels() {
     if (!isTauri || !activeProviderId) return;
@@ -545,6 +603,10 @@
         }}
       />
 
+      {#if $activeConversationId}
+        <SceneStateBar sceneState={currentSceneState} />
+      {/if}
+
       <!-- Messages -->
       <div
         class="messages-area"
@@ -582,7 +644,7 @@
             <ChatMessage
               {message}
               onBranch={handleBranch}
-              {avatarUrl}
+              avatarUrl={resolveMessageAvatar(message)}
               {characterName}
             />
           </div>
@@ -603,9 +665,42 @@
             class="typing-indicator"
             aria-label="AI is generating a response"
           >
-            <div class="typing-avatar">
-              <div class="typing-glow"></div>
-            </div>
+            {#if additionalCharacters.length > 0}
+              <!-- Multi-char: stacked avatar cluster -->
+              <div class="typing-avatar-stack">
+                {#if avatarUrl}
+                  <div class="typing-avatar-stacked" style="z-index: 3">
+                    <img src={avatarUrl} alt={characterName} class="typing-avatar-img" />
+                  </div>
+                {:else}
+                  <div class="typing-avatar-stacked typing-avatar-fallback" style="z-index: 3">
+                    <div class="typing-glow"></div>
+                  </div>
+                {/if}
+                {#each additionalCharacters.slice(0, 2) as ac, i}
+                  {#if ac.avatarUrl}
+                    <div class="typing-avatar-stacked" style="z-index: {2 - i}; margin-left: -10px;">
+                      <img src={ac.avatarUrl} alt={ac.name} class="typing-avatar-img" />
+                    </div>
+                  {:else}
+                    <div class="typing-avatar-stacked typing-avatar-fallback" style="z-index: {2 - i}; margin-left: -10px; background: {ac.avatarColor}">
+                      <div class="typing-glow"></div>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            {:else if avatarUrl}
+              <!-- Single-char: show character avatar -->
+              <div class="typing-avatar">
+                <img src={avatarUrl} alt={characterName} class="typing-avatar-img" />
+                <div class="typing-glow"></div>
+              </div>
+            {:else}
+              <!-- Fallback: gradient orb -->
+              <div class="typing-avatar">
+                <div class="typing-glow"></div>
+              </div>
+            {/if}
             <div class="typing-dots">
               <span class="dot dot-1"></span>
               <span class="dot dot-2"></span>
@@ -1311,6 +1406,34 @@
     opacity: 0.2;
     filter: blur(6px);
     animation: glowPulse 2s ease-in-out infinite;
+  }
+
+  /* Avatar image inside typing indicator */
+  .typing-avatar-img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+  }
+
+  /* Stacked avatar cluster for multi-char */
+  .typing-avatar-stack {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    animation: gentlePulse 2s ease-in-out infinite;
+  }
+  .typing-avatar-stacked {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    border: 2px solid rgba(6, 6, 18, 0.9);
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
+    flex-shrink: 0;
+  }
+  .typing-avatar-fallback {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   }
 
   .typing-dots {

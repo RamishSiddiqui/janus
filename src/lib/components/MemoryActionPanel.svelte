@@ -226,7 +226,7 @@
     onmousedown={handleBackdropClick}
   >
     <!-- Panel -->
-    <aside
+    <div
       class="action-panel"
       class:closing={isClosing}
       bind:this={panelEl}
@@ -514,7 +514,7 @@
         </footer>
 
       </div>
-    </aside>
+    </div>
   </div>
 {/if}
 

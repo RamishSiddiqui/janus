@@ -10,84 +10,65 @@ import { error as toastError } from '$lib/stores/toast';
 import { settings } from '$lib/stores/settings';
 import { parseCharacterData } from '$lib/utils/character';
 import type { CharacterState } from '$lib/services/ipc';
+import { PresentationBuffer, charAccentColor, type CharMeta, type PresentationCallbacks } from '$lib/services/presentation-buffer';
 
 // Detect if we're running inside Tauri (desktop app) or browser (dev mode)
 const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-// ── Streaming Buffer ──
-// Batches incoming token deltas and flushes to the store once per animation frame.
-// This reduces Svelte reactivity updates from ~100+/sec (per token) to ~60/sec (per frame),
-// eliminating layout thrash and making text rendering buttery smooth.
-class StreamBuffer {
-  private pendingText = '';
-  private messageId = '';
-  private rafId: number | null = null;
-  private isFirstDelta = true;
+/// ── Presentation Buffer Factory ──
+// Creates a PresentationBuffer per stream with callbacks wired to the messages store.
+// Replaces the old StreamBuffer — provides character-aware streaming with
+// pre-resolved avatars, mid-stream marker detection, and per-character bubbles.
 
-  /** Accumulate a delta token. Actual store update deferred to next animation frame. */
-  push(messageId: string, text: string) {
-    if (this.isFirstDelta || this.messageId !== messageId) {
-      // First delta for this message — create the assistant message immediately
-      // so the user sees the bubble appear without waiting for the next frame.
-      this.messageId = messageId;
-      this.isFirstDelta = false;
-      this.pendingText = '';
+function createPresentationCallbacks(): PresentationCallbacks {
+  return {
+    createMessage(msg: Message) {
       messages.update(msgs => {
-        if (msgs.find(m => m.id === messageId)) return msgs;
-        const newMsg = { id: messageId, role: 'assistant' as const, content: text, isStreaming: true };
+        if (msgs.find(m => m.id === msg.id)) return msgs;
         // Sync backing array for pagination
-        if (!fullActivePath.find(m => m.id === messageId)) {
-          fullActivePath.push(newMsg);
+        if (!fullActivePath.find(m => m.id === msg.id)) {
+          fullActivePath.push(msg);
           currentRenderCount++;
         }
-        return [...msgs, newMsg];
+        return [...msgs, msg];
       });
-      return;
-    }
-
-    this.pendingText += text;
-    if (this.rafId === null) {
-      this.rafId = requestAnimationFrame(() => this.flush());
-    }
-  }
-
-  /** Flush accumulated text to the store in a single update. */
-  private flush() {
-    this.rafId = null;
-    const batch = this.pendingText;
-    if (!batch) return;
-    this.pendingText = '';
-    const mid = this.messageId;
-
-    messages.update(msgs => {
-      const idx = msgs.length - 1;
-      const last = msgs[idx];
-      if (last && last.id === mid) {
-        // Mutate-then-spread: only the last message object is recreated
-        const updated = { ...last, content: last.content + batch, isStreaming: true };
+    },
+    appendContent(messageId: string, text: string) {
+      messages.update(msgs => {
+        // Find the message — may be last or earlier (multi-char creates multiple)
+        const idx = msgs.findIndex(m => m.id === messageId);
+        if (idx < 0) return msgs;
+        const msg = msgs[idx];
+        const updated = { ...msg, content: msg.content + text, isStreaming: true };
         const next = msgs.slice();
         next[idx] = updated;
         return next;
-      }
-      return msgs;
-    });
-  }
-
-  /** Cancel any pending flush (call on done/error/cleanup). */
-  reset() {
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
-    // Flush any remaining text before reset
-    if (this.pendingText) this.flush();
-    this.pendingText = '';
-    this.messageId = '';
-    this.isFirstDelta = true;
-  }
+      });
+    },
+    finalizeMessage(messageId: string) {
+      messages.update(msgs =>
+        msgs.map(m => m.id === messageId ? { ...m, isStreaming: false } : m)
+      );
+    },
+  };
 }
 
-const streamBuffer = new StreamBuffer();
+/** Build a PresentationBuffer with the current conversation's character metadata. */
+function createStreamBuffer(): PresentationBuffer {
+  const meta = get(conversationCharMeta);
+  const primaryId = get(activeCharacterId);
+  const primaryMeta = primaryId ? meta.get(primaryId) : null;
+  const fallback: CharMeta = primaryMeta || {
+    id: primaryId || '',
+    name: get(activeConversation)?.characterName || 'Character',
+    avatarUrl: null,
+    accentColor: '#8B5CF6',
+  };
+  return new PresentationBuffer(fallback, meta, createPresentationCallbacks());
+}
+
+// Active stream buffer — created fresh per stream
+let activeBuffer: PresentationBuffer | null = null;
 
 // In-memory cache for avatar blob URLs to avoid re-reading filesystem on every load
 const avatarCache = new Map<string, string>();
@@ -145,9 +126,22 @@ export const activeCharacterId = derived(
   ($conv) => $conv?.characterId ?? null
 );
 
-// Live emotional state for the active character+conversation.
-// Updated reactively after each stream completes — subscribed to by EmotionHUD.
-export const characterEmotionState = writable<CharacterState | null>(null);
+// Live emotional states for ALL characters in the active conversation.
+// Keyed by character_id → CharacterState. Updated reactively after each
+// stream completes — subscribed to by EmotionHUD per-message.
+export const characterEmotionStates = writable<Map<string, CharacterState>>(new Map());
+
+// Convenience: get a single character's emotion state from the map.
+// Kept for backward compatibility — reads the primary character's state.
+export const characterEmotionState = derived(
+  [characterEmotionStates, activeCharacterId],
+  ([$map, $charId]) => $charId ? ($map.get($charId) ?? null) : null,
+);
+
+// Pre-resolved character metadata for the active conversation.
+// Populated on conversation open, consumed by PresentationBuffer for instant
+// avatar/name attachment to streaming bubbles. Keyed by character_id.
+export const conversationCharMeta = writable<Map<string, CharMeta>>(new Map());
 
 // --- Actions ---
 
@@ -347,11 +341,20 @@ export async function loadMessages(conversationId: string) {
     messages.set([]);
     resetPaginationState();
 
+    console.warn('[loadMessages] ENTER — fetching messages for', conversationId);
+
     // Fetch all messages AND the conversation (for active_message_id) in parallel
     const [msgs, conv] = await Promise.all([
       ipc.getConversationMessages(conversationId),
       ipc.getConversation(conversationId),
     ]);
+
+    // DEBUG: Log all messages for diagnosis
+    console.warn('[loadMessages] DB returned', msgs.length, 'messages:', JSON.stringify(msgs.map(m => ({
+      id: m.id.substring(0, 8), role: m.role, parent_id: m.parent_id?.substring(0, 8) ?? null,
+      char_name: m.character_name, content_start: m.content?.substring(0, 40),
+    })), null, 2));
+    console.warn('[loadMessages] active_message_id:', conv.active_message_id);
 
     // Build lookup maps
     const byId = new Map(msgs.map(m => [m.id, m]));
@@ -380,15 +383,57 @@ export async function loadMessages(conversationId: string) {
         current = byId.get(current)!.parent_id;
       }
       activePath = pathIds.map(id => byId.get(id)!);
+      console.warn('[loadMessages] Active path:', activePath.map(m => ({
+        id: m.id, role: m.role, character_name: m.character_name, parent_id: m.parent_id,
+      })));
+
+      // ── Expand multi-char sibling segments ──
+      // The backward walk only collects the ancestor chain. If active_message_id
+      // points to Finn's segment, Aria's segment (same parent_id) is skipped.
+      // We need to include ALL sibling segments with character_name at each level.
+      const expanded: typeof msgs = [];
+      for (const msg of activePath) {
+        if (msg.character_name && msg.parent_id) {
+          // Check if there are sibling segments with the same parent
+          const siblings = byParent.get(msg.parent_id) ?? [];
+          const charSiblings = siblings.filter(s => s.character_name);
+          if (charSiblings.length > 1) {
+            // Include all character segments in order, but only if we haven't already
+            for (const seg of charSiblings) {
+              if (!expanded.find(e => e.id === seg.id)) {
+                expanded.push(seg);
+              }
+            }
+            continue; // Skip the single push below
+          }
+        }
+        if (!expanded.find(e => e.id === msg.id)) {
+          expanded.push(msg);
+        }
+      }
+      activePath = expanded;
     } else {
       // Fallback: show only the first child at each branch level (depth-first active path)
       activePath = [];
       let currentParentKey = '__root__';
       while (byParent.has(currentParentKey)) {
         const children = byParent.get(currentParentKey)!;
-        const next = children[0];
-        activePath.push(next);
-        currentParentKey = next.id;
+        // For multi-char segments (messages with character_name), include ALL
+        // siblings — they're sequential dialogue, not branches. Pick the first
+        // non-segment child to continue the tree walk.
+        const charSegments = children.filter(c => c.character_name);
+        if (charSegments.length > 1) {
+          // Old data: all segments are siblings. Push them all in order.
+          for (const seg of charSegments) {
+            activePath.push(seg);
+          }
+          // Continue from the last segment
+          currentParentKey = charSegments[charSegments.length - 1].id;
+        } else {
+          const next = children[0];
+          activePath.push(next);
+          currentParentKey = next.id;
+        }
       }
     }
 
@@ -500,6 +545,14 @@ export async function loadMessages(conversationId: string) {
       const siblingIndex = siblings.findIndex(s => s.id === m.id);
       const convSibling = convSiblingOverrides.get(m.id);
 
+      // Multi-character segments (messages with character_name) are sequential
+      // dialogue, NOT branch alternates. Exclude them from sibling navigation.
+      const isCharSegment = !!m.character_name;
+      // Real branch siblings: exclude multi-char segments from count
+      const realSiblings = siblings.filter(s => !s.character_name);
+      const realSiblingIndex = realSiblings.findIndex(s => s.id === m.id);
+      const hasRealSiblings = !isCharSegment && realSiblings.length > 1;
+
       // Check if this is a failed assistant message (empty content)
       const isFailedAssistant = m.role === 'assistant' && (!m.content || m.content.trim() === '');
       
@@ -524,15 +577,17 @@ export async function loadMessages(conversationId: string) {
         content: isFailedAssistant ? 'Generation failed' : m.content,
         isError: isFailedAssistant,
         parent_id: m.parent_id,
-        // In-conversation siblings (old message-tree branching)
-        siblingIds: siblings.length > 1 ? siblings.map(s => s.id) : undefined,
-        siblingIndex: siblings.length > 1 ? siblingIndex : undefined,
+        character_id: m.character_id || null,
+        character_name: m.character_name || null,
+        // In-conversation siblings (old message-tree branching) — excludes multi-char segments
+        siblingIds: hasRealSiblings ? realSiblings.map(s => s.id) : undefined,
+        siblingIndex: hasRealSiblings ? realSiblingIndex : undefined,
         alternates: convSibling
           ? convSibling.ids.length
-          : (siblings.length > 1 ? siblings.length : undefined),
+          : (hasRealSiblings ? realSiblings.length : undefined),
         currentAlternate: convSibling
           ? convSibling.index + 1
-          : (siblings.length > 1 ? siblingIndex + 1 : undefined),
+          : (hasRealSiblings ? realSiblingIndex + 1 : undefined),
         // Cross-conversation branch siblings
         siblingConversationIds: convSibling?.ids,
         siblingConversationIndex: convSibling?.index,
@@ -542,6 +597,9 @@ export async function loadMessages(conversationId: string) {
     // Render only the last N messages (paginated rendering)
     currentRenderCount = Math.min(fullActivePath.length, MESSAGE_RENDER_SIZE);
     const initialSlice = fullActivePath.slice(fullActivePath.length - currentRenderCount);
+    console.warn('[loadMessages] Setting messages store:', initialSlice.map(m => ({
+      id: m.id, role: m.role, character_name: m.character_name, content: m.content?.substring(0, 50),
+    })));
     messages.set(initialSlice);
     hasMoreMessages.set(currentRenderCount < fullActivePath.length);
 
@@ -552,17 +610,111 @@ export async function loadMessages(conversationId: string) {
       lastStreamError.set(null); // Clear it if the last message is successful
     }
 
-    // Pre-load emotional state for immediate HUD display on conversation open
+    // Pre-load emotional states for ALL characters for immediate HUD display
     try {
+      const stateMap = new Map<string, CharacterState>();
+      // Load primary character's state
       const charId = conv.character_id;
       if (charId) {
         const existingState = await ipc.getCharacterState(charId, conversationId);
-        characterEmotionState.set(existingState);
-      } else {
-        characterEmotionState.set(null);
+        if (existingState) stateMap.set(charId, existingState);
+      }
+      // Load additional characters' states (multi-char conversations)
+      try {
+        const convChars = await ipc.listConversationCharacters(conversationId);
+        for (const cc of convChars) {
+          if (cc.character_id && cc.character_id !== charId) {
+            try {
+              const state = await ipc.getCharacterState(cc.character_id, conversationId);
+              if (state) stateMap.set(cc.character_id, state);
+            } catch { /* no state yet — skip */ }
+          }
+        }
+      } catch { /* no conversation characters — single char mode */ }
+      characterEmotionStates.set(stateMap);
+    } catch {
+      characterEmotionStates.set(new Map());
+    }
+
+    // ── Pre-resolve character metadata for PresentationBuffer ──
+    // Build a CharMeta map for all characters in this conversation so that
+    // streaming bubbles can be created with correct avatars from the first frame,
+    // and historical messages can resolve character_avatar_url instantly.
+    try {
+      const metaMap = new Map<string, CharMeta>();
+      const resolveAvatar = async (avatarPath: string | null): Promise<string | null> => {
+        if (!avatarPath) return null;
+        if (avatarCache.has(avatarPath)) return avatarCache.get(avatarPath)!;
+        try {
+          const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+          const bytes = await readFile(avatarPath, { baseDir: BaseDirectory.AppData });
+          const ext = avatarPath.split('.').pop()?.toLowerCase() || 'jpeg';
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+          const blob = new Blob([bytes], { type: mime });
+          const url = URL.createObjectURL(blob);
+          avatarCache.set(avatarPath, url);
+          return url;
+        } catch { return null; }
+      };
+
+      // Primary character
+      const primaryCharId = conv.character_id;
+      if (primaryCharId) {
+        try {
+          const char = await ipc.getCharacter(primaryCharId);
+          const avUrl = await resolveAvatar(char.avatar_path);
+          metaMap.set(primaryCharId, {
+            id: primaryCharId,
+            name: char.name,
+            avatarUrl: avUrl,
+            accentColor: charAccentColor(char.name),
+          });
+        } catch { /* character may have been deleted */ }
+      }
+
+      // Additional characters
+      try {
+        const convChars = await ipc.listConversationCharacters(conversationId);
+        for (const cc of convChars) {
+          if (cc.character_id && !metaMap.has(cc.character_id)) {
+            try {
+              const char = await ipc.getCharacter(cc.character_id);
+              const avUrl = await resolveAvatar(char.avatar_path);
+              metaMap.set(cc.character_id, {
+                id: cc.character_id,
+                name: char.name,
+                avatarUrl: avUrl,
+                accentColor: charAccentColor(char.name),
+              });
+            } catch { /* skip */ }
+          }
+        }
+      } catch { /* single-char mode — no additional characters */ }
+
+      conversationCharMeta.set(metaMap);
+
+      // Resolve character_avatar_url on historical messages from cached metadata
+      const currentMsgs = get(messages);
+      const needsAvatarUpdate = currentMsgs.some(m => m.character_id && !m.character_avatar_url);
+      if (needsAvatarUpdate) {
+        messages.update(msgs => msgs.map(m => {
+          if (m.character_id && !m.character_avatar_url) {
+            const meta = metaMap.get(m.character_id);
+            if (meta) return { ...m, character_avatar_url: meta.avatarUrl };
+          }
+          return m;
+        }));
+        // Also update fullActivePath
+        for (let i = 0; i < fullActivePath.length; i++) {
+          const m = fullActivePath[i];
+          if (m.character_id && !m.character_avatar_url) {
+            const meta = metaMap.get(m.character_id);
+            if (meta) fullActivePath[i] = { ...m, character_avatar_url: meta.avatarUrl };
+          }
+        }
       }
     } catch {
-      characterEmotionState.set(null);
+      conversationCharMeta.set(new Map());
     }
   } catch (err) {
     console.error(`Failed to load messages for conversation ${conversationId}:`, err);
@@ -635,6 +787,10 @@ export async function sendMessage(conversationId: string, content: string, model
     isStreaming.set(true);
     lastStreamError.set(null);
 
+    // Create a fresh PresentationBuffer for this stream
+    activeBuffer = createStreamBuffer();
+    const buffer = activeBuffer;
+
     // Set up stream listener BEFORE sending
     const unlisten = await ipc.onChatStream((event) => {
       // Guard: if the user switched to a different conversation, discard stale events
@@ -644,30 +800,18 @@ export async function sendMessage(conversationId: string, content: string, model
       }
 
       if (event.event_type === 'delta') {
-        streamBuffer.push(event.message_id, event.content);
+        buffer.push(event.message_id, event.content);
       } else if (event.event_type === 'done') {
-        // Flush any buffered tokens before finalizing
-        streamBuffer.reset();
-        messages.update(msgs => {
-          const exists = msgs.some(m => m.id === event.message_id);
-          if (exists) {
-            return msgs.map(m => m.id === event.message_id
-              ? { ...m, content: event.content, isStreaming: false }
-              : m
-            );
-          } else {
-            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content, isStreaming: false }];
-          }
-        });
-        // Sync fullActivePath with finalized assistant message
-        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content };
-        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
-        if (apIdx >= 0) {
-          fullActivePath[apIdx] = assistantMsg;
-        } else {
-          fullActivePath.push(assistantMsg);
-          currentRenderCount++;
-        }
+        // Finalize the presentation buffer — flushes remaining content,
+        // marks all active bubbles as done streaming
+        buffer.finalize();
+
+        // PresentationBuffer already handled all message creation, content
+        // appending, and finalization. No need to overwrite content here.
+        // Just ensure any remaining streaming flags are cleared.
+        messages.update(msgs =>
+          msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
+        );
         isStreaming.set(false);
         unlisten();
 
@@ -703,19 +847,48 @@ export async function sendMessage(conversationId: string, content: string, model
 
         // --- Emotional state update pipeline ---
         // Runs fire-and-forget after every response regardless of memory scope setting.
-        // After the LLM infers the new state and persists it, we push it into
-        // characterEmotionState so the EmotionHUD reactively updates without a page reload.
+        // In multi-char mode, updates emotions for ALL conversation characters in parallel.
+        // After the LLM infers each character's new state, we push them into
+        // characterEmotionStates so per-message EmotionHUDs reactively update.
         if (event.content) {
           (async () => {
             try {
-              const charId = get(activeCharacterId);
-              if (!charId) return;
               const { updateEmotionalState } = await import('$lib/services/emotion-updater');
-              await updateEmotionalState(charId, conversationId, content, event.content);
-              // Push the freshly-saved state into the reactive store so all HUDs update
               const ipcMod = await import('$lib/services/ipc');
-              const newState = await ipcMod.getCharacterState(charId, conversationId);
-              characterEmotionState.set(newState);
+
+              // Collect all character IDs and names to update emotions for
+              const charMap = new Map<string, string>(); // charId → charName
+              const primaryCharId = get(activeCharacterId);
+
+              // Add multi-char conversation characters (includes primary)
+              try {
+                const convChars = await ipcMod.listConversationCharacters(conversationId);
+                for (const cc of convChars) {
+                  if (cc.character_id) {
+                    charMap.set(cc.character_id, cc.character_name || 'Character');
+                  }
+                }
+              } catch { /* single-char mode */ }
+
+              // Ensure primary character is included even if listConversationCharacters is empty
+              if (primaryCharId && !charMap.has(primaryCharId)) {
+                charMap.set(primaryCharId, 'Character');
+              }
+
+              if (charMap.size === 0) return;
+
+              // Run emotion updates in parallel for all characters
+              await Promise.allSettled(Array.from(charMap.entries()).map(async ([charId, charName]) => {
+                await updateEmotionalState(charId, conversationId, content, event.content, charName);
+                const newState = await ipcMod.getCharacterState(charId, conversationId);
+                if (newState) {
+                  characterEmotionStates.update(map => {
+                    const updated = new Map(map);
+                    updated.set(charId, newState);
+                    return updated;
+                  });
+                }
+              }));
             } catch (err) {
               console.warn('[Mythic] Emotion update failed:', err);
             }
@@ -723,7 +896,7 @@ export async function sendMessage(conversationId: string, content: string, model
         }
 
       } else if (event.event_type === 'error') {
-        streamBuffer.reset();
+        buffer.reset();
         console.error('Stream error:', event.content);
         toastError(`AI response failed: ${event.content}`);
         // Mark or create the assistant message as failed so UI shows the error bubble
@@ -806,6 +979,10 @@ export async function retryLastMessage() {
     const ipc = await import('$lib/services/ipc');
     isStreaming.set(true);
 
+    // Create a fresh PresentationBuffer for this retry stream
+    activeBuffer = createStreamBuffer();
+    const buffer = activeBuffer;
+
     // Set up stream listener
     const unlisten = await ipc.onChatStream((event) => {
       if (get(activeConversationId) !== err.conversationId) {
@@ -814,28 +991,17 @@ export async function retryLastMessage() {
       }
 
       if (event.event_type === 'delta') {
-        streamBuffer.push(event.message_id, event.content);
+        buffer.push(event.message_id, event.content);
       } else if (event.event_type === 'done') {
-        streamBuffer.reset();
-        messages.update(msgs => {
-          const exists = msgs.some(m => m.id === event.message_id);
-          if (exists) {
-            return msgs.map(m => m.id === event.message_id
-              ? { ...m, content: event.content, isStreaming: false }
-              : m
-            );
-          } else {
-            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content, isStreaming: false }];
-          }
-        });
-        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content };
-        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
-        if (apIdx >= 0) fullActivePath[apIdx] = assistantMsg;
-        else { fullActivePath.push(assistantMsg); currentRenderCount++; }
+        buffer.finalize();
+        // Buffer handles all message creation/content — just clear streaming state
+        messages.update(msgs =>
+          msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
+        );
         isStreaming.set(false);
         unlisten();
       } else if (event.event_type === 'error') {
-        streamBuffer.reset();
+        buffer.reset();
         toastError(`AI response failed: ${event.content}`);
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
@@ -888,24 +1054,26 @@ export async function regenerateMessage(conversationId: string, messageId: strin
   isStreaming.set(true);
 
   try {
+    // Create a fresh PresentationBuffer for this regeneration stream
+    activeBuffer = createStreamBuffer();
+    const buffer = activeBuffer;
+
     // Set up stream listener BEFORE triggering regeneration
     const unlisten = await ipc.onChatStream((event) => {
       if (event.event_type === 'delta') {
-        streamBuffer.push(event.message_id, event.content);
+        buffer.push(event.message_id, event.content);
       } else if (event.event_type === 'done') {
-        streamBuffer.reset();
+        buffer.finalize();
+        // Buffer handles all message creation/content — just clear streaming state
         messages.update(msgs =>
-          msgs.map(m => m.id === event.message_id
-            ? { ...m, content: event.content, isStreaming: false }
-            : m
-          )
+          msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
         );
         isStreaming.set(false);
         unlisten();
         // Reload messages to get sibling info
         loadMessages(conversationId);
       } else if (event.event_type === 'error') {
-        streamBuffer.reset();
+        buffer.reset();
         console.error('Regeneration stream error:', event.content);
         toastError(`Regeneration failed: ${event.content}`);
         messages.update(msgs => {
@@ -1084,15 +1252,220 @@ export async function branchConversation(
   }
 }
 
+// ── Multi-Character Response Listener ──
+// Listens for parsed multi-character response segments from the backend.
+// When a response contains dialogue from multiple characters, the backend
+// emits 'multi-char-response' with segment attribution. This function
+// annotates messages in the store so the UI can render character badges.
+
+let unlistenMultiChar: (() => void) | null = null;
+
+/**
+ * Initializes the global listener for multi-character response events.
+ * Should be called once when the app starts (e.g., in the root layout).
+ * Returns a cleanup function to unsubscribe.
+ */
+export async function initMultiCharListener(): Promise<() => void> {
+  // Avoid duplicate listeners
+  if (unlistenMultiChar) return unlistenMultiChar;
+
+  if (!isTauri) return () => {};
+
+  const { listen } = await import('@tauri-apps/api/event');
+
+  unlistenMultiChar = await listen('multi-char-response', (event: any) => {
+    const payload = event.payload;
+    if (!payload) return;
+
+    // Guard: only process events for the active conversation
+    if (payload.conversation_id !== get(activeConversationId)) return;
+
+    // The segments contain character-attributed dialogue from the response parser.
+    // With the PresentationBuffer, the frontend may already have per-character
+    // bubbles (IDs: parentId__seg0, __seg1, ...). This listener reconciles
+    // the final parsed content and character attribution from the backend.
+    const segments = payload.segments as {
+      character_name: string;
+      character_id?: string;
+      content: string;
+      index: number;
+    }[];
+
+    if (!segments || segments.length === 0) return;
+
+    const parentId = payload.parent_message_id as string;
+    const charMeta = get(conversationCharMeta);
+
+    if (segments.length === 1) {
+      const seg = segments[0];
+      const meta = seg.character_id ? charMeta.get(seg.character_id) : null;
+
+      // Single segment — update the parent message in-place with stripped
+      // content and character attribution. Works whether the buffer created
+      // the message as parentId or parentId__seg0.
+      messages.update(msgs =>
+        msgs.map(m => {
+          if (m.id === parentId || m.id === `${parentId}__seg0`) {
+            return {
+              ...m,
+              content: seg.content,
+              character_name: seg.character_name,
+              character_id: seg.character_id || null,
+              character_avatar_url: meta?.avatarUrl ?? m.character_avatar_url ?? null,
+              isStreaming: false,
+            };
+          }
+          return m;
+        })
+      );
+      // Sync fullActivePath
+      for (let i = 0; i < fullActivePath.length; i++) {
+        const m = fullActivePath[i];
+        if (m.id === parentId || m.id === `${parentId}__seg0`) {
+          fullActivePath[i] = {
+            ...m,
+            content: seg.content,
+            character_name: seg.character_name,
+            character_id: seg.character_id || null,
+            character_avatar_url: meta?.avatarUrl ?? m.character_avatar_url ?? null,
+            isStreaming: false,
+          };
+          break;
+        }
+      }
+      return;
+    }
+
+    // Multiple segments — reconcile with PresentationBuffer's pre-created bubbles.
+    // The buffer creates messages with IDs: parentId__seg0, __seg1, etc.
+    // If those exist, just update their content/attribution. If not (buffer
+    // didn't detect markers), fall back to the old split-replace behavior.
+    const currentMsgs = get(messages);
+    const liveSegExists = currentMsgs.some(m => m.id === `${parentId}__seg0`);
+
+    if (liveSegExists) {
+      // ── Reconcile: update pre-existing segment bubbles ──
+      messages.update(msgs =>
+        msgs.map(m => {
+          // Check if this message is a live segment for this parent
+          for (let i = 0; i < segments.length; i++) {
+            const segId = `${parentId}__seg${i}`;
+            if (m.id === segId) {
+              const seg = segments[i];
+              const meta = seg.character_id ? charMeta.get(seg.character_id) : null;
+              return {
+                ...m,
+                content: seg.content,
+                character_name: seg.character_name,
+                character_id: seg.character_id || null,
+                character_avatar_url: meta?.avatarUrl ?? m.character_avatar_url ?? null,
+                isStreaming: false,
+              };
+            }
+          }
+          return m;
+        })
+      );
+      // Sync fullActivePath
+      for (let i = 0; i < fullActivePath.length; i++) {
+        const m = fullActivePath[i];
+        for (let j = 0; j < segments.length; j++) {
+          if (m.id === `${parentId}__seg${j}`) {
+            const seg = segments[j];
+            const meta = seg.character_id ? charMeta.get(seg.character_id) : null;
+            fullActivePath[i] = {
+              ...m,
+              content: seg.content,
+              character_name: seg.character_name,
+              character_id: seg.character_id || null,
+              character_avatar_url: meta?.avatarUrl ?? m.character_avatar_url ?? null,
+              isStreaming: false,
+            };
+            break;
+          }
+        }
+      }
+    } else {
+      // ── Fallback: buffer didn't create segments (no markers detected during stream) ──
+      // Split the combined parent message into N individual per-character bubbles.
+      messages.update(msgs => {
+        const parentIdx = msgs.findIndex(m => m.id === parentId);
+        if (parentIdx < 0) return msgs;
+
+        const parent = msgs[parentIdx];
+        const splitMessages: Message[] = segments.map((seg, i) => {
+          const meta = seg.character_id ? charMeta.get(seg.character_id) : null;
+          return {
+            ...parent,
+            id: `${parentId}__seg${i}`,
+            content: seg.content,
+            character_name: seg.character_name,
+            character_id: seg.character_id || null,
+            character_avatar_url: meta?.avatarUrl ?? null,
+            siblingIds: i === 0 ? parent.siblingIds : undefined,
+            siblingIndex: i === 0 ? parent.siblingIndex : undefined,
+            siblingConversationIds: i === 0 ? parent.siblingConversationIds : undefined,
+            siblingConversationIndex: i === 0 ? parent.siblingConversationIndex : undefined,
+            isStreaming: false,
+          };
+        });
+
+        const updated = [...msgs];
+        updated.splice(parentIdx, 1, ...splitMessages);
+        return updated;
+      });
+
+      // Sync fullActivePath
+      const apIdx = fullActivePath.findIndex(m => m.id === parentId);
+      if (apIdx >= 0) {
+        const parent = fullActivePath[apIdx];
+        const splitAp: Message[] = segments.map((seg, i) => {
+          const meta = seg.character_id ? charMeta.get(seg.character_id) : null;
+          return {
+            ...parent,
+            id: `${parentId}__seg${i}`,
+            content: seg.content,
+            character_name: seg.character_name,
+            character_id: seg.character_id || null,
+            character_avatar_url: meta?.avatarUrl ?? null,
+            siblingIds: i === 0 ? parent.siblingIds : undefined,
+            siblingIndex: i === 0 ? parent.siblingIndex : undefined,
+            siblingConversationIds: i === 0 ? parent.siblingConversationIds : undefined,
+            siblingConversationIndex: i === 0 ? parent.siblingConversationIndex : undefined,
+            isStreaming: false,
+          };
+        });
+        fullActivePath.splice(apIdx, 1, ...splitAp);
+      }
+    }
+  });
+
+  return unlistenMultiChar;
+}
+
+/**
+ * Tears down the multi-character response listener.
+ * Called during app cleanup or when no longer needed.
+ */
+export function cleanupMultiCharListener() {
+  if (unlistenMultiChar) {
+    unlistenMultiChar();
+    unlistenMultiChar = null;
+  }
+}
+
 // --- Helpers ---
 
 function getRelativeTime(dateStr: string): string {
   try {
+    if (!dateStr) return '';
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
     const now = Date.now();
     const diff = now - date.getTime();
 
     const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return 'now';
     if (minutes < 60) return `${minutes}m`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h`;

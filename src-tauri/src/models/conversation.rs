@@ -33,8 +33,18 @@ pub struct Message {
 
     /// JSON metadata for attached images, generation params, etc.
     pub metadata: Option<serde_json::Value>,
+
+    /// Character who sent this message (for multi-character conversations).
+    /// None for user messages and single-character conversations.
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub character_id: Option<Thing>,
+    /// Denormalized character name for display (avoids extra lookups).
+    #[serde(default)]
+    pub character_name: Option<String>,
+
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
+
 }
 
 /// A search result from full-text message search.

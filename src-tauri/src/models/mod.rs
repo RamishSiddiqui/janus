@@ -1,9 +1,11 @@
 pub mod character;
 pub mod conversation;
+pub mod conversation_character;
 pub mod lorebook;
 pub mod memory;
 pub mod provider;
 pub mod scene;
+pub mod scene_state;
 pub mod summary;
 
 use serde::{Deserializer, Deserialize, Serializer};

@@ -920,6 +920,7 @@
     line-height: 1.5;
     display: -webkit-box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -948,11 +949,6 @@
   .meta-badge.auto {
     background: rgba(0, 242, 255, 0.06);
     color: #00c4cc;
-  }
-
-  .meta-badge.pinned {
-    background: rgba(16, 185, 129, 0.06);
-    color: #34d399;
   }
 
   .meta-badge.version {

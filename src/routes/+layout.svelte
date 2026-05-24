@@ -7,6 +7,7 @@
   import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
   import ToastContainer from '$lib/components/ToastContainer.svelte';
   import { settings } from '$lib/stores/settings';
+  import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
   import type { NavItem } from '$lib/types';
 
   let { children } = $props();
@@ -55,6 +56,13 @@
         '--app-font-size', fontSizeMap[$settings.fontSize] ?? '14px'
       );
     }
+  });
+
+  // Initialize multi-character response listener
+  $effect(() => {
+    if (!browser) return;
+    initMultiCharListener();
+    return () => cleanupMultiCharListener();
   });
 
   /** Global keyboard shortcuts */

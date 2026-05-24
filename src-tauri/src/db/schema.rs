@@ -60,6 +60,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS content          ON messages TYPE string;
         DEFINE FIELD IF NOT EXISTS parent_id        ON messages TYPE option<record<messages>>;
         DEFINE FIELD IF NOT EXISTS metadata         ON messages FLEXIBLE TYPE option<object>;
+        DEFINE FIELD IF NOT EXISTS character_id     ON messages TYPE option<record<characters>>;
+        DEFINE FIELD IF NOT EXISTS character_name   ON messages TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS created_at       ON messages TYPE datetime DEFAULT time::now();
 
         DEFINE INDEX IF NOT EXISTS idx_messages_conversation ON messages FIELDS conversation_id;
@@ -207,7 +209,48 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:scenes: {}", e)))?;
 
-    // ── 10. character_states ────────────────────────────────────────────
+    // ── 10. scene_states ────────────────────────────────────────────────
+    info!("  schema: scene_states...");
+    db.query("
+        DEFINE TABLE IF NOT EXISTS scene_states SCHEMAFULL;
+
+        DEFINE FIELD IF NOT EXISTS conversation_id      ON scene_states TYPE record<conversations>;
+        DEFINE FIELD IF NOT EXISTS location_name        ON scene_states TYPE string DEFAULT 'Unknown';
+        DEFINE FIELD IF NOT EXISTS location_description ON scene_states TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS time_period          ON scene_states TYPE string DEFAULT 'unspecified';
+        DEFINE FIELD IF NOT EXISTS weather              ON scene_states TYPE string DEFAULT 'clear';
+        DEFINE FIELD IF NOT EXISTS characters_present   ON scene_states FLEXIBLE TYPE array DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS ambient_details      ON scene_states TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS scene_mood           ON scene_states TYPE string DEFAULT 'neutral';
+        DEFINE FIELD IF NOT EXISTS updated_at           ON scene_states TYPE datetime DEFAULT time::now();
+
+        DEFINE INDEX IF NOT EXISTS idx_ss_conversation ON scene_states FIELDS conversation_id UNIQUE;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:scene_states: {}", e)))?;
+
+    // ── 10b. conversation_characters ────────────────────────────────────
+    info!("  schema: conversation_characters...");
+    db.query("
+        DEFINE TABLE IF NOT EXISTS conversation_characters SCHEMAFULL;
+
+        DEFINE FIELD IF NOT EXISTS conversation_id ON conversation_characters TYPE record<conversations>;
+        DEFINE FIELD IF NOT EXISTS character_id    ON conversation_characters TYPE record<characters>;
+        DEFINE FIELD IF NOT EXISTS role            ON conversation_characters TYPE string DEFAULT 'secondary';
+        DEFINE FIELD IF NOT EXISTS talkativeness   ON conversation_characters TYPE int DEFAULT 50;
+        DEFINE FIELD IF NOT EXISTS is_active       ON conversation_characters TYPE bool DEFAULT true;
+        DEFINE FIELD IF NOT EXISTS character_name  ON conversation_characters TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS created_at      ON conversation_characters TYPE datetime DEFAULT time::now();
+
+        DEFINE INDEX IF NOT EXISTS idx_cc_unique ON conversation_characters FIELDS conversation_id, character_id UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_cc_conversation ON conversation_characters FIELDS conversation_id;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:conversation_characters: {}", e)))?;
+
+    // ── 11. character_states ────────────────────────────────────────────
     info!("  schema: character_states...");
     db.query("
         DEFINE TABLE IF NOT EXISTS character_states SCHEMAFULL;
@@ -273,6 +316,20 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_dimension: {}", e)))?;
 
+    // Add entry_type, character_id, source_id fields and indexes for RAG support
+    info!("  schema: message_embeddings RAG fields...");
+    db.query("
+        DEFINE FIELD IF NOT EXISTS entry_type ON message_embeddings TYPE string DEFAULT 'message';
+        DEFINE FIELD IF NOT EXISTS character_id ON message_embeddings TYPE option<record<characters>>;
+        DEFINE FIELD IF NOT EXISTS source_id ON message_embeddings TYPE option<string>;
+
+        DEFINE INDEX IF NOT EXISTS idx_me_character ON message_embeddings FIELDS character_id;
+        DEFINE INDEX IF NOT EXISTS idx_me_entry_type ON message_embeddings FIELDS entry_type;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_rag: {}", e)))?;
+
     // NOTE: MTREE index is created dynamically via `ensure_mtree_index()`
     // when the first embedding is stored, using the actual vector dimension.
 
@@ -295,6 +352,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             WHEN $event = 'DELETE' THEN {
             DELETE FROM messages WHERE conversation_id = $before.id;
             DELETE FROM scenes WHERE conversation_id = $before.id;
+            DELETE FROM scene_states WHERE conversation_id = $before.id;
+            DELETE FROM conversation_characters WHERE conversation_id = $before.id;
             DELETE FROM memories WHERE conversation_id = $before.id;
             DELETE FROM character_states WHERE conversation_id = $before.id;
             DELETE FROM conversation_summaries WHERE conversation_id = $before.id;

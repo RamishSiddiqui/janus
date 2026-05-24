@@ -416,7 +416,8 @@
   <!-- Character Editor Modal -->
   {#if showEditor}
     <div class="editor-backdrop" onclick={() => showEditor = false} onkeydown={(e) => e.key === 'Escape' && (showEditor = false)} role="dialog" aria-modal="true" aria-label={editingId ? 'Edit character' : 'Create character'} tabindex="-1">
-      <div class="editor-card" onclick={(e) => e.stopPropagation()} role="document">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="editor-card" onclick={(e) => e.stopPropagation()}>
         <div class="editor-header">
           <span class="editor-title">{editingId ? 'Edit Character' : 'Create Character'}</span>
           <button class="editor-close" onclick={() => showEditor = false} aria-label="Close">
@@ -493,7 +494,7 @@
     font-size: var(--text-2xl); font-weight: 800; color: #e8e0ff;
     letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   .gallery-subtitle {
     font-size: var(--text-sm); color: #5a5a7a; font-family: var(--font-mono);
@@ -608,7 +609,7 @@
   }
   .card-desc {
     font-size: var(--text-sm); color: #6b6b8a; line-height: 1.5;
-    display: -webkit-box; -webkit-line-clamp: 2;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
     -webkit-box-orient: vertical; overflow: hidden;
   }
 

@@ -285,6 +285,7 @@ pub async fn rebuild_embedding_index(
                         &conv_id,
                         embedding,
                         &embedding_model,
+                        None, // character_id — not available during bulk rebuild
                     )
                     .await;
                     embedded += 1;

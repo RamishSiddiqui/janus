@@ -65,6 +65,8 @@ export interface Message {
   parent_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
+  character_id?: string | null;
+  character_name?: string | null;
 }
 
 export interface ProviderConfig {
@@ -537,6 +539,101 @@ export async function deleteScene(sceneId: string): Promise<void> {
 
 export async function getScenePath(fileRelative: string): Promise<string> {
   return safeInvoke<string>('get_scene_path', { fileRelative });
+}
+
+// --- Scene State ---
+
+export interface SceneState {
+  id: string;
+  conversation_id: string;
+  location_name: string;
+  location_description: string;
+  time_period: string;
+  weather: string;
+  characters_present: string[];
+  ambient_details: string;
+  scene_mood: string;
+  updated_at: string;
+}
+
+export async function getSceneState(conversationId: string): Promise<SceneState | null> {
+  return safeInvoke<SceneState | null>('get_scene_state', { conversationId });
+}
+
+export async function upsertSceneState(
+  conversationId: string,
+  update: Partial<Omit<SceneState, 'id' | 'conversation_id' | 'updated_at'>>
+): Promise<SceneState> {
+  return safeInvoke<SceneState>('upsert_scene_state', {
+    conversationId,
+    locationName: update.location_name ?? null,
+    locationDescription: update.location_description ?? null,
+    timePeriod: update.time_period ?? null,
+    weather: update.weather ?? null,
+    charactersPresent: update.characters_present ?? null,
+    ambientDetails: update.ambient_details ?? null,
+    sceneMood: update.scene_mood ?? null,
+  });
+}
+
+export async function deleteSceneState(conversationId: string): Promise<void> {
+  return safeInvoke<void>('delete_scene_state', { conversationId });
+}
+
+// --- Conversation Characters ---
+
+export interface ConversationCharacter {
+  id: string;
+  conversation_id: string;
+  character_id: string;
+  role: string;          // 'primary' | 'secondary' | 'npc'
+  talkativeness: number; // 0-100
+  is_active: boolean;
+  character_name: string;
+  created_at: string;
+}
+
+export async function listConversationCharacters(conversationId: string): Promise<ConversationCharacter[]> {
+  return safeInvoke<ConversationCharacter[]>('list_conversation_characters', { conversationId });
+}
+
+export async function addConversationCharacter(
+  conversationId: string,
+  characterId: string,
+  characterName: string,
+  role?: string,
+  talkativeness?: number,
+): Promise<ConversationCharacter> {
+  return safeInvoke<ConversationCharacter>('add_conversation_character', {
+    conversationId,
+    characterId,
+    characterName,
+    role: role ?? null,
+    talkativeness: talkativeness ?? null,
+  });
+}
+
+export async function removeConversationCharacter(
+  conversationId: string,
+  characterId: string,
+): Promise<void> {
+  return safeInvoke<void>('remove_conversation_character', { conversationId, characterId });
+}
+
+export async function updateCharacterTalkativeness(
+  conversationId: string,
+  characterId: string,
+  talkativeness: number,
+): Promise<void> {
+  return safeInvoke<void>('update_character_talkativeness', { conversationId, characterId, talkativeness });
+}
+
+export async function toggleCharacterActive(
+  conversationId: string,
+  characterId: string,
+  isActive: boolean,
+): Promise<void> {
+  return safeInvoke<void>('toggle_character_active', { conversationId, characterId, isActive });
 }
 
 // --- Lorebook ---

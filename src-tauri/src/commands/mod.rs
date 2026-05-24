@@ -1,11 +1,13 @@
 pub mod characters;
 pub mod conversations;
+pub mod conversation_characters;
 pub mod memories;
 pub mod messages;
 pub mod providers;
 pub mod chat;
 pub mod import;
 pub mod scenes;
+pub mod scene_states;
 pub mod lorebook;
 pub mod character_state;
 pub mod embeddings;

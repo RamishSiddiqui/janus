@@ -187,6 +187,16 @@ pub fn run() {
             // Character State
             commands::character_state::get_character_state,
             commands::character_state::upsert_character_state,
+            // Scene State
+            commands::scene_states::get_scene_state,
+            commands::scene_states::upsert_scene_state,
+            commands::scene_states::delete_scene_state,
+            // Conversation Characters
+            commands::conversation_characters::list_conversation_characters,
+            commands::conversation_characters::add_conversation_character,
+            commands::conversation_characters::remove_conversation_character,
+            commands::conversation_characters::update_character_talkativeness,
+            commands::conversation_characters::toggle_character_active,
             // Embeddings
             commands::embeddings::get_embedding_index_status,
             commands::embeddings::rebuild_embedding_index,

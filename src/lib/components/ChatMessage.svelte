@@ -4,7 +4,7 @@
   import type { Message } from '$lib/types';
   import { formatRoleplayContent } from '$lib/utils/format';
   import { browser } from '$app/environment';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionState, retryLastMessage } from '$lib/stores/chat';
+  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage } from '$lib/stores/chat';
   import { success, error as toastError } from '$lib/stores/toast';
   import { get } from 'svelte/store';
 
@@ -16,6 +16,29 @@
     avatarUrl?: string | null;
     characterName?: string;
   } = $props();
+
+  // ── Multi-Character Awareness ──
+  const CHAR_ACCENT_COLORS = [
+    '#8B5CF6', // violet (default/primary)
+    '#00F2FF', // cyan
+    '#F59E0B', // amber
+    '#10B981', // emerald
+    '#F43F5E', // rose
+    '#3B82F6', // blue
+    '#EC4899', // pink
+    '#6366F1', // indigo
+  ];
+
+  function charColor(name: string): string {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return CHAR_ACCENT_COLORS[Math.abs(hash) % CHAR_ACCENT_COLORS.length];
+  }
+
+  let isMultiChar = $derived(!!message.character_name);
+  let displayName = $derived(message.character_name || characterName);
+  let displayAvatar = $derived(message.character_avatar_url || avatarUrl);
+  let accentColor = $derived(isMultiChar ? charColor(displayName) : '');
 
   let showActions = $state(false);
   let isRegenerating = $state(false);
@@ -119,8 +142,18 @@
     }
   });
 
-  // Reactively derived from the store — updates live after each stream completes
-  let emotionState = $derived($characterEmotionState);
+  // Reactively derived from the map store — picks the emotion state for THIS message's character.
+  // Falls back to the primary character state for messages without a character_id (single-char mode).
+  let emotionState = $derived(
+    (() => {
+      const map = $characterEmotionStates;
+      const msgCharId = message.character_id;
+      if (msgCharId) return map.get(msgCharId) ?? null;
+      // Single-char mode: use primary character
+      const primaryId = $activeCharacterId;
+      return primaryId ? (map.get(primaryId) ?? null) : null;
+    })()
+  );
 
   // Branch navigation — supports both in-conversation siblings and cross-conversation branches
   let hasConvBranches = $derived((message.siblingConversationIds?.length ?? 0) > 1);
@@ -216,14 +249,17 @@
     onfocusin={() => showActions = true}
     onfocusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) showActions = false; }}
   >
-    <div class="msg-avatar ai-avatar" aria-hidden="true">
-      {#if avatarUrl}
-        <img src={avatarUrl} alt={characterName} class="ai-avatar-img" />
+    <div class="msg-avatar ai-avatar" aria-hidden="true" style={isMultiChar ? `--char-accent: ${accentColor}` : ''}>
+      {#if displayAvatar}
+        <img src={displayAvatar} alt={displayName} class="ai-avatar-img" />
       {/if}
       <div class="avatar-glow"></div>
     </div>
     <div class="msg-body">
-      <div class="msg-bubble ai-bubble" class:switching={isSwitching}>
+      {#if isMultiChar}
+        <span class="char-name-badge" style="--char-accent: {accentColor}">{displayName}</span>
+      {/if}
+      <div class="msg-bubble ai-bubble" class:switching={isSwitching} class:multi-char={isMultiChar} style={isMultiChar ? `--char-accent: ${accentColor}` : ''}>
         {#if isSwitching}
           <div class="timeline-shift-overlay" aria-hidden="true">
             <span class="shift-text">Shifting timeline…</span>
@@ -327,7 +363,7 @@
           <span class="toolbar-divider"></span>
         {/if}
 
-        <!-- Emotion HUD -->
+        <!-- Emotion HUD — shows this character's state from the per-character map -->
         {#if emotionState && message.role === 'assistant'}
           <EmotionHUD state={emotionState} />
           <span class="toolbar-divider"></span>
@@ -910,5 +946,61 @@
   @media (max-width: 768px) {
     .msg-body, .msg-body-user { max-width: 88vw; }
     .user-bubble { max-width: 82vw; }
+  }
+
+  /* ───────────────────────────────────────────────
+     MULTI-CHARACTER — Name Badge & Accent Colors
+  ─────────────────────────────────────────────── */
+  .char-name-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--char-accent, #8B5CF6);
+    background: color-mix(in srgb, var(--char-accent, #8B5CF6) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--char-accent, #8B5CF6) 15%, transparent);
+    border-radius: 999px;
+    margin-bottom: 4px;
+    animation: badgeIn 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    text-transform: uppercase;
+    user-select: none;
+    width: fit-content;
+  }
+  @keyframes badgeIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.9); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Multi-char bubble — character-colored left accent */
+  .ai-bubble.multi-char::before {
+    background: linear-gradient(
+      180deg,
+      transparent,
+      var(--char-accent, rgba(139,92,246,0.5)),
+      transparent
+    );
+  }
+
+  /* Multi-char avatar — character-colored glow */
+  .ai-avatar[style*="--char-accent"] .avatar-glow {
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--char-accent, #8B5CF6) 25%, transparent) 0%,
+      transparent 68%
+    );
+  }
+
+  /* Light theme overrides */
+  :global([data-theme="light"]) .char-name-badge {
+    background: color-mix(in srgb, var(--char-accent, #8B5CF6) 6%, white);
+    border-color: color-mix(in srgb, var(--char-accent, #8B5CF6) 12%, transparent);
+  }
+
+  /* Reduced motion support */
+  @media (prefers-reduced-motion: reduce) {
+    .char-name-badge { animation: none; }
   }
 </style>

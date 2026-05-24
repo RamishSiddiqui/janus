@@ -13,6 +13,10 @@ pub struct ContextBudget {
     /// Safety margin as a fraction (0.0–1.0). We use 90% of available space
     /// to account for tokenizer approximation differences across providers.
     pub safety_margin: f64,
+    /// Hard cap on tokens for the memories layer.
+    pub max_memory_tokens: usize,
+    /// Hard cap on tokens for the lorebook layer.
+    pub max_lorebook_tokens: usize,
 }
 
 impl Default for ContextBudget {
@@ -21,6 +25,8 @@ impl Default for ContextBudget {
             max_context_tokens: 16384,
             reserved_for_response: 2048,
             safety_margin: 0.90,
+            max_memory_tokens: 800,
+            max_lorebook_tokens: 1500,
         }
     }
 }
@@ -36,8 +42,11 @@ pub struct BudgetAllocation {
     /// Tokens available for conversation history (the sliding window).
     pub history_budget: usize,
     /// Tokens available for the rolling summary (subset of history_budget).
-    /// Summaries get up to 20% of history budget; rest goes to verbatim messages.
+    /// Summaries get up to 20% of history budget.
     pub summary_budget: usize,
+    /// Tokens available for RAG retrieval (subset of history_budget).
+    /// RAG gets up to 10% of history budget.
+    pub rag_budget: usize,
     /// Tokens available for verbatim recent messages.
     pub messages_budget: usize,
 }
@@ -59,13 +68,16 @@ impl ContextBudget {
         // Summary gets up to 20% of the history budget.
         // This keeps summaries concise while leaving room for verbatim messages.
         let summary_budget = history_budget / 5;
-        let messages_budget = history_budget.saturating_sub(summary_budget);
+        // RAG gets up to 10% of the history budget.
+        let rag_budget = history_budget / 10;
+        let messages_budget = history_budget.saturating_sub(summary_budget).saturating_sub(rag_budget);
 
         BudgetAllocation {
             total_usable,
             fixed_layers_tokens,
             history_budget,
             summary_budget,
+            rag_budget,
             messages_budget,
         }
     }

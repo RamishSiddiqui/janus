@@ -82,6 +82,28 @@
 
   onMount(() => {
     loadEnabledEmbeddingModel();
+
+    // Listen for real-time embedding updates from the backend
+    let embedCleanup: (() => void) | null = null;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    if (isTauri) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen('embedding_updated', () => {
+          // Debounce: avoid spamming backend when multiple embeds fire rapidly
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            if (ragEnabled) loadIndexStatus();
+          }, 500);
+        }).then(unlisten => {
+          embedCleanup = unlisten;
+        });
+      });
+    }
+
+    return () => {
+      if (embedCleanup) embedCleanup();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   });
 
   $effect(() => {
@@ -801,7 +823,7 @@
   .settings-title {
     font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   .settings-subtitle { font-size: var(--text-sm); color: #5a5a7a; letter-spacing: 0.3px; }
 
@@ -1005,14 +1027,6 @@
     display: flex; flex-direction: column; gap: 14px;
   }
 
-  .setting-input {
-    width: 220px; height: 34px; padding: 0 12px; border-radius: 10px;
-    background: rgba(14,14,30,0.6); border: 1px solid rgba(139,92,246,0.08);
-    font-size: 12px; font-weight: 600; font-family: var(--font-body);
-    color: #e0e0f0; outline: none; transition: border-color 200ms;
-  }
-  .setting-input:focus { border-color: rgba(139,92,246,0.3); }
-  .setting-input.mono { font-family: var(--font-mono); }
 
   .setting-value-readonly {
     display: inline-flex; align-items: center;

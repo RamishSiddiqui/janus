@@ -274,6 +274,7 @@
             class:trow-expanded={isExpanded}
             style="animation-delay:{Math.min(i*15,350)}ms"
             onclick={() => expandedId = isExpanded ? null : rowKey}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expandedId = isExpanded ? null : rowKey; }}}
             role="button"
             tabindex="0"
           >
@@ -337,7 +338,7 @@
             </span>
 
             <!-- Action Column -->
-            <span class="td td-action" onclick={(e) => e.stopPropagation()}>
+            <span class="td td-action" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); }}} role="button" tabindex="0">
               <button
                 class="toggle-btn"
                 class:toggle-on={m.enabled}
@@ -433,7 +434,7 @@
   .hdr-title {
     font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin: 0;
     background: linear-gradient(135deg, #f0e8ff, #c4a1ff 50%, #8B5CF6);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   .hdr-stats { display: flex; align-items: center; gap: 6px; }
   .stat { font-size: 13px; font-weight: 700; color: #c0c0d8; }
@@ -534,7 +535,7 @@
   .trow:hover .toggle-btn { opacity: 1; }
   .trow-enabled { background: rgba(139,92,246,0.025); }
   .trow-enabled:hover { background: rgba(139,92,246,0.06); }
-  .trow-free { }
+
   .trow-expanded { background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.12); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 
   .skeleton-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; animation: rowIn 200ms ease both; }

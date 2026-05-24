@@ -84,7 +84,7 @@
         const parsedData = parseCharacterData(c.data);
         return {
           id: c.id,
-          name: parsedData?.name ?? c.name,
+          name: (parsedData?.name ?? c.name) as string,
           avatarPath: c.avatar_path,
         };
       }).sort((a, b) => a.name.localeCompare(b.name));

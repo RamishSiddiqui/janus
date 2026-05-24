@@ -3,3 +3,5 @@ pub mod budget;
 pub mod window;
 pub mod summary;
 pub mod rag;
+pub mod scene_extractor;
+pub mod response_parser;

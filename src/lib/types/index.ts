@@ -19,6 +19,11 @@ export interface Message {
   isStreaming?: boolean;
   /** True when the AI generation failed — UI should show a retry button. */
   isError?: boolean;
+  /** Character attribution for multi-character conversations. */
+  character_id?: string | null;
+  character_name?: string | null;
+  /** Character avatar URL (resolved at render time from character data). */
+  character_avatar_url?: string | null;
 }
 
 /** A character card used across Gallery and Chat. */

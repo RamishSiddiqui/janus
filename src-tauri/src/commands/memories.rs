@@ -8,9 +8,12 @@ use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::context::rag::embed_memory;
+use crate::db::embeddings::EmbeddingRepo;
 use crate::db::memories::MemoryRepo;
 use crate::error::MythicError;
 use crate::models::memory::{Memory, MemoryGraph, MemoryLink};
+use crate::commands::chat::{get_default_llm_provider, create_rig_provider};
 use crate::AppState;
 
 /// Lists memories for a character and/or conversation.
@@ -38,10 +41,13 @@ pub async fn create_memory(
     content: String,
     source: Option<String>,
 ) -> Result<Memory, MythicError> {
-    let state = state.read().await;
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    drop(state_guard);
+
     let source = source.unwrap_or_else(|| "user".to_string());
     let memory = MemoryRepo::create(
-        &state.db,
+        &db,
         character_id.as_deref(),
         conversation_id.as_deref(),
         &content,
@@ -49,6 +55,29 @@ pub async fn create_memory(
     )
     .await?;
     info!("Created memory: {} (source: {})", memory.id, source);
+
+    // Background: embed memory for semantic retrieval
+    if let Some(ref char_id) = character_id {
+        let db_embed = db.clone();
+        let mem_id = memory.id.id.to_raw();
+        let mem_content = content.clone();
+        let char_id_owned = char_id.clone();
+        tokio::spawn(async move {
+            if let Ok(pc) = get_default_llm_provider(&db_embed).await {
+                if let Ok(provider) = create_rig_provider(&pc) {
+                    let embed_model = pc.config
+                        .get("embedding_model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("text-embedding-3-small");
+                    let _ = embed_memory(
+                        &db_embed, &provider, embed_model,
+                        &mem_id, &char_id_owned, &mem_content,
+                    ).await;
+                }
+            }
+        });
+    }
+
     Ok(memory)
 }
 
@@ -73,6 +102,8 @@ pub async fn delete_memory(
 ) -> Result<(), MythicError> {
     let state = state.read().await;
     MemoryRepo::delete(&state.db, &memory_id).await?;
+    // Also delete the embedding if it exists
+    let _ = EmbeddingRepo::delete_memory_embedding(&state.db, &memory_id).await;
     info!("Deleted memory: {}", memory_id);
     Ok(())
 }

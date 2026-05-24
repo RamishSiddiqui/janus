@@ -16,13 +16,14 @@ export interface EmotionState {
 }
 
 const SYSTEM_PROMPT = `You are an emotional state analyzer for a roleplay character.
-Given the last exchange, infer how the CHARACTER (the assistant role) is feeling RIGHT NOW.
+Given the last exchange, infer how the SPECIFIED CHARACTER is feeling RIGHT NOW.
 
 Output ONLY a valid JSON object — no markdown, no explanation, nothing else:
 {"mood":<0-100>,"trust":<0-100>,"arousal":<0-100>,"dominant_emotion":"<one_lowercase_word>","state_summary":"<max 120 chars, third person present tense>"}
 
 Rules:
-- Base all values on the CHARACTER's words, tone, body language, and actions — not the user's.
+- Base all values on the SPECIFIED CHARACTER's words, tone, body language, and actions — not the user's or other characters'.
+- If the response contains dialogue from multiple characters, focus ONLY on the specified character.
 - dominant_emotion is a single lowercase English word (e.g. curious, guarded, elated, anxious, tender, wary, melancholy, playful).
 - state_summary is 1–2 sentences in third person present tense (e.g. "She feels cautiously hopeful, drawn in but not yet trusting.").
 - If a previous state is provided, treat it as the baseline and apply realistic incremental changes — emotions don't flip instantly.
@@ -32,12 +33,17 @@ function buildPrompt(
   userMessage:       string,
   assistantResponse: string,
   prev:              EmotionState | null,
+  characterName?:    string,
 ): string {
   const baseline = prev
     ? `Previous state: mood=${prev.mood} trust=${prev.trust} arousal=${prev.arousal} emotion=${prev.dominant_emotion}`
     : 'Previous state: unknown (first exchange — infer from this response alone)';
 
-  return `${baseline}
+  const charLine = characterName
+    ? `\n[TARGET CHARACTER: ${characterName}]`
+    : '';
+
+  return `${baseline}${charLine}
 
 [USER MESSAGE]
 ${userMessage.slice(0, 800)}
@@ -45,7 +51,7 @@ ${userMessage.slice(0, 800)}
 [CHARACTER RESPONSE]
 ${assistantResponse.slice(0, 1500)}
 
-Infer the character's new emotional state:`;
+Infer ${characterName ? characterName + "'s" : "the character's"} new emotional state:`;
 }
 
 function parseEmotionResponse(raw: string): EmotionState | null {
@@ -91,6 +97,7 @@ export async function updateEmotionalState(
   conversationId:    string,
   userMessage:       string,
   assistantResponse: string,
+  characterName?:    string,
 ): Promise<void> {
   // Skip very short responses — not enough signal to infer emotion
   if (assistantResponse.length < 80) return;
@@ -108,7 +115,7 @@ export async function updateEmotionalState(
   try {
     const raw = await ipc.generateRaw(
       SYSTEM_PROMPT,
-      buildPrompt(userMessage, assistantResponse, prev),
+      buildPrompt(userMessage, assistantResponse, prev, characterName),
       undefined, // use default model
       256,       // emotion response is short
       0.3,       // low temperature — we want stable, consistent output

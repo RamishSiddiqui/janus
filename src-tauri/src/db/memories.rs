@@ -35,6 +35,45 @@ impl MemoryRepo {
         Ok(memories)
     }
 
+    /// Lists memories for a conversation, plus all canon memories for the character.
+    /// This ensures canon facts are always available regardless of memory scope.
+    pub async fn list_with_canon(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+    ) -> Result<Vec<Memory>, MythicError> {
+        let mut result = db
+            .query("SELECT * FROM memories WHERE conversation_id = type::thing('conversations', $conv_id) OR is_canon = true ORDER BY created_at DESC")
+            .bind(("conv_id", conversation_id.to_string()))
+            .await?;
+        let memories: Vec<Memory> = result.take(0)?;
+        Ok(memories)
+    }
+
+    /// Lists memories for a specific character within a conversation,
+    /// PLUS that character's canon memories. Used in multi-character prompts
+    /// to attribute memories correctly per character.
+    pub async fn list_for_character_in_conv(
+        db: &Surreal<Db>,
+        character_id: &str,
+        conversation_id: &str,
+    ) -> Result<Vec<Memory>, MythicError> {
+        let mut result = db
+            .query(
+                "SELECT * FROM memories WHERE \
+                    (character_id = type::thing('characters', $char_id) \
+                     AND conversation_id = type::thing('conversations', $conv_id)) \
+                    OR \
+                    (character_id = type::thing('characters', $char_id) \
+                     AND is_canon = true) \
+                 ORDER BY is_canon DESC, created_at DESC"
+            )
+            .bind(("char_id", character_id.to_string()))
+            .bind(("conv_id", conversation_id.to_string()))
+            .await?;
+        let memories: Vec<Memory> = result.take(0)?;
+        Ok(memories)
+    }
+
     /// Creates a new memory entry.
     pub async fn create(
         db: &Surreal<Db>,

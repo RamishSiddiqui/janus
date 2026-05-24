@@ -92,15 +92,75 @@ impl ConversationRepo {
     }
 
     /// Retrieves all messages in a conversation, ordered chronologically.
+    ///
+    /// Combines two strategies to ensure completeness:
+    /// 1. Standard query by conversation_id (gets most messages)
+    /// 2. Branch walk from active_message_id (catches any messages that
+    ///    might have a mismatched conversation_id due to SurrealDB Thing quirks)
     pub async fn get_messages(
         db: &Surreal<Db>,
         conversation_id: &str,
     ) -> Result<Vec<Message>, MythicError> {
+        // Strategy 1: standard conversation_id query
         let mut result = db
             .query("SELECT * FROM messages WHERE conversation_id = type::thing('conversations', $conv_id) ORDER BY created_at ASC")
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let messages: Vec<Message> = result.take(0)?;
+        let mut messages: Vec<Message> = result.take(0)?;
+
+        // Strategy 2: walk the branch from active_message_id to catch missing messages
+        let conv = Self::get(db, conversation_id).await?;
+        if let Some(ref active_msg_thing) = conv.active_message_id {
+            let active_id = active_msg_thing.id.to_raw();
+            let known_ids: std::collections::HashSet<String> = messages.iter()
+                .map(|m| m.id.id.to_raw())
+                .collect();
+
+            // Walk backward from active_message_id following parent_id chain
+            let mut current_id = Some(active_id);
+            let mut missing: Vec<Message> = Vec::new();
+            let mut visited = std::collections::HashSet::new();
+
+            while let Some(ref id) = current_id {
+                if visited.contains(id) {
+                    break;
+                }
+                visited.insert(id.clone());
+
+                if !known_ids.contains(id) {
+                    // This message is in the branch but wasn't returned by conv_id query
+                    let msg: Option<Message> = db.select(("messages", id.as_str())).await?;
+                    if let Some(m) = msg {
+                        current_id = m.parent_id.as_ref().map(|t| t.id.to_raw());
+                        info!(
+                            "[get_messages] Recovered missing message {} (role={:?}, char={:?}) via branch walk",
+                            m.id.id.to_raw(), m.role, m.character_name
+                        );
+                        missing.push(m);
+                    } else {
+                        break;
+                    }
+                } else {
+                    // Message exists in the query results — follow its parent
+                    if let Some(existing) = messages.iter().find(|m| m.id.id.to_raw() == *id) {
+                        current_id = existing.parent_id.as_ref().map(|t| t.id.to_raw());
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if !missing.is_empty() {
+                info!(
+                    "[get_messages] Recovered {} missing messages for conversation {}",
+                    missing.len(), conversation_id
+                );
+                messages.extend(missing);
+                // Re-sort by created_at to maintain chronological order
+                messages.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            }
+        }
+
         Ok(messages)
     }
 

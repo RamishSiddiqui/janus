@@ -58,6 +58,9 @@ async-trait = "0.1"
 # Token counting
 tiktoken-rs = "0.6"
 
+# Regex (for response parsing)
+regex = "1"
+
 # Streaming
 futures = "0.3"
 tokio-stream = "0.1"

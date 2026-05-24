@@ -1370,7 +1370,7 @@
   }
   .sr-snippet {
     font-size: var(--text-sm); color: #8b8ba7; line-height: 1.5;
-    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
     -webkit-box-orient: vertical;
   }
   .sr-snippet :global(mark) {

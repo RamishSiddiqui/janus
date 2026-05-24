@@ -22,7 +22,8 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
         seed_providers(db).await?;
         seed_characters(db).await?;
         seed_memories(db).await?;
-        tracing::info!("Seeded dev data (providers, characters, memories)");
+        seed_messages(db).await?;
+        tracing::info!("Seeded dev data (providers, characters, memories, messages)");
     }
 
     Ok(())
@@ -364,7 +365,7 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
         ("conv-shared-heist",  "Midnight Heist",               "char-aria-silverleaf"),
     ];
     for (id, title, char_id) in &conversations {
-        db.query("CREATE type::thing('conversations', $id) CONTENT { title: $title, character_id: type::thing('characters', $char_id) }")
+        db.query("CREATE type::thing('conversations', $id) CONTENT { title: $title, character_id: type::thing('characters', $char_id), updated_at: time::now() }")
             .bind(("id", id.to_string())).bind(("title", title.to_string())).bind(("char_id", char_id.to_string()))
             .await?;
     }
@@ -376,6 +377,32 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
     // Midnight Heist: Aria (primary) + Finn
     db.query("UPDATE type::thing('conversations', 'conv-shared-heist') SET shared_character_ids = 'char-finn-shadowcloak'")
         .await?;
+
+    // ── Seed conversation_characters join table for multi-char conversations ──
+    // The Forge Alliance: Aria (primary) + Roran (supporting)
+    let mc_chars = vec![
+        ("cc_conv-shared-forge_char-aria-silverleaf",  "conv-shared-forge",  "char-aria-silverleaf",  "Aria Silverleaf",  "primary",    80),
+        ("cc_conv-shared-forge_char-roran-ironfist",   "conv-shared-forge",  "char-roran-ironfist",   "Roran Ironfist",   "supporting", 50),
+        ("cc_conv-shared-heist_char-aria-silverleaf",  "conv-shared-heist",  "char-aria-silverleaf",  "Aria Silverleaf",  "primary",    80),
+        ("cc_conv-shared-heist_char-finn-shadowcloak", "conv-shared-heist",  "char-finn-shadowcloak", "Finn Shadowcloak", "supporting", 70),
+    ];
+    for (id, conv_id, char_id, char_name, role, talk) in &mc_chars {
+        db.query("CREATE type::thing('conversation_characters', $id) CONTENT {
+            conversation_id: type::thing('conversations', $conv_id),
+            character_id: type::thing('characters', $char_id),
+            character_name: $char_name,
+            role: $role,
+            talkativeness: $talk,
+            is_active: true,
+        }")
+        .bind(("id", id.to_string()))
+        .bind(("conv_id", conv_id.to_string()))
+        .bind(("char_id", char_id.to_string()))
+        .bind(("char_name", char_name.to_string()))
+        .bind(("role", role.to_string()))
+        .bind(("talk", *talk))
+        .await?;
+    }
 
     // ── Canon memories (character-level) ──
     let canon: Vec<(&str, &str, &str, &str, i32)> = vec![
@@ -497,5 +524,284 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     tracing::info!("Seeded {} conversations, {} canon + {} conversation memories, {} memory links",
         conversations.len(), canon.len(), mems.len(), links.len());
+    Ok(())
+}
+
+/// Helper to create a seed message via raw query.
+async fn create_seed_message(
+    db: &Surreal<Db>,
+    id: &str,
+    conv_id: &str,
+    role: &str,
+    content: &str,
+    parent_id: Option<&str>,
+    character_id: Option<&str>,
+    character_name: Option<&str>,
+) -> Result<(), MythicError> {
+    if let (Some(pid), Some(cid), Some(cname)) = (parent_id, character_id, character_name) {
+        // Message with parent + character attribution (multi-char segments)
+        db.query("CREATE type::thing('messages', $id) CONTENT {
+            conversation_id: type::thing('conversations', $conv_id),
+            role: $role,
+            content: $content,
+            parent_id: type::thing('messages', $parent_id),
+            character_id: type::thing('characters', $char_id),
+            character_name: $char_name,
+        }")
+        .bind(("id", id.to_string()))
+        .bind(("conv_id", conv_id.to_string()))
+        .bind(("role", role.to_string()))
+        .bind(("content", content.to_string()))
+        .bind(("parent_id", pid.to_string()))
+        .bind(("char_id", cid.to_string()))
+        .bind(("char_name", cname.to_string()))
+        .await?;
+    } else if let Some(pid) = parent_id {
+        // Message with parent, no character
+        db.query("CREATE type::thing('messages', $id) CONTENT {
+            conversation_id: type::thing('conversations', $conv_id),
+            role: $role,
+            content: $content,
+            parent_id: type::thing('messages', $parent_id),
+        }")
+        .bind(("id", id.to_string()))
+        .bind(("conv_id", conv_id.to_string()))
+        .bind(("role", role.to_string()))
+        .bind(("content", content.to_string()))
+        .bind(("parent_id", pid.to_string()))
+        .await?;
+    } else {
+        // Root message (greeting, no parent)
+        db.query("CREATE type::thing('messages', $id) CONTENT {
+            conversation_id: type::thing('conversations', $conv_id),
+            role: $role,
+            content: $content,
+        }")
+        .bind(("id", id.to_string()))
+        .bind(("conv_id", conv_id.to_string()))
+        .bind(("role", role.to_string()))
+        .bind(("content", content.to_string()))
+        .await?;
+    }
+    Ok(())
+}
+
+/// Seeds demo messages into conversations so they're visible on first launch.
+async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
+    // ═══════════════════════════════════════════════════════════════
+    // 1. Aria — College Arrival (single-char, 4 messages)
+    // ═══════════════════════════════════════════════════════════════
+    create_seed_message(db,
+        "msg-aria-main-1", "conv-aria-main", "assistant",
+        "*A young woman with pointed ears and striking green eyes hurries through the College courtyard, arms full of leather-bound tomes that threaten to topple at any moment. She notices you and stops, slightly out of breath.*\n\n\"Oh! Are you a first-year too? I've been trying to find the Elemental Studies hall for the past twenty minutes \u{2014} this place is a labyrinth. I'm Aria, by the way. Aria Silverleaf.\"\n\n*She shifts the books to one arm and extends her free hand, a tiny spark of green light dancing unconsciously at her fingertips.*",
+        None, None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-aria-main-2", "conv-aria-main", "user",
+        "Nice to meet you Aria! I'm new here too. Those sparks on your fingers... is that elemental magic?",
+        Some("msg-aria-main-1"), None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-aria-main-3", "conv-aria-main", "assistant",
+        "*Aria glances down at her fingertips and the green sparks flicker brighter for a moment before she curls her hand self-consciously.*\n\n\"Oh \u{2014} that? It's... yes, it's elemental magic. Raw elemental magic, actually. I haven't exactly learned to control it yet.\" *She lets out a nervous laugh, tucking a strand of dark hair behind one pointed ear.* \"My mother was a full-blooded elven mage \u{2014} one of the best at the College, they say. But she left before she could teach me anything.\"\n\n*Her green eyes flicker with a mix of pride and something deeper \u{2014} loss, maybe.*\n\n\"So I'm here to learn on my own. Prove that a half-elf can master the arcane arts just as well as anyone.\" *She straightens her shoulders, determination replacing the momentary vulnerability.* \"What about you? What brings you to the College of Magic?\"",
+        Some("msg-aria-main-2"), None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-aria-main-4", "conv-aria-main", "user",
+        "I heard stories about the College and wanted to see it for myself. Your magic looks amazing even untrained \u{2014} I bet you'll be incredible once you learn to focus it.",
+        Some("msg-aria-main-3"), None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-aria-main-5", "conv-aria-main", "assistant",
+        "*A flush of warmth colors Aria's cheeks, and the green sparks at her fingertips momentarily bloom into a tiny swirl of emerald light before she catches herself and snuffs them out.*\n\n\"You really think so?\" *Her voice is softer now, the bravado giving way to something genuine.* \"Most people see the uncontrolled bursts and just... step back. The other day I accidentally set a practice dummy on fire during orientation. They've been calling me 'Cinder' ever since.\"\n\n*She rolls her eyes but can't quite suppress a grin.*\n\n\"Come on \u{2014} if you're looking for the grand tour, I've accidentally explored more of this place than most upperclassmen. I found a corridor on the third floor that I'm *fairly* certain leads to the restricted section.\" *Her eyes glint with mischief.* \"Want to see?\"",
+        Some("msg-aria-main-4"), None, None,
+    ).await?;
+
+    // Set active_message_id for conv-aria-main
+    db.query("UPDATE type::thing('conversations', 'conv-aria-main') SET active_message_id = type::thing('messages', 'msg-aria-main-5')")
+        .await?;
+
+    // ═══════════════════════════════════════════════════════════════
+    // 2. Roran — Forge Apprenticeship (single-char, 4 messages)
+    // ═══════════════════════════════════════════════════════════════
+    create_seed_message(db,
+        "msg-roran-main-1", "conv-roran-main", "assistant",
+        "*A broad-shouldered young man sits at a workbench, carefully examining a set of rune-etching tools. His hands are rough and calloused \u{2014} clearly no stranger to physical labor. He looks up as you approach, offering a firm nod.*\n\n\"You here for Enchantment Studies too? Good. I was starting to think I'd be the only one who actually wants to *make* something useful with magic instead of just waving it around.\"\n\n*He holds up a small iron ingot that glows faintly with embedded runes.*\n\n\"Name's Roran. My father forges swords for the king \u{2014} I plan to forge ones that never break.\"",
+        None, None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-roran-main-2", "conv-roran-main", "user",
+        "A sword that never breaks? That sounds impossible. How would you even do that?",
+        Some("msg-roran-main-1"), None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-roran-main-3", "conv-roran-main", "assistant",
+        "*Roran sets the ingot down with deliberate care, then turns fully to face you. His expression is deadly serious.*\n\n\"Runic enchantment. The old dwarves knew how to do it \u{2014} bind magic directly into the metal's grain structure so the blade and the spell become one thing. Not a coating, not a charm. *One thing.*\" *He picks up a small hammer and taps the glowing ingot. A clear, bell-like tone rings out.*\n\n\"My father's been forging for thirty years. Best swordsmith in the kingdom. But every blade he makes will eventually chip, rust, break.\" *His jaw tightens.* \"I watched him reforge a knight's sword three times in one campaign season. Three times.\"\n\n*He looks down at his calloused hands.*\n\n\"The technique was lost centuries ago when the Runeforgers died out. But I've found fragments in the College archives. Enough to start.\" *He meets your eyes steadily.* \"It's not impossible. It's just hard. And I don't mind hard.\"",
+        Some("msg-roran-main-2"), None, None,
+    ).await?;
+
+    // Set active_message_id for conv-roran-main
+    db.query("UPDATE type::thing('conversations', 'conv-roran-main') SET active_message_id = type::thing('messages', 'msg-roran-main-3')")
+        .await?;
+
+    // ═══════════════════════════════════════════════════════════════
+    // 3. Finn — Shadow Academy (single-char, 4 messages)
+    // ═══════════════════════════════════════════════════════════════
+    create_seed_message(db,
+        "msg-finn-main-1", "conv-finn-main", "assistant",
+        "*You almost walk right past him \u{2014} a lean figure leaning against a pillar in the shadowy alcove, practically invisible until he shifts. He steps into the torchlight with a crooked grin, flipping a coin across his knuckles.*\n\n\"Nice awareness. Most people don't notice me until I want them to.\"\n\n*He catches the coin and offers a mock bow.*\n\n\"Finn Shadowcloak, at your service \u{2014} though I prefer to think of it as 'at my convenience.' Tell me, are you the rule-following type, or are you interested in seeing what's behind the locked doors on the third floor?\"",
+        None, None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-finn-main-2", "conv-finn-main", "user",
+        "Locked doors? Now you have my attention. What's up there?",
+        Some("msg-finn-main-1"), None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-finn-main-3", "conv-finn-main", "assistant",
+        "*Finn's grin widens, and he tucks the coin away with a flourish that makes it vanish entirely.*\n\n\"Now *that's* the right answer.\" *He glances both ways down the corridor, then lowers his voice conspiratorially.* \"Third floor, east wing. There's a section the faculty doesn't want students poking around in. Restricted Archives, they call it. Heavy wards, enchanted locks, the works.\"\n\n*He starts walking, gesturing for you to follow.*\n\n\"I've been casing it for a week. The wards reset every six hours, but there's a thirty-second window during the transition where the lock is purely mechanical.\" *He produces a set of slender lockpicks from his sleeve, each one gleaming with a faint silver sheen.* \"And mechanical is my specialty.\"\n\n*He pauses at the base of a spiral staircase, torchlight casting long shadows.*\n\n\"Fair warning \u{2014} last person who got caught in the Restricted Archives got expelled. Permanently.\" *His eyes glitter with equal parts danger and excitement.* \"Still interested?\"",
+        Some("msg-finn-main-2"), None, None,
+    ).await?;
+
+    // Set active_message_id for conv-finn-main
+    db.query("UPDATE type::thing('conversations', 'conv-finn-main') SET active_message_id = type::thing('messages', 'msg-finn-main-3')")
+        .await?;
+
+    // ═══════════════════════════════════════════════════════════════
+    // 4. Saffron — Library of Echoes (single-char, 4 messages)
+    // ═══════════════════════════════════════════════════════════════
+    create_seed_message(db,
+        "msg-saff-main-1", "conv-saff-main", "assistant",
+        "*A young woman with dark hair and sharp, analytical eyes sits surrounded by a fortress of open books, quill scratching furiously across parchment. She doesn't look up as you approach.*\n\n\"If you're here to ask about the Transmutation assignment, the answer is on page 347 of Aldric's Third Compendium, not the Second \u{2014} the Second has a critical error in the runic notation.\"\n\n*She finally glances up, pushing her glasses higher.*\n\n\"Sorry. I'm Saffron. I tend to assume everyone needs help. What brings you to the restricted section at this hour?\"",
+        None, None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-saff-main-2", "conv-saff-main", "user",
+        "I was looking for information about the Codex Ignis. Someone mentioned you might know something about it.",
+        Some("msg-saff-main-1"), None, None,
+    ).await?;
+
+    create_seed_message(db,
+        "msg-saff-main-3", "conv-saff-main", "assistant",
+        "*Saffron's quill stops mid-stroke. She looks up at you with an intensity that borders on unsettling, her dark eyes suddenly razor-sharp behind her glasses.*\n\n\"The Codex Ignis.\" *She says it quietly, almost reverently, then sets her quill down with careful precision.* \"You know about the Codex? Most people think it's a myth \u{2014} a fairy tale the faculty tells first-years to make the library sound more exciting.\"\n\n*She pulls a leather-bound journal from beneath a stack of tomes and opens it to a page covered in dense, meticulous handwriting and intricate diagrams.*\n\n\"I've been researching it for two years. The Codex Ignis is real. It was written by the Archmage Valdris before the Sundering \u{2014} it supposedly contains the secret of elemental fusion. The ability to merge two opposing elements into a single, stable force.\" *Her fingers trace a diagram showing intertwined fire and ice runes.* \"I found a fragment last month. Here, in the hidden midnight section of the library.\"\n\n*She leans forward, voice dropping to a whisper.*\n\n\"The fragment mentions a key hidden in the Crystal Caverns beneath the College. But no one's been allowed down there in decades.\" *Her eyes search yours.* \"Why are you looking for the Codex?\"",
+        Some("msg-saff-main-2"), None, None,
+    ).await?;
+
+    // Set active_message_id for conv-saff-main
+    db.query("UPDATE type::thing('conversations', 'conv-saff-main') SET active_message_id = type::thing('messages', 'msg-saff-main-3')")
+        .await?;
+
+    // ═══════════════════════════════════════════════════════════════
+    // 5. The Forge Alliance — Multi-char (Aria + Roran, 6 messages)
+    //    Chain: greeting(Aria) → user → Aria_seg → Roran_seg → user → Aria_seg → Roran_seg
+    // ═══════════════════════════════════════════════════════════════
+
+    // Greeting from Aria (primary character)
+    create_seed_message(db,
+        "msg-forge-1", "conv-shared-forge", "assistant",
+        "*Aria stands at the entrance to the College forge, peering inside with wide eyes. The heat hits you both like a wall \u{2014} enchanted flames burn in seven colors, casting prismatic light across the stone walls. At the far end, a broad-shouldered figure works at an anvil, the rhythmic ring of hammer on metal punctuating the air.*\n\n\"This is where Roran works,\" *Aria whispers, her green eyes reflecting the dancing flames.* \"I asked him to help me with something. A focus crystal amplifier \u{2014} something to channel my elemental magic without it... exploding.\" *She winces slightly.* \"He's the best craftsman in our year. Maybe the best in the College.\"\n\n*She steps inside, the heat making the tiny sparks at her fingertips flare involuntarily.*\n\n\"Come on \u{2014} he said he'd have a prototype ready today.\"",
+        None, None, None,
+    ).await?;
+
+    // User message
+    create_seed_message(db,
+        "msg-forge-2", "conv-shared-forge", "user",
+        "This forge is incredible. So you two are working together on this amplifier project?",
+        Some("msg-forge-1"), None, None,
+    ).await?;
+
+    // Aria's response segment (multi-char: parent = user msg)
+    create_seed_message(db,
+        "msg-forge-3a", "conv-shared-forge", "assistant",
+        "*Aria nods enthusiastically, the green sparks at her fingertips dancing brighter in the forge's heat.*\n\n\"Working together might be generous \u{2014} I provide the raw elemental power and the theoretical framework, and Roran provides the part where things don't blow up.\" *She grins, then adds more quietly,* \"He's actually brilliant at what he does. The runework he's developed could change everything about how we enchant objects. He just doesn't like admitting he's brilliant \u{2014} thinks it sounds arrogant.\"\n\n*She gestures toward the anvil where Roran works.*\n\n\"The prototype we're building would be the first stable focus crystal in three centuries. If it works, it proves half-elf magic *can* be controlled. And that Roran's runic techniques are the real deal.\"",
+        Some("msg-forge-2"),
+        Some("char-aria-silverleaf"), Some("Aria Silverleaf"),
+    ).await?;
+
+    // Roran's response segment (multi-char: parent = Aria's segment)
+    create_seed_message(db,
+        "msg-forge-3b", "conv-shared-forge", "assistant",
+        "*Roran sets down his hammer and turns, wiping soot from his hands with a cloth. His expression is measured, but there's a warmth in his eyes when he glances at Aria before addressing you.*\n\n\"She makes it sound more dramatic than it is.\" *He holds up a small crystalline object \u{2014} roughly the size of a fist, with intricate runes etched along its facets. It pulses with a faint amber glow.* \"This is the prototype. Third version. First one shattered. Second one... also shattered, but more impressively.\"\n\n*He turns it slowly in his calloused hands.*\n\n\"The problem isn't the crystal or the runes. The problem is that Aria's magic doesn't behave like normal elemental energy. It's raw. Unpredictable. Beautiful, if I'm honest \u{2014}\" *He clears his throat.* \"But difficult to channel through standard runic pathways.\"\n\n*He sets the crystal on the workbench and crosses his arms.*\n\n\"So I'm building new pathways. Custom ones. Designed specifically for half-elf elemental resonance.\" *A rare hint of pride crosses his face.* \"No one's ever attempted that before.\"",
+        Some("msg-forge-3a"),
+        Some("char-roran-ironfist"), Some("Roran Ironfist"),
+    ).await?;
+
+    // Set active_message_id for conv-shared-forge
+    db.query("UPDATE type::thing('conversations', 'conv-shared-forge') SET active_message_id = type::thing('messages', 'msg-forge-3b')")
+        .await?;
+
+    // ═══════════════════════════════════════════════════════════════
+    // 6. Midnight Heist — Multi-char (Aria + Finn, 6 messages)
+    //    Chain: greeting(Aria) → user → Aria_seg → Finn_seg → user → Aria_seg → Finn_seg
+    // ═══════════════════════════════════════════════════════════════
+
+    // Greeting from Aria
+    create_seed_message(db,
+        "msg-heist-1", "conv-shared-heist", "assistant",
+        "*The library is silent at this hour \u{2014} long past curfew, the enchanted candles burning low. Aria crouches behind a shelf of ancient tomes, peering around the corner at a shadowy figure rifling through the restricted section.*\n\n\"I *knew* it,\" *she whispers, green eyes narrowed.* \"I knew someone's been sneaking in here at night. The wards on the third shelf have been tampered with for weeks.\"\n\n*She steps out from behind the shelf, arms crossed, a dangerous spark of green light crackling at her fingertips.*\n\n\"Alright, whoever you are \u{2014} turn around slowly and explain why you're stealing from the restricted section of the College library.\"",
+        None, None, None,
+    ).await?;
+
+    // User message
+    create_seed_message(db,
+        "msg-heist-2", "conv-shared-heist", "user",
+        "Wait \u{2014} I'm not the thief! I followed someone in here. Look, there in the shadows!",
+        Some("msg-heist-1"), None, None,
+    ).await?;
+
+    // Aria's response segment
+    create_seed_message(db,
+        "msg-heist-3a", "conv-shared-heist", "assistant",
+        "*Aria's eyes widen and she spins toward where you're pointing. The green sparks at her fingertips flare into a small orb of light, illuminating the alcove \u{2014} and revealing a lean figure frozen mid-reach, one hand on a crystalline object that pulses with dark violet energy.*\n\n\"A shadow crystal,\" *Aria breathes, recognition dawning on her face.* \"Those are forbidden artifacts \u{2014} they can absorb and redirect magical energy. If someone got one of those out of the College...\"\n\n*She raises her hand, the green orb brightening.*\n\n\"Don't move. I'm reporting this to the faculty.\"",
+        Some("msg-heist-2"),
+        Some("char-aria-silverleaf"), Some("Aria Silverleaf"),
+    ).await?;
+
+    // Finn's response segment
+    create_seed_message(db,
+        "msg-heist-3b", "conv-shared-heist", "assistant",
+        "*The figure steps into the light with an infuriatingly casual grin, hands raised in mock surrender. It's Finn Shadowcloak \u{2014} the coin-flipping rogue from the Shadow Academy program.*\n\n\"Easy there, Cinder. Let's not do anything we'd both regret.\" *He leans against the bookshelf, the shadow crystal still pulsing in his hand.* \"And for the record, I'm not *stealing* it. I'm *borrowing* it. There's a difference.\"\n\n*He glances at you, then back at Aria.*\n\n\"Here's the thing \u{2014} I know what this crystal does. And I know *you've* been struggling with that whole 'my magic explodes everything' problem.\" *His grin turns sly.* \"What if I told you this crystal could help you control your elemental bursts? Channel them, focus them. No more accidental fires.\"\n\n*He tosses the crystal lightly in his hand.*\n\n\"So before you run off to the faculty, consider this: you keep quiet about tonight, and I teach you how to use shadow energy to stabilize your magic. I get what I need, you get what you need. Everyone wins.\"\n\n*He extends the crystal toward Aria, eyebrow raised.*\n\n\"Deal?\"",
+        Some("msg-heist-3a"),
+        Some("char-finn-shadowcloak"), Some("Finn Shadowcloak"),
+    ).await?;
+
+    // User response
+    create_seed_message(db,
+        "msg-heist-4", "conv-shared-heist", "user",
+        "Aria, wait. He might have a point. Your magic *has* been unstable. Maybe hear him out before calling the faculty?",
+        Some("msg-heist-3b"), None, None,
+    ).await?;
+
+    // Aria's second response
+    create_seed_message(db,
+        "msg-heist-5a", "conv-shared-heist", "assistant",
+        "*Aria's jaw tightens. The green orb in her hand flickers between angry brightness and reluctant dimming. She stares at Finn for a long moment, then at you, then back at Finn.*\n\n\"I can't believe I'm considering this.\" *She lowers her hand, the light fading to a soft glow.* \"Fine. I'll hear you out, Shadowcloak. But if this is some kind of trick \u{2014}\" *The green sparks flare dangerously.* \"\u{2014} you'll find out exactly how *unstable* my magic really is.\"\n\n*She crosses her arms, chin lifted defiantly.*\n\n\"Talk. And make it good.\"",
+        Some("msg-heist-4"),
+        Some("char-aria-silverleaf"), Some("Aria Silverleaf"),
+    ).await?;
+
+    // Finn's second response
+    create_seed_message(db,
+        "msg-heist-5b", "conv-shared-heist", "assistant",
+        "*Finn's grin softens into something almost genuine. He pockets the shadow crystal and pulls out a worn leather journal, flipping it open to a page covered in diagrams.*\n\n\"Shadow energy and elemental magic are opposites, right? That's what the textbooks say. But they're wrong.\" *He traces a diagram showing intertwined dark and light energy streams.* \"Shadow isn't the absence of light \u{2014} it's the *space between* elements. A buffer. A stabilizer.\"\n\n*He looks at Aria with unexpected seriousness.*\n\n\"Your magic is too raw, too powerful for normal channels. But if you wrap elemental energy in a thin layer of shadow \u{2014} like insulation around a wire \u{2014} it doesn't explode. It *flows*.\" *He snaps the journal shut.* \"I've seen it work. My grandmother used to do it.\"\n\n*He leans back against the shelf, arms crossed, mirroring Aria's posture.*\n\n\"So. Tomorrow night, same time, same place. Bring your fire magic and an open mind.\" *The crooked grin returns.* \"And maybe don't tell Roran. He'd never approve of anything this... unauthorized.\"",
+        Some("msg-heist-5a"),
+        Some("char-finn-shadowcloak"), Some("Finn Shadowcloak"),
+    ).await?;
+
+    // Set active_message_id for conv-shared-heist
+    db.query("UPDATE type::thing('conversations', 'conv-shared-heist') SET active_message_id = type::thing('messages', 'msg-heist-5b')")
+        .await?;
+
+    let msg_count = 5 + 3 + 3 + 3 + 5 + 8; // aria, roran, finn, saff, forge, heist
+    tracing::info!("Seeded {} conversation messages across 6 conversations", msg_count);
     Ok(())
 }

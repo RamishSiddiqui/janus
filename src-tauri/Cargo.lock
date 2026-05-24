@@ -3795,6 +3795,7 @@ dependencies = [
  "futures",
  "image",
  "png 0.18.1",
+ "regex",
  "reqwest 0.12.28",
  "rig-core",
  "serde",

@@ -450,7 +450,7 @@
   .hdr-title {
     font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     margin: 0;
   }
   .hdr-sub { font-size: 12px; color: #4a4a6a; }
