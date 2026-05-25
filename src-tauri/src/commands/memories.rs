@@ -82,15 +82,44 @@ pub async fn create_memory(
 }
 
 /// Updates a memory's content and increments its version.
+/// Also re-embeds the memory for semantic retrieval with the new content.
 #[tauri::command]
 pub async fn update_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
     content: String,
 ) -> Result<Memory, MythicError> {
-    let state = state.read().await;
-    let memory = MemoryRepo::update(&state.db, &memory_id, &content).await?;
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    drop(state_guard);
+
+    let memory = MemoryRepo::update(&db, &memory_id, &content).await?;
     info!("Updated memory: {} (version incremented)", memory_id);
+
+    // Re-embed: delete old embedding, then create new one with updated content
+    if let Some(ref char_id) = memory.character_id {
+        let db_embed = db.clone();
+        let mem_id = memory_id.clone();
+        let mem_content = content.clone();
+        let char_id_owned = char_id.id.to_raw();
+        // Delete old embedding first
+        let _ = EmbeddingRepo::delete_memory_embedding(&db, &memory_id).await;
+        tokio::spawn(async move {
+            if let Ok(pc) = get_default_llm_provider(&db_embed).await {
+                if let Ok(provider) = create_rig_provider(&pc) {
+                    let embed_model = pc.config
+                        .get("embedding_model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("text-embedding-3-small");
+                    let _ = embed_memory(
+                        &db_embed, &provider, embed_model,
+                        &mem_id, &char_id_owned, &mem_content,
+                    ).await;
+                }
+            }
+        });
+    }
+
     Ok(memory)
 }
 

@@ -4,7 +4,7 @@
 //! system that powers RAG (Retrieval-Augmented Generation).
 
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -303,5 +303,116 @@ pub async fn rebuild_embedding_index(
     );
 
     // Return updated status
+    get_embedding_index_status_inner(&db, conversation_id, Some(embedding_model)).await
+}
+
+/// Finds messages that don't have embeddings yet and embeds them in batches.
+/// This is a non-destructive catch-up — it only fills gaps without touching
+/// existing embeddings. Designed to run on conversation load or periodically.
+///
+/// Returns the updated `EmbeddingIndexStatus` when done.
+#[tauri::command]
+pub async fn backfill_missing_embeddings(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    app: tauri::AppHandle,
+    conversation_id: Option<String>,
+) -> Result<EmbeddingIndexStatus, MythicError> {
+    let state_guard = state.read().await;
+    let db = state_guard.db.clone();
+    drop(state_guard);
+
+    // Find the enabled embedding model
+    let all_enabled = ProviderRepo::list_enabled_models(&db, None).await?;
+    let embedding_entry = all_enabled
+        .iter()
+        .find(|m| m.model_type == "embedding")
+        .ok_or_else(|| MythicError::Config(
+            "No embedding model enabled. Go to AI Studio → Embedding Models and enable one.".to_string()
+        ))?;
+
+    let embedding_model = embedding_entry.model_id.clone();
+    let provider_config = ProviderRepo::get(&db, &embedding_entry.provider_id).await?;
+    let provider = create_rig_provider(&provider_config)?;
+
+    // Query messages that DON'T have an embedding yet
+    let missing_query = match &conversation_id {
+        Some(conv_id) => format!(
+            "SELECT id, conversation_id, character_id, content FROM messages \
+             WHERE conversation_id = type::thing('conversations', '{}') \
+             AND role IN ['user', 'assistant'] \
+             AND content != '' \
+             AND id NOT IN (SELECT VALUE message_id FROM message_embeddings) \
+             ORDER BY created_at",
+            conv_id
+        ),
+        None => "SELECT id, conversation_id, character_id, content FROM messages \
+             WHERE role IN ['user', 'assistant'] \
+             AND content != '' \
+             AND id NOT IN (SELECT VALUE message_id FROM message_embeddings) \
+             ORDER BY created_at"
+            .to_string(),
+    };
+
+    let mut result = db.query(&missing_query).await?;
+
+    #[derive(serde::Deserialize)]
+    struct MsgRow {
+        id: surrealdb::sql::Thing,
+        conversation_id: surrealdb::sql::Thing,
+        character_id: Option<surrealdb::sql::Thing>,
+        content: String,
+    }
+
+    let missing: Vec<MsgRow> = result.take(0)?;
+    let total_missing = missing.len();
+
+    if total_missing == 0 {
+        info!("[backfill] No missing embeddings found — index is complete");
+        return get_embedding_index_status_inner(&db, conversation_id, Some(embedding_model)).await;
+    }
+
+    info!(
+        "[backfill] Found {} un-embedded messages, processing in batches",
+        total_missing
+    );
+
+    // Process in batches of 10
+    let batch_size = 10;
+    let mut embedded = 0;
+
+    for chunk in missing.chunks(batch_size) {
+        let texts: Vec<String> = chunk.iter().map(|m| m.content.clone()).collect();
+
+        match provider.generate_embedding(&embedding_model, texts).await {
+            Ok(embeddings) => {
+                for (msg, embedding) in chunk.iter().zip(embeddings.iter()) {
+                    let msg_id = msg.id.id.to_raw();
+                    let conv_id = msg.conversation_id.id.to_raw();
+                    let char_id = msg.character_id.as_ref().map(|c| c.id.to_raw());
+                    let _ = EmbeddingRepo::store(
+                        &db,
+                        &msg_id,
+                        &conv_id,
+                        embedding,
+                        &embedding_model,
+                        char_id.as_deref(),
+                    )
+                    .await;
+                    embedded += 1;
+                }
+                // Notify frontend after each batch
+                let _ = app.emit("embedding_updated", ());
+            }
+            Err(e) => {
+                tracing::warn!("[backfill] Batch embedding failed: {}", e);
+            }
+        }
+    }
+
+    info!(
+        "[backfill] Done: {}/{} missing messages embedded",
+        embedded, total_missing
+    );
+
     get_embedding_index_status_inner(&db, conversation_id, Some(embedding_model)).await
 }

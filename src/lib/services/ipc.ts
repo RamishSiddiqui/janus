@@ -864,3 +864,11 @@ export async function rebuildEmbeddingIndex(
     embeddingModel: embeddingModel ?? 'openai/text-embedding-3-small',
   });
 }
+
+export async function backfillMissingEmbeddings(
+  conversationId?: string | null,
+): Promise<EmbeddingIndexStatus> {
+  return safeInvoke<EmbeddingIndexStatus>('backfill_missing_embeddings', {
+    conversationId: conversationId ?? null,
+  });
+}

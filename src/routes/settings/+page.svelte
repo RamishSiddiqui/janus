@@ -38,6 +38,7 @@
   } | null>(null);
   let isLoadingIndex = $state(false);
   let isRebuilding = $state(false);
+  let isBackfilling = $state(false);
 
   async function loadIndexStatus() {
     if (!isTauri) return;
@@ -63,6 +64,20 @@
       console.error('[Memory] Rebuild failed:', err);
     }
     isRebuilding = false;
+  }
+
+  async function backfillIndex() {
+    if (!isTauri || isBackfilling) return;
+    isBackfilling = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      indexStatus = await ipc.backfillMissingEmbeddings(null);
+      success('Missing embeddings filled successfully');
+    } catch (err) {
+      toastError('Failed to backfill embeddings');
+      console.error('[Memory] Backfill failed:', err);
+    }
+    isBackfilling = false;
   }
 
   // Load the enabled embedding model from the backend
@@ -647,6 +662,24 @@
                     {indexStatus.dimension_mismatch ? 'Rebuild Index (Required)' : indexStatus.needs_rebuild ? 'Rebuild Index' : 'Rebuild Index'}
                   {/if}
                 </button>
+
+                <!-- Backfill Button — shown when coverage < 100% and no rebuild needed -->
+                {#if indexStatus.coverage_percent < 100 && !indexStatus.needs_rebuild && !indexStatus.dimension_mismatch}
+                  <button
+                    class="rebuild-btn backfill-btn"
+                    class:rebuilding={isBackfilling}
+                    onclick={backfillIndex}
+                    disabled={isBackfilling || isRebuilding}
+                  >
+                    {#if isBackfilling}
+                      <div class="btn-spinner"></div>
+                      Catching up…
+                    {:else}
+                      <Icon name="zap" size={13} color="#34D399" />
+                      Catch Up ({Math.round(indexStatus.total_messages - indexStatus.embedded_messages)} missing)
+                    {/if}
+                  </button>
+                {/if}
               {:else}
                 <div class="index-empty">
                   <span>No index data available</span>
@@ -1288,6 +1321,16 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
     50% { box-shadow: 0 0 0 4px rgba(245,158,11,0.08); }
   }
+
+  /* ── Backfill / Catch-Up Button ── */
+  .backfill-btn {
+    margin-top: 6px;
+    background: rgba(52,211,153,0.08);
+    border-color: rgba(52,211,153,0.15);
+    color: #34D399;
+  }
+  .backfill-btn:hover { background: rgba(52,211,153,0.14); border-color: rgba(52,211,153,0.25); }
+  .backfill-btn.rebuilding { color: #6EE7B7; }
 
   .btn-spinner {
     width: 14px; height: 14px; border-radius: 50%;

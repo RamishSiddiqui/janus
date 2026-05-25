@@ -200,6 +200,7 @@ pub fn run() {
             // Embeddings
             commands::embeddings::get_embedding_index_status,
             commands::embeddings::rebuild_embedding_index,
+            commands::embeddings::backfill_missing_embeddings,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Mythic");
