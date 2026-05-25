@@ -334,26 +334,40 @@ pub async fn backfill_missing_embeddings(
     let provider_config = ProviderRepo::get(&db, &embedding_entry.provider_id).await?;
     let provider = create_rig_provider(&provider_config)?;
 
-    // Query messages that DON'T have an embedding yet
-    let missing_query = match &conversation_id {
+    // Two-query approach: SurrealDB subqueries with NOT IN are unreliable.
+    // 1) Get all already-embedded message IDs
+    let embedded_ids_query = match &conversation_id {
         Some(conv_id) => format!(
-            "SELECT id, conversation_id, character_id, content FROM messages \
+            "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', '{}')",
+            conv_id
+        ),
+        None => "SELECT VALUE message_id FROM message_embeddings".to_string(),
+    };
+    let mut embedded_result = db.query(&embedded_ids_query).await?;
+    let embedded_things: Vec<surrealdb::sql::Thing> = embedded_result.take(0).unwrap_or_default();
+    let embedded_ids: std::collections::HashSet<String> = embedded_things
+        .into_iter()
+        .map(|t| format!("{}:{}", t.tb, t.id.to_raw()))
+        .collect();
+
+    // 2) Get all user/assistant messages
+    let all_msgs_query = match &conversation_id {
+        Some(conv_id) => format!(
+            "SELECT id, conversation_id, character_id, content, created_at FROM messages \
              WHERE conversation_id = type::thing('conversations', '{}') \
              AND role IN ['user', 'assistant'] \
              AND content != '' \
-             AND id NOT IN (SELECT VALUE message_id FROM message_embeddings) \
              ORDER BY created_at",
             conv_id
         ),
-        None => "SELECT id, conversation_id, character_id, content FROM messages \
+        None => "SELECT id, conversation_id, character_id, content, created_at FROM messages \
              WHERE role IN ['user', 'assistant'] \
              AND content != '' \
-             AND id NOT IN (SELECT VALUE message_id FROM message_embeddings) \
              ORDER BY created_at"
             .to_string(),
     };
 
-    let mut result = db.query(&missing_query).await?;
+    let mut result = db.query(&all_msgs_query).await?;
 
     #[derive(serde::Deserialize)]
     struct MsgRow {
@@ -363,7 +377,17 @@ pub async fn backfill_missing_embeddings(
         content: String,
     }
 
-    let missing: Vec<MsgRow> = result.take(0)?;
+    let all_messages: Vec<MsgRow> = result.take(0)?;
+
+    // 3) Filter to only un-embedded messages
+    let missing: Vec<MsgRow> = all_messages
+        .into_iter()
+        .filter(|m| {
+            let full_id = format!("{}:{}", m.id.tb, m.id.id.to_raw());
+            !embedded_ids.contains(&full_id)
+        })
+        .collect();
+
     let total_missing = missing.len();
 
     if total_missing == 0 {
