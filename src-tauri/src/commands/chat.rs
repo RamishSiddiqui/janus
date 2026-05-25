@@ -198,9 +198,12 @@ pub async fn send_message(
                 &model_id,
                 &stream_messages,
                 &gen_params,
-                tx,
+                tx.clone(),
             ).await {
                 error!("Stream generation error: {}", e);
+                // Send error through channel so frontend gets notified
+                // instead of isStreaming hanging forever
+                let _ = tx.send(StreamChunk::Error(format!("Stream failed: {}", e))).await;
             }
         });
 
@@ -254,35 +257,43 @@ pub async fn send_message(
                             // user_msg → segment[0] → segment[1] → … → segment[N]
                             let mut prev_parent = stream_user_msg_id.clone();
                             for segment in &segments {
-                                if let Some(char_id) = resolve_character_id(
+                                // Resolve character ID — fall back to primary character
+                                // for unrecognized names (e.g., LLM wrote [Narrator]:)
+                                // to avoid silently dropping content
+                                let (char_id, full_name) = if let Some(cid) = resolve_character_id(
                                     &segment.character_name, &stream_mc_pairs,
                                 ) {
-                                    // Resolve the full canonical character name from pairs
-                                    // (parser might return abbreviated names like "Roran"
-                                    // instead of "Roran Ironfist")
-                                    let full_name = stream_mc_pairs.iter()
-                                        .find(|(_, id)| *id == char_id)
+                                    let name = stream_mc_pairs.iter()
+                                        .find(|(_, id)| *id == cid)
                                         .map(|(name, _)| name.clone())
                                         .unwrap_or_else(|| segment.character_name.clone());
+                                    (cid, name)
+                                } else {
+                                    // Fallback: attribute to primary character
+                                    warn!("[multi-char] Unrecognized character '{}', attributing to primary", segment.character_name);
+                                    let fallback_id = stream_mc_pairs.first()
+                                        .map(|(_, id)| id.clone())
+                                        .unwrap_or_default();
+                                    let fallback_name = stream_mc_pairs.first()
+                                        .map(|(name, _)| name.clone())
+                                        .unwrap_or_else(|| segment.character_name.clone());
+                                    (fallback_id, fallback_name)
+                                };
 
-                                    match MessageRepo::create_with_character(
-                                        &db_for_save,
-                                        &conv_id,
-                                        "assistant",
-                                        &segment.content,
-                                        Some(&prev_parent),
-                                        &char_id,
-                                        &full_name,
-                                    ).await {
-                                        Ok(created) => {
-                                            // Next segment's parent is this segment
-                                            // IMPORTANT: use to_raw() not to_string() — to_string()
-                                            // wraps the UUID in backticks which breaks parent_id lookups
-                                            prev_parent = created.id.id.to_raw();
-                                        }
-                                        Err(e) => {
-                                            warn!("[multi-char] Failed to create segment for {}: {}", full_name, e);
-                                        }
+                                match MessageRepo::create_with_character(
+                                    &db_for_save,
+                                    &conv_id,
+                                    "assistant",
+                                    &segment.content,
+                                    Some(&prev_parent),
+                                    &char_id,
+                                    &full_name,
+                                ).await {
+                                    Ok(created) => {
+                                        prev_parent = created.id.id.to_raw();
+                                    }
+                                    Err(e) => {
+                                        warn!("[multi-char] Failed to create segment for {}: {}", full_name, e);
                                     }
                                 }
                             }
@@ -504,6 +515,27 @@ pub async fn send_message(
                 // Save to database
                 MessageRepo::update(&db_for_save, &assist_id, &full_text).await?;
 
+                // Background: embed assistant message for vector RAG
+                {
+                    let db_embed = db_for_save.clone();
+                    let embed_conv = conv_id.clone();
+                    let embed_msg = assist_id.clone();
+                    let embed_content = full_text.clone();
+                    let embed_char_id = conv_character_id.clone();
+                    let app_embed = app.clone();
+                    tokio::spawn(async move {
+                        if let Ok(pc) = get_default_llm_provider(&db_embed).await {
+                            if let Ok(p) = create_rig_provider(&pc) {
+                                let em = pc.config.get("embedding_model")
+                                    .and_then(|v| v.as_str()).unwrap_or("text-embedding-3-small");
+                                if embed_and_store(&db_embed, &p, em, &embed_msg, &embed_conv, &embed_content, embed_char_id.as_deref()).await.is_ok() {
+                                    let _ = app_embed.emit("embedding_updated", ());
+                                }
+                            }
+                        }
+                    });
+                }
+
                 // Emit as a single 'done' event
                 let _ = app.emit("chat-stream", StreamEvent {
                     event_type: "done".to_string(),
@@ -634,9 +666,10 @@ pub async fn retry_failed_message(
 
         tokio::spawn(async move {
             if let Err(e) = provider.generate_stream(
-                &model_id, &stream_messages, &gen_params, tx,
+                &model_id, &stream_messages, &gen_params, tx.clone(),
             ).await {
                 error!("Retry stream generation error: {}", e);
+                let _ = tx.send(StreamChunk::Error(format!("Retry stream failed: {}", e))).await;
             }
         });
 
