@@ -62,10 +62,10 @@ pub struct MemoryLink {
     #[specta(type = String)]
     pub id: Thing,
     #[serde(alias = "in", rename(serialize = "source_memory_id", deserialize = "in"), serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
-    #[specta(rename = "source_memory_id", type = String)]
+    #[specta(type = String)]
     pub source: Thing,  // in = source memory
     #[serde(alias = "out", rename(serialize = "target_conversation_id", deserialize = "out"), serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
-    #[specta(rename = "target_conversation_id", type = String)]
+    #[specta(type = String)]
     pub target: Thing,  // out = target conversation
     pub link_type: String,       // "copy" | "sync"
     pub direction: String,       // "one_way" | "two_way"

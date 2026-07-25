@@ -131,3 +131,26 @@ impl serde::Serialize for MythicError {
         state.end()
     }
 }
+
+/// Mirrors the exact `{ error, message }` wire shape produced by
+/// `MythicError`'s custom `Serialize` impl above — exists solely so
+/// `MythicError` can implement `specta::Type` by delegating to it.
+///
+/// Every Tauri command returns `Result<T, MythicError>`; specta's blanket
+/// impl for async function results requires the whole `Result<T, E>` to
+/// implement `Type`, which in turn requires *both* T and E to implement it.
+/// Without this, every async command fails to satisfy `FunctionResult` —
+/// a runtime-of-macro-expansion error, not something `cargo check` on the
+/// type alone would reveal, since compiling this file in isolation is fine.
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename = "MythicError")]
+struct MythicErrorShape {
+    error: String,
+    message: String,
+}
+
+impl specta::Type for MythicError {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        MythicErrorShape::definition(types)
+    }
+}
