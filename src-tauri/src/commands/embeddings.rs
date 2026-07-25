@@ -19,7 +19,7 @@ use crate::AppState;
 use super::chat::create_rig_provider;
 
 /// Embedding index status for the frontend Memory settings.
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, specta::Type)]
 pub struct EmbeddingIndexStatus {
     /// Total messages across all conversations (or in a specific one)
     pub total_messages: usize,
@@ -160,6 +160,7 @@ async fn get_embedding_index_status_inner(
 /// The frontend uses this to show how many messages are embedded,
 /// which model was used, and whether a rebuild is needed.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_embedding_index_status(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: Option<String>,
@@ -177,6 +178,7 @@ pub async fn get_embedding_index_status(
 ///
 /// Returns the updated `EmbeddingIndexStatus` when done.
 #[tauri::command]
+#[specta::specta]
 pub async fn rebuild_embedding_index(
     state: State<'_, Arc<RwLock<AppState>>>,
     _app: tauri::AppHandle,
@@ -305,6 +307,7 @@ pub async fn rebuild_embedding_index(
 ///
 /// Returns the updated `EmbeddingIndexStatus` when done.
 #[tauri::command]
+#[specta::specta]
 pub async fn backfill_missing_embeddings(
     state: State<'_, Arc<RwLock<AppState>>>,
     app: tauri::AppHandle,

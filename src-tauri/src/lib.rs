@@ -95,6 +95,9 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::conversation_characters::remove_conversation_character,
             commands::conversation_characters::update_character_talkativeness,
             commands::conversation_characters::toggle_character_active,
+            commands::embeddings::get_embedding_index_status,
+            commands::embeddings::rebuild_embedding_index,
+            commands::embeddings::backfill_missing_embeddings,
         ])
 }
 
