@@ -455,10 +455,11 @@ impl ConversationRepo {
                     search::highlight('<mark>', '</mark>', 4) AS snippet,
                     conversation_id.title AS conversation_title,
                     conversation_id.character_id.name AS character_name,
-                    created_at
+                    created_at,
+                    search::score(4) AS relevance
                 FROM messages
                 WHERE content @4@ $query
-                ORDER BY search::score(4) DESC
+                ORDER BY relevance DESC
                 LIMIT $limit")
             .bind(("query", query.to_string()))
             .bind(("limit", limit))

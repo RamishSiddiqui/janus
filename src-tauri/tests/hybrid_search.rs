@@ -3,6 +3,13 @@
 //! (same engine the app uses) to exercise the actual SurrealQL — the `@1@`
 //! match operator and `search::score()` — rather than just compiling it.
 //!
+//! This test caught a real runtime-only bug: SurrealDB requires `ORDER BY`
+//! to reference an *aliased* `search::score()` column from the SELECT list
+//! (`search::score(1) AS relevance` ... `ORDER BY relevance`), not call
+//! `search::score()` directly in the ORDER BY clause. The latter type-checks
+//! and compiles fine but fails at query-execution time with "Missing order
+//! idiom `search` in statement selection" — invisible to `cargo check`.
+//!
 //! This intentionally only covers `EmbeddingRepo::keyword_search_messages`
 //! and `keyword_search_memories` (the new BM25 query paths), since the
 //! vector-similarity half requires a live embedding provider and is
@@ -80,6 +87,37 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     .expect("keyword search with exclusion should not error");
     assert_eq!(hits_excluded.len(), 1, "excluded message should be filtered out");
     assert!(!hits_excluded.iter().any(|h| h.message_id == griffin_b.id.id.to_raw()));
+
+    cleanup(dir);
+}
+
+/// Regression test for the sidebar search feature (`ConversationRepo::
+/// search_messages`), which had the exact same "ORDER BY must reference an
+/// alias" bug — pre-existing, found while debugging the hybrid search
+/// queries above, fixed alongside them.
+#[tokio::test]
+async fn search_messages_finds_exact_term() {
+    let (db, dir) = test_db().await;
+
+    let character = CharacterRepo::create(&db, "Elara", serde_json::json!({"name": "Elara"}))
+        .await
+        .expect("create character");
+    let conv = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv"))
+        .await
+        .expect("create conversation");
+
+    MessageRepo::create(&db, &conv.id.id.to_raw(), "user", "I saw a griffin over the mountains", None, None)
+        .await
+        .expect("create message");
+    MessageRepo::create(&db, &conv.id.id.to_raw(), "assistant", "That sounds like an ordinary hawk to me", None, None)
+        .await
+        .expect("create unrelated message");
+
+    let results = ConversationRepo::search_messages(&db, "griffin", 10)
+        .await
+        .expect("search_messages should not error");
+    assert_eq!(results.len(), 1);
+    assert!(results[0].content.contains("griffin"));
 
     cleanup(dir);
 }

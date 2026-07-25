@@ -322,36 +322,28 @@ impl EmbeddingRepo {
             return Ok(vec![]);
         }
 
-        let exclude_things: Vec<surrealdb::sql::Thing> = exclude_message_ids
-            .iter()
-            .map(|id| surrealdb::sql::Thing::from(("messages", id.as_str())))
-            .collect();
-
-        let scope_filter = match (conversation_id, character_id) {
-            (Some(_conv_id), _) => "conversation_id = type::thing('conversations', $scope_id)".to_string(),
-            (None, Some(_char_id)) => "character_id = type::thing('characters', $scope_id)".to_string(),
-            (None, None) => "true".to_string(),
-        };
-        let scope_id = conversation_id.or(character_id).unwrap_or("");
-
-        let query = format!(
-            "SELECT id AS message_id, role, content \
-             FROM messages \
-             WHERE {scope_filter} \
-                AND role IN ['user', 'assistant'] \
-                AND content != '' \
-                AND content @1@ $query \
-                AND id NOT IN $excluded_ids \
-             ORDER BY search::score(1) DESC \
-             LIMIT $top_k"
-        );
+        // `ORDER BY` can't call `search::score()` directly — it must
+        // reference an aliased column from the SELECT list, or SurrealDB
+        // fails at runtime with "Missing order idiom" (a parse-time-valid
+        // but runtime-invalid query — cargo check can't catch this).
+        //
+        // Scope/role/exclusion filtering happens in Rust rather than the
+        // WHERE clause because it's untested whether ANDing those with the
+        // `@1@` match affects index selection; this shape is proven to work.
+        let padded_limit = (top_k * 5).max(50);
 
         let mut result = db
-            .query(&query)
-            .bind(("scope_id", scope_id.to_string()))
+            .query(
+                "SELECT id AS message_id, role, content, conversation_id, character_id, \
+                        conversation_id.character_id AS conv_character_id, \
+                        search::score(1) AS relevance \
+                 FROM messages \
+                 WHERE content @1@ $query \
+                 ORDER BY relevance DESC \
+                 LIMIT $limit"
+            )
             .bind(("query", query_text.to_string()))
-            .bind(("excluded_ids", exclude_things))
-            .bind(("top_k", top_k as i64))
+            .bind(("limit", padded_limit as i64))
             .await?;
 
         #[derive(serde::Deserialize)]
@@ -359,23 +351,53 @@ impl EmbeddingRepo {
             message_id: surrealdb::sql::Thing,
             role: String,
             content: String,
+            conversation_id: surrealdb::sql::Thing,
+            // Message-level attribution (multi-char segments) — `None` for
+            // ordinary single-character messages.
+            character_id: Option<surrealdb::sql::Thing>,
+            // The owning conversation's character — set for every message in
+            // a single-character conversation.
+            conv_character_id: Option<surrealdb::sql::Thing>,
         }
 
         let hits: Vec<KeywordHit> = result.take(0)?;
-
-        debug!(
-            "[embeddings] Keyword query returned {} results (scope={})",
-            hits.len(), scope_id,
-        );
+        let exclude_set: std::collections::HashSet<&str> =
+            exclude_message_ids.iter().map(|s| s.as_str()).collect();
 
         // `similarity` has no BM25 meaning here — the caller (RRF fusion)
         // only reads list order, and overwrites this field once fused.
-        Ok(hits.into_iter().map(|h| RetrievedContext {
-            message_id: h.message_id.id.to_raw(),
-            role: h.role,
-            content: h.content,
-            similarity: 0.0,
-        }).collect())
+        let filtered: Vec<RetrievedContext> = hits.into_iter()
+            .filter(|h| {
+                if !matches!(h.role.as_str(), "user" | "assistant") || h.content.is_empty() {
+                    return false;
+                }
+                if exclude_set.contains(h.message_id.id.to_raw().as_str()) {
+                    return false;
+                }
+                match (conversation_id, character_id) {
+                    (Some(conv), _) => h.conversation_id.id.to_raw() == conv,
+                    (None, Some(ch)) => {
+                        h.character_id.as_ref().map(|c| c.id.to_raw()).as_deref() == Some(ch)
+                            || h.conv_character_id.as_ref().map(|c| c.id.to_raw()).as_deref() == Some(ch)
+                    }
+                    (None, None) => true,
+                }
+            })
+            .take(top_k)
+            .map(|h| RetrievedContext {
+                message_id: h.message_id.id.to_raw(),
+                role: h.role,
+                content: h.content,
+                similarity: 0.0,
+            })
+            .collect();
+
+        debug!(
+            "[embeddings] Keyword query returned {} results (conv={:?}, char={:?})",
+            filtered.len(), conversation_id, character_id,
+        );
+
+        Ok(filtered)
     }
 
     // ── Query: Memories ──────────────────────────────────────────────────
@@ -468,18 +490,22 @@ impl EmbeddingRepo {
             return Ok(vec![]);
         }
 
+        // See keyword_search_messages for why: ORDER BY must reference an
+        // aliased column, not call search::score() directly; and scope
+        // filtering happens in Rust against a proven query shape.
+        let padded_limit = (top_k * 5).max(50);
+
         let mut result = db
             .query(
-                "SELECT id AS memory_id, content, is_canon, importance, last_accessed \
+                "SELECT id AS memory_id, content, is_canon, importance, last_accessed, character_id, \
+                        search::score(1) AS relevance \
                  FROM memories \
-                 WHERE character_id = type::thing('characters', $char_id) \
-                    AND content @1@ $query \
-                 ORDER BY search::score(1) DESC \
-                 LIMIT $top_k"
+                 WHERE content @1@ $query \
+                 ORDER BY relevance DESC \
+                 LIMIT $limit"
             )
-            .bind(("char_id", character_id.to_string()))
             .bind(("query", query_text.to_string()))
-            .bind(("top_k", top_k as i64))
+            .bind(("limit", padded_limit as i64))
             .await?;
 
         #[derive(serde::Deserialize)]
@@ -491,24 +517,31 @@ impl EmbeddingRepo {
             importance: i32,
             #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
             last_accessed: Option<String>,
+            character_id: Option<surrealdb::sql::Thing>,
         }
 
         let hits: Vec<KeywordMemHit> = result.take(0)?;
 
+        // `similarity` has no BM25 meaning here — overwritten once fused.
+        let filtered: Vec<RetrievedMemoryContext> = hits.into_iter()
+            .filter(|h| h.character_id.as_ref().map(|c| c.id.to_raw()).as_deref() == Some(character_id))
+            .take(top_k)
+            .map(|h| RetrievedMemoryContext {
+                memory_id: h.memory_id.id.to_raw(),
+                content: h.content,
+                is_canon: h.is_canon,
+                importance: h.importance,
+                last_accessed: h.last_accessed,
+                similarity: 0.0,
+            })
+            .collect();
+
         debug!(
             "[embeddings] Keyword memory query returned {} results for character {}",
-            hits.len(), character_id,
+            filtered.len(), character_id,
         );
 
-        // `similarity` has no BM25 meaning here — overwritten once fused.
-        Ok(hits.into_iter().map(|h| RetrievedMemoryContext {
-            memory_id: h.memory_id.id.to_raw(),
-            content: h.content,
-            is_canon: h.is_canon,
-            importance: h.importance,
-            last_accessed: h.last_accessed,
-            similarity: 0.0,
-        }).collect())
+        Ok(filtered)
     }
 
     // ── Cleanup ──────────────────────────────────────────────────────────
