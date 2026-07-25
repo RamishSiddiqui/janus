@@ -70,6 +70,10 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::providers::list_embedding_models,
             commands::providers::toggle_model_enabled,
             commands::providers::list_enabled_models,
+            commands::lorebook::list_lorebook_entries,
+            commands::lorebook::create_lorebook_entry,
+            commands::lorebook::toggle_lorebook_entry,
+            commands::lorebook::delete_lorebook_entry,
         ])
 }
 

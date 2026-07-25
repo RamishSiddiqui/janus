@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 
 /// A standalone lorebook entry stored in the database.
@@ -7,13 +8,15 @@ use surrealdb::sql::Thing;
 /// injected into the prompt only when relevant keywords appear
 /// in the recent chat history. This keeps the context focused
 /// while allowing rich world-building.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LorebookEntry {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
 
     /// The character this entry belongs to (None = global lorebook)
     #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
 
     /// Trigger keywords — entry activates when any keyword is found in chat.

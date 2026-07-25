@@ -10,6 +10,7 @@ use crate::AppState;
 
 /// Lists all lorebook entries for a character (plus global entries).
 #[tauri::command]
+#[specta::specta]
 pub async fn list_lorebook_entries(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
@@ -20,6 +21,7 @@ pub async fn list_lorebook_entries(
 
 /// Creates a new lorebook entry.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_lorebook_entry(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: Option<String>,
@@ -42,6 +44,7 @@ pub async fn create_lorebook_entry(
 
 /// Toggles a lorebook entry's enabled state.
 #[tauri::command]
+#[specta::specta]
 pub async fn toggle_lorebook_entry(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -53,6 +56,7 @@ pub async fn toggle_lorebook_entry(
 
 /// Deletes a lorebook entry.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_lorebook_entry(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
