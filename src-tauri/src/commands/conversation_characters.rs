@@ -11,6 +11,7 @@ use crate::AppState;
 
 /// Lists all characters in a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_conversation_characters(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -21,6 +22,7 @@ pub async fn list_conversation_characters(
 
 /// Adds a character to a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn add_conversation_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -39,6 +41,7 @@ pub async fn add_conversation_character(
 
 /// Removes a character from a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_conversation_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -50,6 +53,7 @@ pub async fn remove_conversation_character(
 
 /// Updates a character's talkativeness in a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn update_character_talkativeness(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -64,6 +68,7 @@ pub async fn update_character_talkativeness(
 
 /// Toggles whether a character is active (unmuted) in a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn toggle_character_active(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,

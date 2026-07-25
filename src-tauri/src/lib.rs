@@ -90,6 +90,11 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::scene_states::get_scene_state,
             commands::scene_states::upsert_scene_state,
             commands::scene_states::delete_scene_state,
+            commands::conversation_characters::list_conversation_characters,
+            commands::conversation_characters::add_conversation_character,
+            commands::conversation_characters::remove_conversation_character,
+            commands::conversation_characters::update_character_talkativeness,
+            commands::conversation_characters::toggle_character_active,
         ])
 }
 
