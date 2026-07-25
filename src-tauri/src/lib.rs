@@ -25,6 +25,19 @@ pub struct AppState {
     pub http_client: reqwest::Client,
 }
 
+/// Builds the tauri-specta command registry — the single source of truth
+/// for which commands get IPC bindings generated for the frontend. Add a
+/// command here (and give it `#[specta::specta]`) to include it in the
+/// generated `src/lib/services/bindings.ts`; the same list also becomes the
+/// Tauri invoke handler, so a command registered here doesn't need a
+/// separate `tauri::generate_handler!` entry.
+pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(tauri_specta::collect_commands![
+            get_app_info,
+        ])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize tracing/logging
@@ -36,6 +49,16 @@ pub fn run() {
         .init();
 
     info!("Starting Mythic v{}", env!("CARGO_PKG_VERSION"));
+
+    let specta_builder = specta_builder();
+
+    #[cfg(debug_assertions)]
+    specta_builder
+        .export(
+            specta_typescript::Typescript::default(),
+            "../src/lib/services/bindings.ts",
+        )
+        .expect("Failed to export TypeScript bindings");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -207,12 +230,21 @@ pub fn run() {
         .expect("Error while running Mythic");
 }
 
+/// Basic app metadata surfaced to the frontend (About screen, etc.).
+#[derive(serde::Serialize, specta::Type)]
+pub struct AppInfo {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+}
+
 /// Returns basic app information for the frontend.
 #[tauri::command]
-fn get_app_info() -> serde_json::Value {
-    serde_json::json!({
-        "name": "Mythic",
-        "version": env!("CARGO_PKG_VERSION"),
-        "description": env!("CARGO_PKG_DESCRIPTION"),
-    })
+#[specta::specta]
+fn get_app_info() -> AppInfo {
+    AppInfo {
+        name: "Mythic".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        description: env!("CARGO_PKG_DESCRIPTION").to_string(),
+    }
 }

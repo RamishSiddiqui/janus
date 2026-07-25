@@ -3801,6 +3801,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "specta-typescript",
  "surrealdb",
  "tauri",
  "tauri-build",
