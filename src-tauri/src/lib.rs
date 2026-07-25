@@ -58,6 +58,18 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::messages::delete_message,
             commands::messages::get_message_branch,
             commands::messages::get_message_siblings,
+            commands::providers::create_provider,
+            commands::providers::get_provider,
+            commands::providers::list_providers,
+            commands::providers::update_provider,
+            commands::providers::delete_provider,
+            commands::providers::set_default_provider,
+            commands::providers::test_provider_connection,
+            commands::providers::list_provider_models,
+            commands::providers::list_all_models,
+            commands::providers::list_embedding_models,
+            commands::providers::toggle_model_enabled,
+            commands::providers::list_enabled_models,
         ])
 }
 

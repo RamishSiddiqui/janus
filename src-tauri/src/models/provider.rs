@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 
 /// The type of AI capability a provider offers.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderType {
     /// Text generation / chat completion
@@ -14,7 +15,7 @@ pub enum ProviderType {
 }
 
 /// The specific adapter implementation for a provider.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderAdapter {
     /// Local Ollama instance
@@ -55,9 +56,10 @@ pub enum ProviderAdapter {
 ///
 /// Stored in the database and used to initialize provider instances
 /// at runtime. The `config` field holds adapter-specific JSON settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ProviderConfig {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
 
     /// Human-readable name (e.g., "My Local Ollama", "OpenRouter Free")

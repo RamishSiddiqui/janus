@@ -10,6 +10,7 @@ use crate::AppState;
 
 /// Creates a new provider configuration.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     name: String,
@@ -42,6 +43,7 @@ pub async fn create_provider(
 
 /// Retrieves a single provider by ID.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -52,6 +54,7 @@ pub async fn get_provider(
 
 /// Lists all providers, optionally filtered by type.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_providers(
     state: State<'_, Arc<RwLock<AppState>>>,
     provider_type: Option<String>,
@@ -62,6 +65,7 @@ pub async fn list_providers(
 
 /// Updates an existing provider configuration.
 #[tauri::command]
+#[specta::specta]
 pub async fn update_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -80,6 +84,7 @@ pub async fn update_provider(
 
 /// Deletes a provider configuration.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -92,6 +97,7 @@ pub async fn delete_provider(
 
 /// Sets a provider as the default for its type. Unsets all others of the same type.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_default_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -104,6 +110,7 @@ pub async fn set_default_provider(
 
 /// Tests connectivity to a provider by attempting a health check.
 #[tauri::command]
+#[specta::specta]
 pub async fn test_provider_connection(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -164,6 +171,7 @@ pub async fn test_provider_connection(
 /// Lists available models from a provider's API.
 /// Supports Ollama (/api/tags), OpenRouter (/api/v1/models), and OpenAI-compatible (/v1/models).
 #[tauri::command]
+#[specta::specta]
 pub async fn list_provider_models(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -237,7 +245,7 @@ pub async fn list_provider_models(
 // ── Model enable/disable tracking ──────────────────────────────────────────
 
 /// A single model entry returned by `list_all_models`.
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, Debug, Clone, specta::Type)]
 pub struct ModelEntry {
     pub model_id:      String,
     pub provider_id:   String,
@@ -268,6 +276,7 @@ pub struct ModelEntry {
 /// Per-provider fetches time out after 8 seconds. Partial results are returned
 /// on timeout or network error rather than failing the whole call.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_all_models(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<ModelEntry>, MythicError> {
@@ -459,6 +468,7 @@ pub async fn list_all_models(
 /// For Ollama/LM Studio/OpenAI-compatible: fetches standard model lists and
 /// filters for model IDs containing "embed".
 #[tauri::command]
+#[specta::specta]
 pub async fn list_embedding_models(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<ModelEntry>, MythicError> {
@@ -598,6 +608,7 @@ pub async fn list_embedding_models(
 /// Toggles a model's enabled state in the `enabled_models` table.
 /// Uses SurrealDB UPSERT for clean first-time toggling.
 #[tauri::command]
+#[specta::specta]
 pub async fn toggle_model_enabled(
     state: State<'_, Arc<RwLock<AppState>>>,
     provider_id: String,
@@ -613,6 +624,7 @@ pub async fn toggle_model_enabled(
 
 /// Returns all enabled models (enabled=true only), enriched with provider name and adapter.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_enabled_models(
     state: State<'_, Arc<RwLock<AppState>>>,
     provider_id: Option<String>,
