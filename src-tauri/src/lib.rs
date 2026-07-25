@@ -74,6 +74,15 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::lorebook::create_lorebook_entry,
             commands::lorebook::toggle_lorebook_entry,
             commands::lorebook::delete_lorebook_entry,
+            commands::memories::list_memories,
+            commands::memories::create_memory,
+            commands::memories::update_memory,
+            commands::memories::set_memory_importance,
+            commands::memories::delete_memory,
+            commands::memories::promote_to_canon,
+            commands::memories::share_memory,
+            commands::memories::unlink_memory,
+            commands::memories::get_memory_graph,
         ])
 }
 

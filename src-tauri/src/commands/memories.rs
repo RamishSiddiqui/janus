@@ -17,6 +17,7 @@ use crate::AppState;
 
 /// Lists memories for a character and/or conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_memories(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: Option<String>,
@@ -33,6 +34,7 @@ pub async fn list_memories(
 
 /// Creates a new memory entry.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: Option<String>,
@@ -66,6 +68,7 @@ pub async fn create_memory(
 /// Updates a memory's content and increments its version.
 /// Also re-embeds the memory for semantic retrieval with the new content.
 #[tauri::command]
+#[specta::specta]
 pub async fn update_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
@@ -93,6 +96,7 @@ pub async fn update_memory(
 /// Sets a memory's importance tier (1-10), used to weight retrieval ranking
 /// alongside semantic relevance and recency.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_memory_importance(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
@@ -106,6 +110,7 @@ pub async fn set_memory_importance(
 
 /// Deletes a memory entry.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
@@ -123,6 +128,7 @@ pub async fn delete_memory(
 /// Promotes a conversation-level memory to character-level canon.
 /// The memory becomes visible across all conversations with this character.
 #[tauri::command]
+#[specta::specta]
 pub async fn promote_to_canon(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
@@ -138,6 +144,7 @@ pub async fn promote_to_canon(
 /// For 'copy' links: creates a duplicate memory in the target conversation.
 /// For 'sync' links: just creates the link (no duplicate).
 #[tauri::command]
+#[specta::specta]
 pub async fn share_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     source_memory_id: String,
@@ -181,6 +188,7 @@ pub async fn share_memory(
 
 /// Removes a sharing link between conversations.
 #[tauri::command]
+#[specta::specta]
 pub async fn unlink_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     link_id: String,
@@ -194,6 +202,7 @@ pub async fn unlink_memory(
 /// Returns the full memory graph for a character — all memories, links,
 /// and conversations, structured for the frontend graph canvas.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_memory_graph(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,

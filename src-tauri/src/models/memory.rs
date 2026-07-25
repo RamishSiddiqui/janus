@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 
 /// A persisted memory entry — user-pinned facts or AI-extracted context.
@@ -7,19 +8,23 @@ use surrealdb::sql::Thing;
 /// - Canon memories (`is_canon = true`) are root nodes at the character level
 /// - Conversation memories can inherit from canon via `parent_id`
 /// - Sharing between conversations creates linked copies/syncs
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Memory {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub conversation_id: Option<Thing>,
     pub content: String,
     pub source: String, // "user" | "auto"
 
     /// Parent memory this was forked/inherited from (None = root)
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub parent_id: Option<Thing>,
     /// Version counter — increments on each edit
     pub version: i32,
@@ -51,25 +56,29 @@ pub(crate) fn default_importance() -> i32 { 5 }
 /// - `link_type`: copy (snapshot) vs sync (live-linked)
 /// - `direction`: one_way (source → target) vs two_way (bidirectional)
 /// - `sync_mode`: auto (system-managed) vs manual (user-triggered)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct MemoryLink {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     #[serde(alias = "in", rename(serialize = "source_memory_id", deserialize = "in"), serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(rename = "source_memory_id", type = String)]
     pub source: Thing,  // in = source memory
     #[serde(alias = "out", rename(serialize = "target_conversation_id", deserialize = "out"), serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(rename = "target_conversation_id", type = String)]
     pub target: Thing,  // out = target conversation
     pub link_type: String,       // "copy" | "sync"
     pub direction: String,       // "one_way" | "two_way"
     pub sync_mode: String,       // "auto" | "manual"
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub linked_memory_id: Option<Thing>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
 }
 
 /// The full memory graph for a character — used by the frontend graph UI.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct MemoryGraph {
     pub character_id: String,
     pub character_name: String,
@@ -80,7 +89,7 @@ pub struct MemoryGraph {
 }
 
 /// Minimal conversation info for graph rendering.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct MemoryGraphConversation {
     pub id: String,
     pub title: String,
