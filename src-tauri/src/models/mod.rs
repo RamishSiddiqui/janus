@@ -55,3 +55,14 @@ where
     Ok(dt.to_string())
 }
 
+/// Deserializes an optional SurrealDB Datetime into an Option<String> — for
+/// fields like `last_accessed` that are absent until first set, including on
+/// rows created before the field existed.
+pub fn deserialize_option_datetime<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let dt = Option::<surrealdb::sql::Datetime>::deserialize(deserializer)?;
+    Ok(dt.map(|d| d.to_string()))
+}
+

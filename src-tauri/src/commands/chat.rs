@@ -109,30 +109,11 @@ pub async fn send_message(
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     // Background: embed user message for vector RAG
-    {
-        let db_embed = db.clone();
-        let embed_conv = conversation_id.clone();
-        let embed_msg = user_msg_id.clone();
-        let embed_content = content.clone();
-        let embed_provider_config = provider_config.clone();
-        let embed_char_id = conv_character_id.clone();
-        let app_embed = app.clone();
-        tokio::spawn(async move {
-            if let Ok(provider) = create_rig_provider(&embed_provider_config) {
-                let embed_model = embed_provider_config.config
-                    .get("embedding_model")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("text-embedding-3-small");
-                if embed_and_store(
-                    &db_embed, &provider, embed_model,
-                    &embed_msg, &embed_conv, &embed_content,
-                    embed_char_id.as_deref(),
-                ).await.is_ok() {
-                    let _ = app_embed.emit("embedding_updated", ());
-                }
-            }
-        });
-    }
+    spawn_embed_message(
+        db.clone(), app.clone(),
+        user_msg_id.clone(), conversation_id.clone(), content.clone(),
+        conv_character_id.clone(),
+    );
 
     let gen_params = GenerationParams {
         max_tokens: provider_config.config
@@ -251,7 +232,9 @@ pub async fn send_message(
 
                             // Delete the combined parent message — it will be replaced
                             // by individual per-character messages chained sequentially.
-                            let _ = MessageRepo::delete(&db_for_save, &assist_id).await;
+                            if let Err(e) = MessageRepo::delete(&db_for_save, &assist_id).await {
+                                warn!("[multi-char] Failed to delete combined parent message {}: {}", assist_id, e);
+                            }
 
                             // Create individual character messages in a chain:
                             // user_msg → segment[0] → segment[1] → … → segment[N]
@@ -337,31 +320,11 @@ pub async fn send_message(
                     }
 
                     // Background: embed assistant message for vector RAG
-                    {
-                        let db_embed = db_for_save.clone();
-                        let embed_conv = conv_id.clone();
-                        let embed_msg = assist_id.clone();
-                        let embed_content = full_text.clone();
-                        let embed_char_id = stream_char_id.clone();
-                        let app_embed = app.clone();
-                        tokio::spawn(async move {
-                            if let Ok(provider_config) = get_default_llm_provider(&db_embed).await {
-                                if let Ok(provider) = create_rig_provider(&provider_config) {
-                                    let embed_model = provider_config.config
-                                        .get("embedding_model")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("text-embedding-3-small");
-                                    if embed_and_store(
-                                        &db_embed, &provider, embed_model,
-                                        &embed_msg, &embed_conv, &embed_content,
-                                        embed_char_id.as_deref(),
-                                    ).await.is_ok() {
-                                        let _ = app_embed.emit("embedding_updated", ());
-                                    }
-                                }
-                            }
-                        });
-                    }
+                    spawn_embed_message(
+                        db_for_save.clone(), app.clone(),
+                        assist_id.clone(), conv_id.clone(), full_text.clone(),
+                        stream_char_id.clone(),
+                    );
 
                     // Background: extract and update scene state from the AI response.
                     // Runs a cheap secondary LLM call (max_tokens=300, temp=0.1) to parse
@@ -447,39 +410,57 @@ pub async fn send_message(
                             }
 
                             // Re-fetch the full branch to get evicted messages
-                            if let Ok(branch) = MessageRepo::get_branch(&db_summary, &assist_summary).await {
-                                if branch.len() > evicted_n {
-                                    let evicted: Vec<ChatMessage> = branch[..evicted_n]
-                                        .iter()
-                                        .map(|m| ChatMessage {
-                                            role: m.role.clone(),
-                                            content: m.content.clone(),
-                                        })
-                                        .collect();
-
-                                    if let Ok(provider_config) = get_default_llm_provider(&db_summary).await {
-                                        if let Ok(provider) = create_rig_provider(&provider_config) {
-                                            let model = provider_config.config
-                                                .get("model")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("default")
-                                                .to_string();
-
-                                            let window_start_id = branch.get(evicted_n)
-                                                .map(|m| m.id.id.to_raw());
-
-                                            let _ = generate_rolling_summary(
-                                                &db_summary,
-                                                &provider,
-                                                &model,
-                                                &conv_summary,
-                                                &evicted,
-                                                existing.as_ref().map(|s| s.summary_text.as_str()),
-                                                window_start_id.as_deref(),
-                                            ).await;
-                                        }
-                                    }
+                            let branch = match MessageRepo::get_branch(&db_summary, &assist_summary).await {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    warn!("[summary] Failed to fetch branch for conversation {}: {}", conv_summary, e);
+                                    return;
                                 }
+                            };
+                            if branch.len() <= evicted_n {
+                                return;
+                            }
+
+                            let evicted: Vec<ChatMessage> = branch[..evicted_n]
+                                .iter()
+                                .map(|m| ChatMessage {
+                                    role: m.role.clone(),
+                                    content: m.content.clone(),
+                                })
+                                .collect();
+
+                            let provider_config = match get_default_llm_provider(&db_summary).await {
+                                Ok(pc) => pc,
+                                Err(e) => {
+                                    warn!("[summary] No LLM provider available for conversation {}: {}", conv_summary, e);
+                                    return;
+                                }
+                            };
+                            let provider = match create_rig_provider(&provider_config) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    warn!("[summary] Failed to create provider for conversation {}: {}", conv_summary, e);
+                                    return;
+                                }
+                            };
+
+                            let model = provider_config.config
+                                .get("model")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("default")
+                                .to_string();
+                            let window_start_id = branch.get(evicted_n).map(|m| m.id.id.to_raw());
+
+                            if let Err(e) = generate_rolling_summary(
+                                &db_summary,
+                                &provider,
+                                &model,
+                                &conv_summary,
+                                &evicted,
+                                existing.as_ref().map(|s| s.summary_text.as_str()),
+                                window_start_id.as_deref(),
+                            ).await {
+                                warn!("[summary] Failed to generate rolling summary for conversation {}: {}", conv_summary, e);
                             }
                         });
                     }
@@ -516,25 +497,11 @@ pub async fn send_message(
                 MessageRepo::update(&db_for_save, &assist_id, &full_text).await?;
 
                 // Background: embed assistant message for vector RAG
-                {
-                    let db_embed = db_for_save.clone();
-                    let embed_conv = conv_id.clone();
-                    let embed_msg = assist_id.clone();
-                    let embed_content = full_text.clone();
-                    let embed_char_id = conv_character_id.clone();
-                    let app_embed = app.clone();
-                    tokio::spawn(async move {
-                        if let Ok(pc) = get_default_llm_provider(&db_embed).await {
-                            if let Ok(p) = create_rig_provider(&pc) {
-                                let em = pc.config.get("embedding_model")
-                                    .and_then(|v| v.as_str()).unwrap_or("text-embedding-3-small");
-                                if embed_and_store(&db_embed, &p, em, &embed_msg, &embed_conv, &embed_content, embed_char_id.as_deref()).await.is_ok() {
-                                    let _ = app_embed.emit("embedding_updated", ());
-                                }
-                            }
-                        }
-                    });
-                }
+                spawn_embed_message(
+                    db_for_save.clone(), app.clone(),
+                    assist_id.clone(), conv_id.clone(), full_text.clone(),
+                    conv_character_id.clone(),
+                );
 
                 // Emit as a single 'done' event
                 let _ = app.emit("chat-stream", StreamEvent {
@@ -1371,7 +1338,7 @@ async fn build_prompt(
 
                     if !rag_results.is_empty() {
                         let rag_text = rag_results.iter()
-                            .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                            .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
                             .collect::<Vec<_>>()
                             .join("\n\n");
                         let rag_message = ChatMessage {
@@ -1393,7 +1360,7 @@ async fn build_prompt(
                             while truncated.len() > 1 {
                                 truncated.pop();
                                 let text = truncated.iter()
-                                    .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                                    .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
                                     .collect::<Vec<_>>()
                                     .join("\n\n");
                                 let msg = ChatMessage {
@@ -1560,7 +1527,7 @@ async fn build_prompt(
 
                     if !rag_results.is_empty() {
                         let rag_text = rag_results.iter()
-                            .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                            .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
                             .collect::<Vec<_>>()
                             .join("\n\n");
                         let rag_message = ChatMessage {
@@ -1711,7 +1678,7 @@ async fn build_prompt(
 
                 if !rag_results.is_empty() {
                     let rag_text = rag_results.iter()
-                        .map(|r| format!("[{:.0}% match] {}: {}", r.similarity * 100.0, r.role, r.content))
+                        .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
                         .collect::<Vec<_>>()
                         .join("\n\n");
                     let rag_message = ChatMessage {
@@ -1818,6 +1785,71 @@ pub(crate) fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider
     let base_url = config.config.get("base_url").and_then(|v| v.as_str());
 
     RigProvider::from_config(adapter_str, api_key, base_url)
+}
+
+/// Resolves the default LLM provider and its configured embedding model in
+/// one step — the shared first half of every background embed task.
+async fn resolve_embedding_provider(db: &Surreal<Db>) -> Result<(RigProvider, String), MythicError> {
+    let provider_config = get_default_llm_provider(db).await?;
+    let provider = create_rig_provider(&provider_config)?;
+    let embedding_model = provider_config.config
+        .get("embedding_model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("text-embedding-3-small")
+        .to_string();
+    Ok((provider, embedding_model))
+}
+
+/// Embeds a chat message in the background and emits `embedding_updated` on
+/// success. Best-effort: failures are logged, never propagated — RAG embedding
+/// must never block or fail the chat flow.
+pub(crate) fn spawn_embed_message(
+    db: Surreal<Db>,
+    app: tauri::AppHandle,
+    message_id: String,
+    conversation_id: String,
+    content: String,
+    character_id: Option<String>,
+) {
+    tokio::spawn(async move {
+        match resolve_embedding_provider(&db).await {
+            Ok((provider, embedding_model)) => {
+                match embed_and_store(
+                    &db, &provider, &embedding_model,
+                    &message_id, &conversation_id, &content,
+                    character_id.as_deref(),
+                ).await {
+                    Ok(_) => { let _ = app.emit("embedding_updated", ()); }
+                    Err(e) => warn!("[embed] Failed to embed message {}: {}", message_id, e),
+                }
+            }
+            Err(e) => warn!("[embed] No embedding provider available for message {}: {}", message_id, e),
+        }
+    });
+}
+
+/// Re-embeds a memory in the background after its content changes. Deletes
+/// the stale embedding first so a failed re-embed leaves the memory
+/// un-embedded (and thus caught by the backfill indexer) rather than matched
+/// against stale content.
+pub(crate) fn spawn_embed_memory(
+    db: Surreal<Db>,
+    memory_id: String,
+    character_id: String,
+    content: String,
+) {
+    tokio::spawn(async move {
+        match resolve_embedding_provider(&db).await {
+            Ok((provider, embedding_model)) => {
+                if let Err(e) = crate::context::rag::embed_memory(
+                    &db, &provider, &embedding_model, &memory_id, &character_id, &content,
+                ).await {
+                    warn!("[embed] Failed to re-embed memory {}: {}", memory_id, e);
+                }
+            }
+            Err(e) => warn!("[embed] No embedding provider available for memory {}: {}", memory_id, e),
+        }
+    });
 }
 
 /// Stateless LLM generation — calls the configured provider without saving

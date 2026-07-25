@@ -27,7 +27,22 @@ pub struct Memory {
     pub is_canon: bool,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
+
+    /// Manual importance tier (1-10, default 5/neutral) used to weight
+    /// retrieval ranking alongside semantic relevance and recency.
+    #[serde(default = "default_importance")]
+    pub importance: i32,
+    /// When this memory was last surfaced to the LLM via retrieval — `None`
+    /// if it has never been retrieved (including all rows predating this
+    /// field, which are absent from storage rather than defaulted).
+    #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+    pub last_accessed: Option<String>,
+    /// How many times this memory has been surfaced via retrieval.
+    #[serde(default)]
+    pub access_count: i32,
 }
+
+pub(crate) fn default_importance() -> i32 { 5 }
 
 /// A cross-conversation memory sharing link (SurrealDB graph edge).
 ///

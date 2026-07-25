@@ -166,7 +166,7 @@ pub async fn get_avatar_path(
         .app_data_dir()
         .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
 
-    let full_path = app_data_dir.join(&avatar_relative);
+    let full_path = crate::error::resolve_within(&app_data_dir, &avatar_relative)?;
 
     if !full_path.exists() {
         return Err(MythicError::NotFound(format!(

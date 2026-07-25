@@ -62,6 +62,41 @@ pub fn validate_required_string(field: &str, value: &str, max_len: usize) -> Res
     validate_string_length(field, trimmed, max_len)
 }
 
+/// Joins a caller-supplied relative path onto `base`, rejecting any path that
+/// could escape it — `..` traversal, absolute paths/drive prefixes, or (once
+/// the target exists) a symlink that resolves outside `base`.
+///
+/// Callers that don't require the target to already exist should still check
+/// `.exists()` afterward; the symlink check only applies once canonicalization
+/// succeeds, which requires the path to exist.
+pub fn resolve_within(base: &std::path::Path, relative: &str) -> Result<std::path::PathBuf, MythicError> {
+    use std::path::Component;
+
+    if relative.trim().is_empty() {
+        return Err(MythicError::Validation("Path cannot be empty".to_string()));
+    }
+
+    for component in std::path::Path::new(relative).components() {
+        if matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+            return Err(MythicError::Validation(format!(
+                "Invalid path: '{}'", relative
+            )));
+        }
+    }
+
+    let joined = base.join(relative);
+
+    if let (Ok(canonical_base), Ok(canonical_joined)) = (base.canonicalize(), joined.canonicalize()) {
+        if !canonical_joined.starts_with(&canonical_base) {
+            return Err(MythicError::Validation(format!(
+                "Invalid path: '{}'", relative
+            )));
+        }
+    }
+
+    Ok(joined)
+}
+
 /// Make MythicError serializable for Tauri IPC.
 ///
 /// Tauri requires command errors to implement `Into<tauri::ipc::InvokeError>`.

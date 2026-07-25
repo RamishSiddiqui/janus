@@ -5,6 +5,7 @@ use tracing::info;
 
 use crate::error::MythicError;
 
+pub mod migrations;
 pub mod schema;
 pub mod seed;
 pub mod characters;
@@ -33,7 +34,9 @@ pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> 
 
     info!("Running schema definitions...");
     schema::define_schema(&db).await?;
-    info!("Schema defined successfully, running seed...");
+    info!("Schema defined, running migrations...");
+    migrations::run_pending(&db).await?;
+    info!("Migrations complete, running seed...");
     seed::seed_defaults(&db).await?;
 
     info!("SurrealDB initialized successfully");

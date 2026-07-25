@@ -96,6 +96,10 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS version          ON memories TYPE int DEFAULT 1;
         DEFINE FIELD IF NOT EXISTS is_canon         ON memories TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS created_at       ON memories TYPE datetime DEFAULT time::now();
+        DEFINE FIELD IF NOT EXISTS importance       ON memories TYPE int DEFAULT 5
+            ASSERT $value >= 1 AND $value <= 10;
+        DEFINE FIELD IF NOT EXISTS last_accessed    ON memories TYPE option<datetime>;
+        DEFINE FIELD IF NOT EXISTS access_count     ON memories TYPE int DEFAULT 0;
 
         DEFINE INDEX IF NOT EXISTS idx_memories_character    ON memories FIELDS character_id;
         DEFINE INDEX IF NOT EXISTS idx_memories_conversation ON memories FIELDS conversation_id;
@@ -103,6 +107,17 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:memories: {}", e)))?;
+
+    // FTS index on memory content — reuses the same analyzer as messages so
+    // hybrid (BM25 + vector) retrieval works identically for both.
+    info!("  schema: memories FTS...");
+    db.query("
+        DEFINE INDEX IF NOT EXISTS idx_memories_fts ON memories FIELDS content
+            SEARCH ANALYZER msg_analyzer BM25;
+    ")
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:memories_fts: {}", e)))?;
 
     // ── 5. memory_link (graph edge table) ───────────────────────────────
     info!("  schema: memory_link...");

@@ -189,9 +189,12 @@ pub async fn delete_scene(
             .path()
             .app_data_dir()
             .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
-        let full_path = app_data_dir.join(&file_path);
-        if full_path.exists() {
-            let _ = tokio::fs::remove_file(full_path).await;
+        if let Ok(full_path) = crate::error::resolve_within(&app_data_dir, &file_path) {
+            if full_path.exists() {
+                if let Err(e) = tokio::fs::remove_file(&full_path).await {
+                    tracing::warn!("Failed to delete scene file {}: {}", full_path.display(), e);
+                }
+            }
         }
     }
 
@@ -212,7 +215,7 @@ pub async fn get_scene_path(
         .app_data_dir()
         .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
 
-    let full_path = app_data_dir.join(&file_relative);
+    let full_path = crate::error::resolve_within(&app_data_dir, &file_relative)?;
     if !full_path.exists() {
         return Err(MythicError::NotFound(format!("Scene file not found: {}", file_relative)));
     }

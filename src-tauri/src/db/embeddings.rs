@@ -33,20 +33,25 @@ impl EmbeddingRepo {
         db: &Surreal<Db>,
         conversation_id: Option<&str>,
     ) -> Result<Option<usize>, MythicError> {
-        let query = match conversation_id {
-            Some(conv_id) => format!(
-                "SELECT dimension FROM message_embeddings WHERE conversation_id = type::thing('conversations', '{}') LIMIT 1",
-                conv_id
-            ),
-            None => "SELECT dimension FROM message_embeddings LIMIT 1".to_string(),
-        };
-
-        let mut result = db.query(&query).await?;
-
         #[derive(serde::Deserialize)]
         struct DimRow { dimension: i64 }
 
-        let rows: Vec<DimRow> = result.take(0)?;
+        let rows: Vec<DimRow> = match conversation_id {
+            Some(conv_id) => {
+                let mut result = db.query(
+                    "SELECT dimension FROM message_embeddings \
+                     WHERE conversation_id = type::thing('conversations', $conv_id) LIMIT 1"
+                )
+                .bind(("conv_id", conv_id.to_string()))
+                .await?;
+                result.take(0)?
+            }
+            None => {
+                let mut result = db.query("SELECT dimension FROM message_embeddings LIMIT 1").await?;
+                result.take(0)?
+            }
+        };
+
         Ok(rows.into_iter().next().map(|r| r.dimension as usize))
     }
 
@@ -215,16 +220,11 @@ impl EmbeddingRepo {
     ) -> Result<Vec<RetrievedContext>, MythicError> {
         let query_f32: Vec<f32> = query_embedding.iter().map(|&v| v as f32).collect();
 
-        // Build exclude list for SurrealQL
-        let exclude_things: Vec<String> = exclude_message_ids
+        // Build exclude list as bound Record IDs — never interpolated into the query text
+        let exclude_things: Vec<surrealdb::sql::Thing> = exclude_message_ids
             .iter()
-            .map(|id| format!("type::thing('messages', '{}')", id))
+            .map(|id| surrealdb::sql::Thing::from(("messages", id.as_str())))
             .collect();
-        let exclude_expr = if exclude_things.is_empty() {
-            String::new()
-        } else {
-            format!(" AND message_id NOT IN [{}]", exclude_things.join(", "))
-        };
 
         // Build scope filter
         let scope_filter = match (conversation_id, character_id) {
@@ -247,7 +247,7 @@ impl EmbeddingRepo {
              WHERE {scope_filter} \
                 AND entry_type = 'message' \
                 AND vector::similarity::cosine(embedding, $query_vec) >= $min_sim \
-                {exclude_expr} \
+                AND message_id NOT IN $excluded_ids \
              ORDER BY similarity DESC \
              LIMIT $top_k"
         );
@@ -258,6 +258,7 @@ impl EmbeddingRepo {
             .bind(("query_vec", query_f32))
             .bind(("min_sim", min_similarity as f32))
             .bind(("top_k", top_k as i64))
+            .bind(("excluded_ids", exclude_things))
             .await?;
 
         #[derive(serde::Deserialize, Debug)]
@@ -300,6 +301,81 @@ impl EmbeddingRepo {
         );
 
         Ok(results)
+    }
+
+    /// Keyword search over message content using the BM25 full-text index
+    /// already defined on `messages` (see `schema.rs`). Scoped identically to
+    /// `query_similar` so the two result sets can be fused by a caller.
+    ///
+    /// Only rank (list order) is used by callers, not the raw BM25 score, so
+    /// `search::score` isn't selected — `ORDER BY search::score(1) DESC` is
+    /// enough to establish rank.
+    pub async fn keyword_search_messages(
+        db: &Surreal<Db>,
+        conversation_id: Option<&str>,
+        character_id: Option<&str>,
+        query_text: &str,
+        top_k: usize,
+        exclude_message_ids: &[String],
+    ) -> Result<Vec<RetrievedContext>, MythicError> {
+        if query_text.trim().is_empty() {
+            return Ok(vec![]);
+        }
+
+        let exclude_things: Vec<surrealdb::sql::Thing> = exclude_message_ids
+            .iter()
+            .map(|id| surrealdb::sql::Thing::from(("messages", id.as_str())))
+            .collect();
+
+        let scope_filter = match (conversation_id, character_id) {
+            (Some(_conv_id), _) => "conversation_id = type::thing('conversations', $scope_id)".to_string(),
+            (None, Some(_char_id)) => "character_id = type::thing('characters', $scope_id)".to_string(),
+            (None, None) => "true".to_string(),
+        };
+        let scope_id = conversation_id.or(character_id).unwrap_or("");
+
+        let query = format!(
+            "SELECT id AS message_id, role, content \
+             FROM messages \
+             WHERE {scope_filter} \
+                AND role IN ['user', 'assistant'] \
+                AND content != '' \
+                AND content @1@ $query \
+                AND id NOT IN $excluded_ids \
+             ORDER BY search::score(1) DESC \
+             LIMIT $top_k"
+        );
+
+        let mut result = db
+            .query(&query)
+            .bind(("scope_id", scope_id.to_string()))
+            .bind(("query", query_text.to_string()))
+            .bind(("excluded_ids", exclude_things))
+            .bind(("top_k", top_k as i64))
+            .await?;
+
+        #[derive(serde::Deserialize)]
+        struct KeywordHit {
+            message_id: surrealdb::sql::Thing,
+            role: String,
+            content: String,
+        }
+
+        let hits: Vec<KeywordHit> = result.take(0)?;
+
+        debug!(
+            "[embeddings] Keyword query returned {} results (scope={})",
+            hits.len(), scope_id,
+        );
+
+        // `similarity` has no BM25 meaning here — the caller (RRF fusion)
+        // only reads list order, and overwrites this field once fused.
+        Ok(hits.into_iter().map(|h| RetrievedContext {
+            message_id: h.message_id.id.to_raw(),
+            role: h.role,
+            content: h.content,
+            similarity: 0.0,
+        }).collect())
     }
 
     // ── Query: Memories ──────────────────────────────────────────────────
@@ -345,7 +421,7 @@ impl EmbeddingRepo {
         let mut results = Vec::with_capacity(hits.len());
         for hit in hits {
             let mut mem_result = db
-                .query("SELECT content, is_canon FROM type::thing('memories', $id)")
+                .query("SELECT content, is_canon, importance, last_accessed FROM type::thing('memories', $id)")
                 .bind(("id", hit.source_id.clone()))
                 .await?;
 
@@ -353,6 +429,10 @@ impl EmbeddingRepo {
             struct MemContent {
                 content: String,
                 is_canon: bool,
+                #[serde(default = "crate::models::memory::default_importance")]
+                importance: i32,
+                #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+                last_accessed: Option<String>,
             }
 
             if let Ok(Some(mem)) = mem_result.take::<Option<MemContent>>(0) {
@@ -361,6 +441,8 @@ impl EmbeddingRepo {
                     content: mem.content,
                     is_canon: mem.is_canon,
                     similarity: hit.similarity,
+                    importance: mem.importance,
+                    last_accessed: mem.last_accessed,
                 });
             }
         }
@@ -371,6 +453,62 @@ impl EmbeddingRepo {
         );
 
         Ok(results)
+    }
+
+    /// Keyword search over memory content using the BM25 full-text index on
+    /// `memories`. Scoped identically to `query_memory_similar` so the two
+    /// result sets can be fused by a caller. Only rank is used by callers.
+    pub async fn keyword_search_memories(
+        db: &Surreal<Db>,
+        character_id: &str,
+        query_text: &str,
+        top_k: usize,
+    ) -> Result<Vec<RetrievedMemoryContext>, MythicError> {
+        if query_text.trim().is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut result = db
+            .query(
+                "SELECT id AS memory_id, content, is_canon, importance, last_accessed \
+                 FROM memories \
+                 WHERE character_id = type::thing('characters', $char_id) \
+                    AND content @1@ $query \
+                 ORDER BY search::score(1) DESC \
+                 LIMIT $top_k"
+            )
+            .bind(("char_id", character_id.to_string()))
+            .bind(("query", query_text.to_string()))
+            .bind(("top_k", top_k as i64))
+            .await?;
+
+        #[derive(serde::Deserialize)]
+        struct KeywordMemHit {
+            memory_id: surrealdb::sql::Thing,
+            content: String,
+            is_canon: bool,
+            #[serde(default = "crate::models::memory::default_importance")]
+            importance: i32,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+            last_accessed: Option<String>,
+        }
+
+        let hits: Vec<KeywordMemHit> = result.take(0)?;
+
+        debug!(
+            "[embeddings] Keyword memory query returned {} results for character {}",
+            hits.len(), character_id,
+        );
+
+        // `similarity` has no BM25 meaning here — overwritten once fused.
+        Ok(hits.into_iter().map(|h| RetrievedMemoryContext {
+            memory_id: h.memory_id.id.to_raw(),
+            content: h.content,
+            is_canon: h.is_canon,
+            importance: h.importance,
+            last_accessed: h.last_accessed,
+            similarity: 0.0,
+        }).collect())
     }
 
     // ── Cleanup ──────────────────────────────────────────────────────────
@@ -407,4 +545,9 @@ pub struct RetrievedMemoryContext {
     pub content: String,
     pub is_canon: bool,
     pub similarity: f64,
+    /// Manual importance tier (1-10, default 5) — used to weight final
+    /// ranking alongside relevance.
+    pub importance: i32,
+    /// When this memory was last surfaced via retrieval, if ever.
+    pub last_accessed: Option<String>,
 }

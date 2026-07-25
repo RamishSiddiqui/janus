@@ -177,6 +177,7 @@ pub fn run() {
             commands::memories::list_memories,
             commands::memories::create_memory,
             commands::memories::update_memory,
+            commands::memories::set_memory_importance,
             commands::memories::delete_memory,
             commands::memories::promote_to_canon,
             commands::memories::share_memory,

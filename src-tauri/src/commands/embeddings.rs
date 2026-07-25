@@ -77,15 +77,16 @@ async fn get_embedding_index_status_inner(
     conversation_id: Option<String>,
     selected_model: Option<String>,
 ) -> Result<EmbeddingIndexStatus, MythicError> {
+    // Bound unconditionally — harmless when the query text for the `None`
+    // branch doesn't reference $conv_id at all.
+    let conv_bind = conversation_id.clone().unwrap_or_default();
+
     // Count total user/assistant messages (optionally filtered by conversation)
     let total_query = match &conversation_id {
-        Some(conv_id) => format!(
-            "SELECT count() FROM messages WHERE conversation_id = type::thing('conversations', '{}') AND role IN ['user', 'assistant'] GROUP ALL",
-            conv_id
-        ),
-        None => "SELECT count() FROM messages WHERE role IN ['user', 'assistant'] GROUP ALL".to_string(),
+        Some(_) => "SELECT count() FROM messages WHERE conversation_id = type::thing('conversations', $conv_id) AND role IN ['user', 'assistant'] GROUP ALL",
+        None => "SELECT count() FROM messages WHERE role IN ['user', 'assistant'] GROUP ALL",
     };
-    let mut total_result = db.query(&total_query).await?;
+    let mut total_result = db.query(total_query).bind(("conv_id", conv_bind.clone())).await?;
     let total_val: Option<serde_json::Value> = total_result.take(0)?;
     let total_messages = total_val
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
@@ -93,13 +94,10 @@ async fn get_embedding_index_status_inner(
 
     // Count embedded messages
     let embedded_query = match &conversation_id {
-        Some(conv_id) => format!(
-            "SELECT count() FROM message_embeddings WHERE conversation_id = type::thing('conversations', '{}') GROUP ALL",
-            conv_id
-        ),
-        None => "SELECT count() FROM message_embeddings GROUP ALL".to_string(),
+        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) GROUP ALL",
+        None => "SELECT count() FROM message_embeddings GROUP ALL",
     };
-    let mut embedded_result = db.query(&embedded_query).await?;
+    let mut embedded_result = db.query(embedded_query).bind(("conv_id", conv_bind.clone())).await?;
     let embedded_val: Option<serde_json::Value> = embedded_result.take(0)?;
     let embedded_messages = embedded_val
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
@@ -107,13 +105,10 @@ async fn get_embedding_index_status_inner(
 
     // Get the model used for existing embeddings (check first row)
     let model_query = match &conversation_id {
-        Some(conv_id) => format!(
-            "SELECT model_name FROM message_embeddings WHERE conversation_id = type::thing('conversations', '{}') LIMIT 1",
-            conv_id
-        ),
-        None => "SELECT model_name FROM message_embeddings LIMIT 1".to_string(),
+        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) LIMIT 1",
+        None => "SELECT model_name FROM message_embeddings LIMIT 1",
     };
-    let mut model_result = db.query(&model_query).await?;
+    let mut model_result = db.query(model_query).bind(("conv_id", conv_bind.clone())).await?;
 
     #[derive(serde::Deserialize)]
     struct ModelRow {
@@ -224,22 +219,18 @@ pub async fn rebuild_embedding_index(
 
     // Fetch all user/assistant messages in scope
     let messages_query = match &conversation_id {
-        Some(conv_id) => format!(
-            "SELECT id, conversation_id, content, created_at FROM messages \
-             WHERE conversation_id = type::thing('conversations', '{}') \
+        Some(_) => "SELECT id, conversation_id, content, created_at FROM messages \
+             WHERE conversation_id = type::thing('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              ORDER BY created_at",
-            conv_id
-        ),
-        None => {
-            "SELECT id, conversation_id, content, created_at FROM messages \
+        None => "SELECT id, conversation_id, content, created_at FROM messages \
              WHERE role IN ['user', 'assistant'] \
-             ORDER BY created_at"
-                .to_string()
-        }
+             ORDER BY created_at",
     };
 
-    let mut result = db.query(&messages_query).await?;
+    let mut result = db.query(messages_query)
+        .bind(("conv_id", conversation_id.clone().unwrap_or_default()))
+        .await?;
 
     #[derive(serde::Deserialize)]
     struct MsgRow {
@@ -279,15 +270,17 @@ pub async fn rebuild_embedding_index(
                 for (msg, embedding) in chunk.iter().zip(embeddings.iter()) {
                     let msg_id = msg.id.id.to_raw();
                     let conv_id = msg.conversation_id.id.to_raw();
-                    let _ = EmbeddingRepo::store(
+                    if let Err(e) = EmbeddingRepo::store(
                         &db,
                         &msg_id,
                         &conv_id,
                         embedding,
                         &embedding_model,
                         None, // character_id — not available during bulk rebuild
-                    )
-                    .await;
+                    ).await {
+                        tracing::warn!("[rebuild_index] Failed to store embedding for message {}: {}", msg_id, e);
+                        continue;
+                    }
                     embedded += 1;
                 }
             }
@@ -335,15 +328,14 @@ pub async fn backfill_missing_embeddings(
     let provider = create_rig_provider(&provider_config)?;
 
     // Two-query approach: SurrealDB subqueries with NOT IN are unreliable.
+    let conv_bind = conversation_id.clone().unwrap_or_default();
+
     // 1) Get all already-embedded message IDs
     let embedded_ids_query = match &conversation_id {
-        Some(conv_id) => format!(
-            "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', '{}')",
-            conv_id
-        ),
-        None => "SELECT VALUE message_id FROM message_embeddings".to_string(),
+        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id)",
+        None => "SELECT VALUE message_id FROM message_embeddings",
     };
-    let mut embedded_result = db.query(&embedded_ids_query).await?;
+    let mut embedded_result = db.query(embedded_ids_query).bind(("conv_id", conv_bind.clone())).await?;
     let embedded_things: Vec<surrealdb::sql::Thing> = embedded_result.take(0).unwrap_or_default();
     let embedded_ids: std::collections::HashSet<String> = embedded_things
         .into_iter()
@@ -352,22 +344,18 @@ pub async fn backfill_missing_embeddings(
 
     // 2) Get all user/assistant messages
     let all_msgs_query = match &conversation_id {
-        Some(conv_id) => format!(
-            "SELECT id, conversation_id, character_id, content, created_at FROM messages \
-             WHERE conversation_id = type::thing('conversations', '{}') \
+        Some(_) => "SELECT id, conversation_id, character_id, content, created_at FROM messages \
+             WHERE conversation_id = type::thing('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              AND content != '' \
              ORDER BY created_at",
-            conv_id
-        ),
         None => "SELECT id, conversation_id, character_id, content, created_at FROM messages \
              WHERE role IN ['user', 'assistant'] \
              AND content != '' \
-             ORDER BY created_at"
-            .to_string(),
+             ORDER BY created_at",
     };
 
-    let mut result = db.query(&all_msgs_query).await?;
+    let mut result = db.query(all_msgs_query).bind(("conv_id", conv_bind)).await?;
 
     #[derive(serde::Deserialize)]
     struct MsgRow {
@@ -413,15 +401,17 @@ pub async fn backfill_missing_embeddings(
                     let msg_id = msg.id.id.to_raw();
                     let conv_id = msg.conversation_id.id.to_raw();
                     let char_id = msg.character_id.as_ref().map(|c| c.id.to_raw());
-                    let _ = EmbeddingRepo::store(
+                    if let Err(e) = EmbeddingRepo::store(
                         &db,
                         &msg_id,
                         &conv_id,
                         embedding,
                         &embedding_model,
                         char_id.as_deref(),
-                    )
-                    .await;
+                    ).await {
+                        tracing::warn!("[backfill] Failed to store embedding for message {}: {}", msg_id, e);
+                        continue;
+                    }
                     embedded += 1;
                 }
                 // Notify frontend after each batch

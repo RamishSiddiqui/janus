@@ -37,27 +37,24 @@ impl SummaryRepo {
         token_count: u32,
         window_start_message_id: Option<&str>,
     ) -> Result<(), MythicError> {
-        let window_start_expr = match window_start_message_id {
-            Some(id) => format!("type::thing('messages', '{}')", id),
-            None => "NONE".to_string(),
-        };
+        let window_start_thing = window_start_message_id
+            .map(|id| surrealdb::sql::Thing::from(("messages", id)));
 
-        let query = format!(
+        db.query(
             "UPSERT conversation_summaries SET \
                 conversation_id = type::thing('conversations', $conv_id), \
                 summary_text = $text, \
                 covered_message_count = $count, \
                 token_count = $tokens, \
-                window_start_message_id = {window_start_expr}, \
+                window_start_message_id = $window_start, \
                 updated_at = time::now() \
              WHERE conversation_id = type::thing('conversations', $conv_id)"
-        );
-
-        db.query(&query)
+        )
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("text", summary_text.to_string()))
             .bind(("count", covered_message_count as i64))
             .bind(("tokens", token_count as i64))
+            .bind(("window_start", window_start_thing))
             .await?;
 
         Ok(())

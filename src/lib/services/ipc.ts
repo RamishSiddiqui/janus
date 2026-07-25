@@ -690,6 +690,12 @@ export interface Memory {
   version: number;
   is_canon: boolean;
   created_at: string;
+  /** Manual importance tier (1-10, default 5/neutral) weighting retrieval ranking. */
+  importance: number;
+  /** When this memory was last surfaced via retrieval, if ever. */
+  last_accessed: string | null;
+  /** How many times this memory has been surfaced via retrieval. */
+  access_count: number;
 }
 
 /**
@@ -754,6 +760,11 @@ export async function createMemory(
 
 export async function updateMemory(memoryId: string, content: string): Promise<Memory> {
   return safeInvoke<Memory>('update_memory', { memoryId, content });
+}
+
+/** Sets a memory's importance tier (1-10), weighting retrieval ranking alongside relevance and recency. */
+export async function setMemoryImportance(memoryId: string, importance: number): Promise<Memory> {
+  return safeInvoke<Memory>('set_memory_importance', { memoryId, importance });
 }
 
 export async function deleteMemory(memoryId: string): Promise<void> {

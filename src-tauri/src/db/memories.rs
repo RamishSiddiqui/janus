@@ -157,6 +157,29 @@ impl MemoryRepo {
         updated.ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))
     }
 
+    /// Bumps a memory's access tracking — call (best-effort, fire-and-forget)
+    /// whenever a memory is actually surfaced to the LLM via retrieval, so
+    /// frequently-relevant memories accrue a recency signal over time.
+    pub async fn bump_access(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
+        db.query("UPDATE type::thing('memories', $id) SET access_count += 1, last_accessed = time::now()")
+            .bind(("id", id.to_string()))
+            .await?;
+        Ok(())
+    }
+
+    /// Sets a memory's importance tier (clamped to 1-10). Used to weight
+    /// retrieval ranking independently of semantic relevance.
+    pub async fn set_importance(db: &Surreal<Db>, id: &str, importance: i32) -> Result<Memory, MythicError> {
+        let clamped = importance.clamp(1, 10);
+        let mut result = db
+            .query("UPDATE type::thing('memories', $id) SET importance = $importance")
+            .bind(("id", id.to_string()))
+            .bind(("importance", clamped))
+            .await?;
+        let updated: Option<Memory> = result.take(0)?;
+        updated.ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))
+    }
+
     /// Deletes a memory.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         let result: Option<Memory> = db.delete(("memories", id)).await?;

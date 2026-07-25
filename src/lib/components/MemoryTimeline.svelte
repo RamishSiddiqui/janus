@@ -438,9 +438,13 @@
               <div class="mem-cell" style="margin-left: var(--lane-offset); width: var(--lane-width);">
                 <div class="mem-dot" style="background: {color}; box-shadow: 0 0 8px {color}44;"></div>
                 <div class="mem-card" class:mem-group={group.isGroup} class:is-expanded={group.isGroup && isExpanded} class:is-selected={selectedMemory?.id === primary.memory.id}>
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div class="card-click-target" onclick={() => handleMemoryClick(primary, group)}>
+                  <div
+                    class="card-click-target"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => handleMemoryClick(primary, group)}
+                    onkeydown={(e) => e.key === 'Enter' && handleMemoryClick(primary, group)}
+                  >
                   <div class="card-accent" style="background: linear-gradient(180deg, {color}, {color}33);"></div>
                   <div class="card-inner">
                     <!-- Primary (first) memory — always visible -->
@@ -466,9 +470,14 @@
                       <div class="group-expand-wrap" class:expanded={isExpanded}>
                         {#each group.memories.slice(1) as item (item.memory.id)}
                           <div class="group-divider"></div>
-                          <!-- svelte-ignore a11y_click_events_have_key_events -->
-                          <!-- svelte-ignore a11y_no_static_element_interactions -->
-                          <div class="group-child-click" class:child-selected={selectedMemory?.id === item.memory.id} onclick={(e) => { e.stopPropagation(); handleMemoryClick(item, group); }}>
+                          <div
+                            class="group-child-click"
+                            class:child-selected={selectedMemory?.id === item.memory.id}
+                            role="button"
+                            tabindex="0"
+                            onclick={(e) => { e.stopPropagation(); handleMemoryClick(item, group); }}
+                            onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleMemoryClick(item, group); } }}
+                          >
                           <div class="card-head">
                             <span class="cat-icon">{item.categoryIcon}</span>
                             <span class="card-content">{item.content}</span>

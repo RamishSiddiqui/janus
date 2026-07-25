@@ -6,14 +6,13 @@
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
-use crate::context::rag::embed_memory;
 use crate::db::embeddings::EmbeddingRepo;
 use crate::db::memories::MemoryRepo;
 use crate::error::MythicError;
 use crate::models::memory::{Memory, MemoryGraph, MemoryLink};
-use crate::commands::chat::{get_default_llm_provider, create_rig_provider};
+use crate::commands::chat::spawn_embed_memory;
 use crate::AppState;
 
 /// Lists memories for a character and/or conversation.
@@ -58,24 +57,7 @@ pub async fn create_memory(
 
     // Background: embed memory for semantic retrieval
     if let Some(ref char_id) = character_id {
-        let db_embed = db.clone();
-        let mem_id = memory.id.id.to_raw();
-        let mem_content = content.clone();
-        let char_id_owned = char_id.clone();
-        tokio::spawn(async move {
-            if let Ok(pc) = get_default_llm_provider(&db_embed).await {
-                if let Ok(provider) = create_rig_provider(&pc) {
-                    let embed_model = pc.config
-                        .get("embedding_model")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("text-embedding-3-small");
-                    let _ = embed_memory(
-                        &db_embed, &provider, embed_model,
-                        &mem_id, &char_id_owned, &mem_content,
-                    ).await;
-                }
-            }
-        });
+        spawn_embed_memory(db.clone(), memory.id.id.to_raw(), char_id.clone(), content.clone());
     }
 
     Ok(memory)
@@ -98,29 +80,28 @@ pub async fn update_memory(
 
     // Re-embed: delete old embedding, then create new one with updated content
     if let Some(ref char_id) = memory.character_id {
-        let db_embed = db.clone();
-        let mem_id = memory_id.clone();
-        let mem_content = content.clone();
-        let char_id_owned = char_id.id.to_raw();
         // Delete old embedding first
-        let _ = EmbeddingRepo::delete_memory_embedding(&db, &memory_id).await;
-        tokio::spawn(async move {
-            if let Ok(pc) = get_default_llm_provider(&db_embed).await {
-                if let Ok(provider) = create_rig_provider(&pc) {
-                    let embed_model = pc.config
-                        .get("embedding_model")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("text-embedding-3-small");
-                    let _ = embed_memory(
-                        &db_embed, &provider, embed_model,
-                        &mem_id, &char_id_owned, &mem_content,
-                    ).await;
-                }
-            }
-        });
+        if let Err(e) = EmbeddingRepo::delete_memory_embedding(&db, &memory_id).await {
+            warn!("Failed to delete stale embedding for memory {}: {}", memory_id, e);
+        }
+        spawn_embed_memory(db.clone(), memory_id.clone(), char_id.id.to_raw(), content.clone());
     }
 
     Ok(memory)
+}
+
+/// Sets a memory's importance tier (1-10), used to weight retrieval ranking
+/// alongside semantic relevance and recency.
+#[tauri::command]
+pub async fn set_memory_importance(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    memory_id: String,
+    importance: i32,
+) -> Result<Memory, MythicError> {
+    let state = state.read().await;
+    let updated = MemoryRepo::set_importance(&state.db, &memory_id, importance).await?;
+    info!("Set memory {} importance to {}", memory_id, updated.importance);
+    Ok(updated)
 }
 
 /// Deletes a memory entry.
@@ -132,7 +113,9 @@ pub async fn delete_memory(
     let state = state.read().await;
     MemoryRepo::delete(&state.db, &memory_id).await?;
     // Also delete the embedding if it exists
-    let _ = EmbeddingRepo::delete_memory_embedding(&state.db, &memory_id).await;
+    if let Err(e) = EmbeddingRepo::delete_memory_embedding(&state.db, &memory_id).await {
+        warn!("Failed to delete embedding for memory {}: {}", memory_id, e);
+    }
     info!("Deleted memory: {}", memory_id);
     Ok(())
 }
