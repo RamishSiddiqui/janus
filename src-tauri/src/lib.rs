@@ -100,6 +100,11 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::embeddings::backfill_missing_embeddings,
             commands::import::import_character_card,
             commands::import::get_avatar_path,
+            commands::chat::send_message,
+            commands::chat::retry_failed_message,
+            commands::chat::regenerate_message,
+            commands::chat::generate_raw,
+            commands::chat::get_context_stats,
         ])
 }
 

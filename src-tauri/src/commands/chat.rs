@@ -53,6 +53,7 @@ struct StreamEvent {
 /// 3. Streams the response from the active LLM provider
 /// 4. Saves the completed AI response to the database
 #[tauri::command]
+#[specta::specta]
 pub async fn send_message(
     app: tauri::AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -62,7 +63,7 @@ pub async fn send_message(
     system_prompt: Option<String>,
     streaming: Option<bool>,
     post_history_instructions: Option<String>,
-) -> Result<serde_json::Value, MythicError> {
+) -> Result<SendMessageResult, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
     let _http = state_guard.http_client.clone(); // retained for image providers
@@ -479,10 +480,10 @@ pub async fn send_message(
         }
     });
 
-    Ok(serde_json::json!({
-        "user_message_id": user_msg_id,
-        "assistant_message_id": assistant_msg_id,
-    }))
+    Ok(SendMessageResult {
+        user_message_id: user_msg_id,
+        assistant_message_id: assistant_msg_id,
+    })
     } else {
         // --- Non-streaming path ---
         let provider = create_rig_provider(&provider_config)?;
@@ -521,10 +522,10 @@ pub async fn send_message(
             }
         }
 
-        Ok(serde_json::json!({
-            "user_message_id": user_msg_id,
-            "assistant_message_id": assistant_msg_id,
-        }))
+        Ok(SendMessageResult {
+            user_message_id: user_msg_id,
+            assistant_message_id: assistant_msg_id,
+        })
     }
 }
 
@@ -533,6 +534,7 @@ pub async fn send_message(
 /// creates a fresh one, and re-triggers LLM generation. This avoids duplicating
 /// the user message in both the UI and database.
 #[tauri::command]
+#[specta::specta]
 pub async fn retry_failed_message(
     app: tauri::AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -542,7 +544,7 @@ pub async fn retry_failed_message(
     system_prompt: Option<String>,
     streaming: Option<bool>,
     post_history_instructions: Option<String>,
-) -> Result<serde_json::Value, MythicError> {
+) -> Result<SendMessageResult, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
     drop(state_guard);
@@ -698,15 +700,16 @@ pub async fn retry_failed_message(
         }
     }
 
-    Ok(serde_json::json!({
-        "user_message_id": user_message_id,
-        "assistant_message_id": assistant_msg_id,
-    }))
+    Ok(SendMessageResult {
+        user_message_id: user_message_id,
+        assistant_message_id: assistant_msg_id,
+    })
 }
 
 /// Regenerates the AI response for a given message by re-running generation
 /// from the same parent point in the conversation tree.
 #[tauri::command]
+#[specta::specta]
 pub async fn regenerate_message(
     app: tauri::AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -716,7 +719,7 @@ pub async fn regenerate_message(
     system_prompt: Option<String>,
     streaming: Option<bool>,
     post_history_instructions: Option<String>,
-) -> Result<serde_json::Value, MythicError> {
+) -> Result<SendMessageResult, MythicError> {
     let state_guard = state.read().await;
     let db = state_guard.db.clone();
 
@@ -753,9 +756,18 @@ pub async fn regenerate_message(
 
 // --- Internal helpers ---
 
+/// The IDs of the user/assistant message pair created by `send_message`,
+/// `retry_failed_message`, or `regenerate_message` — the frontend uses
+/// these to attach the streamed response to the right message bubbles.
+#[derive(Clone, Debug, serde::Serialize, specta::Type)]
+pub struct SendMessageResult {
+    pub user_message_id: String,
+    pub assistant_message_id: String,
+}
+
 /// Statistics about the context window for observability.
 /// Returned alongside the prompt so callers can log/surface token usage.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct ContextStats {
     /// Total token budget for the context window.
     pub total_budget: usize,
@@ -1857,6 +1869,7 @@ pub(crate) fn spawn_embed_memory(
 /// anything to the database. Used by internal pipelines (memory extraction,
 /// summarization) that need LLM inference without polluting conversations.
 #[tauri::command]
+#[specta::specta]
 pub async fn generate_raw(
     state: State<'_, Arc<RwLock<AppState>>>,
     system_prompt: String,
@@ -1899,6 +1912,7 @@ pub async fn generate_raw(
 /// Returns context window statistics for a conversation.
 /// Used by the frontend to display token usage and context budget info.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_context_stats(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
