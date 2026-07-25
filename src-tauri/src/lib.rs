@@ -40,6 +40,8 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::list_characters,
             commands::characters::update_character,
             commands::characters::delete_character,
+            commands::character_state::get_character_state,
+            commands::character_state::upsert_character_state,
         ])
 }
 

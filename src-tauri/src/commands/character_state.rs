@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 use tauri::State;
 use tokio::sync::RwLock;
@@ -11,13 +12,16 @@ use crate::error::MythicError;
 use crate::AppState;
 
 /// The persisted emotional state of a character within one conversation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CharacterState {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub character_id: Thing,
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub conversation_id: Thing,
     /// 0 = devastated, 50 = neutral, 100 = elated
     pub mood: i32,
@@ -35,6 +39,7 @@ pub struct CharacterState {
 /// Returns the current emotional state for a character in a conversation.
 /// Returns `None` if no state has been recorded yet (first turn).
 #[tauri::command]
+#[specta::specta]
 pub async fn get_character_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id:    String,
@@ -47,6 +52,7 @@ pub async fn get_character_state(
 /// Upserts the emotional state for a character in a conversation.
 /// All integer axes are clamped to [0, 100].
 #[tauri::command]
+#[specta::specta]
 pub async fn upsert_character_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id:     String,
