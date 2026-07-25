@@ -86,6 +86,7 @@ fn extract_chara_from_png(png_bytes: &[u8]) -> Result<String, MythicError> {
 /// 5. Save the character to the database
 /// 6. Copy the PNG as the character's avatar
 #[tauri::command]
+#[specta::specta]
 pub async fn import_character_card(
     app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -157,6 +158,7 @@ pub async fn import_character_card(
 /// Serves an avatar image from the app data directory.
 /// Returns the absolute path to the avatar file for the frontend to load.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_avatar_path(
     app: AppHandle,
     avatar_relative: String,

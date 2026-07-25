@@ -98,6 +98,8 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::embeddings::get_embedding_index_status,
             commands::embeddings::rebuild_embedding_index,
             commands::embeddings::backfill_missing_embeddings,
+            commands::import::import_character_card,
+            commands::import::get_avatar_path,
         ])
 }
 
