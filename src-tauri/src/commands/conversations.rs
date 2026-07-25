@@ -10,6 +10,7 @@ use crate::AppState;
 
 /// Creates a new conversation for a character.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: Option<String>,
@@ -28,6 +29,7 @@ pub async fn create_conversation(
 
 /// Retrieves a single conversation by ID.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -38,6 +40,7 @@ pub async fn get_conversation(
 
 /// Lists conversations with pagination, ordered by most recently updated.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_conversations(
     state: State<'_, Arc<RwLock<AppState>>>,
     limit: Option<u32>,
@@ -61,6 +64,7 @@ pub async fn list_conversations(
 
 /// Returns the total number of conversations (for pagination).
 #[tauri::command]
+#[specta::specta]
 pub async fn count_conversations(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<u32, MythicError> {
@@ -80,6 +84,7 @@ pub async fn count_conversations(
 
 /// Deletes a conversation and all its messages (cascade).
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -93,6 +98,7 @@ pub async fn delete_conversation(
 /// Retrieves all messages in a conversation, ordered chronologically.
 /// Returns the linear message chain following the active branch.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_conversation_messages(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -103,6 +109,7 @@ pub async fn get_conversation_messages(
 
 /// Updates the active message pointer for branch navigation.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_active_message(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -114,6 +121,7 @@ pub async fn set_active_message(
 
 /// Updates a conversation's title.
 #[tauri::command]
+#[specta::specta]
 pub async fn update_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -127,6 +135,7 @@ pub async fn update_conversation(
 
 /// Updates the memory scope for a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_memory_scope(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -157,6 +166,7 @@ pub async fn set_memory_scope(
 /// All memories from the parent conversation are bulk-copied into the new conversation
 /// using `copy` links, which render as dashed arrows in MemoryGraph/MemoryTimeline.
 #[tauri::command]
+#[specta::specta]
 pub async fn branch_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     parent_conversation_id: String,
@@ -178,6 +188,7 @@ pub async fn branch_conversation(
 /// Returns results with highlighted snippets, conversation titles,
 /// and character names for display in the search overlay.
 #[tauri::command]
+#[specta::specta]
 pub async fn search_messages(
     state: State<'_, Arc<RwLock<AppState>>>,
     query: String,

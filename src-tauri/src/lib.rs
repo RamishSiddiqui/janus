@@ -42,6 +42,22 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::delete_character,
             commands::character_state::get_character_state,
             commands::character_state::upsert_character_state,
+            commands::conversations::create_conversation,
+            commands::conversations::get_conversation,
+            commands::conversations::list_conversations,
+            commands::conversations::count_conversations,
+            commands::conversations::delete_conversation,
+            commands::conversations::get_conversation_messages,
+            commands::conversations::set_active_message,
+            commands::conversations::update_conversation,
+            commands::conversations::set_memory_scope,
+            commands::conversations::branch_conversation,
+            commands::conversations::search_messages,
+            commands::messages::create_message,
+            commands::messages::update_message,
+            commands::messages::delete_message,
+            commands::messages::get_message_branch,
+            commands::messages::get_message_siblings,
         ])
 }
 

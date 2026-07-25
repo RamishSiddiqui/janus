@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 
 /// The role of a message sender in a conversation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum MessageRole {
     /// Message from the user
@@ -17,11 +18,13 @@ pub enum MessageRole {
 ///
 /// Messages form a tree structure via `parent_id` to support
 /// conversation branching (forking from any point in history).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Message {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub conversation_id: Thing,
     pub role: MessageRole,
     pub content: String,
@@ -29,6 +32,7 @@ pub struct Message {
     /// Parent message ID — enables conversation branching.
     /// If None, this is a root message.
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub parent_id: Option<Thing>,
 
     /// JSON metadata for attached images, generation params, etc.
@@ -37,6 +41,7 @@ pub struct Message {
     /// Character who sent this message (for multi-character conversations).
     /// None for user messages and single-character conversations.
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
     /// Denormalized character name for display (avoids extra lookups).
     #[serde(default)]
@@ -51,7 +56,7 @@ pub struct Message {
 ///
 /// Contains the matched message plus context about the conversation
 /// and character it belongs to, along with a highlighted snippet.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SearchResult {
     pub message_id: String,
     pub conversation_id: String,
@@ -66,18 +71,21 @@ pub struct SearchResult {
 }
 
 /// A conversation session between the user and a character.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Conversation {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     pub title: String,
 
     /// The character associated with this conversation
     #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
 
     /// ID of the active (latest) message in the current branch
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub active_message_id: Option<Thing>,
 
     /// Controls how auto-extracted memories are scoped:
@@ -92,10 +100,12 @@ pub struct Conversation {
 
     /// If this conversation was forked from another, this points to the parent conversation.
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub parent_conversation_id: Option<Thing>,
 
     /// The exact message in the parent conversation where the fork happened.
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
     pub branch_point_message_id: Option<Thing>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
@@ -108,7 +118,7 @@ fn default_memory_scope() -> String {
 }
 
 /// Parameters controlling LLM text generation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct GenerationParams {
     /// Maximum tokens to generate
     #[serde(default = "default_max_tokens")]
@@ -161,7 +171,7 @@ fn default_top_p() -> f32 {
 }
 
 /// A chat message in the OpenAI-compatible format used for API calls.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,

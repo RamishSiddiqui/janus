@@ -10,6 +10,7 @@ use crate::AppState;
 
 /// Creates a new message in a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_message(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -40,6 +41,7 @@ pub async fn create_message(
 
 /// Updates a message's content (for edits).
 #[tauri::command]
+#[specta::specta]
 pub async fn update_message(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -53,6 +55,7 @@ pub async fn update_message(
 
 /// Deletes a message by ID.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_message(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -66,6 +69,7 @@ pub async fn delete_message(
 /// Walks the parent_id chain to reconstruct the linear message history
 /// from root to the given message. Used for building the LLM prompt.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_message_branch(
     state: State<'_, Arc<RwLock<AppState>>>,
     message_id: String,
@@ -77,6 +81,7 @@ pub async fn get_message_branch(
 /// Returns all sibling messages (messages sharing the same parent_id).
 /// Used for branch navigation — shows alternates at the same conversation point.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_message_siblings(
     state: State<'_, Arc<RwLock<AppState>>>,
     message_id: String,
