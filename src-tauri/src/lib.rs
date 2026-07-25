@@ -35,6 +35,11 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             get_app_info,
+            commands::characters::create_character,
+            commands::characters::get_character,
+            commands::characters::list_characters,
+            commands::characters::update_character,
+            commands::characters::delete_character,
         ])
 }
 

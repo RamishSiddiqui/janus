@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 
 /// Character Card V2 specification — the community standard for
@@ -148,9 +149,10 @@ fn default_priority() -> i32 {
 
 /// Database representation of a character.
 /// Stores the full V2 JSON in the `data` field as a native JSON object in SurrealDB.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Character {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     pub name: String,
     pub spec: String,

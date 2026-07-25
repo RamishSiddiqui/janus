@@ -10,6 +10,7 @@ use crate::AppState;
 
 /// Creates a new character from a Character Card V2 payload.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     name: String,
@@ -24,6 +25,7 @@ pub async fn create_character(
 
 /// Retrieves a single character by ID.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -37,6 +39,7 @@ pub async fn get_character(
 
 /// Lists all characters, ordered by most recently updated.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_characters(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<Character>, MythicError> {
@@ -46,6 +49,7 @@ pub async fn list_characters(
 
 /// Updates an existing character's data.
 #[tauri::command]
+#[specta::specta]
 pub async fn update_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
@@ -74,6 +78,7 @@ pub async fn update_character(
 
 /// Deletes a character by ID. Cascades are handled by SurrealDB events.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,

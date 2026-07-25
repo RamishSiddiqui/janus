@@ -38,7 +38,7 @@ reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], defau
 surrealdb = { version = "2", features = ["kv-rocksdb"] }
 
 # Rust -> TypeScript type generation for the Tauri IPC boundary
-specta = { version = "2.0.0-rc", features = ["derive"] }
+specta = { version = "2.0.0-rc", features = ["derive", "serde_json"] }
 specta-typescript = "0.0.12"
 tauri-specta = { version = "2.0.0-rc", features = ["derive", "typescript"] }
 
