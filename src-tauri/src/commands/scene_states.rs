@@ -12,6 +12,7 @@ use crate::AppState;
 /// Returns the current scene state for a conversation.
 /// Returns `None` if no scene state has been established yet.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_scene_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -23,6 +24,7 @@ pub async fn get_scene_state(
 /// Manually upserts the scene state for a conversation.
 /// Used by the frontend for manual overrides.
 #[tauri::command]
+#[specta::specta]
 pub async fn upsert_scene_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -51,6 +53,7 @@ pub async fn upsert_scene_state(
 
 /// Deletes the scene state for a conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_scene_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,

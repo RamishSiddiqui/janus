@@ -1,14 +1,17 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use surrealdb::sql::Thing;
 
 /// Dynamic scene state for a conversation — tracks location, time, weather,
 /// characters present, and ambient atmosphere. Updated automatically after
 /// each AI response via the scene extraction engine.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SceneState {
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub id: Thing,
     #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[specta(type = String)]
     pub conversation_id: Thing,
     pub location_name: String,
     pub location_description: String,

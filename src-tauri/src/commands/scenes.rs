@@ -26,6 +26,7 @@ use crate::AppState;
 /// 3. Saves the resulting PNG to `scenes/{id}.png`
 /// 4. Creates a database record linking the scene to the conversation
 #[tauri::command]
+#[specta::specta]
 pub async fn generate_scene(
     app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -165,6 +166,7 @@ pub async fn generate_scene(
 
 /// Lists all scenes for a given conversation.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_scenes(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
@@ -175,6 +177,7 @@ pub async fn list_scenes(
 
 /// Deletes a scene and its media file.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_scene(
     app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -206,6 +209,7 @@ pub async fn delete_scene(
 
 /// Returns the absolute file path for a scene's media file.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_scene_path(
     app: AppHandle,
     file_relative: String,

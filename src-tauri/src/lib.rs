@@ -83,6 +83,13 @@ pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::memories::share_memory,
             commands::memories::unlink_memory,
             commands::memories::get_memory_graph,
+            commands::scenes::generate_scene,
+            commands::scenes::list_scenes,
+            commands::scenes::delete_scene,
+            commands::scenes::get_scene_path,
+            commands::scene_states::get_scene_state,
+            commands::scene_states::upsert_scene_state,
+            commands::scene_states::delete_scene_state,
         ])
 }
 
