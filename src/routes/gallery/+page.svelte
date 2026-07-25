@@ -7,6 +7,7 @@
   import { activeConversationId, loadConversations } from '$lib/stores/chat';
   import { success, error as toastError } from '$lib/stores/toast';
   import { parseCharacterData } from '$lib/utils/character';
+  import type { Character } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -245,7 +246,7 @@
 
     try {
       const ipc = await import('$lib/services/ipc');
-      let saved: { id: string; name: string; data: string; avatar_path: string | null };
+      let saved: Character;
 
       if (editingId) {
         saved = await ipc.updateCharacter(editingId, editorName, data);

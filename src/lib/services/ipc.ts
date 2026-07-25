@@ -8,13 +8,31 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type {
+  MythicError,
+  AppInfo,
+  Character_Serialize as Character,
+  Conversation_Serialize,
+  Message_Serialize as Message,
+  ProviderConfig_Serialize as ProviderConfig,
+  CharacterState_Serialize as CharacterState,
+  ModelEntry,
+  SendMessageResult,
+  ContextStats,
+  Scene_Serialize,
+  SceneState_Serialize as SceneState,
+  ConversationCharacter_Serialize as ConversationCharacter,
+  LorebookEntry_Serialize as LorebookEntry,
+  Memory_Serialize as Memory,
+  MemoryLink_Serialize,
+  MemoryGraphConversation,
+  SearchResult_Serialize as SearchResult,
+  EmbeddingIndexStatus as EmbeddingIndexStatusBinding,
+} from './bindings';
 
 // --- Error Handling ---
 
-export interface MythicError {
-  error: string;
-  message: string;
-}
+export type { MythicError };
 
 /** Wraps an invoke call with error normalization. */
 async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -31,52 +49,16 @@ async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promi
 
 // --- Types matching Rust models ---
 
-export interface Character {
-  id: string;
-  name: string;
-  spec: string;
-  data: string;
-  avatar_path: string | null;
-  created_at: string;
-  updated_at: string;
-}
+export type { Character };
 
-export interface Conversation {
-  id: string;
-  title: string;
-  character_id: string | null;
-  active_message_id: string | null;
-  /** 'character' (shared) | 'conversation' (isolated) | 'none' (disabled) */
+/** 'character' (shared) | 'conversation' (isolated) | 'none' (disabled) */
+export type Conversation = Omit<Conversation_Serialize, 'memory_scope'> & {
   memory_scope: 'character' | 'conversation' | 'none';
-  shared_character_ids: string | null;
-  /** Set if this conversation was branched from another. */
-  parent_conversation_id: string | null;
-  /** The exact message in the parent conversation where the fork happened. */
-  branch_point_message_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
+};
 
-export interface Message {
-  id: string;
-  conversation_id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  parent_id: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-  character_id?: string | null;
-  character_name?: string | null;
-}
+export type { Message };
 
-export interface ProviderConfig {
-  id: string;
-  name: string;
-  provider_type: 'llm' | 'image' | 'video';
-  adapter: string;
-  config: Record<string, unknown>;
-  is_default: boolean;
-}
+export type { ProviderConfig };
 
 export interface StreamEvent {
   event_type: 'delta' | 'done' | 'error';
@@ -84,11 +66,7 @@ export interface StreamEvent {
   message_id: string;
 }
 
-export interface AppInfo {
-  name: string;
-  version: string;
-  description: string;
-}
+export type { AppInfo };
 
 // --- App ---
 
@@ -211,17 +189,7 @@ export async function branchConversation(
 
 // --- Character State ---
 
-export interface CharacterState {
-  id:               string;
-  character_id:     string;
-  conversation_id:  string;
-  mood:             number;
-  trust:            number;
-  arousal:          number;
-  dominant_emotion: string;
-  state_summary:    string;
-  updated_at:       string;
-}
+export type { CharacterState };
 
 /** Returns the current emotional state for a character in a conversation, or null if not yet set. */
 export async function getCharacterState(
@@ -345,28 +313,7 @@ export async function listProviderModels(id: string): Promise<string[]> {
   return safeInvoke<string[]>('list_provider_models', { id });
 }
 
-export interface ModelEntry {
-  model_id: string;
-  provider_id: string;
-  provider_name: string;
-  adapter: string;
-  model_type: string;
-  context_length: number | null;
-  enabled: boolean;
-  // Rich metadata (populated from OpenRouter API)
-  display_name: string | null;
-  description: string | null;
-  pricing_prompt: string | null;
-  pricing_completion: string | null;
-  is_free: boolean;
-  max_completion_tokens: number | null;
-  input_modalities: string[];
-  output_modalities: string[];
-  supports_tools: boolean;
-  supports_vision: boolean;
-  supports_reasoning: boolean;
-  embedding_dimensions: number | null;
-}
+export type { ModelEntry };
 
 export async function listAllModels(): Promise<ModelEntry[]> {
   return safeInvoke<ModelEntry[]>('list_all_models');
@@ -393,10 +340,7 @@ export async function listEnabledModels(providerId?: string): Promise<ModelEntry
 
 // --- Chat ---
 
-export interface SendMessageResult {
-  user_message_id: string;
-  assistant_message_id: string;
-}
+export type { SendMessageResult };
 
 export async function sendMessage(
   conversationId: string,
@@ -471,15 +415,7 @@ export async function onChatStream(
 
 // --- Context Stats ---
 
-export interface ContextStats {
-  total_budget: number;
-  fixed_tokens: number;
-  history_tokens: number;
-  summary_tokens: number;
-  total_messages: number;
-  included_messages: number;
-  evicted_messages: number;
-}
+export type { ContextStats };
 
 export async function getContextStats(
   conversationId: string,
@@ -497,17 +433,9 @@ export async function getContextStats(
 
 // --- Scenes ---
 
-export interface Scene {
-  id: string;
-  conversation_id: string;
-  message_id: string | null;
+export type Scene = Omit<Scene_Serialize, 'media_type'> & {
   media_type: 'image' | 'video';
-  prompt: string;
-  file_path: string;
-  caption: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-}
+};
 
 export async function generateScene(
   conversationId: string,
@@ -543,18 +471,7 @@ export async function getScenePath(fileRelative: string): Promise<string> {
 
 // --- Scene State ---
 
-export interface SceneState {
-  id: string;
-  conversation_id: string;
-  location_name: string;
-  location_description: string;
-  time_period: string;
-  weather: string;
-  characters_present: string[];
-  ambient_details: string;
-  scene_mood: string;
-  updated_at: string;
-}
+export type { SceneState };
 
 export async function getSceneState(conversationId: string): Promise<SceneState | null> {
   return safeInvoke<SceneState | null>('get_scene_state', { conversationId });
@@ -582,16 +499,7 @@ export async function deleteSceneState(conversationId: string): Promise<void> {
 
 // --- Conversation Characters ---
 
-export interface ConversationCharacter {
-  id: string;
-  conversation_id: string;
-  character_id: string;
-  role: string;          // 'primary' | 'secondary' | 'npc'
-  talkativeness: number; // 0-100
-  is_active: boolean;
-  character_name: string;
-  created_at: string;
-}
+export type { ConversationCharacter };
 
 export async function listConversationCharacters(conversationId: string): Promise<ConversationCharacter[]> {
   return safeInvoke<ConversationCharacter[]>('list_conversation_characters', { conversationId });
@@ -638,17 +546,7 @@ export async function toggleCharacterActive(
 
 // --- Lorebook ---
 
-export interface LorebookEntry {
-  id: string;
-  character_id: string | null;
-  keys: string[];
-  content: string;
-  enabled: boolean;
-  always_active: boolean;
-  priority: number;
-  insertion_order: number;
-  name: string | null;
-}
+export type { LorebookEntry };
 
 export async function listLorebookEntries(characterId: string): Promise<LorebookEntry[]> {
   return safeInvoke<LorebookEntry[]>('list_lorebook_entries', { characterId });
@@ -680,49 +578,21 @@ export async function deleteLorebookEntry(id: string): Promise<void> {
 
 // --- Memories ---
 
-export interface Memory {
-  id: string;
-  character_id: string | null;
-  conversation_id: string | null;
-  content: string;
-  source: string;
-  parent_id: string | null;
-  version: number;
-  is_canon: boolean;
-  created_at: string;
-  /** Manual importance tier (1-10, default 5/neutral) weighting retrieval ranking. */
-  importance: number;
-  /** When this memory was last surfaced via retrieval, if ever. */
-  last_accessed: string | null;
-  /** How many times this memory has been surfaced via retrieval. */
-  access_count: number;
-}
+export type { Memory };
 
 /**
  * A link between a source memory and a target conversation.
  * Constraint: copy is always one_way; only sync can be two_way.
  */
-export interface MemoryLink {
-  id: string;
-  source_memory_id: string;
-  target_conversation_id: string;
+export type MemoryLink = Omit<MemoryLink_Serialize, 'link_type' | 'direction' | 'sync_mode'> & {
   /** 'copy' = frozen snapshot (always one_way), 'sync' = live link */
   link_type: 'copy' | 'sync';
   /** 'one_way' = source→target, 'two_way' = bidirectional (sync only) */
   direction: 'one_way' | 'two_way';
   sync_mode: 'auto' | 'manual';
-  linked_memory_id: string | null;
-  created_at: string;
-}
+};
 
-export interface MemoryGraphConversation {
-  id: string;
-  title: string;
-  character_id: string;
-  memory_count: number;
-  /** If this conversation was branched from another, this is the parent's ID. */
-  parent_conversation_id: string | null;
-}
+export type { MemoryGraphConversation };
 
 export interface MemoryGraph {
   character_id: string;
@@ -801,17 +671,7 @@ export async function getMemoryGraph(characterId: string): Promise<MemoryGraph> 
 
 // --- Search ---
 
-export interface SearchResult {
-  message_id: string;
-  conversation_id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  /** FTS5 snippet with <mark> tags around matched terms */
-  snippet: string;
-  conversation_title: string;
-  character_name: string | null;
-  created_at: string;
-}
+export type { SearchResult };
 
 /** Searches message content using FTS5 full-text search. */
 export async function searchMessages(query: string, limit?: number): Promise<SearchResult[]> {
@@ -842,19 +702,12 @@ export async function generateRaw(
 
 // --- Embedding Index ---
 
-export interface EmbeddingIndexStatus {
-  total_messages: number;
-  embedded_messages: number;
-  index_model: string | null;
-  needs_rebuild: boolean;
+/** `coverage_percent` is pinned back to non-null `number`: the backend field is a
+ *  plain (never-`Option`) `f64`, but specta conservatively types all floats as
+ *  `number | null` on export (NaN/Infinity aren't representable in JSON). */
+export type EmbeddingIndexStatus = Omit<EmbeddingIndexStatusBinding, 'coverage_percent'> & {
   coverage_percent: number;
-  /** Dimension of existing stored embeddings (null if none exist) */
-  index_dimension: number | null;
-  /** Dimension of the currently selected embedding model */
-  selected_dimension: number | null;
-  /** True when stored embeddings have different dimensions than the selected model */
-  dimension_mismatch: boolean;
-}
+};
 
 export async function getEmbeddingIndexStatus(
   conversationId?: string | null,
