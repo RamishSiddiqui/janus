@@ -775,6 +775,17 @@ pub struct ContextStats {
     pub rag_tokens: usize,
 }
 
+/// Formats a list of memory facts as a bulleted block under `header` —
+/// the shared shape behind every memory injection in `build_prompt()`
+/// (per-character, semantic, recency-fallback, and no-character paths).
+fn format_memory_block(header: &str, facts: &[String]) -> String {
+    format!(
+        "{}\n{}",
+        header,
+        facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n"),
+    )
+}
+
 /// Builds the full prompt by combining system prompt, character data,
 /// and conversation history. Now token-budgeted via sliding window.
 async fn build_prompt(
@@ -1052,13 +1063,9 @@ async fn build_prompt(
                                 .map(|m| m.content.clone())
                                 .collect();
 
-                            let memory_block = format!(
-                                "[{}'s Memories]\n{}",
-                                conv_char.character_name,
-                                facts.iter()
-                                    .map(|f| format!("• {}", f))
-                                    .collect::<Vec<_>>()
-                                    .join("\n")
+                            let memory_block = format_memory_block(
+                                &format!("[{}'s Memories]", conv_char.character_name),
+                                &facts,
                             );
                             prompt.push(ChatMessage {
                                 role: MessageRole::System,
@@ -1116,12 +1123,9 @@ async fn build_prompt(
                     }
 
                     if !memory_facts.is_empty() {
-                        let memory_block = format!(
-                            "[Remembered Facts — things you know from past interactions]\n{}",
-                            memory_facts.iter()
-                                .map(|f| format!("• {}", f))
-                                .collect::<Vec<_>>()
-                                .join("\n")
+                        let memory_block = format_memory_block(
+                            "[Remembered Facts — things you know from past interactions]",
+                            &memory_facts,
                         );
 
                         let memory_message = ChatMessage {
@@ -1138,12 +1142,9 @@ async fn build_prompt(
                             let mut facts = memory_facts;
                             while facts.len() > 1 {
                                 facts.pop();
-                                let truncated_block = format!(
-                                    "[Remembered Facts — things you know from past interactions]\n{}",
-                                    facts.iter()
-                                        .map(|f| format!("• {}", f))
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
+                                let truncated_block = format_memory_block(
+                                    "[Remembered Facts — things you know from past interactions]",
+                                    &facts,
                                 );
                                 let truncated_msg = ChatMessage {
                                     role: MessageRole::System,
@@ -1422,9 +1423,9 @@ async fn build_prompt(
                 if !memory_rows.is_empty() {
                     let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
                     facts.reverse();
-                    let memory_block = format!(
-                        "[Remembered Facts — things you know from past interactions]\n{}",
-                        facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n")
+                    let memory_block = format_memory_block(
+                        "[Remembered Facts — things you know from past interactions]",
+                        &facts,
                     );
                     let memory_message = ChatMessage {
                         role: MessageRole::System,
@@ -1583,9 +1584,9 @@ async fn build_prompt(
             if !memory_rows.is_empty() {
                 let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
                 facts.reverse();
-                let memory_block = format!(
-                    "[Remembered Facts — things you know from past interactions]\n{}",
-                    facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n")
+                let memory_block = format_memory_block(
+                    "[Remembered Facts — things you know from past interactions]",
+                    &facts,
                 );
                 prompt.push(ChatMessage {
                     role: MessageRole::System,
