@@ -158,13 +158,16 @@ pub struct Character {
     pub spec: String,
 
     /// Full Character Card V2 JSON, stored as native JSON in SurrealDB
+    #[specta(type = crate::models::JsonValue)]
     pub data: serde_json::Value,
 
     /// Path to the character's avatar image file (relative to app data dir)
     pub avatar_path: Option<String>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub updated_at: String,
 }
 

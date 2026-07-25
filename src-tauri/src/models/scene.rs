@@ -18,7 +18,9 @@ pub struct Scene {
     pub prompt: String,
     pub file_path: String,
     pub caption: Option<String>,
+    #[specta(type = Option<crate::models::JsonValue>)]
     pub metadata: Option<serde_json::Value>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
 }

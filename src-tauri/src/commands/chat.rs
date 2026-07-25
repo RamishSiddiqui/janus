@@ -770,20 +770,28 @@ pub struct SendMessageResult {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct ContextStats {
     /// Total token budget for the context window.
+    #[specta(type = u32)]
     pub total_budget: usize,
     /// Tokens used by fixed layers (system, character, lorebook, memories, emotion, PHI).
+    #[specta(type = u32)]
     pub fixed_tokens: usize,
     /// Tokens used by conversation history (after sliding window).
+    #[specta(type = u32)]
     pub history_tokens: usize,
     /// Tokens used by the rolling summary (0 if no summary yet).
+    #[specta(type = u32)]
     pub summary_tokens: usize,
     /// Total messages in the full conversation branch.
+    #[specta(type = u32)]
     pub total_messages: usize,
     /// Messages included in the sliding window.
+    #[specta(type = u32)]
     pub included_messages: usize,
     /// Messages evicted (not sent to the LLM).
+    #[specta(type = u32)]
     pub evicted_messages: usize,
     /// Tokens used by RAG-retrieved context (0 if RAG disabled or no results).
+    #[specta(type = u32)]
     pub rag_tokens: usize,
 }
 

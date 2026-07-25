@@ -6,6 +6,7 @@ use tracing::info;
 use crate::db::messages::MessageRepo;
 use crate::error::MythicError;
 use crate::models::conversation::Message;
+use crate::models::DynamicJson;
 use crate::AppState;
 
 /// Creates a new message in a conversation.
@@ -17,7 +18,7 @@ pub async fn create_message(
     role: String,
     content: String,
     parent_id: Option<String>,
-    metadata: Option<serde_json::Value>,
+    metadata: Option<DynamicJson>,
 ) -> Result<Message, MythicError> {
     let role_str = match role.as_str() {
         "user" | "assistant" | "system" => role.as_str(),
@@ -31,7 +32,7 @@ pub async fn create_message(
         role_str,
         &content,
         parent_id.as_deref(),
-        metadata,
+        metadata.map(|m| m.0),
     )
     .await?;
 

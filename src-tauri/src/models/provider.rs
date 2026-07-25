@@ -77,6 +77,7 @@ pub struct ProviderConfig {
     /// For OpenRouter: `{ "api_key": "sk-...", "model": "meta-llama/llama-4-maverick" }`
     /// For OpenAI-compat: `{ "base_url": "...", "api_key": "...", "model": "..." }`
     /// For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }`
+    #[specta(type = crate::models::JsonValue)]
     pub config: serde_json::Value,
 
     /// Whether this is the default provider for its type

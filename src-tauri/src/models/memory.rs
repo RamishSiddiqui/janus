@@ -31,6 +31,7 @@ pub struct Memory {
     /// Whether this is a character-level "canon" memory (trunk of the tree)
     pub is_canon: bool,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
 
     /// Manual importance tier (1-10, default 5/neutral) used to weight
@@ -41,6 +42,7 @@ pub struct Memory {
     /// if it has never been retrieved (including all rows predating this
     /// field, which are absent from storage rather than defaulted).
     #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+    #[specta(type = Option<String>)]
     pub last_accessed: Option<String>,
     /// How many times this memory has been surfaced via retrieval.
     #[serde(default)]
@@ -74,6 +76,7 @@ pub struct MemoryLink {
     #[specta(type = Option<String>)]
     pub linked_memory_id: Option<Thing>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
 }
 

@@ -26,6 +26,7 @@ pub struct SceneState {
     /// tense | calm | romantic | mysterious | dangerous | joyful | melancholic | neutral
     pub scene_mood: String,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub updated_at: String,
 }
 

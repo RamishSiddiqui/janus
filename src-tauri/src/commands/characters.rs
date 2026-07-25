@@ -6,6 +6,7 @@ use tracing::info;
 use crate::db::characters::CharacterRepo;
 use crate::error::{MythicError, validate_required_string};
 use crate::models::character::Character;
+use crate::models::DynamicJson;
 use crate::AppState;
 
 /// Creates a new character from a Character Card V2 payload.
@@ -14,11 +15,11 @@ use crate::AppState;
 pub async fn create_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     name: String,
-    data: serde_json::Value,
+    data: DynamicJson,
 ) -> Result<Character, MythicError> {
     validate_required_string("Character name", &name, 200)?;
     let state = state.read().await;
-    let character = CharacterRepo::create(&state.db, &name, data).await?;
+    let character = CharacterRepo::create(&state.db, &name, data.0).await?;
     info!("Created character: {} ({})", name, character.id);
     Ok(character)
 }
@@ -54,7 +55,7 @@ pub async fn update_character(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
     name: Option<String>,
-    data: Option<serde_json::Value>,
+    data: Option<DynamicJson>,
     avatar_path: Option<String>,
 ) -> Result<Character, MythicError> {
     if id.is_empty() {
@@ -68,7 +69,7 @@ pub async fn update_character(
         &state.db,
         &id,
         name.as_deref(),
-        data,
+        data.map(|d| d.0),
         avatar_path.as_deref(),
     )
     .await?;

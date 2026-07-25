@@ -25,5 +25,6 @@ pub struct ConversationCharacter {
     #[serde(default)]
     pub character_name: String,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
 }

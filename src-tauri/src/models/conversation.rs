@@ -36,6 +36,7 @@ pub struct Message {
     pub parent_id: Option<Thing>,
 
     /// JSON metadata for attached images, generation params, etc.
+    #[specta(type = Option<crate::models::JsonValue>)]
     pub metadata: Option<serde_json::Value>,
 
     /// Character who sent this message (for multi-character conversations).
@@ -48,6 +49,7 @@ pub struct Message {
     pub character_name: Option<String>,
 
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
 
 }
@@ -67,6 +69,7 @@ pub struct SearchResult {
     pub conversation_title: String,
     pub character_name: Option<String>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
 }
 
@@ -108,8 +111,10 @@ pub struct Conversation {
     #[specta(type = Option<String>)]
     pub branch_point_message_id: Option<Thing>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub created_at: String,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
+    #[specta(type = String)]
     pub updated_at: String,
 }
 

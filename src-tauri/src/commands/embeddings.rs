@@ -22,8 +22,10 @@ use super::chat::create_rig_provider;
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]
 pub struct EmbeddingIndexStatus {
     /// Total messages across all conversations (or in a specific one)
+    #[specta(type = u32)]
     pub total_messages: usize,
     /// Messages that have embeddings stored
+    #[specta(type = u32)]
     pub embedded_messages: usize,
     /// The model name used for existing embeddings (None if no embeddings exist)
     pub index_model: Option<String>,
@@ -32,8 +34,10 @@ pub struct EmbeddingIndexStatus {
     /// Percentage of messages embedded (0-100)
     pub coverage_percent: f64,
     /// Dimension of existing embeddings (None if no embeddings exist)
+    #[specta(type = Option<u32>)]
     pub index_dimension: Option<usize>,
     /// Dimension of the currently selected embedding model (from known dimensions map)
+    #[specta(type = Option<u32>)]
     pub selected_dimension: Option<usize>,
     /// Whether dimensions mismatch between stored and selected model
     pub dimension_mismatch: bool,

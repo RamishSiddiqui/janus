@@ -6,6 +6,7 @@ use tracing::info;
 use crate::db::providers::ProviderRepo;
 use crate::error::{MythicError, validate_required_string};
 use crate::models::provider::{ProviderAdapter, ProviderConfig, ProviderType};
+use crate::models::DynamicJson;
 use crate::AppState;
 
 /// Creates a new provider configuration.
@@ -16,7 +17,7 @@ pub async fn create_provider(
     name: String,
     provider_type: String,
     adapter: String,
-    config: serde_json::Value,
+    config: DynamicJson,
     is_default: Option<bool>,
 ) -> Result<ProviderConfig, MythicError> {
     validate_required_string("Provider name", &name, 100)?;
@@ -32,7 +33,7 @@ pub async fn create_provider(
         &name,
         &provider_type,
         &adapter,
-        config,
+        config.0,
         is_default,
     )
     .await?;
@@ -70,14 +71,14 @@ pub async fn update_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
     name: Option<String>,
-    config: Option<serde_json::Value>,
+    config: Option<DynamicJson>,
 ) -> Result<ProviderConfig, MythicError> {
     if let Some(ref name) = name {
         validate_required_string("Provider name", name, 100)?;
     }
 
     let state = state.read().await;
-    let provider = ProviderRepo::update(&state.db, &id, name.as_deref(), config).await?;
+    let provider = ProviderRepo::update(&state.db, &id, name.as_deref(), config.map(|c| c.0)).await?;
     info!("Updated provider: {}", id);
     Ok(provider)
 }
