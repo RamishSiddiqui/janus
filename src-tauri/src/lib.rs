@@ -31,7 +31,7 @@ pub struct AppState {
 /// generated `src/lib/services/bindings.ts`; the same list also becomes the
 /// Tauri invoke handler, so a command registered here doesn't need a
 /// separate `tauri::generate_handler!` entry.
-pub(crate) fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             get_app_info,
