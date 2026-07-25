@@ -13,7 +13,7 @@ export const commands = {
 	/**  Lists all characters, ordered by most recently updated. */
 	listCharacters: () => typedError<Character_Serialize[], MythicError>(__TAURI_INVOKE("list_characters")),
 	/**  Updates an existing character's data. */
-	updateCharacter: (id: string, name: string | null, data: "Null" | ({ Bool: boolean }) & { Array?: never; Number?: never; Object?: never; String?: never } | ({ Number: number | null }) & { Array?: never; Bool?: never; Object?: never; String?: never } | ({ String: string }) & { Array?: never; Bool?: never; Number?: never; Object?: never } | ({ Array: JsonValue[] }) & { Bool?: never; Number?: never; Object?: never; String?: never } | ({ Object: { [key in string]: JsonValue } }) & { Array?: never; Bool?: never; Number?: never; String?: never } | null, avatarPath: string | null) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("update_character", { id, name, data, avatarPath })),
+	updateCharacter: (id: string, name: string | null, data: "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue } | null, avatarPath: string | null) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("update_character", { id, name, data, avatarPath })),
 	/**  Deletes a character by ID. Cascades are handled by SurrealDB events. */
 	deleteCharacter: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_character", { id })),
 	/**
@@ -80,7 +80,7 @@ export const commands = {
 	 */
 	searchMessages: (query: string, limit: number | null) => typedError<SearchResult_Serialize[], MythicError>(__TAURI_INVOKE("search_messages", { query, limit })),
 	/**  Creates a new message in a conversation. */
-	createMessage: (conversationId: string, role: string, content: string, parentId: string | null, metadata: "Null" | ({ Bool: boolean }) & { Array?: never; Number?: never; Object?: never; String?: never } | ({ Number: number | null }) & { Array?: never; Bool?: never; Object?: never; String?: never } | ({ String: string }) & { Array?: never; Bool?: never; Number?: never; Object?: never } | ({ Array: JsonValue[] }) & { Bool?: never; Number?: never; Object?: never; String?: never } | ({ Object: { [key in string]: JsonValue } }) & { Array?: never; Bool?: never; Number?: never; String?: never } | null) => typedError<Message_Serialize, MythicError>(__TAURI_INVOKE("create_message", { conversationId, role, content, parentId, metadata })),
+	createMessage: (conversationId: string, role: string, content: string, parentId: string | null, metadata: "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue } | null) => typedError<Message_Serialize, MythicError>(__TAURI_INVOKE("create_message", { conversationId, role, content, parentId, metadata })),
 	/**  Updates a message's content (for edits). */
 	updateMessage: (id: string, content: string) => typedError<Message_Serialize, MythicError>(__TAURI_INVOKE("update_message", { id, content })),
 	/**  Deletes a message by ID. */
@@ -102,7 +102,7 @@ export const commands = {
 	/**  Lists all providers, optionally filtered by type. */
 	listProviders: (providerType: string | null) => typedError<ProviderConfig_Serialize[], MythicError>(__TAURI_INVOKE("list_providers", { providerType })),
 	/**  Updates an existing provider configuration. */
-	updateProvider: (id: string, name: string | null, config: "Null" | ({ Bool: boolean }) & { Array?: never; Number?: never; Object?: never; String?: never } | ({ Number: number | null }) & { Array?: never; Bool?: never; Object?: never; String?: never } | ({ String: string }) & { Array?: never; Bool?: never; Number?: never; Object?: never } | ({ Array: JsonValue[] }) & { Bool?: never; Number?: never; Object?: never; String?: never } | ({ Object: { [key in string]: JsonValue } }) & { Array?: never; Bool?: never; Number?: never; String?: never } | null) => typedError<ProviderConfig_Serialize, MythicError>(__TAURI_INVOKE("update_provider", { id, name, config })),
+	updateProvider: (id: string, name: string | null, config: "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue } | null) => typedError<ProviderConfig_Serialize, MythicError>(__TAURI_INVOKE("update_provider", { id, name, config })),
 	/**  Deletes a provider configuration. */
 	deleteProvider: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_provider", { id })),
 	/**  Sets a provider as the default for its type. Unsets all others of the same type. */
@@ -543,8 +543,18 @@ export type EmbeddingIndexStatus = {
  *  type by the derive macro, so the recursion terminates correctly. The
  *  actual Rust field stays `serde_json::Value`; this type only stands in for
  *  specta's reflection.
+ * 
+ *  `#[serde(untagged)]` is required so the exported TS type matches the real
+ *  wire shape: `serde_json::Value` serializes as plain JSON (a bare number,
+ *  string, object, etc.), not as a `{ "Bool": true }`-style tagged variant.
+ *  Without it, specta falls back to externally-tagged rendering, producing a
+ *  TS type that looks plausible but never matches the actual payload. The
+ *  `Serialize`/`Deserialize` derives are never used to move real data (this
+ *  type is never constructed) — they exist only so `#[serde(untagged)]` is a
+ *  legal attribute here for specta's own (derive-independent) attribute
+ *  parsing to read.
  */
-export type JsonValue = "Null" | ({ Bool: boolean }) & { Array?: never; Number?: never; Object?: never; String?: never } | ({ Number: number | null }) & { Array?: never; Bool?: never; Object?: never; String?: never } | ({ String: string }) & { Array?: never; Bool?: never; Number?: never; Object?: never } | ({ Array: JsonValue[] }) & { Bool?: never; Number?: never; Object?: never; String?: never } | ({ Object: { [key in string]: JsonValue } }) & { Array?: never; Bool?: never; Number?: never; String?: never };
+export type JsonValue = "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue };
 
 /**
  *  A standalone lorebook entry stored in the database.

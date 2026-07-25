@@ -78,7 +78,18 @@ where
 /// type by the derive macro, so the recursion terminates correctly. The
 /// actual Rust field stays `serde_json::Value`; this type only stands in for
 /// specta's reflection.
-#[derive(specta::Type)]
+///
+/// `#[serde(untagged)]` is required so the exported TS type matches the real
+/// wire shape: `serde_json::Value` serializes as plain JSON (a bare number,
+/// string, object, etc.), not as a `{ "Bool": true }`-style tagged variant.
+/// Without it, specta falls back to externally-tagged rendering, producing a
+/// TS type that looks plausible but never matches the actual payload. The
+/// `Serialize`/`Deserialize` derives are never used to move real data (this
+/// type is never constructed) — they exist only so `#[serde(untagged)]` is a
+/// legal attribute here for specta's own (derive-independent) attribute
+/// parsing to read.
+#[derive(specta::Type, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
 #[allow(dead_code)]
 pub enum JsonValue {
     Null,
