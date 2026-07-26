@@ -10,11 +10,13 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let { message, onBranch, avatarUrl = null, characterName = '' }: { 
-    message: Message; 
+  let { message, onBranch, avatarUrl = null, characterName = '', model }: {
+    message: Message;
     onBranch?: (id: string) => void;
     avatarUrl?: string | null;
     characterName?: string;
+    /** Currently selected model in the chat input — threaded through to Regenerate so it doesn't silently fall back to the provider's stored default. */
+    model?: string;
   } = $props();
 
   // ── Multi-Character Awareness ──
@@ -189,7 +191,7 @@
     isRegenerating = true;
     const convId = get(activeConversationId);
     if (convId) {
-      await storeRegenerate(convId, message.id);
+      await storeRegenerate(convId, message.id, model);
     }
     isRegenerating = false;
   }

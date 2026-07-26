@@ -963,7 +963,7 @@ export async function sendMessage(conversationId: string, content: string, model
  * via retry_failed_message. If sendMessage itself failed before saving,
  * falls back to a fresh sendMessage call.
  */
-export async function retryLastMessage() {
+export async function retryLastMessage(model?: string) {
   const err = get(lastStreamError);
   if (!err) return;
   lastStreamError.set(null);
@@ -1028,7 +1028,7 @@ export async function retryLastMessage() {
     try {
       const currentSettings = get(settings);
       await ipc.retryFailedMessage(
-        err.conversationId, err.userMessageId, undefined,
+        err.conversationId, err.userMessageId, model,
         currentSettings.systemPrompt || undefined,
         currentSettings.streamingEnabled,
         currentSettings.postHistoryInstructions || undefined,
@@ -1042,7 +1042,7 @@ export async function retryLastMessage() {
     // sendMessage itself failed before the message was saved — clean up and resend
     messages.update(msgs => msgs.filter(m => !m.isError));
     fullActivePath = fullActivePath.filter(m => !m.isError);
-    await sendMessage(err.conversationId, err.lastUserContent);
+    await sendMessage(err.conversationId, err.lastUserContent, model);
   }
 }
 

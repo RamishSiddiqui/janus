@@ -646,6 +646,7 @@
               onBranch={handleBranch}
               avatarUrl={resolveMessageAvatar(message)}
               {characterName}
+              model={selectedModel || undefined}
             />
           </div>
         {/each}
@@ -715,7 +716,7 @@
             <span class="retry-text"
               >Response failed. Check your provider connection.</span
             >
-            <button class="retry-btn" onclick={retryLastMessage}>
+            <button class="retry-btn" onclick={() => retryLastMessage(selectedModel || undefined)}>
               <Icon name="refresh-cw" size={13} color="#fff" />
               <span>Retry</span>
             </button>
