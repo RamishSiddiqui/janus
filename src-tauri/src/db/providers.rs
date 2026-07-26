@@ -194,8 +194,16 @@ impl ProviderRepo {
             model_id.replace('/', "_").replace(':', "_").replace('.', "_")
         );
 
+        // MERGE (not CONTENT) is required here: CONTENT replaces the whole
+        // document, so on every toggle *after* the first it would wipe
+        // `created_at` to NONE (it's never in this payload) and fail the
+        // schema's `TYPE datetime` check on that field — silently, since
+        // nothing previously checked the response for this per-statement
+        // error. MERGE only touches the fields listed below, so an existing
+        // row's `created_at` (and anything else) is left untouched, while a
+        // brand-new row still gets it from the schema's `DEFAULT time::now()`.
         db.query(
-            "UPSERT type::thing('enabled_models', $composite_id) CONTENT {
+            "UPSERT type::thing('enabled_models', $composite_id) MERGE {
                 provider_id: type::thing('provider_configs', $provider_id),
                 model_id: $model_id,
                 model_type: $model_type,
@@ -208,7 +216,9 @@ impl ProviderRepo {
         .bind(("model_id", model_id.to_string()))
         .bind(("model_type", model_type.to_string()))
         .bind(("enabled", enabled))
-        .await?;
+        .await?
+        .check()
+        .map_err(|e| MythicError::DatabaseOp(format!("toggle_model upsert: {}", e)))?;
 
         Ok(())
     }
@@ -241,11 +251,13 @@ impl ProviderRepo {
             .collect())
     }
 
-    /// Gets all enabled model states as a lookup map: (provider_id, model_id) → enabled.
-    /// Used by `list_all_models` to merge with HTTP-fetched model lists.
+    /// Gets all enabled model states as a lookup map: (provider_id, model_id) → (enabled, model_type).
+    /// Used by `list_all_models`/`list_embedding_models` to merge with HTTP-fetched model
+    /// lists, and to synthesize entries for models that are enabled locally but no
+    /// longer appear in the provider's live catalog (e.g. delisted upstream).
     pub async fn get_all_enabled_states(
         db: &Surreal<Db>,
-    ) -> Result<HashMap<(String, String), bool>, MythicError> {
+    ) -> Result<HashMap<(String, String), (bool, String)>, MythicError> {
         let mut result = db
             .query("SELECT * FROM enabled_models")
             .await?;
@@ -253,7 +265,7 @@ impl ProviderRepo {
 
         Ok(rows
             .into_iter()
-            .map(|r| ((r.provider_id.id.to_raw(), r.model_id), r.enabled))
+            .map(|r| ((r.provider_id.id.to_raw(), r.model_id), (r.enabled, r.model_type)))
             .collect())
     }
 }
