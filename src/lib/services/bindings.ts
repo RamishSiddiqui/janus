@@ -891,6 +891,13 @@ export type ModelEntry = {
 	supports_reasoning: boolean,
 	/**  Embedding vector dimensions (populated for embedding models) */
 	embedding_dimensions: number | null,
+	/**
+	 *  True when this model is enabled locally but no longer appears in the
+	 *  provider's live catalog (e.g. delisted upstream). Stale entries carry
+	 *  no fetched metadata (pricing, context length, etc.) — just enough to
+	 *  show the user what's enabled and let them turn it off.
+	 */
+	is_stale: boolean,
 };
 
 /**

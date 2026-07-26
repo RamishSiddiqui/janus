@@ -269,6 +269,11 @@ pub struct ModelEntry {
     pub supports_reasoning:    bool,
     /// Embedding vector dimensions (populated for embedding models)
     pub embedding_dimensions:  Option<u32>,
+    /// True when this model is enabled locally but no longer appears in the
+    /// provider's live catalog (e.g. delisted upstream). Stale entries carry
+    /// no fetched metadata (pricing, context length, etc.) — just enough to
+    /// show the user what's enabled and let them turn it off.
+    pub is_stale: bool,
 }
 
 /// Fetches models from ALL configured providers in parallel and merges them
@@ -442,6 +447,7 @@ pub async fn list_all_models(
                     supports_tools: raw.supports_tools,
                     supports_vision: raw.supports_vision,
                     supports_reasoning: raw.supports_reasoning,
+                    is_stale: false,
                     embedding_dimensions: None,
                 }
             }).collect::<Vec<_>>()
@@ -450,12 +456,71 @@ pub async fn list_all_models(
 
     // 3. Collect results and merge with enabled states
     let mut all_entries: Vec<ModelEntry> = Vec::new();
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     for task in tasks {
         if let Ok(rows) = task.await {
             for mut entry in rows {
-                entry.enabled = *enabled_map.get(&(entry.provider_id.clone(), entry.model_id.clone())).unwrap_or(&false);
+                let key = (entry.provider_id.clone(), entry.model_id.clone());
+                entry.enabled = enabled_map.get(&key).map(|(enabled, _)| *enabled).unwrap_or(false);
+                seen.insert(key);
                 all_entries.push(entry);
             }
+        }
+    }
+
+    // 4. Auto-disable + surface models enabled locally but absent from every
+    //    provider's live catalog (e.g. delisted upstream). Without this, a
+    //    delisted model would silently vanish from this list (no way to
+    //    notice or turn it off) while still being served to
+    //    `list_enabled_models` — and thus the chat model selector — forever.
+    let stale: Vec<(String, String, String)> = enabled_map
+        .iter()
+        .filter(|((provider_id, model_id), (enabled, model_type))| {
+            *enabled && model_type != "embedding" && !seen.contains(&(provider_id.clone(), model_id.clone()))
+        })
+        .map(|((provider_id, model_id), (_, model_type))| {
+            (provider_id.clone(), model_id.clone(), model_type.clone())
+        })
+        .collect();
+
+    if !stale.is_empty() {
+        let state_guard = state.read().await;
+        for (provider_id, model_id, model_type) in &stale {
+            match ProviderRepo::toggle_model(&state_guard.db, provider_id, model_id, model_type, false).await {
+                Ok(()) => info!("Auto-disabled stale model {} on provider {}", model_id, provider_id),
+                Err(e) => tracing::warn!("Failed to auto-disable stale model {} on provider {}: {}", model_id, provider_id, e),
+            }
+        }
+    }
+
+    for (provider_id, model_id, model_type) in &stale {
+        if let Some(provider) = providers.iter().find(|p| p.id.id.to_raw() == *provider_id) {
+            let adapter_str = serde_json::to_value(&provider.adapter)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_default();
+            all_entries.push(ModelEntry {
+                model_id: model_id.clone(),
+                provider_id: provider_id.clone(),
+                provider_name: provider.name.clone(),
+                adapter: adapter_str,
+                model_type: model_type.clone(),
+                context_length: None,
+                enabled: false,
+                display_name: None,
+                description: None,
+                pricing_prompt: None,
+                pricing_completion: None,
+                is_free: false,
+                max_completion_tokens: None,
+                input_modalities: vec![],
+                output_modalities: vec![],
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: false,
+                embedding_dimensions: None,
+                is_stale: true,
+            });
         }
     }
 
@@ -586,6 +651,7 @@ pub async fn list_embedding_models(
                         supports_vision: false,
                         supports_reasoning: false,
                         embedding_dimensions: dims,
+                        is_stale: false,
                     }
                 })
                 .collect::<Vec<_>>()
@@ -593,12 +659,68 @@ pub async fn list_embedding_models(
     }
 
     let mut all_entries: Vec<ModelEntry> = Vec::new();
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     for task in tasks {
         if let Ok(rows) = task.await {
             for mut entry in rows {
-                entry.enabled = *enabled_map.get(&(entry.provider_id.clone(), entry.model_id.clone())).unwrap_or(&false);
+                let key = (entry.provider_id.clone(), entry.model_id.clone());
+                entry.enabled = enabled_map.get(&key).map(|(enabled, _)| *enabled).unwrap_or(false);
+                seen.insert(key);
                 all_entries.push(entry);
             }
+        }
+    }
+
+    // Auto-disable + synthesize entries for embedding models enabled locally
+    // but absent from every provider's live catalog — see the matching
+    // comment in list_all_models.
+    let stale: Vec<(String, String, String)> = enabled_map
+        .iter()
+        .filter(|((provider_id, model_id), (enabled, model_type))| {
+            *enabled && model_type == "embedding" && !seen.contains(&(provider_id.clone(), model_id.clone()))
+        })
+        .map(|((provider_id, model_id), (_, model_type))| {
+            (provider_id.clone(), model_id.clone(), model_type.clone())
+        })
+        .collect();
+
+    if !stale.is_empty() {
+        let state_guard = state.read().await;
+        for (provider_id, model_id, model_type) in &stale {
+            if let Err(e) = ProviderRepo::toggle_model(&state_guard.db, provider_id, model_id, model_type, false).await {
+                tracing::warn!("Failed to auto-disable stale embedding model {} on provider {}: {}", model_id, provider_id, e);
+            }
+        }
+    }
+
+    for (provider_id, model_id, model_type) in &stale {
+        if let Some(provider) = providers.iter().find(|p| p.id.id.to_raw() == *provider_id) {
+            let adapter_str = serde_json::to_value(&provider.adapter)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_default();
+            all_entries.push(ModelEntry {
+                model_id: model_id.clone(),
+                provider_id: provider_id.clone(),
+                provider_name: provider.name.clone(),
+                adapter: adapter_str,
+                model_type: model_type.clone(),
+                context_length: None,
+                enabled: false,
+                display_name: None,
+                description: None,
+                pricing_prompt: None,
+                pricing_completion: None,
+                is_free: false,
+                max_completion_tokens: None,
+                input_modalities: vec![],
+                output_modalities: vec![],
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: false,
+                embedding_dimensions: None,
+                is_stale: true,
+            });
         }
     }
 
@@ -661,6 +783,7 @@ pub async fn list_enabled_models(
                 supports_vision: false,
                 supports_reasoning: false,
                 embedding_dimensions: None,
+                is_stale: false,
             });
         }
     }

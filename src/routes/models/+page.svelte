@@ -271,6 +271,7 @@
             class:trow-enabled={m.enabled}
             class:trow-free={m.is_free}
             class:trow-expanded={isExpanded}
+            class:trow-stale={m.is_stale}
             style="animation-delay:{Math.min(i*15,350)}ms"
             onclick={() => expandedId = isExpanded ? null : rowKey}
             onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expandedId = isExpanded ? null : rowKey; }}}
@@ -285,6 +286,7 @@
                 <span class="model-name-row">
                   <span class="model-name">{m.display_name ?? modelSlug(m.model_id)}</span>
                   {#if m.is_free}<span class="free-badge">FREE</span>{/if}
+                  {#if m.is_stale}<span class="stale-badge" title="No longer listed by the provider — automatically disabled.">NO LONGER LISTED</span>{/if}
                 </span>
                 {#if m.display_name}
                   <span class="model-slug">{m.model_id}</span>
@@ -531,6 +533,9 @@
 
   .trow-expanded { background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.12); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 
+  .trow-stale { background: rgba(245,158,11,0.03); }
+  .trow-stale:hover { background: rgba(245,158,11,0.07); }
+
   .skeleton-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; animation: rowIn 200ms ease both; }
 
   .row-accent {
@@ -559,6 +564,13 @@
     padding: 1px 5px; border-radius: 3px; font-size: 8px; font-weight: 800;
     letter-spacing: 0.8px; color: #06B6D4;
     background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.2);
+  }
+
+  .stale-badge {
+    display: inline-flex; flex-shrink: 0;
+    padding: 1px 5px; border-radius: 3px; font-size: 8px; font-weight: 800;
+    letter-spacing: 0.6px; color: #F59E0B;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25);
   }
 
   /* Provider badge */
