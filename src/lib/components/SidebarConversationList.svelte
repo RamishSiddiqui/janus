@@ -148,20 +148,18 @@
     style={grouped ? `animation-delay: ${animDelay}ms` : undefined}
     aria-current={isActive ? 'true' : undefined}>
     <div class="cg-conv-accent"></div>
-    {#if grouped}
-      <div class="cg-conv-dot"></div>
-      {#if renamingId === conv.id}
-        <input class="rename-input" bind:value={renameValue}
-          onblur={() => finishRename(conv.id)}
-          onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
-      {:else}
-        <div class="cg-conv-body">
-          <div class="cg-conv-head">
-            <span class="cg-conv-title">{conv.preview || 'Untitled'}</span>
-            <span class="cg-conv-time">{conv.time}</span>
-          </div>
+    {#if grouped}<div class="cg-conv-dot"></div>{/if}
+    {#if renamingId === conv.id}
+      <input class="rename-input" bind:value={renameValue}
+        onblur={() => finishRename(conv.id)}
+        onkeydown={(e) => { if (e.key==='Enter') finishRename(conv.id); if (e.key==='Escape') renamingId=null; }} />
+    {:else if grouped}
+      <div class="cg-conv-body">
+        <div class="cg-conv-head">
+          <span class="cg-conv-title">{conv.preview || 'Untitled'}</span>
+          <span class="cg-conv-time">{conv.time}</span>
         </div>
-      {/if}
+      </div>
     {:else}
       <span class="cg-conv-title">{conv.preview || conv.characterName || 'New Chat'}</span>
       <span class="cg-conv-time">{conv.time}</span>
