@@ -4,6 +4,7 @@
   import type { Node, Edge } from '@xyflow/svelte';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
   import { shareMemory, unlinkMemory, deleteMemory } from '$lib/services/ipc';
+  import { undoableDelete } from '$lib/stores/toast';
   import Dagre from '@dagrejs/dagre';
   import CharacterNode from './nodes/CharacterNode.svelte';
   import ConversationNode from './nodes/ConversationNode.svelte';
@@ -80,10 +81,20 @@
     onRefresh();
   }
 
-  async function handlePanelDelete(memoryId: string) {
-    await deleteMemory(memoryId);
+  function handlePanelDelete(memoryId: string) {
     selectedMemory = null;
-    onRefresh();
+    // The graph re-fetches on refresh rather than removing the node locally,
+    // so the memory stays visible until the undo window elapses and the
+    // real delete + refresh happen — closing the panel is the immediate
+    // feedback that the action was taken.
+    undoableDelete(
+      'Memory removed',
+      async () => {
+        await deleteMemory(memoryId);
+        onRefresh();
+      },
+      () => { /* nothing was hidden optimistically — nothing to restore */ },
+    );
   }
 
   const nodeTypes: any = {

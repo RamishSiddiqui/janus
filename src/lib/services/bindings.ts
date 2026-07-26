@@ -305,6 +305,21 @@ export const commands = {
 	 *  Used by the frontend to display token usage and context budget info.
 	 */
 	getContextStats: (conversationId: string, messageId: string, systemPrompt: string | null, postHistoryInstructions: string | null) => typedError<ContextStats, MythicError>(__TAURI_INVOKE("get_context_stats", { conversationId, messageId, systemPrompt, postHistoryInstructions })),
+	/**
+	 *  Cancels the in-flight generation for a conversation, if any.
+	 * 
+	 *  Aborts the generation task and, for a streaming generation, persists
+	 *  whatever content had already streamed so the response isn't lost just
+	 *  because it was stopped early — a cancelled message is not the same as a
+	 *  failed one. Emits a "cancelled" chat-stream event (not "done" or "error")
+	 *  so the frontend can finalize the UI without triggering the auto-memory-
+	 *  extraction/emotion-update pipelines that "done" runs, since those
+	 *  shouldn't fire over content the user explicitly cut off.
+	 * 
+	 *  A no-op (not an error) if nothing is in flight for this conversation —
+	 *  e.g. the user clicked Stop just as generation finished on its own.
+	 */
+	cancelGeneration: (conversationId: string) => typedError<null, MythicError>(__TAURI_INVOKE("cancel_generation", { conversationId })),
 };
 
 /* Types */

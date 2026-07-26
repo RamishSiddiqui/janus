@@ -25,6 +25,7 @@
     sendMessage,
     retryLastMessage,
     branchConversation,
+    cancelGeneration,
   } from "$lib/stores/chat";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
@@ -809,6 +810,7 @@
         {availableModels}
         onRefreshModels={refreshModels}
         isBranching={branchFromId !== null}
+        onStop={cancelGeneration}
       />
     </div>
 

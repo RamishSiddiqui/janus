@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
   import { shareMemory, unlinkMemory, deleteMemory } from '$lib/services/ipc';
+  import { undoableDelete } from '$lib/stores/toast';
   import { buildTimelineEntries, type TimelineEntry, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '$lib/utils/groupMemories';
   import Icon from './Icon.svelte';
   import MemoryActionPanel from './MemoryActionPanel.svelte';
@@ -305,10 +306,16 @@
     onRefresh();
   }
 
-  async function handlePanelDelete(memoryId: string) {
-    await deleteMemory(memoryId);
+  function handlePanelDelete(memoryId: string) {
     selectedMemory = null;
-    onRefresh();
+    undoableDelete(
+      'Memory removed',
+      async () => {
+        await deleteMemory(memoryId);
+        onRefresh();
+      },
+      () => { /* nothing was hidden optimistically — nothing to restore */ },
+    );
   }
 </script>
 

@@ -7,13 +7,15 @@
   let {
     value = $bindable(''), modelName, tokenCount, onSend, disabled = false,
     selectedModel = $bindable(''), availableModels = [],
-    onRefreshModels, isBranching = false,
+    onRefreshModels, isBranching = false, onStop,
   }: {
     value: string; modelName: string; tokenCount: string;
     onSend: () => void; disabled?: boolean;
     selectedModel?: string; availableModels?: string[];
     onRefreshModels?: () => void;
     isBranching?: boolean;
+    /** Shown in place of the Send button while `disabled` (streaming) is true. */
+    onStop?: () => void;
   } = $props();
 
   let inputElement: HTMLTextAreaElement | undefined = $state();
@@ -173,19 +175,33 @@
         </div>
 
         <!-- Send pill - B3 centrepiece -->
-        <button
-          class="ci-send-pill"
-          class:is-ready={hasContent && !disabled}
-          onclick={onSend}
-          disabled={!hasContent || disabled}
-          aria-label="Send message"
-          title="Send message"
-        >
-          <svg class="ci-send-zap" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-          </svg>
-          <span>Send</span>
-        </button>
+        {#if disabled && onStop}
+          <button
+            class="ci-send-pill ci-stop-pill is-ready"
+            onclick={onStop}
+            aria-label="Stop generating"
+            title="Stop generating"
+          >
+            <svg class="ci-send-zap" width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="5" width="14" height="14" rx="2"/>
+            </svg>
+            <span>Stop</span>
+          </button>
+        {:else}
+          <button
+            class="ci-send-pill"
+            class:is-ready={hasContent && !disabled}
+            onclick={onSend}
+            disabled={!hasContent || disabled}
+            aria-label="Send message"
+            title="Send message"
+          >
+            <svg class="ci-send-zap" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span>Send</span>
+          </button>
+        {/if}
 
       </div>
     </div>
@@ -445,6 +461,26 @@
     transform: rotate(-15deg) scale(1.15);
   }
   .ci-send-pill.is-ready:active {
+    transform: scale(0.95) translateY(0);
+    transition-duration: 80ms;
+  }
+
+  /* Stop pill — shown in place of Send while a response is streaming */
+  .ci-stop-pill.is-ready {
+    cursor: pointer;
+    background: linear-gradient(135deg, #7C2D3E 0%, #F43F5E 100%);
+    box-shadow:
+      0 4px 16px rgba(244, 63, 94, 0.35),
+      0 8px 32px rgba(244, 63, 94, 0.12);
+  }
+  .ci-stop-pill.is-ready:hover {
+    background: linear-gradient(135deg, #9F2E44 0%, #FB7185 100%);
+    box-shadow:
+      0 4px 20px rgba(244, 63, 94, 0.55),
+      0 10px 40px rgba(244, 63, 94, 0.2);
+    transform: scale(1.04) translateY(-1px);
+  }
+  .ci-stop-pill.is-ready:active {
     transform: scale(0.95) translateY(0);
     transition-duration: 80ms;
   }

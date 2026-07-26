@@ -209,8 +209,8 @@ src/                             Svelte 5 frontend (SvelteKit)
 | **System Prompt Override** | Textarea in Settings | `build_prompt()` | ✅ | {{char}}/{{user}} placeholders |
 | **Context Management UI** | Dedicated section in Settings | Token budget + RAG status | ✅ | Embedding model selection, index rebuild, dimension warnings |
 | **Local Storage Only** | Privacy toggle + confirm | Feature gating | ✅ | `isLocalOnly()` utility |
-| **Export Data** | Button → JSON file | File dialog | ✅ | Conversations + characters + settings |
-| **Import Data** | Button → file picker | File dialog | ✅ | Restores settings (not full DB restore) |
+| **Export Data** | Button → JSON file | File dialog | ✅ | Full library: characters, lorebook, all conversations + messages, group-cast, memories, settings |
+| **Import Data** | Button → file picker | File dialog | ✅ | Full restore with ID remapping, additive (never overwrites existing data). Branch-to-branch links are flattened, not reconstructed — see §4.5 |
 | **Clear All Conversations** | Danger button + confirm | Bulk delete | ✅ | |
 | **Keyboard Shortcuts** | Ctrl+N, Ctrl+B, Esc | `+layout.svelte` | ✅ | Global |
 
@@ -337,6 +337,14 @@ Every backend command registered in `lib.rs` mapped to frontend integration.
 - [x] Blob URL revocation (prevents memory leaks)
 - [x] Dynamic MTREE index lifecycle management (drop + recreate on dimension change)
 - [ ] Periodic DB cleanup *(deferred — low priority)*
+- [ ] **Known limitation — Import doesn't reconstruct branch ancestry.** A conversation
+  branched from another (`parent_conversation_id` / `branch_point_message_id`) comes back
+  from Import as a standalone, flattened conversation — its own message tree is fully
+  intact, but the link back to the parent conversation it was forked from is not restored.
+  Reconstructing that would need import ordered by original creation time with
+  forward-reference handling for branches created from each other; not implemented because
+  it wasn't worth the complexity for a backup/restore feature. (`settings/+page.svelte`,
+  `handleImport()`)
 
 ### 4.6 · Performance 🟢
 

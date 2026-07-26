@@ -5,7 +5,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { activeConversationId, loadConversations } from '$lib/stores/chat';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { success, error as toastError, undoableDelete } from '$lib/stores/toast';
   import { parseCharacterData } from '$lib/utils/character';
   import type { Character } from '$lib/services/ipc';
 
@@ -289,17 +289,32 @@
     isSavingEditor = false;
   }
 
-  async function handleDeleteCharacter(charId: string) {
+  /**
+   * Deleting a character cascades to its conversations/messages/lorebook, so
+   * this defers the actual backend delete behind a ~5.5s Undo window rather
+   * than firing immediately — the character is hidden from the gallery right
+   * away, but nothing is actually destroyed until the window elapses.
+   */
+  function handleDeleteCharacter(charId: string) {
     if (!isTauri) return;
-    try {
-      const ipc = await import('$lib/services/ipc');
-      await ipc.deleteCharacter(charId);
-      const name = characters.find(c => c.id === charId)?.name ?? 'Character';
-      characters = characters.filter(c => c.id !== charId);
-      success(`Deleted ${name}`);
-    } catch (err) {
-      toastError('Failed to delete character');
-    }
+    const removed = characters.find(c => c.id === charId);
+    const name = removed?.name ?? 'Character';
+    characters = characters.filter(c => c.id !== charId);
+
+    undoableDelete(
+      `Deleted ${name}`,
+      async () => {
+        try {
+          const ipc = await import('$lib/services/ipc');
+          await ipc.deleteCharacter(charId);
+        } catch (err) {
+          toastError('Failed to delete character');
+        }
+      },
+      () => {
+        if (removed) characters = [...characters, removed].sort((a, b) => a.name.localeCompare(b.name));
+      },
+    );
   }
 </script>
 

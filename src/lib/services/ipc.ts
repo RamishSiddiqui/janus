@@ -61,7 +61,10 @@ export type { Message };
 export type { ProviderConfig };
 
 export interface StreamEvent {
-  event_type: 'delta' | 'done' | 'error';
+  /** 'cancelled' fires when the user stops generation early via cancelGeneration() —
+   *  distinct from 'done' so the frontend can skip the auto-memory/emotion pipelines
+   *  that shouldn't run over content the user explicitly cut off. */
+  event_type: 'delta' | 'done' | 'error' | 'cancelled';
   content: string;
   message_id: string;
 }
@@ -399,6 +402,15 @@ export async function retryFailedMessage(
     streaming: streaming ?? null,
     postHistoryInstructions: postHistoryInstructions ?? null,
   });
+}
+
+/**
+ * Cancels the in-flight generation for a conversation, if any. A no-op if
+ * nothing is currently generating. Whatever content had already streamed is
+ * persisted server-side before the "cancelled" chat-stream event fires.
+ */
+export async function cancelGeneration(conversationId: string): Promise<void> {
+  return safeInvoke<void>('cancel_generation', { conversationId });
 }
 
 /**

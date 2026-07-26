@@ -13,6 +13,9 @@
           color={toast.type === 'success' ? '#10B981' : toast.type === 'error' ? '#F43F5E' : '#BF40FF'}
         />
         <span class="toast-msg">{toast.message}</span>
+        {#if toast.action}
+          <button class="toast-action" onclick={toast.action.onClick}>{toast.action.label}</button>
+        {/if}
       </div>
     {/each}
   </div>
@@ -67,6 +70,23 @@
   .toast-msg {
     flex: 1;
     line-height: 1.4;
+  }
+
+  .toast-action {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(139,92,246,0.25);
+    background: rgba(139,92,246,0.12);
+    color: #c4a1ff;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 150ms, border-color 150ms;
+  }
+  .toast-action:hover {
+    background: rgba(139,92,246,0.22);
+    border-color: rgba(139,92,246,0.4);
   }
 
   @keyframes toastSlideIn {

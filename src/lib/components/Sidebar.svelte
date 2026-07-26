@@ -5,8 +5,8 @@
   import SidebarConversationList from './SidebarConversationList.svelte';
   import SidebarContextMenu from './SidebarContextMenu.svelte';
   import type { NavItem } from '$lib/types';
-  import { conversations, deleteConversation, createConversation } from '$lib/stores/chat';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { conversations, deleteConversationWithUndo, createConversation } from '$lib/stores/chat';
+  import { error as toastError } from '$lib/stores/toast';
   import { browser } from '$app/environment';
   import { tick } from 'svelte';
 
@@ -35,7 +35,12 @@
   function openContextMenu(e: MouseEvent, convId: string) { e.preventDefault(); ctxMenu = { x: e.clientX, y: e.clientY, convId }; }
   function closeContextMenu() { ctxMenu = null; }
 
-  async function handleDelete(convId: string) { closeContextMenu(); await deleteConversation(convId); success('Conversation deleted'); }
+  function handleDelete(convId: string) {
+    closeContextMenu();
+    const conv = $conversations.find(c => c.id === convId);
+    const label = conv?.characterName || conv?.preview || 'conversation';
+    deleteConversationWithUndo(convId, label);
+  }
 
   function startRename(convId: string) {
     const conv = $conversations.find(c => c.id === convId);

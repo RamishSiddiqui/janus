@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import Icon from './Icon.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { success, error as toastError, undoableDelete } from '$lib/stores/toast';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -127,16 +127,28 @@
     isSavingMemory = false;
   }
 
-  async function deleteMemoryEntry(memoryId: string) {
+  function deleteMemoryEntry(memoryId: string) {
     if (!isTauri) return;
-    try {
-      const ipc = await import('$lib/services/ipc');
-      await ipc.deleteMemory(memoryId);
-      memories = memories.filter(m => m.id !== memoryId);
-      success('Memory removed');
-    } catch {
-      toastError('Failed to delete memory');
-    }
+    const idx = memories.findIndex(m => m.id === memoryId);
+    if (idx < 0) return;
+    const [removed] = memories.splice(idx, 1);
+    memories = memories;
+
+    undoableDelete(
+      'Memory removed',
+      async () => {
+        try {
+          const ipc = await import('$lib/services/ipc');
+          await ipc.deleteMemory(memoryId);
+        } catch {
+          toastError('Failed to delete memory');
+        }
+      },
+      () => {
+        memories.splice(idx, 0, removed);
+        memories = memories;
+      },
+    );
   }
 
   function getRelativeTime(dateStr: string): string {

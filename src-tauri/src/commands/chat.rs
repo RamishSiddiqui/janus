@@ -175,7 +175,7 @@ pub async fn send_message(
 
         // Spawn the provider stream in a background task
         let stream_messages = messages.clone();
-        tokio::spawn(async move {
+        let gen_task = tokio::spawn(async move {
             if let Err(e) = provider.generate_stream(
                 &model_id,
                 &stream_messages,
@@ -189,6 +189,16 @@ pub async fn send_message(
             }
         });
 
+        // Register this generation so cancel_generation can abort it and
+        // persist whatever had streamed so far.
+        let partial = Arc::new(std::sync::Mutex::new(String::new()));
+        let active_gens = state.read().await.active_generations.clone();
+        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
+            abort: gen_task.abort_handle(),
+            partial: Some(partial.clone()),
+            assistant_message_id: assistant_msg_id.clone(),
+        });
+
     // Forward stream chunks as Tauri events
     let db_for_save = db.clone();
     let conv_id = conversation_id.clone();
@@ -198,11 +208,14 @@ pub async fn send_message(
     let stream_mc_names = multi_char_names.clone();
     let stream_mc_pairs = multi_char_pairs.clone();
     let stream_user_msg_id = user_msg_id.clone();
+    let active_gens_cleanup = active_gens.clone();
+    let conv_id_cleanup = conversation_id.clone();
 
     tokio::spawn(async move {
         while let Some(chunk) = rx.recv().await {
             match chunk {
                 StreamChunk::Delta(text) => {
+                    if let Ok(mut p) = partial.lock() { p.push_str(&text); }
                     let _ = app.emit("chat-stream", StreamEvent {
                         event_type: "delta".to_string(),
                         content: text,
@@ -466,6 +479,7 @@ pub async fn send_message(
                         });
                     }
 
+                    active_gens_cleanup.lock().await.remove(&conv_id_cleanup);
                     break;
                 }
                 StreamChunk::Error(err) => {
@@ -474,6 +488,7 @@ pub async fn send_message(
                         content: err,
                         message_id: assist_id.clone(),
                     });
+                    active_gens_cleanup.lock().await.remove(&conv_id_cleanup);
                     break;
                 }
             }
@@ -492,8 +507,26 @@ pub async fn send_message(
         let conv_id = conversation_id.clone();
         let assist_id = assistant_msg_id.clone();
 
-        match provider.generate(&model_id, &messages, &gen_params).await {
-            Ok(full_text) => {
+        // Spawned (rather than awaited directly) so cancel_generation can
+        // abort it — there's no partial content to preserve here, unlike
+        // the streaming path, since generate() only returns once complete.
+        let model_id_gen = model_id.clone();
+        let messages_gen = messages.clone();
+        let gen_task = tokio::spawn(async move {
+            provider.generate(&model_id_gen, &messages_gen, &gen_params).await
+        });
+        let active_gens = state.read().await.active_generations.clone();
+        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
+            abort: gen_task.abort_handle(),
+            partial: None,
+            assistant_message_id: assist_id.clone(),
+        });
+
+        let result = gen_task.await;
+        active_gens.lock().await.remove(&conversation_id);
+
+        match result {
+            Ok(Ok(full_text)) => {
                 // Save to database
                 MessageRepo::update(&db_for_save, &assist_id, &full_text).await?;
 
@@ -513,10 +546,22 @@ pub async fn send_message(
 
                 info!("Non-streaming response completed for conversation {}", conv_id);
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let _ = app.emit("chat-stream", StreamEvent {
                     event_type: "error".to_string(),
                     content: e.to_string(),
+                    message_id: assist_id,
+                });
+            }
+            Err(join_err) if join_err.is_cancelled() => {
+                // cancel_generation already aborted the task and emitted the
+                // "cancelled" event — nothing left to do here.
+            }
+            Err(join_err) => {
+                error!("Non-streaming generation task panicked: {}", join_err);
+                let _ = app.emit("chat-stream", StreamEvent {
+                    event_type: "error".to_string(),
+                    content: "Generation task failed unexpectedly".to_string(),
                     message_id: assist_id,
                 });
             }
@@ -633,7 +678,7 @@ pub async fn retry_failed_message(
         let provider = create_rig_provider(&provider_config)?;
         let stream_messages = messages.clone();
 
-        tokio::spawn(async move {
+        let gen_task = tokio::spawn(async move {
             if let Err(e) = provider.generate_stream(
                 &model_id, &stream_messages, &gen_params, tx.clone(),
             ).await {
@@ -642,14 +687,25 @@ pub async fn retry_failed_message(
             }
         });
 
+        let partial = Arc::new(std::sync::Mutex::new(String::new()));
+        let active_gens = state.read().await.active_generations.clone();
+        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
+            abort: gen_task.abort_handle(),
+            partial: Some(partial.clone()),
+            assistant_message_id: assistant_msg_id.clone(),
+        });
+
         let db_for_save = db.clone();
         let conv_id = conversation_id.clone();
         let assist_id = assistant_msg_id.clone();
+        let active_gens_cleanup = active_gens.clone();
+        let conv_id_cleanup = conversation_id.clone();
 
         tokio::spawn(async move {
             while let Some(chunk) = rx.recv().await {
                 match chunk {
                     StreamChunk::Delta(text) => {
+                        if let Ok(mut p) = partial.lock() { p.push_str(&text); }
                         let _ = app.emit("chat-stream", StreamEvent {
                             event_type: "delta".to_string(),
                             content: text,
@@ -666,6 +722,7 @@ pub async fn retry_failed_message(
                             message_id: assist_id.clone(),
                         });
                         info!("Retry response completed for conversation {}", conv_id);
+                        active_gens_cleanup.lock().await.remove(&conv_id_cleanup);
                         break;
                     }
                     StreamChunk::Error(err) => {
@@ -674,6 +731,7 @@ pub async fn retry_failed_message(
                             content: err,
                             message_id: assist_id.clone(),
                         });
+                        active_gens_cleanup.lock().await.remove(&conv_id_cleanup);
                         break;
                     }
                 }
@@ -681,8 +739,22 @@ pub async fn retry_failed_message(
         });
     } else {
         let provider = create_rig_provider(&provider_config)?;
-        match provider.generate(&model_id, &messages, &gen_params).await {
-            Ok(full_text) => {
+        let model_id_gen = model_id.clone();
+        let messages_gen = messages.clone();
+        let gen_task = tokio::spawn(async move {
+            provider.generate(&model_id_gen, &messages_gen, &gen_params).await
+        });
+        let active_gens = state.read().await.active_generations.clone();
+        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
+            abort: gen_task.abort_handle(),
+            partial: None,
+            assistant_message_id: assistant_msg_id.clone(),
+        });
+        let result = gen_task.await;
+        active_gens.lock().await.remove(&conversation_id);
+
+        match result {
+            Ok(Ok(full_text)) => {
                 MessageRepo::update(&db, &assistant_msg_id, &full_text).await?;
                 let _ = app.emit("chat-stream", StreamEvent {
                     event_type: "done".to_string(),
@@ -690,10 +762,22 @@ pub async fn retry_failed_message(
                     message_id: assistant_msg_id.clone(),
                 });
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let _ = app.emit("chat-stream", StreamEvent {
                     event_type: "error".to_string(),
                     content: e.to_string(),
+                    message_id: assistant_msg_id.clone(),
+                });
+            }
+            Err(join_err) if join_err.is_cancelled() => {
+                // cancel_generation already aborted the task and emitted the
+                // "cancelled" event — nothing left to do here.
+            }
+            Err(join_err) => {
+                error!("Retry non-streaming generation task panicked: {}", join_err);
+                let _ = app.emit("chat-stream", StreamEvent {
+                    event_type: "error".to_string(),
+                    content: "Generation task failed unexpectedly".to_string(),
                     message_id: assistant_msg_id.clone(),
                 });
             }
@@ -752,6 +836,59 @@ pub async fn regenerate_message(
     // Re-trigger send_message (which will create a new assistant response)
     // For regeneration, we just need to stream a new response from the same history
     send_message(app, state, conversation_id, parent_content, model, system_prompt, streaming, post_history_instructions).await
+}
+
+/// Cancels the in-flight generation for a conversation, if any.
+///
+/// Aborts the generation task and, for a streaming generation, persists
+/// whatever content had already streamed so the response isn't lost just
+/// because it was stopped early — a cancelled message is not the same as a
+/// failed one. Emits a "cancelled" chat-stream event (not "done" or "error")
+/// so the frontend can finalize the UI without triggering the auto-memory-
+/// extraction/emotion-update pipelines that "done" runs, since those
+/// shouldn't fire over content the user explicitly cut off.
+///
+/// A no-op (not an error) if nothing is in flight for this conversation —
+/// e.g. the user clicked Stop just as generation finished on its own.
+#[tauri::command]
+#[specta::specta]
+pub async fn cancel_generation(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+) -> Result<(), MythicError> {
+    let (db, handle) = {
+        let state_guard = state.read().await;
+        let db = state_guard.db.clone();
+        let mut gens = state_guard.active_generations.lock().await;
+        let handle = gens.remove(&conversation_id);
+        (db, handle)
+    };
+
+    let Some(handle) = handle else {
+        return Ok(());
+    };
+
+    handle.abort.abort();
+
+    let partial_text = handle.partial
+        .as_ref()
+        .and_then(|p| p.lock().ok().map(|s| s.clone()))
+        .unwrap_or_default();
+
+    if !partial_text.is_empty() {
+        if let Err(e) = MessageRepo::update(&db, &handle.assistant_message_id, &partial_text).await {
+            error!("Failed to save partial content on cancel: {}", e);
+        }
+    }
+
+    let _ = app.emit("chat-stream", StreamEvent {
+        event_type: "cancelled".to_string(),
+        content: partial_text,
+        message_id: handle.assistant_message_id,
+    });
+
+    Ok(())
 }
 
 // --- Internal helpers ---

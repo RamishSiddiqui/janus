@@ -6,7 +6,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type { Message, ConversationPreview } from '$lib/types';
 import { browser } from '$app/environment';
-import { error as toastError } from '$lib/stores/toast';
+import { error as toastError, undoableDelete } from '$lib/stores/toast';
 import { settings } from '$lib/stores/settings';
 import { parseCharacterData } from '$lib/utils/character';
 import type { CharacterState } from '$lib/services/ipc';
@@ -744,6 +744,23 @@ export async function loadMoreMessages(): Promise<number> {
 }
 
 
+/**
+ * Stops the in-flight generation for the active conversation, if any.
+ * Whatever content had already streamed is preserved (saved server-side,
+ * kept on screen) rather than discarded — a cancelled response is not
+ * treated as a failure, so no retry banner appears.
+ */
+export async function cancelGeneration() {
+  const convId = get(activeConversationId);
+  if (!isTauri || !convId) return;
+  try {
+    const ipc = await import('$lib/services/ipc');
+    await ipc.cancelGeneration(convId);
+  } catch (err) {
+    console.error('Failed to cancel generation:', err);
+  }
+}
+
 /** Sends a user message and initiates streaming response from the backend. */
 export async function sendMessage(conversationId: string, content: string, model?: string) {
   if (!isTauri) {
@@ -780,12 +797,24 @@ export async function sendMessage(conversationId: string, content: string, model
     const unlisten = await ipc.onChatStream((event) => {
       // Guard: if the user switched to a different conversation, discard stale events
       if (get(activeConversationId) !== conversationId) {
-        if (event.event_type === 'done' || event.event_type === 'error') unlisten();
+        if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten();
         return;
       }
 
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
+      } else if (event.event_type === 'cancelled') {
+        // User stopped generation early — finalize like 'done' (lock in
+        // whatever streamed so far, clear streaming state), but skip the
+        // auto-memory/emotion pipelines below since there's no complete
+        // response to extract anything meaningful from.
+        buffer.finalize();
+        messages.update(msgs => msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
+        for (let i = 0; i < fullActivePath.length; i++) {
+          if (fullActivePath[i].isStreaming) fullActivePath[i] = { ...fullActivePath[i], isStreaming: false };
+        }
+        isStreaming.set(false);
+        unlisten();
       } else if (event.event_type === 'done') {
         // Finalize the presentation buffer — flushes remaining content,
         // marks all active bubbles as done streaming
@@ -973,12 +1002,20 @@ export async function retryLastMessage(model?: string) {
     // Set up stream listener
     const unlisten = await ipc.onChatStream((event) => {
       if (get(activeConversationId) !== err.conversationId) {
-        if (event.event_type === 'done' || event.event_type === 'error') unlisten();
+        if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten();
         return;
       }
 
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
+      } else if (event.event_type === 'cancelled') {
+        buffer.finalize();
+        messages.update(msgs => msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
+        for (let i = 0; i < fullActivePath.length; i++) {
+          if (fullActivePath[i].isStreaming) fullActivePath[i] = { ...fullActivePath[i], isStreaming: false };
+        }
+        isStreaming.set(false);
+        unlisten();
       } else if (event.event_type === 'done') {
         buffer.finalize();
         // Buffer handles all message creation/content — just clear streaming state
@@ -1051,7 +1088,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
     const unlisten = await ipc.onChatStream((event) => {
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
-      } else if (event.event_type === 'done') {
+      } else if (event.event_type === 'done' || event.event_type === 'cancelled') {
         buffer.finalize();
         // Buffer handles all message creation/content — just clear streaming state
         messages.update(msgs =>
@@ -1059,7 +1096,8 @@ export async function regenerateMessage(conversationId: string, messageId: strin
         );
         isStreaming.set(false);
         unlisten();
-        // Reload messages to get sibling info
+        // Reload messages to get sibling info (also re-syncs fullActivePath
+        // from the DB, which already has the cancelled partial content saved)
         loadMessages(conversationId);
       } else if (event.event_type === 'error') {
         buffer.reset();
@@ -1178,6 +1216,36 @@ export async function deleteConversation(id: string) {
   } catch (err) {
     console.error('Failed to delete conversation:', err);
   }
+}
+
+/**
+ * Deletes a conversation with a ~5.5s Undo window: the conversation is
+ * optimistically hidden from the list immediately, but the actual backend
+ * delete doesn't run until the window elapses without Undo being clicked —
+ * so nothing is actually lost until then.
+ */
+export function deleteConversationWithUndo(id: string, label: string) {
+  if (!isTauri) return;
+
+  conversations.update(list => list.filter(c => c.id !== id));
+  const wasActive = get(activeConversationId) === id;
+  if (wasActive) {
+    activeConversationId.set('');
+    messages.set([]);
+    resetPaginationState();
+  }
+
+  undoableDelete(
+    `Deleted "${label}"`,
+    () => deleteConversation(id),
+    () => {
+      loadConversations();
+      if (wasActive) {
+        activeConversationId.set(id);
+        loadMessages(id);
+      }
+    },
+  );
 }
 
 /** Switches to a sibling message at the same branch point.

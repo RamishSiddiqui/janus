@@ -7,11 +7,25 @@ pub mod providers;
 
 use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use tauri::Manager;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
+
+/// A single in-flight streaming (or non-streaming) generation, tracked so
+/// `cancel_generation` can abort it and — for the streaming case — persist
+/// whatever content had already streamed rather than losing it.
+pub struct GenerationHandle {
+    pub abort: tokio::task::AbortHandle,
+    /// `Some` for a streaming generation (updated with each delta as it
+    /// arrives); `None` for non-streaming, which has no partial content to
+    /// preserve on cancel.
+    pub partial: Option<Arc<StdMutex<String>>>,
+    pub assistant_message_id: String,
+}
 
 /// Global application state shared across all Tauri command handlers.
 ///
@@ -23,6 +37,12 @@ pub struct AppState {
 
     /// HTTP client shared across all providers (connection pooling)
     pub http_client: reqwest::Client,
+
+    /// In-flight generations keyed by conversation_id — only one generation
+    /// can be active per conversation at a time (the frontend gates sending
+    /// another message while `isStreaming` is true), so conversation_id is
+    /// a sufficient key.
+    pub active_generations: Arc<AsyncMutex<HashMap<String, GenerationHandle>>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -105,6 +125,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::chat::regenerate_message,
             commands::chat::generate_raw,
             commands::chat::get_context_stats,
+            commands::chat::cancel_generation,
         ])
 }
 
@@ -201,6 +222,7 @@ pub fn run() {
             let state = AppState {
                 db,
                 http_client,
+                active_generations: Arc::new(AsyncMutex::new(HashMap::new())),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
@@ -253,6 +275,7 @@ pub fn run() {
             commands::chat::regenerate_message,
             commands::chat::generate_raw,
             commands::chat::get_context_stats,
+            commands::chat::cancel_generation,
             // Import
             commands::import::import_character_card,
             commands::import::get_avatar_path,
