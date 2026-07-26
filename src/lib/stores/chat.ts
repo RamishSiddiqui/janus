@@ -341,20 +341,11 @@ export async function loadMessages(conversationId: string) {
     messages.set([]);
     resetPaginationState();
 
-    console.warn('[loadMessages] ENTER — fetching messages for', conversationId);
-
     // Fetch all messages AND the conversation (for active_message_id) in parallel
     const [msgs, conv] = await Promise.all([
       ipc.getConversationMessages(conversationId),
       ipc.getConversation(conversationId),
     ]);
-
-    // DEBUG: Log all messages for diagnosis
-    console.warn('[loadMessages] DB returned', msgs.length, 'messages:', JSON.stringify(msgs.map(m => ({
-      id: m.id.substring(0, 8), role: m.role, parent_id: m.parent_id?.substring(0, 8) ?? null,
-      char_name: m.character_name, content_start: m.content?.substring(0, 40),
-    })), null, 2));
-    console.warn('[loadMessages] active_message_id:', conv.active_message_id);
 
     // Build lookup maps
     const byId = new Map(msgs.map(m => [m.id, m]));
@@ -383,9 +374,6 @@ export async function loadMessages(conversationId: string) {
         current = byId.get(current)!.parent_id;
       }
       activePath = pathIds.map(id => byId.get(id)!);
-      console.warn('[loadMessages] Active path:', activePath.map(m => ({
-        id: m.id, role: m.role, character_name: m.character_name, parent_id: m.parent_id,
-      })));
 
       // ── Expand multi-char sibling segments ──
       // The backward walk only collects the ancestor chain. If active_message_id
@@ -597,9 +585,6 @@ export async function loadMessages(conversationId: string) {
     // Render only the last N messages (paginated rendering)
     currentRenderCount = Math.min(fullActivePath.length, MESSAGE_RENDER_SIZE);
     const initialSlice = fullActivePath.slice(fullActivePath.length - currentRenderCount);
-    console.warn('[loadMessages] Setting messages store:', initialSlice.map(m => ({
-      id: m.id, role: m.role, character_name: m.character_name, content: m.content?.substring(0, 50),
-    })));
     messages.set(initialSlice);
     hasMoreMessages.set(currentRenderCount < fullActivePath.length);
 
@@ -971,7 +956,9 @@ export async function retryLastMessage(model?: string) {
   if (err.userMessageId) {
     // Message exists in DB — remove the failed assistant bubble from UI, keep user message
     messages.update(msgs => msgs.filter(m => !(m.isError && m.role === 'assistant')));
+    const beforeCount = fullActivePath.length;
     fullActivePath = fullActivePath.filter(m => !(m.isError && m.role === 'assistant'));
+    currentRenderCount -= beforeCount - fullActivePath.length;
 
     // Clear error state on the user message
     messages.update(msgs => msgs.map(m => m.id === err.userMessageId ? { ...m, isError: false } : m));
@@ -1041,7 +1028,9 @@ export async function retryLastMessage(model?: string) {
   } else {
     // sendMessage itself failed before the message was saved — clean up and resend
     messages.update(msgs => msgs.filter(m => !m.isError));
+    const beforeCount = fullActivePath.length;
     fullActivePath = fullActivePath.filter(m => !m.isError);
+    currentRenderCount -= beforeCount - fullActivePath.length;
     await sendMessage(err.conversationId, err.lastUserContent, model);
   }
 }
@@ -1087,6 +1076,14 @@ export async function regenerateMessage(conversationId: string, messageId: strin
             return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
           }
         });
+        // Mirror into fullActivePath — unlike sendMessage/retryLastMessage's
+        // identical error handlers, this one previously only updated the
+        // rendered `messages` window, leaving fullActivePath (the pagination
+        // source of truth) unaware the regenerated message ever failed.
+        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content || 'Generation failed', isError: true };
+        const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
+        if (apIdx >= 0) fullActivePath[apIdx] = assistantMsg;
+        else { fullActivePath.push(assistantMsg); currentRenderCount++; }
         isStreaming.set(false);
         unlisten();
       }
@@ -1436,6 +1433,10 @@ export async function initMultiCharListener(): Promise<() => void> {
           };
         });
         fullActivePath.splice(apIdx, 1, ...splitAp);
+        // 1 message became splitAp.length messages — keep currentRenderCount
+        // in step with fullActivePath's new length, or pagination math on the
+        // next loadMoreMessages() call desyncs from what's actually rendered.
+        currentRenderCount += splitAp.length - 1;
       }
     }
   });
