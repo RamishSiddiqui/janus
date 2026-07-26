@@ -1084,6 +1084,19 @@ export async function regenerateMessage(conversationId: string, messageId: strin
         const apIdx = fullActivePath.findIndex(m => m.id === event.message_id);
         if (apIdx >= 0) fullActivePath[apIdx] = assistantMsg;
         else { fullActivePath.push(assistantMsg); currentRenderCount++; }
+
+        // Surface the Retry banner, same as a failed send. Walk up from the
+        // regenerated message to the user message that prompted it (its
+        // direct parent in single-character chats; possibly further up
+        // through sibling assistant segments in multi-character turns).
+        let ancestor = fullActivePath.find(m => m.id === messageId);
+        while (ancestor && ancestor.role !== 'user') {
+          ancestor = ancestor.parent_id ? fullActivePath.find(m => m.id === ancestor!.parent_id) : undefined;
+        }
+        if (ancestor) {
+          lastStreamError.set({ conversationId, lastUserContent: '', userMessageId: ancestor.id });
+        }
+
         isStreaming.set(false);
         unlisten();
       }
