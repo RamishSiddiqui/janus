@@ -285,7 +285,7 @@
 
   .lore-form {
     display: flex; flex-direction: column; gap: 6px;
-    padding: 12px; border-radius: 12px;
+    padding: clamp(10px, 3cqi, 16px); border-radius: 12px;
     background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.1);
   }
   .lore-textarea {
@@ -319,7 +319,7 @@
 
   .memory-entry {
     display: flex; flex-direction: column; gap: 4px;
-    padding: 10px 12px; border-radius: 10px;
+    padding: clamp(9px, 2.6cqi, 14px) clamp(10px, 3cqi, 16px); border-radius: 10px;
     background: rgba(14,14,30,0.4); border: 1px solid rgba(139,92,246,0.06);
     transition: all 150ms;
   }

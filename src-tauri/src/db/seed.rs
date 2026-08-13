@@ -7,6 +7,11 @@ use crate::error::MythicError;
 /// Seeds default providers and characters on first launch.
 /// Idempotent — skips seeding if providers already exist.
 pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
+    // The default image preset is a real product default (not test/demo
+    // data) — seeded unconditionally for every install, dev or production,
+    // new or already-running, independent of the dev-only seed data below.
+    seed_default_image_preset(db).await?;
+
     // Check if already seeded
     let mut result = db.query("SELECT count() FROM provider_configs GROUP ALL").await?;
     let count: Option<serde_json::Value> = result.take(0)?;
@@ -26,6 +31,57 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
         tracing::info!("Seeded dev data (providers, characters, memories, messages)");
     }
 
+    Ok(())
+}
+
+/// Seeds a single, carefully-tuned default image preset so casual users get
+/// strong results out of the box without ever touching Settings — advanced
+/// users can still add their own presets for specific needs (a different
+/// model, a stronger/weaker post-processing pass, hires-fix for max detail).
+///
+/// Deliberately does NOT pin a specific model: AI Horde's community model
+/// roster is crowdsourced and shifts hour to hour (confirmed by querying
+/// `/v2/status/models?type=image` live — even popular models sit at single-
+/// digit worker counts), so hardcoding one risks the preset silently hanging
+/// waiting for a worker that's no longer online. Leaving `model` unset lets
+/// AI Horde route to whatever's actually available, while every other knob
+/// (sampler/cfg/steps/karras/post-processing) is tuned for quality — these
+/// improve any model's output rather than betting on one checkpoint's name.
+/// `hires_fix` stays off by default since it roughly doubles generation time
+/// and kudos cost — a deliberate opt-in, not something to force on everyone.
+///
+/// Idempotent — skips if any image preset already exists (including if the
+/// user has since deleted or edited the seeded one).
+async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> {
+    let mut result = db.query("SELECT count() FROM image_presets GROUP ALL").await?;
+    let count: Option<serde_json::Value> = result.take(0)?;
+    let already_seeded = count
+        .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
+        .unwrap_or(0) > 0;
+    if already_seeded {
+        return Ok(());
+    }
+
+    db.query("CREATE type::thing('image_presets', $id) CONTENT $data")
+        .bind(("id", "default-high-quality"))
+        .bind(("data", json!({
+            "name": "High Quality (Default)",
+            "model": null,
+            "sampler_name": "k_dpmpp_2m",
+            "cfg_scale": 6.5,
+            "steps": 30,
+            "karras": true,
+            "style": null,
+            "negative_prompt": null,
+            "clip_skip": null,
+            "post_processing": ["GFPGAN", "RealESRGAN_x4plus"],
+            "hires_fix": false,
+            "hires_fix_denoising_strength": null,
+            "is_default": true,
+        })))
+        .await?;
+
+    tracing::info!("Seeded default image preset");
     Ok(())
 }
 

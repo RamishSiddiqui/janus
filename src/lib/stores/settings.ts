@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Persisted Settings Store
+//   Janus — Persisted Settings Store
 // ============================================================
 
 import { writable } from 'svelte/store';
@@ -11,13 +11,34 @@ export interface AppSettings {
   theme: Theme;
   fontSize: string;
   streamingEnabled: boolean;
+  /** Whether to show the collapsible "Thinking" section for reasoning-model
+   *  chain-of-thought. When off, reasoning is discarded from the UI entirely. */
+  showThinking: boolean;
   autoGenerateImages: boolean;
+  /** Sent as AI Horde's `nsfw` request flag for scene generation — NOT "make
+   *  everything explicit," but "don't route through the safety filter that
+   *  censors anything a worker's classifier flags as NSFW-ish." Defaults on
+   *  since ordinary (non-explicit) roleplay character descriptions routinely
+   *  brush that classifier's threshold and get false-positive blocked. */
+  allowMatureContent: boolean;
+  /** Auto-generates a portrait for each auto-detected NPC via the configured
+   *  image provider. A no-op if no image provider is configured. */
+  autoGenerateNpcPortraits: boolean;
+  /** When on, an auto-generated NPC portrait is used immediately; when off,
+   *  it sits in a pending-review state until approved/regenerated/rejected. */
+  autoApproveNpcPortraits: boolean;
   autoSaveMemories: boolean;
   localStorageOnly: boolean;
   systemPrompt: string;
   /** Post-History Instructions — injected AFTER conversation history, before generation.
    *  Shapes how the AI ends responses (narrative hooks, pacing, tone). */
   postHistoryInstructions: string;
+  /** System instructions for the "Refresh from Story" character-profile
+   *  refinement pass (manual button + automatic still-placeholder trigger).
+   *  Must keep the response contract intact — the app parses the model's
+   *  reply as JSON with exactly `description`/`personality`/`scenario`
+   *  fields, so an edit that drops that instruction will break refreshes. */
+  profileRefreshPrompt: string;
   /** Maximum context window size in tokens. Should match the model's limit. */
   maxContextTokens: number;
   /** Whether to auto-generate rolling summaries of evicted messages. */
@@ -44,7 +65,11 @@ const defaultSettings: AppSettings = {
   theme: 'dark',
   fontSize: 'Medium',
   streamingEnabled: true,
+  showThinking: true,
   autoGenerateImages: true,
+  allowMatureContent: true,
+  autoGenerateNpcPortraits: true,
+  autoApproveNpcPortraits: false,
   autoSaveMemories: false,
   localStorageOnly: true,
   _settingsVersion: CURRENT_SETTINGS_VERSION,
@@ -66,6 +91,22 @@ When a scene is ending, your response MUST follow this structure:
 Never end on a closing atmospheric image (e.g. "silence settled", "the door closed", "footsteps fading"). Always end mid-action in a NEW scene with unresolved momentum.
 
 Show, don't tell — weave all hooks and transitions into the prose naturally without breaking character.`,
+  profileRefreshPrompt: `You are refining an existing roleplay character's profile using how they've actually appeared in the story so far. You'll be given their CURRENT profile, known facts about them established in the story (both settled canon and things that happened in this conversation), recent story dialogue/narration to infer voice and mannerisms from, and the existing cast for consistency.
+
+The CURRENT DESCRIPTION may just be a placeholder like "Just spoke for the first time — their role in the story isn't clear yet." Treat that exact kind of text as EMPTY — there is no real information there yet, so write a fresh profile from the story context instead of trying to preserve or paraphrase it. Otherwise, REFINE the existing profile: keep whatever is still accurate, correct or drop what the story has since contradicted, weave in newly established facts, and match the voice/tone/mannerisms actually shown in the recent dialogue — not a generic rewrite.
+
+Return ONLY valid JSON with these three fields:
+{
+  "description": "string - updated appearance, personality, and backstory, aligned with the story so far",
+  "personality": "string - a brief personality summary reflecting how they've actually behaved",
+  "scenario": "string - how this character currently fits into the story"
+}
+
+Rules:
+- Stay consistent with the EXISTING CAST provided — don't contradict established facts or duplicate another character's role.
+- Ground every detail in the story shown — don't invent unrelated history.
+- If known facts are given, treat them as accurate — don't contradict them without a clear reason shown in the recent dialogue.
+- Output ONLY the JSON object — no markdown fences, no commentary, no <think> preamble.`,
 };
 
 // These are the fields that get force-refreshed when _settingsVersion is bumped.
@@ -73,6 +114,7 @@ Show, don't tell — weave all hooks and transitions into the prose naturally wi
 const MANAGED_PROMPT_KEYS: (keyof AppSettings)[] = [
   'systemPrompt',
   'postHistoryInstructions',
+  'profileRefreshPrompt',
 ];
 
 function loadSettings(): AppSettings {

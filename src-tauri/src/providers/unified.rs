@@ -19,7 +19,19 @@ use rig_core::providers::{
 use rig_core::client::Nothing;
 use rig_core::completion::Message;
 use tokio::sync::mpsc;
+use tokio::time::{timeout, Duration};
 use tracing::{debug, error};
+
+/// How long to wait for the provider to produce its NEXT stream event
+/// (connection + first token, or the gap between subsequent chunks) before
+/// giving up. Without this, a provider that accepts the request but never
+/// responds (seen in practice with overloaded free-tier OpenRouter models)
+/// leaves the whole send hanging forever with no error and no way to
+/// recover short of restarting the app.
+const STREAM_EVENT_TIMEOUT: Duration = Duration::from_secs(90);
+
+use rig_core::message::{ImageMediaType, UserContent};
+use rig_core::OneOrMany;
 
 use crate::error::MythicError;
 use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
@@ -203,10 +215,11 @@ impl RigProvider {
         &self,
         model_id: &str,
         messages: &[ChatMessage],
+        images: &[(Vec<u8>, String)],
         params: &GenerationParams,
         tx: mpsc::Sender<StreamChunk>,
     ) -> Result<(), MythicError> {
-        let rig_messages = convert_messages(messages);
+        let rig_messages = convert_messages(messages, images);
         let preamble = extract_system_preamble(messages);
 
         debug!(
@@ -240,8 +253,32 @@ impl RigProvider {
                 let mut stream = agent.stream_chat(&prompt, history).await;
 
                 let mut full_text = String::new();
+                // Chain-of-thought/thinking content, kept separate from the
+                // visible reply — reasoning models (Nemotron, DeepSeek R1,
+                // etc.) narrate their thought process ("The user is greeting
+                // Aria, I should...") before the actual in-character reply,
+                // and that narration must never be forwarded live or stored
+                // as if the character said it. Only used as a last-resort
+                // fallback below, for providers that route their entire
+                // answer through Reasoning blocks with no Text at all.
+                let mut reasoning_text = String::new();
                 let mut sent_final = false;
-                while let Some(item) = stream.next().await {
+                loop {
+                    let item = match timeout(STREAM_EVENT_TIMEOUT, stream.next()).await {
+                        Ok(Some(item)) => item,
+                        Ok(None) => break, // stream ended normally
+                        Err(_) => {
+                            error!(
+                                "[RigProvider] stream timed out — no event from provider for {}s",
+                                STREAM_EVENT_TIMEOUT.as_secs()
+                            );
+                            let _ = tx.send(StreamChunk::Error(format!(
+                                "The provider stopped responding (no reply for {}s). It may be overloaded — try again or switch models.",
+                                STREAM_EVENT_TIMEOUT.as_secs()
+                            ))).await;
+                            return Ok(());
+                        }
+                    };
                     match item {
                         Ok(MultiTurnStreamItem::StreamAssistantItem(
                             StreamedAssistantContent::Text(text)
@@ -256,12 +293,10 @@ impl RigProvider {
                         Ok(MultiTurnStreamItem::StreamAssistantItem(
                             StreamedAssistantContent::Reasoning(ref reasoning)
                         )) => {
-                            // Some models (e.g. reasoning models) send their content
-                            // through Reasoning blocks instead of Text blocks.
                             let text = reasoning.display_text();
                             if !text.is_empty() {
-                                full_text.push_str(&text);
-                                if tx.send(StreamChunk::Delta(text)).await.is_err() {
+                                reasoning_text.push_str(&text);
+                                if tx.send(StreamChunk::ReasoningDelta(text)).await.is_err() {
                                     debug!("[RigProvider] channel closed, stopping stream");
                                     sent_final = true;
                                     break;
@@ -271,10 +306,9 @@ impl RigProvider {
                         Ok(MultiTurnStreamItem::StreamAssistantItem(
                             StreamedAssistantContent::ReasoningDelta { ref reasoning, .. }
                         )) => {
-                            // Incremental reasoning deltas — forward text to frontend
                             if !reasoning.is_empty() {
-                                full_text.push_str(reasoning);
-                                if tx.send(StreamChunk::Delta(reasoning.clone())).await.is_err() {
+                                reasoning_text.push_str(reasoning);
+                                if tx.send(StreamChunk::ReasoningDelta(reasoning.clone())).await.is_err() {
                                     debug!("[RigProvider] channel closed, stopping stream");
                                     sent_final = true;
                                     break;
@@ -282,12 +316,14 @@ impl RigProvider {
                             }
                         }
                         Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-                            let final_text = if full_text.is_empty() {
-                                fin.response().to_string()
-                            } else {
+                            let final_text = if !full_text.is_empty() {
                                 full_text.clone()
+                            } else if !reasoning_text.trim().is_empty() {
+                                reasoning_text.clone()
+                            } else {
+                                fin.response().to_string()
                             };
-                            
+
                             if final_text.trim().is_empty() {
                                 let _ = tx.send(StreamChunk::Error("Received empty response from the provider. Please verify your API key and model settings.".to_string())).await;
                             } else {
@@ -310,14 +346,15 @@ impl RigProvider {
                 // If the stream closed without a FinalResponse (provider returned
                 // None / dropped the connection), we still need to notify the frontend.
                 if !sent_final {
-                    if full_text.trim().is_empty() {
+                    let salvaged = if !full_text.trim().is_empty() { &full_text } else { &reasoning_text };
+                    if salvaged.trim().is_empty() {
                         error!("[RigProvider] stream ended without FinalResponse and no text received");
                         let _ = tx.send(StreamChunk::Error(
                             "Provider stream closed without a response. Please verify your API key and model settings.".to_string()
                         )).await;
                     } else {
                         debug!("[RigProvider] stream ended without FinalResponse, but text was received — treating as done");
-                        let _ = tx.send(StreamChunk::Done(full_text)).await;
+                        let _ = tx.send(StreamChunk::Done(salvaged.clone())).await;
                     }
                 }
                 Ok(())
@@ -348,9 +385,10 @@ impl RigProvider {
         &self,
         model_id: &str,
         messages: &[ChatMessage],
+        images: &[(Vec<u8>, String)],
         params: &GenerationParams,
     ) -> Result<String, MythicError> {
-        let rig_messages = convert_messages(messages);
+        let rig_messages = convert_messages(messages, images);
         let preamble = extract_system_preamble(messages);
 
         debug!(
@@ -452,16 +490,56 @@ impl RigProvider {
 
 /// Converts Mythic's `ChatMessage` array to rig's `Message` array.
 /// Filters out system messages (those become the agent's preamble).
-fn convert_messages(messages: &[ChatMessage]) -> Vec<Message> {
+///
+/// `images` (raw bytes + MIME type, resolved from a message's stored
+/// attachments — see `commands::chat::load_message_images`) are attached
+/// to the LAST user-role message only, i.e. the current turn's prompt.
+/// This works generically across every rig-backed adapter (OpenAI,
+/// Anthropic, OpenRouter, Gemini, Ollama, etc.) with no per-provider code —
+/// rig itself serializes `UserContent::Image` into each provider's own
+/// wire format.
+fn convert_messages(messages: &[ChatMessage], images: &[(Vec<u8>, String)]) -> Vec<Message> {
+    let last_user_idx = if images.is_empty() {
+        None
+    } else {
+        messages.iter().rposition(|m| m.role == MessageRole::User)
+    };
+
     messages
         .iter()
-        .filter(|m| m.role != MessageRole::System)
-        .map(|m| match m.role {
+        .enumerate()
+        .filter(|(_, m)| m.role != MessageRole::System)
+        .map(|(i, m)| match m.role {
+            MessageRole::User if Some(i) == last_user_idx => {
+                let content = OneOrMany::many(
+                    std::iter::once(UserContent::text(&m.content)).chain(
+                        images.iter().map(|(bytes, mime)| {
+                            UserContent::image_raw(bytes.clone(), image_media_type(mime), None)
+                        }),
+                    ),
+                )
+                .expect("non-empty: UserContent::text is always present");
+                Message::User { content }
+            }
             MessageRole::User => Message::user(&m.content),
             MessageRole::Assistant => Message::assistant(&m.content),
             MessageRole::System => unreachable!(), // filtered above
         })
         .collect()
+}
+
+/// Maps a stored MIME type (from `MessageAttachment`/`upload_message_attachment`)
+/// to rig's `ImageMediaType`. `None` for anything rig doesn't recognize —
+/// rig/the provider can still often infer the type from the image bytes
+/// themselves, so this is a best-effort hint, not a hard requirement.
+fn image_media_type(mime: &str) -> Option<ImageMediaType> {
+    match mime {
+        "image/png" => Some(ImageMediaType::PNG),
+        "image/jpeg" => Some(ImageMediaType::JPEG),
+        "image/webp" => Some(ImageMediaType::WEBP),
+        "image/gif" => Some(ImageMediaType::GIF),
+        _ => None,
+    }
 }
 
 /// Extracts and concatenates all system-role messages into a single preamble.

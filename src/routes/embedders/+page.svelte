@@ -3,6 +3,7 @@
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import SplitHeading from '$lib/components/SplitHeading.svelte';
   import { success } from '$lib/stores/toast';
   import { handleIpcError } from '$lib/utils/error';
   import type { ModelEntry } from '$lib/services/ipc';
@@ -100,13 +101,13 @@
   }
 </script>
 
-<svelte:head><title>Embedding Models — Mythic</title></svelte:head>
+<svelte:head><title>Embedding Models — Janus</title></svelte:head>
 
 <div class="page">
   <!-- Header -->
   <header class="hdr">
     <div class="hdr-left">
-      <h1 class="hdr-title">Embedding Models</h1>
+      <h1 class="hdr-title"><SplitHeading text="Embedding Models" /></h1>
       <div class="hdr-stats">
         {#if isLoading}
           <span class="stat">Loading…</span>
@@ -392,9 +393,7 @@
   }
   .hdr-left { display: flex; flex-direction: column; gap: 6px; }
   .hdr-title {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin: 0;
-    background: linear-gradient(135deg, #f0e8ff, #c4a1ff 50%, #8B5CF6);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-size: 24px; font-weight: 600; letter-spacing: -0.5px; margin: 0;
   }
   .hdr-stats { display: flex; align-items: center; gap: 6px; }
   .stat { font-size: 13px; font-weight: 700; color: #c0c0d8; }

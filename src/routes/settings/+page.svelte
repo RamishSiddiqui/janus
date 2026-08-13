@@ -1,22 +1,49 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import SplitHeading from '$lib/components/SplitHeading.svelte';
+  import SelectCombobox from '$lib/components/SelectCombobox.svelte';
   import { settings } from '$lib/stores/settings';
   import { success, error as toastError, info as toastInfo } from '$lib/stores/toast';
   import { browser } from '$app/environment';
   import { loadConversations } from '$lib/stores/chat';
+  import { HORDE_SAMPLERS } from '$lib/constants/aiHorde';
+  import { frontendLogs, formatFrontendLogsAsText, clearFrontendLogs } from '$lib/stores/logs';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
+
+  // ── Sidebar navigation ──
+  // Settings grew to 8 sections crammed into a two-column masonry layout
+  // that kept getting more cluttered as features were added (Image Presets'
+  // quality knobs, the reasoning toggle, etc). A single active-section panel
+  // with sidebar nav (the VS Code / Linear / macOS System Settings pattern)
+  // scales to any number of sections without the page just getting taller.
+  type SettingsSection = 'appearance' | 'chat' | 'context' | 'privacy' | 'image' | 'prompts' | 'logging';
+  let activeSection = $state<SettingsSection>('appearance');
+  const NAV_ITEMS: { id: SettingsSection; label: string; icon: string }[] = [
+    { id: 'appearance', label: 'Appearance', icon: 'palette' },
+    { id: 'chat', label: 'Chat Behavior', icon: 'message-circle' },
+    { id: 'context', label: 'Context & Memory', icon: 'network' },
+    { id: 'image', label: 'Image Generation', icon: 'image' },
+    { id: 'prompts', label: 'Prompts', icon: 'file-text' },
+    { id: 'privacy', label: 'Data & Privacy', icon: 'shield' },
+    { id: 'logging', label: 'Logging', icon: 'terminal' },
+  ];
 
   // Bind to store values
   let theme = $state($settings.theme);
   let fontSize = $state($settings.fontSize);
   let streamingEnabled = $state($settings.streamingEnabled);
+  let showThinking = $state($settings.showThinking);
   let autoGenerateImages = $state($settings.autoGenerateImages);
+  let allowMatureContent = $state($settings.allowMatureContent);
+  let autoGenerateNpcPortraits = $state($settings.autoGenerateNpcPortraits);
+  let autoApproveNpcPortraits = $state($settings.autoApproveNpcPortraits);
   let autoSaveMemories = $state($settings.autoSaveMemories);
   let localStorageOnly = $state($settings.localStorageOnly);
   let systemPrompt = $state($settings.systemPrompt);
   let postHistoryInstructions = $state($settings.postHistoryInstructions);
+  let profileRefreshPrompt = $state($settings.profileRefreshPrompt);
   let maxContextTokens = $state($settings.maxContextTokens);
   let autoSummarize = $state($settings.autoSummarize);
 
@@ -81,12 +108,16 @@
     isBackfilling = false;
   }
 
-  // Load the enabled embedding model from the backend
+  // All embedding models across providers — populates the picker below.
+  let allEmbeddingModels = $state<{ model_id: string; provider_id: string; provider_name: string; enabled: boolean }[]>([]);
+  let isSwitchingEmbeddingModel = $state(false);
+
   async function loadEnabledEmbeddingModel() {
     if (!isTauri) return;
     try {
       const ipc = await import('$lib/services/ipc');
       const models = await ipc.listEmbeddingModels();
+      allEmbeddingModels = models.map(m => ({ model_id: m.model_id, provider_id: m.provider_id, provider_name: m.provider_name, enabled: m.enabled }));
       const enabled = models.filter(m => m.enabled);
       if (enabled.length > 0) {
         ragEmbeddingModel = enabled[0].model_id;
@@ -96,8 +127,36 @@
     }
   }
 
+  // Only one embedding model can be "active" at a time (live chat embedding
+  // and index rebuilds both resolve to whichever one is enabled) — so
+  // picking a different one here disables whatever was enabled before and
+  // enables the new choice, keeping that invariant true from the UI.
+  async function switchEmbeddingModel(modelId: string) {
+    if (!isTauri || modelId === ragEmbeddingModel || isSwitchingEmbeddingModel) return;
+    const next = allEmbeddingModels.find(m => m.model_id === modelId);
+    if (!next) return;
+    isSwitchingEmbeddingModel = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const previous = allEmbeddingModels.find(m => m.enabled && m.model_id !== modelId);
+      if (previous) {
+        await ipc.toggleModelEnabled(previous.provider_id, previous.model_id, 'embedding', false);
+      }
+      await ipc.toggleModelEnabled(next.provider_id, next.model_id, 'embedding', true);
+      ragEmbeddingModel = modelId;
+      allEmbeddingModels = allEmbeddingModels.map(m => ({ ...m, enabled: m.model_id === modelId }));
+      success(`Embedder set to ${modelId}`);
+    } catch (err) {
+      toastError('Failed to switch embedding model');
+      console.error('[Settings] Failed to switch embedding model:', err);
+    }
+    isSwitchingEmbeddingModel = false;
+  }
+
   onMount(() => {
     loadEnabledEmbeddingModel();
+    loadImagePresets();
+    loadEnabledImageModels();
 
     // Listen for real-time embedding updates from the backend
     let embedCleanup: (() => void) | null = null;
@@ -135,6 +194,196 @@
   let isExporting = $state(false);
   let isImporting = $state(false);
 
+  // --- Image Generation Presets ---
+
+  interface PresetRow {
+    id: string;
+    name: string;
+    model: string | null;
+    sampler_name: string;
+    cfg_scale: number;
+    steps: number;
+    karras: boolean;
+    style: string | null;
+    negative_prompt: string | null;
+    is_default: boolean;
+    clip_skip: number | null;
+    post_processing: string[];
+    hires_fix: boolean;
+    hires_fix_denoising_strength: number | null;
+    isExpanded?: boolean;
+  }
+
+  // Face-fixers and upscalers are both AI Horde `post_processing` entries —
+  // split into two independent pickers here for a simpler UI, recombined
+  // into the ordered array (face-fix first, then upscale) on save.
+  const FACE_FIXERS = [
+    { value: '', label: 'None' },
+    { value: 'GFPGAN', label: 'GFPGAN' },
+    { value: 'CodeFormers', label: 'CodeFormers' },
+  ];
+  const UPSCALERS = [
+    { value: '', label: 'None' },
+    { value: 'RealESRGAN_x4plus', label: 'RealESRGAN x4 (realistic)' },
+    { value: 'RealESRGAN_x4plus_anime_6B', label: 'RealESRGAN x4 (anime)' },
+    { value: '4x_AnimeSharp', label: '4x AnimeSharp' },
+  ];
+  function faceFixerOf(pp: string[]): string {
+    return pp.find(v => v === 'GFPGAN' || v === 'CodeFormers') ?? '';
+  }
+  function upscalerOf(pp: string[]): string {
+    return pp.find(v => v !== 'GFPGAN' && v !== 'CodeFormers') ?? '';
+  }
+  function composePostProcessing(faceFixer: string, upscaler: string): string[] {
+    return [faceFixer, upscaler].filter(Boolean);
+  }
+
+  let imagePresets = $state<PresetRow[]>([]);
+  let isLoadingPresets = $state(false);
+  let showAddPresetForm = $state(false);
+  let isSavingPreset = $state(false);
+
+  // Models a preset's "Model" field can pick from — only image models the
+  // user has explicitly enabled on the Models page (mirrors how chat model
+  // selection works: enable it there first, pick it here).
+  let enabledImageModels = $state<{ model_id: string; provider_name: string; description: string | null }[]>([]);
+
+  // Community-favorite checkpoints (Civitai + AI Horde usage) worth surfacing
+  // above the raw list — matched fuzzily since AI Horde's exact registered
+  // name can vary slightly from the Civitai listing name.
+  const RECOMMENDED_MODEL_PATTERNS = ['pony', 'aam', 'juggernaut', 'realvis', 'albedo'];
+  function isRecommendedModel(modelId: string): boolean {
+    const lower = modelId.toLowerCase();
+    return RECOMMENDED_MODEL_PATTERNS.some(p => lower.includes(p));
+  }
+
+  /** Enabled models, plus the preset's current model tacked on if it's not
+   *  (or no longer) in the enabled list — so an existing preset never shows
+   *  a silently-blank dropdown just because its model got disabled later. */
+  function modelOptionsFor(currentModel: string | null): { model_id: string; label: string }[] {
+    const base = enabledImageModels.map(m => ({
+      model_id: m.model_id,
+      label: (isRecommendedModel(m.model_id) ? '★ ' : '') + m.model_id + (m.description ? ` (${m.description})` : ''),
+    })).sort((a, b) => {
+      const ra = isRecommendedModel(a.model_id), rb = isRecommendedModel(b.model_id);
+      if (ra !== rb) return ra ? -1 : 1;
+      return a.model_id.localeCompare(b.model_id);
+    });
+    if (currentModel && !enabledImageModels.some(m => m.model_id === currentModel)) {
+      base.unshift({ model_id: currentModel, label: `${currentModel} (not currently enabled)` });
+    }
+    return base;
+  }
+
+  async function loadEnabledImageModels() {
+    if (!isTauri) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const models = await ipc.listEnabledModels();
+      enabledImageModels = models
+        .filter(m => m.model_type === 'image')
+        .map(m => ({ model_id: m.model_id, provider_name: m.provider_name, description: m.description }));
+    } catch (err) {
+      console.error('[Settings] Failed to load enabled image models:', err);
+    }
+  }
+
+  let newPresetName = $state('');
+  let newPresetModel = $state('');
+  let newPresetSampler = $state('k_euler_a');
+  let newPresetCfgScale = $state(7.5);
+  let newPresetSteps = $state(30);
+  let newPresetKarras = $state(true);
+  let newPresetStyle = $state('');
+  let newPresetNegativePrompt = $state('');
+  let newPresetClipSkip = $state<number | null>(null);
+  let newPresetFaceFixer = $state('');
+  let newPresetUpscaler = $state('');
+  let newPresetHiresFix = $state(false);
+  let newPresetHiresFixDenoising = $state(0.65);
+
+  async function loadImagePresets() {
+    if (!isTauri) return;
+    isLoadingPresets = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const rows = await ipc.listImagePresets();
+      imagePresets = rows.map(p => ({
+        id: p.id, name: p.name, model: p.model, sampler_name: p.sampler_name,
+        cfg_scale: p.cfg_scale ?? 7.5, steps: p.steps, karras: p.karras,
+        style: p.style, negative_prompt: p.negative_prompt, is_default: p.is_default,
+        clip_skip: p.clip_skip ?? null, post_processing: p.post_processing ?? [],
+        hires_fix: p.hires_fix ?? false, hires_fix_denoising_strength: p.hires_fix_denoising_strength ?? null,
+      }));
+    } catch (err) { console.error('[Settings] Failed to load image presets:', err); }
+    isLoadingPresets = false;
+  }
+
+  async function addImagePreset() {
+    if (!newPresetName.trim() || !isTauri) return;
+    isSavingPreset = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const p = await ipc.createImagePreset(newPresetName, {
+        model: newPresetModel || undefined,
+        samplerName: newPresetSampler,
+        cfgScale: newPresetCfgScale,
+        steps: newPresetSteps,
+        karras: newPresetKarras,
+        style: newPresetStyle || undefined,
+        negativePrompt: newPresetNegativePrompt || undefined,
+        isDefault: imagePresets.length === 0,
+        clipSkip: newPresetClipSkip ?? undefined,
+        postProcessing: composePostProcessing(newPresetFaceFixer, newPresetUpscaler),
+        hiresFix: newPresetHiresFix,
+        hiresFixDenoisingStrength: newPresetHiresFix ? newPresetHiresFixDenoising : undefined,
+      });
+      imagePresets = [...imagePresets, {
+        id: p.id, name: p.name, model: p.model, sampler_name: p.sampler_name,
+        cfg_scale: p.cfg_scale ?? 7.5, steps: p.steps, karras: p.karras,
+        style: p.style, negative_prompt: p.negative_prompt, is_default: p.is_default,
+        clip_skip: p.clip_skip ?? null, post_processing: p.post_processing ?? [],
+        hires_fix: p.hires_fix ?? false, hires_fix_denoising_strength: p.hires_fix_denoising_strength ?? null,
+      }];
+      if (p.is_default) imagePresets = imagePresets.map(r => ({ ...r, is_default: r.id === p.id }));
+      showAddPresetForm = false;
+      newPresetName = ''; newPresetModel = ''; newPresetStyle = ''; newPresetNegativePrompt = '';
+      newPresetSampler = 'k_euler_a'; newPresetCfgScale = 7.5; newPresetSteps = 30; newPresetKarras = true;
+      newPresetClipSkip = null; newPresetFaceFixer = ''; newPresetUpscaler = '';
+      newPresetHiresFix = false; newPresetHiresFixDenoising = 0.65;
+      success(`Added preset "${p.name}"`);
+    } catch (err) { toastError('Failed to add preset'); console.error(err); }
+    isSavingPreset = false;
+  }
+
+  async function savePresetField(p: PresetRow, field: string, value: string | number | boolean | string[]) {
+    if (!isTauri) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      await ipc.updateImagePreset(p.id, { [field]: value } as Record<string, unknown>);
+    } catch (err) { toastError('Failed to save preset'); console.error(err); }
+  }
+
+  async function setDefaultPreset(p: PresetRow) {
+    if (!isTauri) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      await ipc.setDefaultImagePreset(p.id);
+      imagePresets = imagePresets.map(r => ({ ...r, is_default: r.id === p.id }));
+      success(`"${p.name}" set as default preset`);
+    } catch (err) { toastError('Failed to set default preset'); console.error(err); }
+  }
+
+  async function deleteImagePresetRow(p: PresetRow) {
+    if (!isTauri) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      await ipc.deleteImagePreset(p.id);
+      imagePresets = imagePresets.filter(r => r.id !== p.id);
+      success(`Deleted preset "${p.name}"`);
+    } catch (err) { toastError('Failed to delete preset'); console.error(err); }
+  }
+
   const fontSizes = ['Small', 'Medium', 'Large'] as const;
 
   // Persist changes back to store (debounced to avoid infinite loop)
@@ -145,11 +394,16 @@
       theme,
       fontSize,
       streamingEnabled,
+      showThinking,
       autoGenerateImages,
+      allowMatureContent,
+      autoGenerateNpcPortraits,
+      autoApproveNpcPortraits,
       autoSaveMemories,
       localStorageOnly,
       systemPrompt,
       postHistoryInstructions,
+      profileRefreshPrompt,
       maxContextTokens,
       autoSummarize,
       ragEnabled,
@@ -168,7 +422,86 @@
     settings.reset();
     systemPrompt = $settings.systemPrompt;
     postHistoryInstructions = $settings.postHistoryInstructions;
+    profileRefreshPrompt = $settings.profileRefreshPrompt;
     success('Prompts reset to defaults');
+  }
+
+  // ── Logging ──
+  let logSubTab = $state<'backend' | 'frontend'>('backend');
+  let backendLogText = $state('');
+  let backendLogPath = $state('');
+  let isLoadingBackendLogs = $state(false);
+  let isExportingLogs = $state(false);
+  let logSearch = $state('');
+
+  async function loadBackendLogs() {
+    if (!isTauri) return;
+    isLoadingBackendLogs = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      backendLogText = await ipc.getBackendLogs(2000);
+      if (!backendLogPath) backendLogPath = await ipc.getBackendLogPath();
+    } catch {
+      toastError('Failed to load backend logs');
+    }
+    isLoadingBackendLogs = false;
+  }
+
+  // Load once when the Logging tab is first opened, not on every render.
+  let hasLoadedBackendLogs = false;
+  $effect(() => {
+    if (activeSection === 'logging' && isTauri && !hasLoadedBackendLogs) {
+      hasLoadedBackendLogs = true;
+      loadBackendLogs();
+    }
+  });
+
+  let backendLogLines = $derived(backendLogText ? backendLogText.split('\n') : []);
+  let filteredBackendLines = $derived(
+    logSearch.trim()
+      ? backendLogLines.filter(l => l.toLowerCase().includes(logSearch.trim().toLowerCase()))
+      : backendLogLines
+  );
+  let filteredFrontendEntries = $derived(
+    logSearch.trim()
+      ? $frontendLogs.filter(e => e.message.toLowerCase().includes(logSearch.trim().toLowerCase()))
+      : $frontendLogs
+  );
+
+  function backendLogLineClass(line: string): string {
+    if (/\bERROR\b/.test(line)) return 'log-line-error';
+    if (/\bWARN\b/.test(line)) return 'log-line-warn';
+    if (/\bDEBUG\b/.test(line)) return 'log-line-debug';
+    return '';
+  }
+
+  async function handleExportLogs() {
+    isExportingLogs = true;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      const combined = [
+        `Janus log export — ${new Date().toISOString()}`,
+        '',
+        '===== BACKEND LOG =====',
+        backendLogText || '(empty)',
+        '',
+        '===== FRONTEND LOG =====',
+        formatFrontendLogsAsText($frontendLogs) || '(empty)',
+      ].join('\n');
+      const savePath = await save({
+        filters: [{ name: 'Log File', extensions: ['log', 'txt'] }],
+        defaultPath: `mythic-logs-${Date.now()}.log`,
+      });
+      if (savePath) {
+        await writeTextFile(savePath, combined);
+        success('Logs exported');
+      }
+    } catch (err) {
+      toastError('Failed to export logs');
+      console.error('Log export failed:', err);
+    }
+    isExportingLogs = false;
   }
 
   function toggleFontDropdown() {
@@ -281,7 +614,7 @@
 
       backupStatus = '';
       const savePath = await save({
-        filters: [{ name: 'Mythic Export', extensions: ['json'] }],
+        filters: [{ name: 'Janus Export', extensions: ['json'] }],
         defaultPath: `mythic-export-${Date.now()}.json`,
       });
 
@@ -332,7 +665,7 @@
       const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({
         multiple: false,
-        filters: [{ name: 'Mythic Export', extensions: ['json'] }],
+        filters: [{ name: 'Janus Export', extensions: ['json'] }],
       });
       if (!selected) { isImporting = false; return; }
 
@@ -346,11 +679,16 @@
         theme = $settings.theme;
         fontSize = $settings.fontSize;
         streamingEnabled = $settings.streamingEnabled;
+        showThinking = $settings.showThinking;
         autoGenerateImages = $settings.autoGenerateImages;
+        allowMatureContent = $settings.allowMatureContent;
+        autoGenerateNpcPortraits = $settings.autoGenerateNpcPortraits;
+        autoApproveNpcPortraits = $settings.autoApproveNpcPortraits;
         autoSaveMemories = $settings.autoSaveMemories;
         localStorageOnly = $settings.localStorageOnly;
         systemPrompt = $settings.systemPrompt;
         postHistoryInstructions = $settings.postHistoryInstructions;
+        profileRefreshPrompt = $settings.profileRefreshPrompt;
       }
 
       if (data.version !== '2.0' || !Array.isArray(data.characters)) {
@@ -527,76 +865,106 @@
 </script>
 
 <svelte:head>
-  <title>Settings — Mythic</title>
+  <title>Settings — Janus</title>
 </svelte:head>
 
 <div class="settings-page">
   <!-- Header -->
   <header class="settings-header">
-    <h1 class="settings-title">Settings</h1>
-    <span class="settings-subtitle">Customize your Mythic experience</span>
+    <div class="settings-header-left">
+      <h1 class="settings-title"><SplitHeading text="Settings" /></h1>
+      <span class="settings-subtitle">Customize your Janus experience</span>
+    </div>
+    <div class="settings-header-about">
+      <span class="about-name">Janus v0.1.0</span>
+      <span class="about-dot" aria-hidden="true">·</span>
+      <span class="about-desc">{localStorageOnly ? '🔒 Private' : '⚠️ Privacy Relaxed'}</span>
+      <button class="about-link-btn" title="GitHub">
+        <Icon name="github" size={14} color="var(--fg-secondary)" />
+      </button>
+      <button class="about-link-btn" title="Star on GitHub">
+        <Icon name="star" size={14} color="var(--fg-secondary)" />
+      </button>
+    </div>
   </header>
 
-  <!-- Two Column Layout -->
-  <div class="settings-grid">
-    <!-- Left Column -->
-    <div class="settings-column">
-      <!-- Appearance -->
-      <section class="settings-section animate-fade-in-up stagger-1">
-        <div class="section-header">
-          <Icon name="palette" size={16} color="var(--accent-primary)" />
-          <span class="section-title">Appearance</span>
-        </div>
+  <!-- Section tabs — a second full-height sidebar here would just duplicate
+       the app's own nav rail right next to it; a horizontal tab strip keeps
+       navigation to one rail and lets each panel use the full page width. -->
+  <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+    {#each NAV_ITEMS as item (item.id)}
+      <button
+        class="settings-tab"
+        class:active={activeSection === item.id}
+        onclick={() => activeSection = item.id}
+        role="tab"
+        aria-selected={activeSection === item.id}
+      >
+        <Icon name={item.icon} size={15} color={activeSection === item.id ? '#fff' : 'var(--fg-muted)'} />
+        <span>{item.label}</span>
+      </button>
+    {/each}
+  </div>
 
-        <div class="setting-row">
-          <div class="setting-label">
-            <span class="setting-name">Theme</span>
-            <span class="setting-desc">Choose your color scheme</span>
-          </div>
-          <div class="theme-toggle">
-            <button 
-              class="theme-btn" 
+  <div class="settings-body">
+    {#key activeSection}
+    <div class="settings-panel">
+    {#if activeSection === 'appearance'}
+      <div class="panel-heading animate-fade-in-up stagger-1">
+        <span class="panel-heading-title">Appearance</span>
+        <span class="panel-heading-desc">How Janus looks on your screen</span>
+      </div>
+      <div class="settings-card-grid animate-fade-in-up stagger-1">
+        <div class="settings-card">
+          <div class="settings-card-icon"><Icon name="palette" size={18} color="var(--accent-primary)" /></div>
+          <span class="settings-card-name">Theme</span>
+          <span class="settings-card-desc">Choose your color scheme</span>
+          <div class="theme-toggle theme-toggle-lg">
+            <button
+              class="theme-btn"
               class:active={theme === 'dark'}
               onclick={() => theme = 'dark'}
             >Dark</button>
-            <button 
-              class="theme-btn" 
+            <button
+              class="theme-btn"
               class:active={theme === 'light'}
               onclick={() => theme = 'light'}
             >Light</button>
-            <button 
-              class="theme-btn" 
+            <button
+              class="theme-btn"
               class:active={theme === 'system'}
               onclick={() => theme = 'system'}
             >System</button>
           </div>
         </div>
 
-        <div class="setting-row">
-          <span class="setting-name">Font Size</span>
+        <div class="settings-card">
+          <div class="settings-card-icon"><Icon name="file-text" size={18} color="var(--accent-primary)" /></div>
+          <span class="settings-card-name">Font Size</span>
+          <span class="settings-card-desc">Adjust text size across the app</span>
           <div class="font-dropdown-wrapper">
-            <button class="setting-dropdown" onclick={toggleFontDropdown}>
+            <button class="setting-dropdown setting-dropdown-lg" onclick={toggleFontDropdown}>
               <span>{fontSize}</span>
-              <Icon name="chevron-down" size={12} color="var(--fg-muted)" />
+              <Icon name="chevron-down" size={13} color="var(--fg-muted)" />
             </button>
           </div>
         </div>
-      </section>
+      </div>
+    {/if}
 
-      <!-- Chat Behavior -->
-      <section class="settings-section animate-fade-in-up stagger-2">
-        <div class="section-header">
-          <Icon name="message-circle" size={16} color="var(--accent-primary)" />
-          <span class="section-title">Chat Behavior</span>
-        </div>
-
-        <div class="setting-row">
+    {#if activeSection === 'chat'}
+      <div class="panel-heading animate-fade-in-up stagger-2">
+        <span class="panel-heading-title">Chat Behavior</span>
+        <span class="panel-heading-desc">How responses stream in and what runs automatically after each message</span>
+      </div>
+      <div class="settings-toggle-grid animate-fade-in-up stagger-2">
+        <div class="toggle-card">
           <div class="setting-label">
             <span class="setting-name">Streaming Responses</span>
             <span class="setting-desc">{streamingEnabled ? 'Text appears word-by-word as it generates' : 'Full response appears at once when complete'}</span>
           </div>
-          <button 
-            class="toggle-switch" 
+          <button
+            class="toggle-switch"
             class:on={streamingEnabled}
             onclick={() => {
               streamingEnabled = !streamingEnabled;
@@ -610,13 +978,33 @@
           </button>
         </div>
 
-        <div class="setting-row">
+        <div class="toggle-card">
+          <div class="setting-label">
+            <span class="setting-name">Show Model Thinking</span>
+            <span class="setting-desc">{showThinking ? 'Reasoning models show a collapsible "Thinking" trace above their reply' : 'Reasoning is hidden entirely — only the in-character reply is shown'}</span>
+          </div>
+          <button
+            class="toggle-switch"
+            class:on={showThinking}
+            onclick={() => {
+              showThinking = !showThinking;
+              success(showThinking ? 'Model thinking will be shown (collapsed by default)' : 'Model thinking hidden');
+            }}
+            role="switch"
+            aria-checked={showThinking}
+            aria-label="Toggle showing model reasoning/thinking"
+          >
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+
+        <div class="toggle-card">
           <div class="setting-label">
             <span class="setting-name">Auto-Generate Scene Images</span>
             <span class="setting-desc">Generate images from scene context</span>
           </div>
-          <button 
-            class="toggle-switch" 
+          <button
+            class="toggle-switch"
             class:on={autoGenerateImages}
             onclick={() => autoGenerateImages = !autoGenerateImages}
             role="switch"
@@ -627,13 +1015,13 @@
           </button>
         </div>
 
-        <div class="setting-row">
+        <div class="toggle-card">
           <div class="setting-label">
             <span class="setting-name">Auto-Save Memories</span>
             <span class="setting-desc">{autoSaveMemories ? 'Key events are extracted every few messages' : 'Memories are only saved when pinned manually'}</span>
           </div>
-          <button 
-            class="toggle-switch" 
+          <button
+            class="toggle-switch"
             class:on={autoSaveMemories}
             onclick={() => {
               autoSaveMemories = !autoSaveMemories;
@@ -646,12 +1034,17 @@
             <span class="toggle-knob"></span>
           </button>
         </div>
-      </section>
+      </div>
+    {/if}
 
-      <!-- Context Management -->
-      <section class="settings-section animate-fade-in-up stagger-2b">
+    {#if activeSection === 'context'}
+      <div class="panel-heading animate-fade-in-up stagger-2b">
+        <span class="panel-heading-title">Context & Memory</span>
+        <span class="panel-heading-desc">What the model sees each turn, and what gets remembered long-term</span>
+      </div>
+      <section class="settings-section settings-section-bounded animate-fade-in-up stagger-2b">
         <div class="section-header">
-          <Icon name="layers" size={16} color="var(--accent-primary)" />
+          <Icon name="network" size={16} color="var(--accent-primary)" />
           <span class="section-title">Context Management</span>
         </div>
 
@@ -698,9 +1091,9 @@
       </section>
 
       <!-- Memory (Vector RAG) -->
-      <section class="settings-section animate-fade-in-up stagger-2c">
+      <section class="settings-section settings-section-bounded animate-fade-in-up stagger-2c">
         <div class="section-header">
-          <Icon name="database" size={16} color="var(--accent-primary)" />
+          <Icon name="server" size={16} color="var(--accent-primary)" />
           <span class="section-title">Memory</span>
           <span class="memory-badge" class:memory-active={ragEnabled}>{ragEnabled ? 'Active' : 'Disabled'}</span>
         </div>
@@ -727,15 +1120,28 @@
 
         {#if ragEnabled}
           <div class="memory-config" style="animation: slideDown 220ms cubic-bezier(0.34,1.56,0.64,1)">
-            <!-- Embedding Model (read-only — configured in Embedding Models page) -->
+            <!-- Embedding Model — picks among models enabled on the
+                 Embedding Models page; selecting one here enables it there
+                 too (only one can be active at a time). -->
             <div class="setting-row">
               <div class="setting-label">
                 <span class="setting-name">Embedder Model</span>
-                <span class="setting-desc">Configured in <a href="/embedders" class="settings-link">AI Studio → Embedding Models</a></span>
+                <span class="setting-desc">Manage the full list in <a href="/embedders" class="settings-link">AI Studio → Embedding Models</a></span>
               </div>
-              <div class="font-dropdown-wrapper">
-                <span class="setting-value-readonly mono">{ragEmbeddingModel || 'Not configured'}</span>
-              </div>
+              {#if allEmbeddingModels.length > 0}
+                <div class="embedder-combo-wrap">
+                  <SelectCombobox
+                    bind:value={ragEmbeddingModel}
+                    disabled={isSwitchingEmbeddingModel}
+                    ariaLabel="Embedder model"
+                    emptyText="No matches"
+                    onChange={switchEmbeddingModel}
+                    options={allEmbeddingModels.map(m => ({ value: m.model_id, label: m.model_id, sublabel: m.provider_name }))}
+                  />
+                </div>
+              {:else}
+                <span class="setting-value-readonly mono">No embedding models enabled</span>
+              {/if}
             </div>
 
             <!-- Retrieval Settings -->
@@ -913,17 +1319,14 @@
           </div>
         {/if}
       </section>
-    </div>
+    {/if}
 
-    <!-- Right Column -->
-    <div class="settings-column">
-      <!-- Data & Privacy -->
-      <section class="settings-section animate-fade-in-up stagger-3">
-        <div class="section-header">
-          <Icon name="shield" size={16} color="var(--accent-primary)" />
-          <span class="section-title">Data & Privacy</span>
-        </div>
-
+    {#if activeSection === 'privacy'}
+      <div class="panel-heading animate-fade-in-up stagger-3">
+        <span class="panel-heading-title">Data & Privacy</span>
+        <span class="panel-heading-desc">What Janus stores, and how to back it up or wipe it</span>
+      </div>
+      <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
         <div class="setting-row">
           <div class="setting-label">
             <span class="setting-name">Local Storage Only</span>
@@ -994,8 +1397,313 @@
           </div>
         {/if}
       </section>
+    {/if}
 
-      <!-- System Prompt -->
+    {#if activeSection === 'image'}
+      <div class="panel-heading animate-fade-in-up stagger-3b">
+        <span class="panel-heading-title">Image Generation</span>
+        <span class="panel-heading-desc">Reusable sampler/style bundles for scene generation — pick one per chat in the Scene panel, or mark one as the default for every conversation.</span>
+      </div>
+
+      <div class="settings-toggle-grid animate-fade-in-up stagger-3b">
+        <div class="toggle-card">
+          <div class="setting-label">
+            <span class="setting-name">Allow Mature Content</span>
+            <span class="setting-desc">{allowMatureContent ? "Won't false-positive block ordinary character descriptions that brush an overzealous NSFW classifier" : 'Strict filtering — AI Horde may block/censor borderline generations'}</span>
+          </div>
+          <button
+            class="toggle-switch"
+            class:on={allowMatureContent}
+            onclick={() => {
+              allowMatureContent = !allowMatureContent;
+              success(allowMatureContent ? 'Mature content allowed — fewer false-positive blocks' : 'Strict content filtering enabled');
+            }}
+            role="switch"
+            aria-checked={allowMatureContent}
+            aria-label="Toggle allowing mature content in scene generation"
+          >
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+
+        <div class="toggle-card">
+          <div class="setting-label">
+            <span class="setting-name">Auto-Generate NPC Portraits</span>
+            <span class="setting-desc">{autoGenerateNpcPortraits ? 'Auto-detected characters get a generated portrait via your configured image provider' : 'New characters show a placeholder until you generate a portrait manually'}</span>
+          </div>
+          <button
+            class="toggle-switch"
+            class:on={autoGenerateNpcPortraits}
+            onclick={() => {
+              autoGenerateNpcPortraits = !autoGenerateNpcPortraits;
+              success(autoGenerateNpcPortraits ? 'NPC portraits will be auto-generated' : 'NPC portraits will not be auto-generated');
+            }}
+            role="switch"
+            aria-checked={autoGenerateNpcPortraits}
+            aria-label="Toggle auto-generating NPC portraits"
+          >
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+
+        {#if autoGenerateNpcPortraits}
+          <div class="toggle-card">
+            <div class="setting-label">
+              <span class="setting-name">Auto-Approve NPC Portraits</span>
+              <span class="setting-desc">{autoApproveNpcPortraits ? 'Generated portraits are used immediately' : 'Generated portraits wait for your approval in the Cast panel'}</span>
+            </div>
+            <button
+              class="toggle-switch"
+              class:on={autoApproveNpcPortraits}
+              onclick={() => {
+                autoApproveNpcPortraits = !autoApproveNpcPortraits;
+                success(autoApproveNpcPortraits ? 'NPC portraits auto-approve' : 'NPC portraits require your approval');
+              }}
+              role="switch"
+              aria-checked={autoApproveNpcPortraits}
+              aria-label="Toggle auto-approving NPC portraits"
+            >
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <section class="settings-section animate-fade-in-up stagger-3b">
+
+        {#if isLoadingPresets}
+          <span class="setting-desc">Loading…</span>
+        {:else if imagePresets.length > 0}
+          <div class="preset-list">
+            {#each imagePresets as p (p.id)}
+              <div class="preset-card" class:preset-card-default={p.is_default}>
+                <div class="preset-card-hdr">
+                  <div class="preset-card-hdr-left">
+                    <span class="preset-name">{p.name}</span>
+                    {#if p.is_default}<span class="badge-default">Default</span>{/if}
+                  </div>
+                  <button class="icon-btn-sm" onclick={() => { p.isExpanded = !p.isExpanded; imagePresets = [...imagePresets]; }} aria-label="Toggle preset details">
+                    <Icon name={p.isExpanded ? 'chevron-up' : 'chevron-down'} size={13} color="#5a5a7a" />
+                  </button>
+                </div>
+
+                {#if p.isExpanded}
+                  <div class="preset-card-body">
+                    <div class="preset-field-row">
+                      <div class="preset-field">
+                        <span class="preset-flabel">Model (optional)</span>
+                        <select class="preset-finput mono" value={p.model ?? ''}
+                          onchange={(e) => { const v = e.currentTarget.value; p.model = v || null; imagePresets = [...imagePresets]; savePresetField(p, 'model', v); }}>
+                          <option value="">None — let style/default decide</option>
+                          {#each modelOptionsFor(p.model) as opt}
+                            <option value={opt.model_id}>{opt.label}</option>
+                          {/each}
+                        </select>
+                      </div>
+                      <div class="preset-field">
+                        <span class="preset-flabel">Sampler</span>
+                        <select class="preset-finput mono" value={p.sampler_name}
+                          onchange={(e) => { const v = e.currentTarget.value; p.sampler_name = v; imagePresets = [...imagePresets]; savePresetField(p, 'samplerName', v); }}>
+                          {#each HORDE_SAMPLERS as s}<option value={s}>{s}</option>{/each}
+                        </select>
+                      </div>
+                    </div>
+                    <div class="preset-field-row">
+                      <div class="preset-field">
+                        <span class="preset-flabel">CFG Scale</span>
+                        <input class="preset-finput mono" type="number" step="0.5" min="1" max="30" value={p.cfg_scale}
+                          onblur={(e) => { const v = parseFloat(e.currentTarget.value); p.cfg_scale = v; imagePresets = [...imagePresets]; savePresetField(p, 'cfgScale', v); }} />
+                      </div>
+                      <div class="preset-field">
+                        <span class="preset-flabel">Steps</span>
+                        <input class="preset-finput mono" type="number" step="1" min="1" max="150" value={p.steps}
+                          onblur={(e) => { const v = parseInt(e.currentTarget.value, 10); p.steps = v; imagePresets = [...imagePresets]; savePresetField(p, 'steps', v); }} />
+                      </div>
+                      <div class="preset-field preset-field-checkbox">
+                        <span class="preset-flabel">Karras</span>
+                        <label class="checkbox-wrap-preset">
+                          <input type="checkbox" checked={p.karras}
+                            onchange={(e) => { const v = e.currentTarget.checked; p.karras = v; imagePresets = [...imagePresets]; savePresetField(p, 'karras', v); }} />
+                          <span>Smoother noise schedule</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="preset-field">
+                      <span class="preset-flabel">Style (optional — overrides sampler/model/resolution above)</span>
+                      <input class="preset-finput mono" value={p.style ?? ''} placeholder="e.g. raw-png, pixel-art"
+                        onblur={(e) => { const v = e.currentTarget.value; p.style = v || null; imagePresets = [...imagePresets]; savePresetField(p, 'style', v); }} />
+                      <a href="https://artbot.site/" target="_blank" class="hint-link-sm">Browse styles →</a>
+                    </div>
+                    <div class="preset-field">
+                      <span class="preset-flabel">Negative Prompt (optional, ignored if a style is set)</span>
+                      <input class="preset-finput mono" value={p.negative_prompt ?? ''} placeholder="Leave blank for the built-in default"
+                        onblur={(e) => { const v = e.currentTarget.value; p.negative_prompt = v || null; imagePresets = [...imagePresets]; savePresetField(p, 'negativePrompt', v); }} />
+                    </div>
+                    <div class="preset-field-row">
+                      <div class="preset-field">
+                        <span class="preset-flabel">Face Fix</span>
+                        <select class="preset-finput mono" value={faceFixerOf(p.post_processing)}
+                          onchange={(e) => {
+                            const v = e.currentTarget.value;
+                            p.post_processing = composePostProcessing(v, upscalerOf(p.post_processing));
+                            imagePresets = [...imagePresets];
+                            savePresetField(p, 'postProcessing', p.post_processing);
+                          }}>
+                          {#each FACE_FIXERS as f}<option value={f.value}>{f.label}</option>{/each}
+                        </select>
+                      </div>
+                      <div class="preset-field">
+                        <span class="preset-flabel">Upscaler</span>
+                        <select class="preset-finput mono" value={upscalerOf(p.post_processing)}
+                          onchange={(e) => {
+                            const v = e.currentTarget.value;
+                            p.post_processing = composePostProcessing(faceFixerOf(p.post_processing), v);
+                            imagePresets = [...imagePresets];
+                            savePresetField(p, 'postProcessing', p.post_processing);
+                          }}>
+                          {#each UPSCALERS as u}<option value={u.value}>{u.label}</option>{/each}
+                        </select>
+                      </div>
+                      <div class="preset-field">
+                        <span class="preset-flabel">CLIP Skip (blank = model default)</span>
+                        <input class="preset-finput mono" type="number" step="1" min="1" max="12" placeholder="1"
+                          value={p.clip_skip ?? ''}
+                          onblur={(e) => {
+                            const raw = e.currentTarget.value.trim();
+                            const v = raw === '' ? 0 : parseInt(raw, 10);
+                            p.clip_skip = v || null;
+                            imagePresets = [...imagePresets];
+                            savePresetField(p, 'clipSkip', v);
+                          }} />
+                      </div>
+                    </div>
+                    <div class="preset-field preset-field-checkbox">
+                      <label class="checkbox-wrap-preset">
+                        <input type="checkbox" checked={p.hires_fix}
+                          onchange={(e) => { const v = e.currentTarget.checked; p.hires_fix = v; imagePresets = [...imagePresets]; savePresetField(p, 'hiresFix', v); }} />
+                        <span>Hi-Res Fix — re-processes at higher resolution (best detail/anatomy fix, ~2x generation time &amp; kudos cost)</span>
+                      </label>
+                      {#if p.hires_fix}
+                        <input class="preset-finput mono" type="number" step="0.05" min="0.01" max="1"
+                          value={p.hires_fix_denoising_strength ?? 0.65}
+                          onblur={(e) => { const v = parseFloat(e.currentTarget.value); p.hires_fix_denoising_strength = v; imagePresets = [...imagePresets]; savePresetField(p, 'hiresFixDenoisingStrength', v); }} />
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+
+                <div class="preset-card-actions">
+                  {#if !p.is_default}
+                    <button class="settings-btn outline sm" onclick={() => setDefaultPreset(p)}>Set Default</button>
+                  {/if}
+                  <button class="settings-btn danger sm" onclick={() => deleteImagePresetRow(p)}>Delete</button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        {#if showAddPresetForm}
+          <div class="preset-add-form">
+            <div class="preset-field-row">
+              <div class="preset-field">
+                <span class="preset-flabel">Name</span>
+                <input class="preset-finput" bind:value={newPresetName} placeholder="e.g. Fantasy Painting" />
+              </div>
+              <div class="preset-field">
+                <span class="preset-flabel">Model (optional)</span>
+                <select class="preset-finput mono" bind:value={newPresetModel}>
+                  <option value="">None — let style/default decide</option>
+                  {#each modelOptionsFor(null) as opt}
+                    <option value={opt.model_id}>{opt.label}</option>
+                  {/each}
+                </select>
+                {#if enabledImageModels.length === 0}
+                  <a href="/models" class="hint-link-sm">Enable image models →</a>
+                {/if}
+              </div>
+            </div>
+            <div class="preset-field-row">
+              <div class="preset-field">
+                <span class="preset-flabel">Sampler</span>
+                <select class="preset-finput mono" bind:value={newPresetSampler}>
+                  {#each HORDE_SAMPLERS as s}<option value={s}>{s}</option>{/each}
+                </select>
+              </div>
+              <div class="preset-field">
+                <span class="preset-flabel">CFG Scale</span>
+                <input class="preset-finput mono" type="number" step="0.5" min="1" max="30" bind:value={newPresetCfgScale} />
+              </div>
+              <div class="preset-field">
+                <span class="preset-flabel">Steps</span>
+                <input class="preset-finput mono" type="number" step="1" min="1" max="150" bind:value={newPresetSteps} />
+              </div>
+              <div class="preset-field preset-field-checkbox">
+                <span class="preset-flabel">Karras</span>
+                <label class="checkbox-wrap-preset">
+                  <input type="checkbox" bind:checked={newPresetKarras} />
+                  <span>Smoother noise schedule</span>
+                </label>
+              </div>
+            </div>
+            <div class="preset-field">
+              <span class="preset-flabel">Style (optional)</span>
+              <input class="preset-finput mono" bind:value={newPresetStyle} placeholder="e.g. raw-png, pixel-art" />
+            </div>
+            <div class="preset-field">
+              <span class="preset-flabel">Negative Prompt (optional)</span>
+              <input class="preset-finput mono" bind:value={newPresetNegativePrompt} placeholder="Leave blank for the built-in default" />
+            </div>
+            <div class="preset-field-row">
+              <div class="preset-field">
+                <span class="preset-flabel">Face Fix</span>
+                <select class="preset-finput mono" bind:value={newPresetFaceFixer}>
+                  {#each FACE_FIXERS as f}<option value={f.value}>{f.label}</option>{/each}
+                </select>
+              </div>
+              <div class="preset-field">
+                <span class="preset-flabel">Upscaler</span>
+                <select class="preset-finput mono" bind:value={newPresetUpscaler}>
+                  {#each UPSCALERS as u}<option value={u.value}>{u.label}</option>{/each}
+                </select>
+              </div>
+              <div class="preset-field">
+                <span class="preset-flabel">CLIP Skip (blank = model default)</span>
+                <input class="preset-finput mono" type="number" step="1" min="1" max="12" placeholder="1"
+                  value={newPresetClipSkip ?? ''}
+                  oninput={(e) => { const raw = e.currentTarget.value.trim(); newPresetClipSkip = raw === '' ? null : parseInt(raw, 10); }} />
+              </div>
+            </div>
+            <div class="preset-field preset-field-checkbox">
+              <label class="checkbox-wrap-preset">
+                <input type="checkbox" bind:checked={newPresetHiresFix} />
+                <span>Hi-Res Fix — re-processes at higher resolution (best detail/anatomy fix, ~2x generation time &amp; kudos cost)</span>
+              </label>
+              {#if newPresetHiresFix}
+                <input class="preset-finput mono" type="number" step="0.05" min="0.01" max="1" bind:value={newPresetHiresFixDenoising} />
+              {/if}
+            </div>
+            <div class="button-row">
+              <button class="settings-btn outline" onclick={() => showAddPresetForm = false}>Cancel</button>
+              <button class="settings-btn primary" onclick={addImagePreset} disabled={isSavingPreset || !newPresetName.trim()}>
+                {isSavingPreset ? 'Adding…' : 'Add Preset'}
+              </button>
+            </div>
+          </div>
+        {:else}
+          <button class="settings-btn outline" onclick={() => showAddPresetForm = true}>
+            <Icon name="plus" size={14} color="var(--fg-secondary)" />
+            <span>Add Preset</span>
+          </button>
+        {/if}
+      </section>
+    {/if}
+
+    {#if activeSection === 'prompts'}
+      <div class="panel-heading animate-fade-in-up stagger-4">
+        <span class="panel-heading-title">Prompts</span>
+        <span class="panel-heading-desc">The system-level instructions injected into every generation</span>
+      </div>
       <section class="settings-section animate-fade-in-up stagger-4">
         <div class="section-header">
           <div class="section-header-left">
@@ -1037,22 +1745,96 @@
         <span class="prompt-hint">Controls story momentum • scene transitions • prevents dead-end conversations</span>
       </section>
 
-      <!-- About -->
-      <div class="about-card animate-fade-in-up stagger-5">
-        <div class="about-left">
-          <span class="about-name">Mythic v0.1.0</span>
-          <span class="about-desc">Open Source • Local First • {localStorageOnly ? '🔒 Private' : '⚠️ Privacy Relaxed'}</span>
+      <!-- Character Profile Refresh -->
+      <section class="settings-section animate-fade-in-up stagger-4b">
+        <div class="section-header">
+          <div class="section-header-left">
+            <Icon name="refresh-cw" size={16} color="var(--accent-primary)" />
+            <span class="section-title">Character Profile Refresh</span>
+          </div>
+          <button class="reset-btn" onclick={resetSystemPrompt}>Reset</button>
         </div>
-        <div class="about-links">
-          <button class="about-link-btn" title="GitHub">
-            <Icon name="github" size={16} color="var(--fg-secondary)" />
-          </button>
-          <button class="about-link-btn" title="Star on GitHub">
-            <Icon name="star" size={16} color="var(--fg-secondary)" />
-          </button>
-        </div>
+
+        <span class="phi-description">Used by "Refresh from Story" — updates an auto-detected character's description, personality, and scenario to match how they've actually appeared, instead of leaving them stuck on the placeholder written when they were first spotted.</span>
+
+        <textarea
+          class="system-prompt-input"
+          bind:value={profileRefreshPrompt}
+          rows="6"
+          aria-label="Character profile refresh prompt"
+        ></textarea>
+
+        <span class="prompt-hint">Must keep asking for JSON with description/personality/scenario only — editing that part away will break refreshes</span>
+      </section>
+    {/if}
+
+    {#if activeSection === 'logging'}
+      <div class="panel-heading animate-fade-in-up stagger-4">
+        <span class="panel-heading-title">Logging</span>
+        <span class="panel-heading-desc">Backend and frontend activity, for diagnosing issues without guessing</span>
       </div>
+
+      <section class="settings-section animate-fade-in-up stagger-4">
+        <div class="section-header">
+          <div class="section-header-left">
+            <Icon name="terminal" size={16} color="var(--accent-primary)" />
+            <span class="section-title">Application Logs</span>
+          </div>
+          <button class="reset-btn" onclick={loadBackendLogs} disabled={isLoadingBackendLogs}>
+            {isLoadingBackendLogs ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+
+        <div class="log-toolbar">
+          <div class="log-subtabs">
+            <button class="log-subtab" class:active={logSubTab === 'backend'} onclick={() => logSubTab = 'backend'}>
+              Backend
+            </button>
+            <button class="log-subtab" class:active={logSubTab === 'frontend'} onclick={() => logSubTab = 'frontend'}>
+              Frontend <span class="log-subtab-count">{$frontendLogs.length}</span>
+            </button>
+          </div>
+          <input class="log-search" type="text" placeholder="Search logs…" bind:value={logSearch} />
+        </div>
+
+        {#if logSubTab === 'backend'}
+          {#if backendLogPath}
+            <span class="prompt-hint log-path" title={backendLogPath}>{backendLogPath}</span>
+          {/if}
+          <div class="log-viewer">
+            {#if filteredBackendLines.length === 0}
+              <div class="log-empty">{backendLogText ? 'No lines match your search.' : 'No backend logs yet.'}</div>
+            {:else}
+              {#each filteredBackendLines as line, i (i)}
+                <div class="log-line {backendLogLineClass(line)}">{line}</div>
+              {/each}
+            {/if}
+          </div>
+        {:else}
+          <div class="log-viewer">
+            {#if filteredFrontendEntries.length === 0}
+              <div class="log-empty">{$frontendLogs.length ? 'No lines match your search.' : 'No frontend activity captured yet.'}</div>
+            {:else}
+              {#each filteredFrontendEntries as entry (entry.timestamp + entry.message)}
+                <div class="log-line log-line-{entry.level}">
+                  [{new Date(entry.timestamp).toLocaleTimeString()}] {entry.level.toUpperCase()} {entry.message}
+                </div>
+              {/each}
+            {/if}
+          </div>
+          <button class="reset-btn" onclick={clearFrontendLogs}>Clear frontend logs</button>
+        {/if}
+
+        <div class="log-actions">
+          <button class="settings-btn primary" onclick={handleExportLogs} disabled={isExportingLogs}>
+            <Icon name="download" size={14} color="#fff" />
+            <span>{isExportingLogs ? 'Exporting…' : 'Export Logs'}</span>
+          </button>
+        </div>
+      </section>
+    {/if}
     </div>
+    {/key}
   </div>
 
   {#if showFontDropdown}
@@ -1072,28 +1854,98 @@
 
   /* ── Header ── */
   .settings-header {
-    display: flex; flex-direction: column; gap: 3px;
-    padding: 20px 28px 18px; flex-shrink: 0; position: relative;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+    padding: 28px 36px 20px; flex-shrink: 0; position: relative;
   }
   .settings-header::after {
-    content: ''; position: absolute; bottom: 0; left: 28px; right: 28px; height: 1px;
+    content: ''; position: absolute; bottom: 0; left: 36px; right: 36px; height: 1px;
     background: linear-gradient(90deg, transparent, rgba(139,92,246,0.15), transparent);
   }
+  .settings-header-left { display: flex; flex-direction: column; gap: 4px; }
   .settings-title {
-    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-size: 30px; font-weight: 600; letter-spacing: -0.6px;
   }
-  .settings-subtitle { font-size: var(--text-sm); color: #5a5a7a; letter-spacing: 0.3px; }
+  .settings-subtitle { font-size: var(--text-lg); color: #5a5a7a; letter-spacing: 0.3px; }
 
-  /* ── Grid ── */
-  .settings-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 22px; padding: 28px; overflow-y: auto; flex: 1; align-items: start;
+  .settings-header-about {
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    padding-bottom: 4px;
   }
-  .settings-grid::-webkit-scrollbar { width: 4px; }
-  .settings-grid::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 4px; }
-  .settings-column { display: flex; flex-direction: column; gap: 20px; }
+  .settings-header-about .about-name { font-size: var(--text-sm); font-weight: 700; color: #8b8ba7; }
+  .settings-header-about .about-dot { color: #3a3a52; }
+  .settings-header-about .about-desc { font-size: 11px; color: #4a4a6a; font-family: var(--font-mono); letter-spacing: 0.3px; }
+
+  /* ── Section tabs (one nav rail total — the app's own sidebar is the other) ── */
+  .settings-tabs {
+    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    padding: 14px 36px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(139,92,246,0.06);
+  }
+  .settings-tab {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-radius: 10px;
+    background: none; border: none; cursor: pointer;
+    font-size: var(--text-sm); font-weight: 600; color: var(--fg-muted);
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .settings-tab:hover { background: rgba(139,92,246,0.06); color: #c8c8e0; }
+  .settings-tab.active {
+    background: linear-gradient(135deg, #8B5CF6, #7c3aed);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(139,92,246,0.3);
+  }
+
+  .settings-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+  .settings-panel {
+    flex: 1; overflow-y: auto; min-width: 0;
+    padding: 32px 36px 48px; display: flex; flex-direction: column; gap: 22px;
+  }
+  .settings-panel::-webkit-scrollbar { width: 4px; }
+  .settings-panel::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 4px; }
+
+  /* ── Panel heading (replaces the old per-card section-header as the page-level title) ── */
+  .panel-heading { display: flex; flex-direction: column; gap: 4px; }
+  .panel-heading-title { font-size: 20px; font-weight: 800; color: #e8e0ff; letter-spacing: -0.2px; }
+  .panel-heading-desc { font-size: var(--text-sm); color: #6b6b8a; max-width: 640px; line-height: 1.5; }
+
+  /* Sections whose content is a short action/toggle list read better at a
+     comfortable measure than stretched edge-to-edge on a wide window. */
+  .settings-section-bounded { max-width: 640px; }
+
+  /* ── Appearance: side-by-side setting cards instead of one narrow list ── */
+  .settings-card-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px; max-width: 900px;
+  }
+  .settings-card {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 22px; border-radius: 16px;
+    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
+    transition: border-color 200ms, box-shadow 250ms;
+  }
+  .settings-card:hover { border-color: rgba(139,92,246,0.14); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .settings-card-icon {
+    width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: rgba(139,92,246,0.1);
+  }
+  .settings-card-name { font-size: var(--text-md); font-weight: 700; color: #e8e0ff; }
+  .settings-card-desc { font-size: var(--text-sm); color: #5a5a7a; margin-top: -6px; }
+  .theme-toggle-lg { margin-top: 4px; }
+  .setting-dropdown-lg { width: 100%; justify-content: space-between; margin-top: 4px; }
+
+  /* ── Chat Behavior: toggle rows as a responsive card grid ── */
+  .settings-toggle-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 14px;
+  }
+  .toggle-card {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 20px; border-radius: 14px;
+    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
+    transition: border-color 200ms, box-shadow 250ms;
+  }
+  .toggle-card:hover { border-color: rgba(139,92,246,0.14); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
 
   /* ── Section Card ── */
   .settings-section {
@@ -1122,22 +1974,26 @@
   .setting-desc { font-size: var(--text-sm); color: #5a5a7a; }
 
   /* ── Theme Toggle ── */
+  /* Floating pill thumb inset within a padded pill track (macOS/iOS segmented-
+     control pattern) — both fully rounded, so there's no radius mismatch
+     between the track and the active segment like a flush 10px-radius track
+     with a square-cornered active button produced. */
   .theme-toggle {
-    display: flex; border-radius: 10px;
-    border: 1px solid rgba(139,92,246,0.1); overflow: hidden;
-    background: rgba(14,14,30,0.4);
+    display: flex; gap: 2px; border-radius: 999px; padding: 3px;
+    border: 1px solid rgba(139,92,246,0.1);
+    background: rgba(9,9,26,0.6);
   }
   .theme-btn {
-    padding: 6px 14px; background: transparent; border: none;
+    flex: 1; padding: 6px 14px; background: transparent; border: none; border-radius: 999px;
     color: #5a5a7a; font-size: var(--text-sm); font-weight: 600;
-    font-family: var(--font-body); cursor: pointer;
+    font-family: var(--font-body); cursor: pointer; text-align: center;
     transition: all 200ms ease;
   }
   .theme-btn:hover { color: #8b8ba7; }
   .theme-btn.active {
     background: linear-gradient(135deg, #8B5CF6, #bf40ff);
     color: #fff;
-    box-shadow: 0 2px 8px rgba(139,92,246,0.3);
+    box-shadow: 0 2px 8px rgba(139,92,246,0.35);
   }
 
   /* ── Font Dropdown ── */
@@ -1215,6 +2071,58 @@
     color: #F43F5E; width: 100%;
   }
   .settings-btn.danger:hover { background: rgba(244,63,94,0.12); }
+  .settings-btn.primary {
+    background: linear-gradient(135deg, #8B5CF6, #bf40ff); color: #fff;
+    box-shadow: 0 2px 12px rgba(139,92,246,0.3); flex: 1;
+  }
+  .settings-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(139,92,246,0.45); }
+  .settings-btn.primary:disabled { opacity: 0.5; pointer-events: none; }
+  .settings-btn.sm { padding: 6px 12px; font-size: var(--text-xs); flex: none; }
+
+  /* ── Image Generation Presets ── */
+  .preset-list { display: flex; flex-direction: column; gap: 10px; margin: 4px 0; }
+  .preset-card {
+    border-radius: 12px; padding: 12px 14px;
+    background: rgba(12,12,26,0.5); border: 1px solid rgba(139,92,246,0.07);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .preset-card-default { border-color: rgba(139,92,246,0.2); }
+  .preset-card-hdr { display: flex; align-items: center; justify-content: space-between; }
+  .preset-card-hdr-left { display: flex; align-items: center; gap: 8px; }
+  .preset-name { font-size: 13px; font-weight: 600; color: #d0d0e8; }
+  .badge-default {
+    padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700;
+    background: rgba(16,185,129,0.12); color: #10B981;
+  }
+  .icon-btn-sm {
+    width: 24px; height: 24px; border-radius: 7px; border: 1px solid rgba(139,92,246,0.08);
+    background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn-sm:hover { background: rgba(139,92,246,0.08); }
+  .preset-card-body { display: flex; flex-direction: column; gap: 10px; padding-top: 2px; border-top: 1px solid rgba(139,92,246,0.06); }
+  .preset-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .preset-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 120px; }
+  .preset-field-checkbox { justify-content: flex-end; }
+  .preset-flabel { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #4a4a6a; font-family: var(--font-mono); }
+  .preset-finput {
+    height: 32px; padding: 0 10px; border-radius: 8px;
+    background: rgba(10,10,22,0.7); border: 1px solid rgba(139,92,246,0.08);
+    color: #e0e0f0; font-size: 12px; font-family: var(--font-body); outline: none;
+  }
+  .preset-finput:focus { border-color: rgba(139,92,246,0.35); }
+  .preset-finput.mono { font-family: var(--font-mono); }
+  .checkbox-wrap-preset {
+    display: flex; align-items: center; gap: 6px; height: 32px;
+    font-size: 11px; color: #6b6b8a; cursor: pointer;
+  }
+  .checkbox-wrap-preset input { accent-color: #8B5CF6; width: 14px; height: 14px; cursor: pointer; }
+  .hint-link-sm { font-size: 11px; color: #a78bfa; font-weight: 600; text-decoration: none; }
+  .preset-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .preset-add-form {
+    display: flex; flex-direction: column; gap: 10px; margin-top: 10px;
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.1);
+  }
 
   /* ── System Prompt ── */
   .system-prompt-input {
@@ -1233,16 +2141,57 @@
   }
   .reset-btn:hover { opacity: 0.7; }
 
-  /* ── About Card ── */
-  .about-card {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 14px 18px; border-radius: 14px;
-    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
+  /* ── Logging ── */
+  .log-toolbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 10px; flex-wrap: wrap;
   }
-  .about-left { display: flex; flex-direction: column; gap: 3px; }
-  .about-name { font-size: var(--text-md); font-weight: 700; color: #e8e0ff; }
-  .about-desc { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); letter-spacing: 0.5px; }
-  .about-links { display: flex; gap: 8px; }
+  .log-subtabs {
+    display: flex; gap: 4px; padding: 3px; border-radius: 10px;
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(139,92,246,0.08);
+  }
+  .log-subtab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 7px; border: none; background: none;
+    color: #8b8ba7; font-size: var(--text-sm); font-weight: 600;
+    font-family: var(--font-body); cursor: pointer; transition: all 150ms;
+  }
+  .log-subtab:hover { color: #c8c8e0; }
+  .log-subtab.active { background: rgba(139,92,246,0.14); color: #c4a1ff; }
+  .log-subtab-count {
+    font-size: 10px; font-family: var(--font-mono); color: inherit; opacity: 0.7;
+  }
+  .log-search {
+    flex: 1; min-width: 160px; max-width: 280px;
+    padding: 7px 12px; border-radius: 8px;
+    background: rgba(14,14,30,0.6); border: 1px solid rgba(139,92,246,0.1);
+    color: #c8c8e0; font-size: var(--text-sm); font-family: var(--font-body);
+    outline: none; transition: border-color 150ms;
+  }
+  .log-search:focus { border-color: rgba(139,92,246,0.3); }
+  .log-path {
+    display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; opacity: 0.7;
+  }
+  .log-viewer {
+    max-height: 420px; overflow-y: auto; padding: 10px 12px; border-radius: 10px;
+    background: rgba(7,7,18,0.7); border: 1px solid rgba(139,92,246,0.08);
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+  }
+  .log-line {
+    white-space: pre-wrap; word-break: break-word; color: #7d7d99;
+    padding: 1px 0;
+  }
+  .log-line-error { color: #fb7185; }
+  .log-line-warn { color: #fbbf24; }
+  .log-line-debug { color: #5a5a7a; }
+  .log-empty {
+    padding: 20px 0; text-align: center; color: #4a4a6a;
+    font-family: var(--font-body); font-size: var(--text-sm);
+  }
+  .log-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+  /* ── Nav footer links (About, moved into the sidebar) ── */
   .about-link-btn {
     background: none; border: none; padding: 6px; border-radius: 8px;
     cursor: pointer; transition: all 150ms;
@@ -1250,7 +2199,13 @@
   .about-link-btn:hover { background: rgba(139,92,246,0.06); }
 
   /* ── Responsive ── */
-  @media (max-width: 768px) { .settings-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) {
+    .settings-header { flex-direction: column; align-items: flex-start; }
+    .settings-header-about { padding-bottom: 0; }
+    .settings-tabs { padding: 10px 16px; overflow-x: auto; flex-wrap: nowrap; }
+    .settings-tab span { display: none; }
+    .settings-panel { padding: 20px 16px 40px; }
+  }
 
   /* ── Staggered Entrance ── */
   .animate-fade-in-up { animation: fadeInUp 400ms ease both; }
@@ -1259,9 +2214,9 @@
   .stagger-2b { animation-delay: 140ms; }
   .stagger-2c { animation-delay: 160ms; }
   .stagger-3 { animation-delay: 180ms; }
+  .stagger-3b { animation-delay: 210ms; }
   .stagger-4 { animation-delay: 240ms; }
   .stagger-4b { animation-delay: 280ms; }
-  .stagger-5 { animation-delay: 320ms; }
 
   .phi-description {
     font-size: var(--text-sm); color: #5a5a7a; line-height: 1.6;
@@ -1291,6 +2246,8 @@
     display: flex; flex-direction: column; gap: 14px;
   }
 
+
+  .embedder-combo-wrap { width: 280px; flex-shrink: 0; }
 
   .setting-value-readonly {
     display: inline-flex; align-items: center;

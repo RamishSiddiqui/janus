@@ -1,8 +1,12 @@
+pub mod ai_horde_model;
 pub mod character;
 pub mod conversation;
 pub mod conversation_character;
+pub mod image_preset;
 pub mod lorebook;
 pub mod memory;
+pub mod npc_candidate;
+pub mod persona;
 pub mod provider;
 pub mod scene;
 pub mod scene_state;

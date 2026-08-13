@@ -82,7 +82,7 @@
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Raleway', -apple-system, sans-serif;
   }
 
   /* Inner wrapper clips the accent strip at the rounded corners */

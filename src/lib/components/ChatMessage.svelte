@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import Icon from './Icon.svelte';
+  import JanusMark from './JanusMark.svelte';
   import EmotionHUD from './EmotionHUD.svelte';
+  import ThinkingBlock from './ThinkingBlock.svelte';
   import type { Message } from '$lib/types';
   import { formatRoleplayContent } from '$lib/utils/format';
   import { browser } from '$app/environment';
   import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage } from '$lib/stores/chat';
+  import { settings } from '$lib/stores/settings';
   import { success, error as toastError } from '$lib/stores/toast';
   import { get } from 'svelte/store';
 
@@ -37,9 +41,34 @@
     return CHAR_ACCENT_COLORS[Math.abs(hash) % CHAR_ACCENT_COLORS.length];
   }
 
-  let isMultiChar = $derived(!!message.character_name);
-  let displayName = $derived(message.character_name || characterName);
-  let displayAvatar = $derived(message.character_avatar_url || avatarUrl);
+  // Multi-character responses only get split into separate per-character
+  // messages (with their own `character_name`/`character_avatar_url`) AFTER
+  // the full response finishes streaming — see chat.rs's `Done` handler.
+  // While a response is still streaming in, or in the rare case a raw
+  // marker survives finalization unstripped, the bubble would otherwise
+  // show the primary character's name/avatar with a literal "[Name]: "
+  // prefix sitting in the text. Detecting a leading marker client-side and
+  // treating it the same as a resolved `character_name` fixes both: the
+  // header updates to the actual speaker as soon as their marker has fully
+  // streamed in, and the marker itself never renders as raw text.
+  function stripLeadingMarker(text: string): { name: string | null; rest: string } {
+    const m = text.match(/^\s*\[([A-Z][\w' .-]{1,40})\]:\s*/);
+    return m ? { name: m[1], rest: text.slice(m[0].length) } : { name: null, rest: text };
+  }
+  let liveMarker = $derived(
+    message.character_name ? { name: null as string | null, rest: message.content } : stripLeadingMarker(message.content)
+  );
+  let isMultiChar = $derived(!!message.character_name || !!liveMarker.name);
+  let displayName = $derived(message.character_name || liveMarker.name || characterName);
+  // `avatarUrl` is the conversation's primary character's avatar — only a
+  // valid fallback for a plain single-character message (no character_name
+  // at all). A multi-char message with no avatar of its own (e.g. a
+  // freshly-registered transient speaker with no portrait yet, or a name
+  // detected live via `liveMarker` before the backend split has happened)
+  // must NOT silently borrow the primary's face; falling through to no
+  // image lets the plain colored-ring placeholder render instead (see
+  // markup below).
+  let displayAvatar = $derived(isMultiChar ? message.character_avatar_url : (message.character_avatar_url || avatarUrl));
   let accentColor = $derived(isMultiChar ? charColor(displayName) : '');
 
   let showActions = $state(false);
@@ -48,6 +77,31 @@
   let editContent = $state('');
   let copied = $state(false);
   let isSwitching = $state(false);
+
+  // ── Attached images (user messages only) ──
+  // Loaded as blob: URLs the same way avatars/scenes are (see blobUrl.ts) —
+  // the app's CSP blocks asset:// but allows blob:. Re-derives whenever the
+  // message's attachment list changes (e.g. the optimistic → real message
+  // ID swap right after sending, or a fresh history load).
+  let attachmentUrls: string[] = $state([]);
+  $effect(() => {
+    const attachments = message.attachments;
+    let cancelled = false;
+    if (!attachments || attachments.length === 0 || !isTauri) {
+      attachmentUrls = [];
+      return;
+    }
+    import('$lib/utils/blobUrl').then(async ({ loadFileAsBlobUrl }) => {
+      const urls = await Promise.all(
+        attachments.map(a => loadFileAsBlobUrl(a.relativePath, a.mimeType).catch(() => null))
+      );
+      if (!cancelled) attachmentUrls = urls.filter((u): u is string => u !== null);
+    });
+    return () => {
+      cancelled = true;
+      for (const url of attachmentUrls) URL.revokeObjectURL(url);
+    };
+  });
 
   // ── Typewriter Reveal ──
   // LLM tokens arrive as whole words — we reveal them character-by-character
@@ -68,7 +122,7 @@
     typewriterRafId = null;
     if (!streamTextEl) return;
 
-    const text = message.content;
+    const text = liveMarker.rest;
     const targetLen = text.length;
     if (revealedLen >= targetLen) {
       // Caught up — wait for more content
@@ -206,9 +260,24 @@
     }
   }
 
-  function startEdit() {
+  // Auto-grows to fit content instead of exposing the browser's native
+  // drag-to-resize handle — same technique as the main compose box
+  // (ChatInput.svelte's autoResize), just with a taller cap since edited
+  // messages are often full narrative paragraphs rather than a quick reply.
+  let editAreaEl: HTMLTextAreaElement | undefined = $state();
+  const EDIT_AREA_MAX_HEIGHT = 400;
+  function autoResizeEditArea(e?: Event) {
+    const el = (e?.target as HTMLTextAreaElement) ?? editAreaEl;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, EDIT_AREA_MAX_HEIGHT) + 'px';
+  }
+
+  async function startEdit() {
     editContent = message.content;
     isEditing = true;
+    await tick();
+    autoResizeEditArea();
   }
 
   async function saveEdit() {
@@ -254,6 +323,8 @@
     <div class="msg-avatar ai-avatar" aria-hidden="true" style={isMultiChar ? `--char-accent: ${accentColor}` : ''}>
       {#if displayAvatar}
         <img src={displayAvatar} alt={displayName} class="ai-avatar-img" />
+      {:else}
+        <div class="ai-avatar-fallback"><JanusMark size={18} /></div>
       {/if}
       <div class="avatar-glow"></div>
     </div>
@@ -273,7 +344,7 @@
           </div>
         {/if}
         {#if isEditing}
-          <textarea class="edit-area" bind:value={editContent} rows="4" aria-label="Edit message content"></textarea>
+          <textarea class="edit-area" bind:this={editAreaEl} bind:value={editContent} oninput={autoResizeEditArea} rows="4" aria-label="Edit message content"></textarea>
           <div class="edit-actions">
             <button class="edit-btn save" onclick={saveEdit}>
               <Icon name="check" size={12} color="#FFFFFF" />
@@ -284,6 +355,13 @@
             </button>
           </div>
         {:else}
+          {#if $settings.showThinking && (message.reasoning || message.isThinking)}
+            <ThinkingBlock
+              reasoning={message.reasoning ?? ''}
+              isThinking={message.isThinking}
+              startedAt={message.thinkingStartedAt}
+            />
+          {/if}
           <div class="msg-text" class:dim={isSwitching}>
             {#if message.isError}
               <div class="error-state">
@@ -298,7 +376,7 @@
               <span class="streaming-cursor cursor-blink" aria-label="Generating">▍</span>
             {:else}
               <!-- After streaming: use normal Svelte {@html} for proper formatting -->
-              {@html formatRoleplayContent(message.content)}
+              {@html formatRoleplayContent(liveMarker.rest)}
             {/if}
           </div>
         {/if}
@@ -410,8 +488,15 @@
   >
     <div class="msg-body-user">
       <div class="msg-bubble user-bubble" class:switching={isSwitching}>
+        {#if attachmentUrls.length > 0}
+          <div class="msg-attachments">
+            {#each attachmentUrls as url}
+              <img src={url} alt="Attached" class="msg-attachment-thumb" />
+            {/each}
+          </div>
+        {/if}
         {#if isEditing}
-          <textarea class="edit-area user-edit" bind:value={editContent} rows="3" aria-label="Edit message content"></textarea>
+          <textarea class="edit-area user-edit" bind:this={editAreaEl} bind:value={editContent} oninput={autoResizeEditArea} rows="3" aria-label="Edit message content"></textarea>
           <div class="edit-actions">
             <button class="edit-btn save" onclick={saveEdit}>
               <Icon name="check" size={12} color="#FFFFFF" />
@@ -561,9 +646,13 @@
     flex-shrink: 0; position: relative; margin-top: 2px;
   }
   .ai-avatar {
-    background: conic-gradient(from 200deg, #7c3aed, #bf40ff, #00f2ff, #7c3aed);
+    background: radial-gradient(circle at 35% 30%, #1e1a38, #0e0c1c);
     box-shadow: 0 0 0 1px rgba(139,92,246,0.2), 0 0 18px rgba(139,92,246,0.15);
     overflow: hidden;
+  }
+  .ai-avatar-fallback {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
   }
   .ai-avatar-img {
     width: 100%; height: 100%;
@@ -731,6 +820,21 @@
     color: rgba(255, 255, 255, 0.96);
     font-weight: 420;
     letter-spacing: 0.015em;
+  }
+  .msg-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .msg-attachment-thumb {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    display: block;
   }
   .streaming-cursor {
     color: #c4a1ff;
@@ -900,15 +1004,19 @@
      EDIT MODE
   ─────────────────────────────────────────────── */
   .edit-area {
-    width: 100%; min-height: 64px;
+    width: 100%; min-height: 64px; max-height: 400px;
     padding: 13px 16px;
     border-radius: 12px;
     border: 1px solid rgba(139,92,246,0.3);
     background: rgba(10,10,26,0.8);
     color: rgba(224,220,248,0.94);
     font-size: 14px; font-family: var(--font-body);
-    line-height: 1.65; resize: vertical; outline: none;
+    line-height: 1.65; resize: none; overflow-y: auto; outline: none;
     box-shadow: 0 0 0 4px rgba(139,92,246,0.06), inset 0 1px 0 rgba(255,255,255,0.03);
+    /* No height transition — the JS-driven resize already runs per
+       keystroke; animating height on top of that just adds lag between
+       typing and the box actually growing (same reasoning as the existing
+       compose box, which doesn't animate it either). */
     transition: border-color 200ms, box-shadow 200ms;
   }
   .edit-area:focus {
@@ -936,11 +1044,14 @@
     transform: translateY(-1px);
   }
   .edit-btn.cancel {
+    /* Sits on the user bubble's solid purple gradient (always purple,
+       regardless of theme) — the previous muted gray-purple text read as
+       near-invisible against it. */
     background: transparent;
-    border: 1px solid rgba(139,92,246,0.14);
-    color: rgba(107,107,138,0.85);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: rgba(255,255,255,0.8);
   }
-  .edit-btn.cancel:hover { background: rgba(139,92,246,0.06); }
+  .edit-btn.cancel:hover { background: rgba(255,255,255,0.12); }
 
   /* ───────────────────────────────────────────────
      RESPONSIVE

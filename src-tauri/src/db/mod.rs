@@ -16,10 +16,14 @@ pub mod memories;
 pub mod providers;
 pub mod scenes;
 pub mod scene_states;
+pub mod image_presets;
+pub mod ai_horde_models;
 pub mod lorebook;
 pub mod character_state;
 pub mod summaries;
 pub mod embeddings;
+pub mod npc_candidates;
+pub mod personas;
 
 pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {
     let db_path = data_dir.join("mythic_surreal");
@@ -39,6 +43,6 @@ pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> 
     info!("Migrations complete, running seed...");
     seed::seed_defaults(&db).await?;
 
-    info!("SurrealDB initialized successfully");
+    info!("Janus data store initialized successfully");
     Ok(db)
 }

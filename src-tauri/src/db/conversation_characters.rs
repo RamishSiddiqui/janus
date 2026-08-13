@@ -98,6 +98,27 @@ impl ConversationCharacterRepo {
         Ok(())
     }
 
+    /// Sets a character's role within a conversation — used to promote a
+    /// `'transient'` placeholder (registered the instant it first spoke) to
+    /// `'npc'` once a real profile has been generated for it.
+    pub async fn set_role(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+        character_id: &str,
+        role: &str,
+    ) -> Result<(), MythicError> {
+        db.query(
+            "UPDATE conversation_characters SET role = $role WHERE \
+             conversation_id = type::thing('conversations', $conv_id) AND \
+             character_id = type::thing('characters', $char_id)"
+        )
+        .bind(("conv_id", conversation_id.to_string()))
+        .bind(("char_id", character_id.to_string()))
+        .bind(("role", role.to_string()))
+        .await?;
+        Ok(())
+    }
+
     /// Toggles whether a character is active (unmuted) in a conversation.
     pub async fn set_active(
         db: &Surreal<Db>,

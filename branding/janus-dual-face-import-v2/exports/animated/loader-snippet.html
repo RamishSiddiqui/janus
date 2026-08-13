@@ -1,0 +1,44 @@
+<!-- Janus animated loader (final) - seamless loop, no colour snap, no cap pop,
+     self-coloured track so it works on any background. -->
+<svg viewBox="-61 -83 122 166" width="40" height="54" role="img" aria-label="Loading" class="janus-loader">
+  <defs>
+    <!-- Colour is fixed in place along the mark, not carried by the moving segment,
+         so ink never changes colour as it travels through the centre. -->
+    <linearGradient id="janus-split" gradientUnits="userSpaceOnUse" x1="0" y1="-80" x2="0" y2="80">
+      <stop offset="0"     stop-color="#CDA15F"/>
+      <stop offset="0.485" stop-color="#CDA15F"/>
+      <stop offset="0.515" stop-color="#9075F2"/>
+      <stop offset="1"     stop-color="#9075F2"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="18" stroke-linecap="round">
+    <!-- Both hooks are ONE path: bottom-left hook, up the stem, top-right hook.
+         The track is the same gradient at 22% alpha, so the mark is always legible
+         and the loader needs no assumption about the background behind it. -->
+    <path stroke="url(#janus-split)" opacity="0.22"
+      d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"/>
+    <!-- ONE runner: two would need their coverage tiled exactly, and any gap renders as a
+         detached round cap floating off the mark. -->
+    <path class="run" stroke="url(#janus-split)" pathLength="100" stroke-dasharray="62 200"
+      d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"/>
+  </g>
+</svg>
+
+<style>
+/* A dashed segment leaving an open path shrinks to a round dot the width of the stroke,
+   and a dot cannot shrink - so it blinks out. Fix: fade the runner to zero across the
+   first and last ~11% of its run instead of letting the dash hide the ends. */
+@keyframes janus-run  { from { stroke-dashoffset: 62; } to { stroke-dashoffset: -100; } }
+@keyframes janus-fade { 0%, 100% { opacity: 0; } 11%, 89% { opacity: 1; } }
+
+.janus-loader .run {
+  animation: janus-run 2.6s linear infinite, janus-fade 2.6s linear infinite;
+}
+
+/* On a light background swap the gradient stops to #A6802F / #6D5BB0 (see
+   janus-loader-icon-light.svg) - the brand tones deepened for contrast. */
+
+@media (prefers-reduced-motion: reduce) {
+  .janus-loader .run { animation: none; stroke-dasharray: none; opacity: 1; }
+}
+</style>

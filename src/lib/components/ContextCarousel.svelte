@@ -183,7 +183,8 @@
   }
 
   .char-avatar-lg {
-    width: 82px; height: 82px; min-width: 82px; min-height: 82px;
+    width: clamp(64px, 18cqi, 104px); height: clamp(64px, 18cqi, 104px);
+    min-width: 64px; min-height: 64px;
     border-radius: 50%; aspect-ratio: 1;
     background: linear-gradient(135deg, #8B5CF6, #bf40ff);
     overflow: hidden; position: relative; flex-shrink: 0;
@@ -191,13 +192,13 @@
     transition: box-shadow 400ms;
   }
   .ctx-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
-  .char-name-lg { font-size: var(--text-xl); font-weight: 700; color: #e8e0ff; }
-  .char-tagline { font-size: var(--text-sm); color: #6b6b8a; text-align: center; line-height: 1.5; }
+  .char-name-lg { font-size: clamp(16px, 4.2cqi, 21px); font-weight: 700; color: #e8e0ff; }
+  .char-tagline { font-size: clamp(11px, 2.8cqi, 15px); color: #6b6b8a; text-align: center; line-height: 1.5; }
 
   .char-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
   .tag {
-    padding: 4px 10px; border-radius: 99px;
-    font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.3px;
+    padding: clamp(4px, 1cqi, 6px) clamp(10px, 2.4cqi, 14px); border-radius: 99px;
+    font-size: clamp(10px, 2.6cqi, 13px); font-weight: 600; letter-spacing: 0.3px;
   }
   .tag-violet { background: rgba(139,92,246,0.12); color: #c4a1ff; }
   .tag-pink { background: rgba(191,64,255,0.12); color: #d580ff; }

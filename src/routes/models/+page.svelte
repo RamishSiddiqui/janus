@@ -3,6 +3,7 @@
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import SplitHeading from '$lib/components/SplitHeading.svelte';
   import { success } from '$lib/stores/toast';
   import { handleIpcError } from '$lib/utils/error';
   import type { ModelEntry } from '$lib/services/ipc';
@@ -17,7 +18,6 @@
 
   // Filters
   let filterProvider = $state('all');
-  let filterType = $state('all');
   let filterStatus = $state('all');
   let filterPricing = $state('all');
   let filterSearch = $state('');
@@ -34,7 +34,6 @@
   let filtered = $derived(() => {
     let list = allModels;
     if (filterProvider !== 'all') list = list.filter(m => m.provider_id === filterProvider);
-    if (filterType !== 'all') list = list.filter(m => m.model_type === filterType);
     if (filterStatus === 'enabled') list = list.filter(m => m.enabled);
     else if (filterStatus === 'disabled') list = list.filter(m => !m.enabled);
     if (filterPricing === 'free') list = list.filter(m => m.is_free);
@@ -78,7 +77,7 @@
           ipc.listAllModels(),
           ipc.listProviders(),
         ]);
-        allModels = models.filter(m => m.model_type !== 'embedding');
+        allModels = models.filter(m => m.model_type === 'llm');
         providers = pList.map(p => ({ id: p.id, name: p.name }));
       }
     } catch (err) { handleIpcError('load models', err); }
@@ -116,13 +115,13 @@
   }
 </script>
 
-<svelte:head><title>LLM Models — Mythic</title></svelte:head>
+<svelte:head><title>LLM Models — Janus</title></svelte:head>
 
 <div class="page">
   <!-- Header -->
   <header class="hdr">
     <div class="hdr-left">
-      <h1 class="hdr-title">LLM Models</h1>
+      <h1 class="hdr-title"><SplitHeading text="LLM Models" /></h1>
       <div class="hdr-stats">
         {#if isLoading}
           <span class="stat">Loading…</span>
@@ -170,16 +169,6 @@
 
     <!-- Row 2: Chips -->
     <div class="filter-row">
-      <div class="chip-group" role="group" aria-label="Filter by type">
-        {#each ['all','llm','image','video'] as t}
-          <button class="chip" class:chip-active={filterType === t} onclick={() => filterType = t}>
-            {#if t === 'all'}All Types{:else if t === 'llm'}💬 Chat{:else if t === 'image'}🖼 Image{:else}🎬 Video{/if}
-          </button>
-        {/each}
-      </div>
-
-      <div class="chip-divider"></div>
-
       <div class="chip-group" role="group" aria-label="Filter by status">
         {#each [['all','All'],['enabled','Enabled'],['disabled','Disabled']] as [val, label]}
           <button class="chip" class:chip-active={filterStatus === val} onclick={() => filterStatus = val}>
@@ -249,7 +238,7 @@
             <Icon name="search" size={48} color="#3a3a5a" />
           </div>
           <span class="empty-title">No models match your filters</span>
-          <button class="chip chip-active" onclick={() => { filterProvider='all'; filterType='all'; filterStatus='all'; filterPricing='all'; filterSearch=''; filterCaps = new Set(); }}>Clear Filters</button>
+          <button class="chip chip-active" onclick={() => { filterProvider='all'; filterStatus='all'; filterPricing='all'; filterSearch=''; filterCaps = new Set(); }}>Clear Filters</button>
         {/if}
       </div>
     {:else}
@@ -426,9 +415,7 @@
   }
   .hdr-left { display: flex; flex-direction: column; gap: 6px; }
   .hdr-title {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin: 0;
-    background: linear-gradient(135deg, #f0e8ff, #c4a1ff 50%, #8B5CF6);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-size: 24px; font-weight: 600; letter-spacing: -0.5px; margin: 0;
   }
   .hdr-stats { display: flex; align-items: center; gap: 6px; }
   .stat { font-size: 13px; font-weight: 700; color: #c0c0d8; }

@@ -1,9 +1,18 @@
 /* ============================================================
-   Mythic — Global Design System
+   Janus — Global Design System
    ============================================================ */
 
 /* --- Design Tokens (CSS Custom Properties) --- */
 :root {
+  /* Tells the browser engine this page has its own deliberately-authored
+     dark palette, opting out of Chromium's forced-dark-mode repaint for web
+     content (which otherwise auto-inverts pages that don't declare this,
+     completely bypassing our own [data-theme="light"] overrides at the
+     compositor level — computed styles look correct while the actual
+     painted pixels stay dark). Flipped to "light" below when the user picks
+     the light theme. */
+  color-scheme: dark;
+
   /* Surfaces */
   --surface-inverse: #07071a;
   --surface-sidebar: #0a0a1a;
@@ -49,8 +58,8 @@
   --shadow-glow: 0 0 20px rgba(139,92,246,0.08);
 
   /* Typography */
-  --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Raleway', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Raleway', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Geist Mono', 'SF Mono', 'Fira Code', monospace;
 
   /* Font-size scale (relative to --app-font-size, default 14px) */
@@ -86,6 +95,7 @@
 
 /* --- Light Theme Override --- */
 [data-theme="light"] {
+  color-scheme: light;
   --surface-inverse: #f4f2f7;
   --surface-sidebar: #f0edf5;
   --surface-card: rgba(255,255,255,0.7);
@@ -132,9 +142,46 @@
 [data-theme="light"] .char-card,
 [data-theme="light"] .lore-entry,
 [data-theme="light"] .memory-entry,
-[data-theme="light"] .lore-form {
+[data-theme="light"] .lore-form,
+[data-theme="light"] .settings-card,
+[data-theme="light"] .toggle-card {
   background: rgba(255,255,255,0.6) !important;
   border-color: rgba(139,92,246,0.08) !important;
+}
+
+/* Light theme — Settings redesign (tab bar, panel headings, card grids) */
+[data-theme="light"] .panel-heading-title {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .panel-heading-desc,
+[data-theme="light"] .settings-card-desc,
+[data-theme="light"] .settings-subtitle {
+  color: #5a5a7a !important;
+}
+[data-theme="light"] .settings-card-name {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .settings-tab {
+  color: #5a5a7a !important;
+}
+[data-theme="light"] .settings-tab:hover {
+  color: #3a3a5a !important;
+}
+[data-theme="light"] .settings-header-about .about-name {
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .settings-header-about .about-desc {
+  color: #8b8ba7 !important;
+}
+[data-theme="light"] .theme-toggle {
+  background: rgba(255,255,255,0.8) !important;
+  border-color: rgba(139,92,246,0.1) !important;
+}
+[data-theme="light"] .theme-btn {
+  color: #5a5a7a !important;
+}
+[data-theme="light"] .theme-btn:hover {
+  color: #3a3a5a !important;
 }
 
 /* Light theme inputs */
@@ -321,8 +368,140 @@
 }
 
 /* Light chat bubbles */
-[data-theme="light"] .msg-bubble.ai {
+/* Was ".msg-bubble.ai" — stale from before ChatMessage.svelte's bubble class
+   was renamed to "ai-bubble", so this override silently never matched and
+   AI bubbles stayed on their dark background regardless of theme. */
+[data-theme="light"] .ai-bubble {
+  background: rgba(255,255,255,0.85) !important;
+  border-color: rgba(139,92,246,0.14) !important;
+  box-shadow: 0 4px 20px rgba(88,44,255,0.05), 0 1px 0 rgba(255,255,255,0.6) inset !important;
+}
+/* :not(.user-text) — .msg-text is shared by BOTH bubbles (the user bubble
+   adds .user-text alongside it); without this exclusion, this !important
+   rule was also repainting the user's own white bubble text dark on top of
+   its solid purple gradient, making it unreadable. */
+[data-theme="light"] .msg-text:not(.user-text) {
+  color: #2a2a3e !important;
+}
+[data-theme="light"] .rp-action {
+  color: #6b6b8a !important;
+}
+
+/* Light theme — Thinking block (reasoning-model collapsible trace) */
+[data-theme="light"] .thinking-header {
+  background: rgba(139,92,246,0.06) !important;
+  border-color: rgba(139,92,246,0.14) !important;
+}
+[data-theme="light"] .thinking-label {
+  color: #6b3fa0 !important;
+}
+[data-theme="light"] .thinking-body {
+  background: rgba(139,92,246,0.04) !important;
+  border-color: rgba(139,92,246,0.12) !important;
+  color: #4a4a6a !important;
+}
+
+/* Light theme — Chat header (ChatHeader.svelte) */
+[data-theme="light"] .ch {
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,246,252,0.88)) !important;
+  border-bottom-color: rgba(139,92,246,0.1) !important;
+}
+[data-theme="light"] .ch-name {
+  color: #1a1a2e !important;
+}
+
+/* Light theme — Scene panel Model/Style Preset dropdown (SceneDisplay.svelte) */
+/* Its border/text already use theme-aware CSS vars (--border-subtle etc.),
+   but the background was a raw hardcoded dark navy, so it stayed a dark box
+   floating on the light page while everything around it correctly flipped. */
+[data-theme="light"] .preset-picker-select {
   background: rgba(255,255,255,0.7) !important;
+}
+
+/* Light theme — Message edit textarea (ChatMessage.svelte) */
+/* The user bubble stays solid purple in both themes by design, but the dark
+   navy input field inside it clashed with the rest of the now-light UI —
+   a frosted white "glass" surface reads as part of the light theme while
+   still sitting on the purple bubble. */
+[data-theme="light"] .edit-area {
+  background: rgba(255,255,255,0.35) !important;
+  border-color: rgba(255,255,255,0.5) !important;
+  color: #1a1a2e !important;
+}
+[data-theme="light"] .edit-area:focus {
+  border-color: rgba(255,255,255,0.7) !important;
+}
+
+/* Light theme — Emotion HUD (mood/trust/intensity pill + hover popup) */
+[data-theme="light"] .ehud {
+  background: rgba(255,255,255,0.85) !important;
+  border-color: rgba(139,92,246,0.16) !important;
+}
+[data-theme="light"] .ehud.active {
+  background: rgba(255,255,255,0.95) !important;
+}
+[data-theme="light"] .ecard {
+  background: rgba(255,255,255,0.97) !important;
+  box-shadow:
+    0 0 0 1px rgba(139,92,246,0.08),
+    0 20px 60px rgba(88,44,255,0.12),
+    0 4px 16px rgba(0,0,0,0.08) !important;
+}
+[data-theme="light"] .ec-label {
+  color: #8b8ba7 !important;
+}
+[data-theme="light"] .ecm-desc {
+  color: #6b6b8a !important;
+}
+/* These tracks/ticks were a barely-there white-on-dark texture by design —
+   on a light card, near-transparent white is invisible, so the progress
+   bars would render with no visible track at all. */
+[data-theme="light"] .ecm-track {
+  background: rgba(88,44,255,0.08) !important;
+}
+[data-theme="light"] .ecm-tick {
+  background: rgba(88,44,255,0.18) !important;
+}
+[data-theme="light"] .ec-summary-text {
+  color: #5a5a7a !important;
+}
+
+/* Light theme — Chat compose bar (ChatInput.svelte) */
+/* A near-transparent white card on the light lavender page background had
+   almost no luminosity or hue difference from its surroundings, so the
+   compose bar visually "melted" into the page with no sense of it being a
+   distinct, elevated control. Solid white + a brand-tinted layered shadow
+   (a close contact shadow for definition, a soft purple-tinted ambient one
+   for a lifted, on-brand glow) gives it real separation instead. */
+[data-theme="light"] .ci-card {
+  background: #ffffff !important;
+  border-color: rgba(139,92,246,0.18) !important;
+  box-shadow:
+    0 1px 2px rgba(88,44,255,0.04),
+    0 8px 24px rgba(88,44,255,0.1),
+    0 20px 48px rgba(0,0,0,0.07) !important;
+}
+[data-theme="light"] .ci-textarea {
+  color: #2a2a3e !important;
+}
+[data-theme="light"] .ci-textarea::placeholder {
+  color: #8b8ba7 !important;
+}
+[data-theme="light"] .ci-divider {
+  background: rgba(139,92,246,0.08) !important;
+}
+[data-theme="light"] .ci-tool-btn {
+  color: rgba(124,58,237,0.5) !important;
+}
+[data-theme="light"] .ci-tool-btn:hover {
+  color: rgba(124,58,237,0.85) !important;
+  background: rgba(124,58,237,0.08) !important;
+}
+[data-theme="light"] .ci-model-pill {
+  color: #7c3aed !important;
+}
+[data-theme="light"] .ci-model-pill:hover {
+  color: #6b21a8 !important;
 }
 
 /* Light theme search bar */

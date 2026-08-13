@@ -6,6 +6,9 @@
   import { success, error as toastError } from "$lib/stores/toast";
   import { parseCharacterData } from "$lib/utils/character";
   import MemoryGraph from "$lib/components/MemoryGraph.svelte";
+  import PersonaPicker from "$lib/components/PersonaPicker.svelte";
+  import { selectedPersonaId } from "$lib/stores/personas";
+  import { get } from "svelte/store";
   import type { MemoryGraph as MemoryGraphData } from "$lib/services/ipc";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
@@ -89,18 +92,8 @@
   ): Promise<string | null> {
     if (!avatarPath || !isTauri) return null;
     try {
-      const { readFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
-      const bytes = await readFile(avatarPath, {
-        baseDir: BaseDirectory.AppData,
-      });
-      const ext = avatarPath.split(".").pop()?.toLowerCase() || "jpeg";
-      const mime =
-        ext === "png"
-          ? "image/png"
-          : ext === "webp"
-            ? "image/webp"
-            : "image/jpeg";
-      return URL.createObjectURL(new Blob([bytes], { type: mime }));
+      const { loadFileAsBlobUrl } = await import("$lib/utils/blobUrl");
+      return await loadFileAsBlobUrl(avatarPath);
     } catch {
       return null;
     }
@@ -200,7 +193,8 @@
     }
     try {
       const { createConversation } = await import("$lib/stores/chat");
-      await createConversation(charId ?? '', charName ?? '');
+      const personaId = get(selectedPersonaId) ?? undefined;
+      await createConversation(charId ?? '', charName ?? '', personaId);
       goto("/");
     } catch {
       toastError("Failed to start chat");
@@ -272,7 +266,7 @@
   const TABS: Tab[] = ["profile", "memories", "lore", "stats", "edit"];
 </script>
 
-<svelte:head><title>{charName || "Character"} — Mythic</title></svelte:head>
+<svelte:head><title>{charName || "Character"} — Janus</title></svelte:head>
 
 <div class="profile-page">
   {#if isLoading}
@@ -319,6 +313,7 @@
       {/if}
 
       <div class="hero-actions">
+        <PersonaPicker />
         <button
           class="btn-primary"
           id="profile-start-chat"

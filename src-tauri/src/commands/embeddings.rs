@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
@@ -96,10 +96,14 @@ async fn get_embedding_index_status_inner(
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
         .unwrap_or(0) as usize;
 
-    // Count embedded messages
+    // Count embedded messages — entry_type filter is required here, not
+    // optional: memory-fact embeddings (entry_type='memory') live in this
+    // same table with no conversation_id, so the unscoped (None) branch
+    // would otherwise count them as if they were embedded messages and
+    // inflate "coverage" above what's actually indexed.
     let embedded_query = match &conversation_id {
-        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) GROUP ALL",
-        None => "SELECT count() FROM message_embeddings GROUP ALL",
+        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message' GROUP ALL",
+        None => "SELECT count() FROM message_embeddings WHERE entry_type = 'message' GROUP ALL",
     };
     let mut embedded_result = db.query(embedded_query).bind(("conv_id", conv_bind.clone())).await?;
     let embedded_val: Option<serde_json::Value> = embedded_result.take(0)?;
@@ -109,8 +113,8 @@ async fn get_embedding_index_status_inner(
 
     // Get the model used for existing embeddings (check first row)
     let model_query = match &conversation_id {
-        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) LIMIT 1",
-        None => "SELECT model_name FROM message_embeddings LIMIT 1",
+        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message' LIMIT 1",
+        None => "SELECT model_name FROM message_embeddings WHERE entry_type = 'message' LIMIT 1",
     };
     let mut model_result = db.query(model_query).bind(("conv_id", conv_bind.clone())).await?;
 
@@ -207,13 +211,17 @@ pub async fn rebuild_embedding_index(
     let provider_config = ProviderRepo::get(&db, &embedding_entry.provider_id).await?;
     let provider = create_rig_provider(&provider_config)?;
 
-    // Delete existing embeddings for the scope
+    // Delete existing MESSAGE embeddings for the scope — never memory-fact
+    // embeddings (entry_type='memory'), which live in the same table but
+    // aren't what this function re-creates below. An unscoped `DELETE FROM
+    // message_embeddings` here would silently wipe every character's
+    // memory embeddings app-wide with no way to rebuild them afterward.
     match &conversation_id {
         Some(conv_id) => {
             EmbeddingRepo::delete_for_conversation(&db, conv_id).await?;
         }
         None => {
-            db.query("DELETE FROM message_embeddings").await?;
+            db.query("DELETE FROM message_embeddings WHERE entry_type = 'message'").await?;
         }
     }
 
@@ -337,13 +345,79 @@ pub async fn backfill_missing_embeddings(
     // Two-query approach: SurrealDB subqueries with NOT IN are unreliable.
     let conv_bind = conversation_id.clone().unwrap_or_default();
 
-    // 1) Get all already-embedded message IDs
+    // 0) Purge orphaned message embeddings — a bug in the multi-character
+    // response path used to delete the combined parent message and replace
+    // it with per-segment rows, but kept embedding the (now-deleted) parent
+    // id instead of the real segments. That created `message_embeddings`
+    // rows pointing at messages that no longer exist: junk that both wastes
+    // vector search results and inflates the "embedded" count in the index
+    // status shown above, without indexing anything real. The bug itself is
+    // fixed at the source (`spawn_embed_message` call sites in chat.rs), but
+    // rows it already created need a one-time sweep — this is the natural
+    // place, since it already runs a full embedded-vs-real diff.
+    {
+        #[derive(serde::Deserialize)]
+        struct EmbeddingRow {
+            id: surrealdb::sql::Thing,
+            message_id: Option<surrealdb::sql::Thing>,
+        }
+        let mut all_embeddings_result = db
+            .query("SELECT id, message_id FROM message_embeddings WHERE entry_type = 'message'")
+            .await?;
+        let all_embeddings: Vec<EmbeddingRow> = all_embeddings_result.take(0).unwrap_or_else(|e| {
+            warn!("[backfill] Failed to deserialize message_embeddings rows during orphan sweep: {}", e);
+            Vec::new()
+        });
+
+        let mut real_msg_ids_result = db.query("SELECT VALUE id FROM messages").await?;
+        let real_msg_things: Vec<surrealdb::sql::Thing> = real_msg_ids_result.take(0).unwrap_or_else(|e| {
+            warn!("[backfill] Failed to deserialize message ids during orphan sweep: {}", e);
+            Vec::new()
+        });
+        let real_msg_ids: std::collections::HashSet<String> = real_msg_things
+            .into_iter()
+            .map(|t| format!("{}:{}", t.tb, t.id.to_raw()))
+            .collect();
+
+        let orphan_ids: Vec<String> = all_embeddings
+            .into_iter()
+            .filter(|e| {
+                let full_id = e.message_id.as_ref().map(|t| format!("{}:{}", t.tb, t.id.to_raw()));
+                match full_id {
+                    Some(id) => !real_msg_ids.contains(&id),
+                    None => true, // entry_type='message' but no message_id at all — also junk
+                }
+            })
+            .map(|e| e.id.id.to_raw())
+            .collect();
+
+        if !orphan_ids.is_empty() {
+            info!("[backfill] Purging {} orphaned message embedding(s) from deleted messages", orphan_ids.len());
+            for orphan_id in &orphan_ids {
+                let _ = db
+                    .query("DELETE type::thing('message_embeddings', $id)")
+                    .bind(("id", orphan_id.clone()))
+                    .await;
+            }
+        }
+    }
+
+    // 1) Get all already-embedded message IDs. entry_type='message' matters
+    // here beyond just correctness of the diff below — memory rows have no
+    // message_id at all (NULL), and a NULL mixed into this Vec<Thing> would
+    // fail deserialization entirely, silently degrading via
+    // .unwrap_or_default() below to an empty "already embedded" set (which
+    // would make backfill re-request embeddings for every message, every
+    // time it runs).
     let embedded_ids_query = match &conversation_id {
-        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id)",
-        None => "SELECT VALUE message_id FROM message_embeddings",
+        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message'",
+        None => "SELECT VALUE message_id FROM message_embeddings WHERE entry_type = 'message'",
     };
     let mut embedded_result = db.query(embedded_ids_query).bind(("conv_id", conv_bind.clone())).await?;
-    let embedded_things: Vec<surrealdb::sql::Thing> = embedded_result.take(0).unwrap_or_default();
+    let embedded_things: Vec<surrealdb::sql::Thing> = embedded_result.take(0).unwrap_or_else(|e| {
+        warn!("[backfill] Failed to deserialize already-embedded message ids — treating as none embedded, which will re-request embeddings for everything: {}", e);
+        Vec::new()
+    });
     let embedded_ids: std::collections::HashSet<String> = embedded_things
         .into_iter()
         .map(|t| format!("{}:{}", t.tb, t.id.to_raw()))

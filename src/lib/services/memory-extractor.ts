@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Memory Auto-Extraction Pipeline
+//   Janus — Memory Auto-Extraction Pipeline
 //   LLM-powered structured fact extraction from RP conversations
 //
 //   Architecture informed by:
@@ -25,6 +25,12 @@ export interface ExtractedFact {
   summary: string;
   /** Category tag — suggested: identity, relationship, world, decision, revelation. LLM may use others. */
   category: string;
+  /** Who this fact is primarily about — an exact name from the CAST list
+   *  passed in the prompt, "the user" if it's about the player, or omitted
+   *  for a general world fact not tied to one person. Used to attribute the
+   *  saved memory to the right character instead of always the primary —
+   *  see the matching resolution logic in `extractAndSaveMemories`. */
+  character?: string | null;
 }
 
 /**
@@ -83,9 +89,10 @@ RULES:
 - Maximum 2 facts per extraction. Most exchanges should produce ZERO.
 - Each fact must be one sentence, third-person past tense.
 - Returning [] is the EXPECTED outcome for most messages. Only truly significant moments get extracted.
+- For each fact, identify WHO it's primarily about using the "character" field: the EXACT name from the CAST list below if it matches one of them (including a secondary/NPC character, not just the main one), "the user" if it's about the player, or omit the field for a general world fact not tied to one specific person. Get this right — a fact filed under the wrong character becomes invisible to that character later.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
-[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>"}]
+[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>","character":"<exact CAST name, \"the user\", or omit>"}]
 
 Expected output for most messages: []`;
 
@@ -97,8 +104,13 @@ function buildExtractionPrompt(
   userMessage: string,
   assistantResponse: string,
   existingMemories?: string[],
+  castNames?: string[],
 ): string {
   let prompt = `Analyze this roleplay exchange. Extract ONLY facts that would cause a continuity error if forgotten in a future session.\n\n`;
+
+  if (castNames && castNames.length > 0) {
+    prompt += `CAST (use one of these exact names for a fact's "character" field, or "the user"):\n${castNames.join(', ')}\n\n`;
+  }
 
   if (existingMemories && existingMemories.length > 0) {
     prompt += `EXISTING MEMORIES (already known — do NOT repeat):\n`;
@@ -145,9 +157,10 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
       .map((item: any) => ({
         summary: item.summary.trim(),
         category: item.category as ExtractedFact['category'],
+        character: typeof item.character === 'string' ? item.character.trim() : null,
       }));
   } catch {
-    console.warn('[Mythic] Failed to parse extraction response:', raw.slice(0, 200));
+    console.warn('[Janus] Failed to parse extraction response:', raw.slice(0, 200));
     return [];
   }
 }
@@ -168,7 +181,7 @@ export function shouldExtract(): boolean {
   messageCounter++;
   const should = messageCounter % EXTRACT_EVERY_N === 0;
   if (should) {
-    console.debug(`[Mythic] Memory extraction triggered (message #${messageCounter})`);
+    console.debug(`[Janus] Memory extraction triggered (message #${messageCounter})`);
   }
   return should;
 }
@@ -193,6 +206,57 @@ export function resetCounter(): void {
  * Runs asynchronously — never blocks the main conversation flow.
  * Most calls will produce 0 memories — this is by design.
  */
+/**
+ * Resolves a name the extraction LLM stated a fact was about to an actual
+ * cast member's character ID — same exact/case-insensitive/first-name/
+ * substring fallback chain as the Rust-side `resolve_character_id` (see
+ * `context/response_parser.rs`), kept in lockstep so a name that would
+ * resolve during live multi-character response parsing also resolves here.
+ */
+function resolveFactCharacterId(name: string, castPairs: [string, string][]): string | undefined {
+  const exact = castPairs.find(([n]) => n === name);
+  if (exact) return exact[1];
+  const lower = name.toLowerCase();
+  const caseInsensitive = castPairs.find(([n]) => n.toLowerCase() === lower);
+  if (caseInsensitive) return caseInsensitive[1];
+  const firstName = castPairs.find(([n]) => n.split(/\s+/)[0]?.toLowerCase() === lower);
+  if (firstName) return firstName[1];
+  const substring = castPairs.find(([n]) => n.toLowerCase().includes(lower) || lower.includes(n.toLowerCase()));
+  return substring?.[1];
+}
+
+/**
+ * Builds (name, id) pairs for the conversation's full cast — the primary
+ * character (not itself a `conversation_characters` row — see the matching
+ * comment in pipeline.rs) plus every secondary/NPC member. Used both to
+ * give the extraction LLM a list of valid names and to resolve its answer
+ * back to a real character ID.
+ */
+async function buildCastPairs(
+  ipc: typeof import('$lib/services/ipc'),
+  conversationId: string,
+  primaryCharacterId: string,
+): Promise<[string, string][]> {
+  const pairs: [string, string][] = [];
+  try {
+    const primary = await ipc.getCharacter(primaryCharacterId);
+    pairs.push([primary.name, primaryCharacterId]);
+  } catch {
+    // Best-effort — extraction still works with an incomplete cast list
+  }
+  try {
+    const cast = await ipc.listConversationCharacters(conversationId);
+    for (const c of cast) {
+      if (!pairs.some(([, id]) => id === c.character_id)) {
+        pairs.push([c.character_name, c.character_id]);
+      }
+    }
+  } catch {
+    // Best-effort
+  }
+  return pairs;
+}
+
 export async function extractAndSaveMemories(
   conversationId: string,
   characterId: string | null | undefined,
@@ -215,21 +279,31 @@ export async function extractAndSaveMemories(
     // Non-critical — proceed without dedup context
   }
 
+  // Cast list so each fact can be attributed to whichever character it's
+  // actually about, instead of always the conversation's primary — see the
+  // "why doesn't Refresh from Story pick up an NPC's backstory" writeup:
+  // without this, e.g. a maid character's revealed backstory got saved
+  // under the *primary* character's ID and was invisible when refreshing
+  // the maid's own profile, since that only looks at her own memories.
+  // Only attempted in 'character' memory-scope mode (characterId present)
+  // — 'conversation' scope intentionally keeps memories un-attributed.
+  const castPairs = characterId ? await buildCastPairs(ipc, conversationId, characterId) : [];
+
   // --- Tier 1: LLM-powered extraction ---
   try {
     const raw = await ipc.generateRaw(
       EXTRACTION_SYSTEM_PROMPT,
-      buildExtractionPrompt(userMessage, assistantResponse, existingMemoryTexts),
+      buildExtractionPrompt(userMessage, assistantResponse, existingMemoryTexts, castPairs.map(([name]) => name)),
       undefined, // use default model
       256,       // max tokens — responses are short (usually just [])
       0.1,       // very low temperature for consistent, conservative output
     );
     facts = parseExtractionResponse(raw);
     if (facts.length > 0) {
-      console.debug(`[Mythic] LLM extracted ${facts.length} fact(s):`, facts.map(f => f.summary));
+      console.debug(`[Janus] LLM extracted ${facts.length} fact(s):`, facts.map(f => f.summary));
     }
   } catch (err) {
-    console.warn('[Mythic] LLM extraction failed, falling back to heuristics:', err);
+    console.warn('[Janus] LLM extraction failed, falling back to heuristics:', err);
   }
 
   // --- Tier 2: Heuristic fallback ---
@@ -237,7 +311,7 @@ export async function extractAndSaveMemories(
   if (facts.length === 0) {
     facts = heuristicExtract(assistantResponse);
     if (facts.length > 0) {
-      console.debug(`[Mythic] Heuristic extracted ${facts.length} fact(s)`);
+      console.debug(`[Janus] Heuristic extracted ${facts.length} fact(s)`);
     }
   }
 
@@ -246,16 +320,22 @@ export async function extractAndSaveMemories(
   // --- Save to backend ---
   let saved = 0;
   for (const fact of facts) {
+    // Resolve to the specific cast member the fact is about; fall back to
+    // the primary (old behavior) when the LLM didn't name anyone resolvable
+    // — e.g. a general world fact, or the heuristic tier (which never sets
+    // `character` at all).
+    const resolvedId = fact.character ? resolveFactCharacterId(fact.character, castPairs) : undefined;
+    const targetCharacterId = resolvedId ?? characterId ?? undefined;
     try {
       await ipc.createMemory(
         `[${fact.category}] ${fact.summary}`,
-        characterId ?? undefined,
+        targetCharacterId,
         conversationId,
         'auto',
       );
       saved++;
     } catch (err) {
-      console.warn('[Mythic] Failed to save auto-memory:', err);
+      console.warn('[Janus] Failed to save auto-memory:', err);
     }
   }
 

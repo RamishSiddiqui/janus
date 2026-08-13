@@ -40,15 +40,6 @@ pub fn parse_multi_character_response(
         return vec![];
     }
 
-    // If no known names or only one character, don't parse
-    if known_names.len() <= 1 {
-        return vec![ParsedSegment {
-            character_name: fallback_name.to_string(),
-            content: response.trim().to_string(),
-            index: 0,
-        }];
-    }
-
     // Build regex pattern from known character names.
     // Include both full names AND first names, since LLMs often write
     // [Roran]: instead of [Roran Ironfist]:
@@ -66,8 +57,18 @@ pub fn parse_multi_character_response(
     name_variants.sort_by(|a, b| b.len().cmp(&a.len()));
     name_variants.dedup();
 
-    // Matches: [CharName]: at the start of a line (possibly after newlines)
-    let pattern = format!(r"(?m)^\[({})\]:\s*", name_variants.join("|"));
+    // Matches: [CharName]: at the start of a line (possibly after newlines).
+    // Always unions in a generic capitalized-name pattern alongside the
+    // known-names-specific one — a solo conversation can now legitimately
+    // introduce a brand-new speaker's marker (see chat.rs's "Other Characters
+    // Present" prompt addition), and that name won't be in `known_names` yet.
+    const GENERIC_NAME_PATTERN: &str = r"[A-Z][\w' .-]{1,40}";
+    let known_alt = name_variants.join("|");
+    let pattern = if known_alt.is_empty() {
+        format!(r"(?m)^\[({})\]:\s*", GENERIC_NAME_PATTERN)
+    } else {
+        format!(r"(?m)^\[({}|{})\]:\s*", known_alt, GENERIC_NAME_PATTERN)
+    };
 
     let re = match Regex::new(&pattern) {
         Ok(r) => r,
@@ -204,6 +205,28 @@ fn parse_with_regex(
         });
     }
 
+    // Merge adjacent segments attributed to the same character. Smaller/free
+    // models occasionally re-emit a redundant `[Name]:` marker partway
+    // through a long completion even though no other character actually
+    // spoke in between — left unmerged, that produces two separate message
+    // bubbles for one speaker back-to-back, which reads as a bug in the UI,
+    // not a stylistic choice.
+    let mut merged: Vec<ParsedSegment> = Vec::with_capacity(segments.len());
+    for seg in segments {
+        if let Some(last) = merged.last_mut() {
+            if last.character_name == seg.character_name {
+                last.content.push_str("\n\n");
+                last.content.push_str(&seg.content);
+                continue;
+            }
+        }
+        merged.push(seg);
+    }
+    for (i, seg) in merged.iter_mut().enumerate() {
+        seg.index = i;
+    }
+    let segments = merged;
+
     debug!(
         "[response_parser] Parsed {} segments from {} chars of response",
         segments.len(),
@@ -238,9 +261,16 @@ pub fn resolve_character_id(
     }) {
         return Some(id.clone());
     }
-    // 4. Substring match — e.g., "Finn" matches "Finn Shadowcloak"
+    // 4. Word-boundary match — e.g., "Shadowcloak" matches "Finn
+    // Shadowcloak" (a last name / name fragment). Matches on a shared WHOLE
+    // WORD, not an arbitrary substring — a raw `.contains()` here used to
+    // let a short new name like "Ari" match an unrelated existing "Aria
+    // Silverleaf" (since "aria silverleaf" contains "ari" as a substring),
+    // silently misattributing a brand-new speaker's dialogue to the wrong,
+    // already-established character.
+    let candidate_words: std::collections::HashSet<&str> = lower.split_whitespace().collect();
     known_chars
         .iter()
-        .find(|(n, _)| n.to_lowercase().contains(&lower) || lower.contains(&n.to_lowercase()))
+        .find(|(n, _)| n.to_lowercase().split_whitespace().any(|w| candidate_words.contains(w)))
         .map(|(_, id)| id.clone())
 }

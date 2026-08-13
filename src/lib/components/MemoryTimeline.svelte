@@ -9,9 +9,13 @@
   interface Props {
     data: MemoryGraphData;
     onRefresh?: () => void;
+    /** Conversation ids to show, controlled by the host's TimelineFilter.
+        `null`/`undefined` means "no filter — show every conversation" (canon
+        is always shown regardless, it has no single conversation home). */
+    visibleConvIds?: Set<string> | null;
   }
 
-  let { data, onRefresh = () => {} }: Props = $props();
+  let { data, onRefresh = () => {}, visibleConvIds = null }: Props = $props();
 
   const PALETTE = ['#c4a1ff', '#00f2ff', '#fb7185', '#fbbf24', '#34d399', '#d580ff'];
   const CANON_COLOR = '#daa520';
@@ -125,6 +129,44 @@
     return result;
   });
 
+  // ── Timeline visibility filter ──
+  // Which lanes to actually render — driven by the host's TimelineFilter
+  // (in the stats strip) via `visibleConvIds`. Canon is never filterable —
+  // it has no single conversation home, so it always stays visible.
+  let visibleLaneIds = $derived.by(() => {
+    if (!visibleConvIds) return new Set(lanes.map(l => l.id));
+    return new Set<string>(['canon', ...visibleConvIds]);
+  });
+  let visibleLanes = $derived(lanes.filter(l => visibleLaneIds.has(l.id)));
+
+  // Conversation titles, for the "hidden link" tooltip below.
+  let convTitleMap = $derived(new Map((data.conversations ?? []).map(c => [c.id, c.title])));
+
+  // lane_id (conversation_id) → titles of conversations it links to that
+  // are currently filtered out — surfaced as a small badge on the lane's
+  // own header so hiding a timeline doesn't silently hide the fact that a
+  // visible conversation still connects to it. Deliberately checked at the
+  // conversation level (matching how the link line itself is drawn between
+  // two *lanes* in the unfiltered view) rather than trying to pin the
+  // connection to one specific memory — `linked_memory_id` isn't always
+  // populated (e.g. a live sync link that hasn't materialized a concrete
+  // copy yet), which made a memory-level check miss real connections.
+  let laneHiddenLinks = $derived.by(() => {
+    const map = new Map<string, string[]>();
+    const markHidden = (laneId: string | null | undefined, otherConvId: string | null | undefined) => {
+      if (!laneId || !otherConvId || laneId === otherConvId || !visibleLaneIds.has(laneId) || visibleLaneIds.has(otherConvId)) return;
+      const title = convTitleMap.get(otherConvId) ?? 'another timeline';
+      const existing = map.get(laneId) ?? [];
+      if (!existing.includes(title)) map.set(laneId, [...existing, title]);
+    };
+    for (const l of data.links) {
+      const sourceConvId = memConvMap.get(l.source_memory_id);
+      markHidden(sourceConvId, l.target_conversation_id);
+      markHidden(l.target_conversation_id, sourceConvId);
+    }
+    return map;
+  });
+
   // Character groups for the spanning header row
   interface CharGroup {
     charId: string;
@@ -141,14 +183,14 @@
     if (!isMultiChar) return [];
     const groups: CharGroup[] = [];
     let i = 0;
-    while (i < lanes.length) {
-      const lane = lanes[i];
+    while (i < visibleLanes.length) {
+      const lane = visibleLanes[i];
       if (!lane.characterId) { i++; continue; } // skip canon
 
       if (lane.characterId === '__shared__') {
         // Shared group — collect all consecutive shared lanes
         const start = i;
-        while (i < lanes.length && lanes[i].characterId === '__shared__') i++;
+        while (i < visibleLanes.length && visibleLanes[i].characterId === '__shared__') i++;
         groups.push({
           charId: '__shared__',
           name: 'Crossroads',
@@ -157,23 +199,23 @@
           color: '#ff9f43',
           isShared: true,
           participantColors: [...new Set(
-            lanes.slice(start, i).flatMap(l => l.participantColors ?? [])
+            visibleLanes.slice(start, i).flatMap(l => l.participantColors ?? [])
           )],
           participantNames: [...new Set(
-            lanes.slice(start, i).flatMap(l => l.participantNames ?? [])
+            visibleLanes.slice(start, i).flatMap(l => l.participantNames ?? [])
           )],
         });
       } else {
         // Exclusive character group
         const charId = lane.characterId;
         const start = i;
-        while (i < lanes.length && lanes[i].characterId === charId) i++;
+        while (i < visibleLanes.length && visibleLanes[i].characterId === charId) i++;
         groups.push({
           charId,
           name: lane.characterName ?? charId,
           startCol: start,
           span: i - start,
-          color: lanes[start].color,
+          color: visibleLanes[start].color,
           isShared: false,
         });
       }
@@ -211,7 +253,13 @@
   });
 
   // ── Timeline entries (grouped) ──
-  let rows = $derived.by(() => buildTimelineEntries(data.memories, data.links));
+  // Only memories in a currently-visible lane are laid out — canon always
+  // qualifies since its lane id ('canon') is always in visibleLaneIds.
+  let visibleMemories = $derived(data.memories.filter(m => {
+    const laneId = m.is_canon ? 'canon' : (m.conversation_id ?? 'canon');
+    return visibleLaneIds.has(laneId);
+  }));
+  let rows = $derived.by(() => buildTimelineEntries(visibleMemories, data.links));
 
   // ── Group expand/collapse state ──
   let expandedGroups = $state<Set<string>>(new Set());
@@ -229,7 +277,7 @@
   /** Resolve the accent color for a memory item in context of its lane */
   function memColor(item: MemoryItem, laneId: string): string {
     const li = laneIndex(laneId);
-    const lane = lanes[li];
+    const lane = visibleLanes[li];
     const isSharedLane = lane?.characterId === '__shared__';
     const charId = item.memory.character_id ?? undefined;
     if (isSharedLane && charId) {
@@ -249,10 +297,13 @@
     } catch { return ''; }
   }
 
+  /** Grid-column index within the currently VISIBLE lanes (for layout math). */
   function laneIndex(laneId: string): number {
-    return lanes.findIndex(l => l.id === laneId);
+    return visibleLanes.findIndex(l => l.id === laneId);
   }
 
+  /** Color is looked up from the full lane list so it stays stable even if
+      the lane is later hidden (e.g. for a "hidden link" badge referencing it). */
   function laneColor(laneId: string): string {
     return lanes.find(l => l.id === laneId)?.color ?? '#5a5a7a';
   }
@@ -328,9 +379,10 @@
   {:else}
     <!-- Lane headers -->
     <div class="lane-header-wrap">
+      {#if visibleLanes.length > 0}
       {#if isMultiChar && charGroups.length > 0}
         <!-- Character group name row — names span across their lanes -->
-        <div class="char-row" style="--lane-count: {lanes.length};">
+        <div class="char-row" style="--lane-count: {visibleLanes.length};">
           {#each charGroups as g, gi}
             <div
               class="char-span"
@@ -359,8 +411,8 @@
         </div>
       {/if}
       <!-- Lane label row -->
-      <div class="lane-row" style="--lane-count: {lanes.length};">
-        {#each lanes as lane}
+      <div class="lane-row" style="--lane-count: {visibleLanes.length};">
+        {#each visibleLanes as lane}
           <div class="lane-col">
             {#if lane.participantColors && lane.participantColors.length > 0}
               <!-- Shared lane: show participant dots above title -->
@@ -372,7 +424,18 @@
                 {/each}
               </div>
             {/if}
-            <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
+            <span class="lane-title-row">
+              <span class="lane-label" style="color: {lane.color};">{lane.label}</span>
+              {#if laneHiddenLinks.has(lane.id)}
+                {@const hiddenTitles = laneHiddenLinks.get(lane.id)!}
+                <span
+                  class="hidden-link-pill"
+                  title="This conversation shared memories with {hiddenTitles.join(', ')} — hidden by the timeline filter"
+                >
+                  <Icon name="link" size={11} />
+                </span>
+              {/if}
+            </span>
             {#if lane.participantColors && lane.participantColors.length >= 2}
               <!-- Gradient underline blending participant colors -->
               <div class="lane-underline" style="background: linear-gradient(90deg, {lane.participantColors.join(', ')});"></div>
@@ -384,7 +447,7 @@
       </div>
       {#if isMultiChar && charGroups.length > 0}
         <!-- Group highlight borders beneath lane labels -->
-        <div class="group-dividers" style="--lane-count: {lanes.length};">
+        <div class="group-dividers" style="--lane-count: {visibleLanes.length};">
           {#each charGroups as g}
             <div
               class="group-border"
@@ -397,11 +460,18 @@
           {/each}
         </div>
       {/if}
+      {/if}
     </div>
 
+    {#if visibleLanes.length === 0}
+      <div class="tl-empty">
+        <div class="empty-icon-wrap"><Icon name="filter" size={28} /></div>
+        <p>No timelines selected — pick one above to see its memories</p>
+      </div>
+    {:else}
     <!-- Timeline body -->
     <div class="tl-scroll">
-      <div class="tl-body" style="--lane-count: {lanes.length};">
+      <div class="tl-body" style="--lane-count: {visibleLanes.length};">
         <!-- Character group zone highlights -->
         {#if isMultiChar && charGroups.length > 0}
           {#each charGroups as g, gi}
@@ -409,8 +479,8 @@
               class="char-zone"
               class:shared-zone={g.isShared}
               style="
-                left: calc({g.startCol} * (100% / {lanes.length}));
-                width: calc({g.span} * (100% / {lanes.length}));
+                left: calc({g.startCol} * (100% / {visibleLanes.length}));
+                width: calc({g.span} * (100% / {visibleLanes.length}));
                 --zone-color: {g.isShared ? '#ff9f43' : g.color};
               "
             ></div>
@@ -418,10 +488,10 @@
         {/if}
 
         <!-- Vertical lane guides -->
-        {#each lanes as lane, li}
+        {#each visibleLanes as lane, li}
           <div
             class="lane-guide"
-            style="left: calc({li} * (100% / {lanes.length}) + (100% / {lanes.length}) / 2); --guide-color: {lane.color};"
+            style="left: calc({li} * (100% / {visibleLanes.length}) + (100% / {visibleLanes.length}) / 2); --guide-color: {lane.color};"
           ></div>
         {/each}
 
@@ -438,8 +508,8 @@
               style="
                 --accent: {color};
                 --delay: {Math.min(ri * 25, 600)}ms;
-                --lane-offset: calc({li} * (100% / {lanes.length}));
-                --lane-width: calc(100% / {lanes.length});
+                --lane-offset: calc({li} * (100% / {visibleLanes.length}));
+                --lane-width: calc(100% / {visibleLanes.length});
               "
             >
               <div class="mem-cell" style="margin-left: var(--lane-offset); width: var(--lane-width);">
@@ -525,6 +595,7 @@
             </div>
           {:else}
             {@const link = entry as TimelineLinkRow}
+            {#if visibleLaneIds.has(link.toLaneId)}
             {@const fromIdx = laneIndex(link.fromLaneId)}
             {@const toIdx = laneIndex(link.toLaneId)}
             {@const minIdx = Math.min(fromIdx, toIdx)}
@@ -537,8 +608,8 @@
               class="link-row"
               style="
                 --delay: {Math.min(ri * 25, 600)}ms;
-                --link-left: calc({minIdx} * (100% / {lanes.length}) + (100% / {lanes.length}) / 2);
-                --link-width: calc({(maxIdx - minIdx)} * (100% / {lanes.length}));
+                --link-left: calc({minIdx} * (100% / {visibleLanes.length}) + (100% / {visibleLanes.length}) / 2);
+                --link-width: calc({(maxIdx - minIdx)} * (100% / {visibleLanes.length}));
               "
             >
               <div class="link-line" class:two-way={isTwoWay} style="margin-left: var(--link-left); width: var(--link-width); --flow-color: {flowColor}; --glow-color: {glowColor};">
@@ -558,10 +629,12 @@
                 </span>
               </div>
             </div>
+            {/if}
           {/if}
         {/each}
       </div>
     </div>
+    {/if}
   {/if}
 
   <!-- Memory Action Panel -->
@@ -583,7 +656,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Raleway', -apple-system, sans-serif;
   }
 
   .tl-empty {
@@ -713,6 +786,14 @@
     align-items: center;
     gap: 6px;
     padding-bottom: 10px;
+  }
+
+  .lane-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    max-width: 100%;
   }
 
   .lane-label {
@@ -977,6 +1058,34 @@
     color: #d4a017;
   }
 
+  /* ── Hidden-link indicator — this lane's memories also connect to a
+     conversation currently hidden by the timeline filter above. Compact
+     pill next to the lane title; hovering it spells out which
+     conversation(s) it's still linked to. ── */
+  .hidden-link-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 21px;
+    height: 21px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: rgba(255, 159, 67, 0.16);
+    border: 1px solid rgba(255, 159, 67, 0.4);
+    color: #ff9f43;
+    animation: hiddenLinkPulse 2.2s ease-in-out infinite;
+    cursor: help;
+  }
+
+  @keyframes hiddenLinkPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 159, 67, 0.45); }
+    50% { box-shadow: 0 0 0 5px rgba(255, 159, 67, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hidden-link-pill { animation: none; }
+  }
+
   /* ══════ Link Row ══════ */
   .link-row {
     position: relative;
@@ -1075,7 +1184,7 @@
     transform: translate(-50%, -50%);
     font-size: 8px;
     font-weight: 700;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Raleway', sans-serif;
     color: var(--badge-color);
     background: rgba(7, 7, 26, 0.92);
     border: 1px solid var(--badge-color);
@@ -1130,7 +1239,7 @@
     background: none;
     border: 1px dashed rgba(139, 92, 246, 0.08);
     border-radius: 6px;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Raleway', -apple-system, sans-serif;
     font-size: 10px;
     font-weight: 500;
     color: #5a5a7a;

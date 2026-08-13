@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Centralized Error Handling
+//   Janus — Centralized Error Handling
 //   Logs errors to console AND shows user-facing toast
 // ============================================================
 

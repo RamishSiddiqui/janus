@@ -276,6 +276,7 @@ pub async fn query_relevant_memories(
     query_text: &str,
     top_k: usize,
     min_similarity: f64,
+    conversation_id: Option<&str>,
 ) -> Result<Vec<RetrievedMemoryContext>, MythicError> {
     if query_text.trim().is_empty() {
         return Ok(vec![]);
@@ -293,11 +294,11 @@ pub async fn query_relevant_memories(
     let candidate_k = top_k * 3;
 
     let vector_hits = EmbeddingRepo::query_memory_similar(
-        db, character_id, &query_embedding, candidate_k, min_similarity,
+        db, character_id, &query_embedding, candidate_k, min_similarity, conversation_id,
     ).await?;
 
     let keyword_hits = EmbeddingRepo::keyword_search_memories(
-        db, character_id, query_text, candidate_k,
+        db, character_id, query_text, candidate_k, conversation_id,
     )
     .await
     .unwrap_or_else(|e| {

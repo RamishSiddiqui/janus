@@ -2,12 +2,19 @@
   import { onMount, tick } from "svelte";
   import { browser } from "$app/environment";
   import ChatHeader from "$lib/components/ChatHeader.svelte";
+  import JanusLoader from "$lib/components/JanusLoader.svelte";
+  import SplitHeading from "$lib/components/SplitHeading.svelte";
+  import ChatExplorerView from "$lib/components/ChatExplorerView.svelte";
+  import ContextLorebook from "$lib/components/ContextLorebook.svelte";
+  import ContextNpcPanel from "$lib/components/ContextNpcPanel.svelte";
+  import ContextPersonaPanel from "$lib/components/ContextPersonaPanel.svelte";
   import SceneStateBar from "$lib/components/SceneStateBar.svelte";
   import type { SceneState } from "$lib/services/ipc";
   import Icon from "$lib/components/Icon.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ContextPanel from "$lib/components/ContextPanel.svelte";
+  import SceneGalleryModal from "$lib/components/SceneGalleryModal.svelte";
   import { parseCharacterData } from "$lib/utils/character";
   import {
     messages,
@@ -27,11 +34,18 @@
     branchConversation,
     cancelGeneration,
   } from "$lib/stores/chat";
+  import { settings } from "$lib/stores/settings";
+  import { trackPortraitGeneration } from "$lib/stores/sceneGeneration";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
 
   let inputText = $state("");
   let showContextPanel = $state(false);
+  let showGalleryModal = $state(false);
+  // Which full-chat-area explorer view (Lorebook/Group Cast/NPC Cast/
+  // Persona) is currently replacing the message list + composer, if any —
+  // see ChatExplorerView.svelte and ChatHeader.svelte's header buttons.
+  let activeExplorerView: 'lore' | 'cast' | 'persona' | null = $state(null);
   let messagesEl: HTMLDivElement | undefined = $state();
   let loadMoreSentinelEl: HTMLDivElement | undefined = $state();
 
@@ -179,6 +193,9 @@
   let characterDescription = $state("");
   let characterTags: { label: string; color: string }[] = $state([]);
   let avatarUrl: string | null = $state(null);
+  // Raw relative avatar path (distinct from avatarUrl's blob: URL) — needed
+  // server-side as an img2img reference, which needs a real file path.
+  let characterAvatarPath: string | null = $state(null);
 
   // Token count approximation
   let tokenCount = $derived(
@@ -221,6 +238,12 @@
   let modelName = $state("No provider configured");
   let selectedModel = $state("");
   let availableModels: string[] = $state([]);
+  // Populated alongside availableModels — lets ChatInput gate the attach-
+  // image button on whether the CURRENTLY selected model can actually use
+  // an attached image as input (a plain string[] loses that capability).
+  let modelVisionSupport: Record<string, boolean> = $state({});
+  let selectedModelSupportsVision = $derived(modelVisionSupport[selectedModel] ?? false);
+  let pendingAttachments: { relativePath: string; mimeType: string; previewUrl: string }[] = $state([]);
   let activeProviderId = $state("");
 
   // Branch lineage — if the active conversation was forked from another
@@ -281,6 +304,31 @@
         if (convId) loadSceneState(convId);
       });
     });
+
+    // Listen for auto-detected NPCs — trigger portrait generation if the
+    // user has opted in. generateNpcPortrait is a silent no-op backend-side
+    // if no image provider is configured, so no need to check for one here.
+    // Routed through trackPortraitGeneration (not called directly) so this
+    // auto-triggered generation patches the same global sceneGenerations
+    // store the Cast panel watches — otherwise its `completedAt` never
+    // changes for an auto-generated portrait, so the panel's own
+    // completion-watching effect (which exists specifically to catch a
+    // generation finishing while the panel wasn't mounted) never fires, and
+    // the new avatar doesn't appear until an unrelated full reload happens
+    // to re-fetch the character.
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<{ conversation_id: string; character: { id: string } }>('npc_created', (event) => {
+        if (!$settings.autoGenerateNpcPortraits) return;
+        const convId = $activeConversationId;
+        if (!convId || event.payload.conversation_id !== convId) return;
+        const characterId = event.payload.character.id;
+        import('$lib/services/ipc').then(ipc =>
+          trackPortraitGeneration(characterId, () =>
+            ipc.generateNpcPortrait(characterId, convId, $settings.autoApproveNpcPortraits)
+          ).catch(err => console.warn('[Janus] NPC portrait generation failed:', err))
+        );
+      });
+    });
   });
 
   // Load scene state whenever the active conversation changes
@@ -308,9 +356,12 @@
     try {
       const ipc = await import("$lib/services/ipc");
       const enabled = await ipc.listEnabledModels(activeProviderId);
-      availableModels = enabled.filter(e => e.model_type !== 'embedding').map((e) => e.model_id);
+      const chatModels = enabled.filter(e => e.model_type !== 'embedding');
+      availableModels = chatModels.map((e) => e.model_id);
+      modelVisionSupport = Object.fromEntries(chatModels.map((e) => [e.model_id, e.supports_vision]));
     } catch {
       availableModels = [];
+      modelVisionSupport = {};
     }
   }
 
@@ -333,6 +384,7 @@
         "Half-elf with untamed elemental magic at the College of Magic";
       characterTags = [];
       avatarUrl = null;
+      characterAvatarPath = null;
     }
   });
 
@@ -356,31 +408,18 @@
       }
 
       // Resolve avatar URL
+      characterAvatarPath = char.avatar_path ?? null;
+      const { loadFileAsBlobUrl, revokeIfSet } = await import("$lib/utils/blobUrl");
       if (char.avatar_path) {
         try {
-          const { readFile, BaseDirectory } = await import(
-            "@tauri-apps/plugin-fs"
-          );
-          const bytes = await readFile(char.avatar_path, {
-            baseDir: BaseDirectory.AppData,
-          });
-          const ext =
-            char.avatar_path.split(".").pop()?.toLowerCase() || "jpeg";
-          const mime =
-            ext === "png"
-              ? "image/png"
-              : ext === "webp"
-                ? "image/webp"
-                : "image/jpeg";
-          const blob = new Blob([bytes], { type: mime });
-          // Revoke old blob URL to prevent memory leak
-          if (avatarUrl) URL.revokeObjectURL(avatarUrl);
-          avatarUrl = URL.createObjectURL(blob);
+          const newUrl = await loadFileAsBlobUrl(char.avatar_path);
+          revokeIfSet(avatarUrl);
+          avatarUrl = newUrl;
         } catch {
           avatarUrl = null;
         }
       } else {
-        if (avatarUrl) URL.revokeObjectURL(avatarUrl);
+        revokeIfSet(avatarUrl);
         avatarUrl = null;
       }
     } catch (err) {
@@ -408,10 +447,15 @@
         selectedModel || undefined,
       );
     } else {
+      const attachments = pendingAttachments.length > 0
+        ? pendingAttachments.map(({ relativePath, mimeType }) => ({ relativePath, mimeType }))
+        : undefined;
+      pendingAttachments = [];
       await sendMessage(
         $activeConversationId,
         text,
         selectedModel || undefined,
+        attachments,
       );
     }
   }
@@ -443,7 +487,7 @@
 </script>
 
 <svelte:head>
-  <title>Chat — Mythic</title>
+  <title>Chat — Janus</title>
 </svelte:head>
 
 <div class="chat-view">
@@ -459,86 +503,15 @@
 
       <!-- Central content -->
       <div class="landing-content animate-fade-in-scale">
-        <!-- Animated quill/scroll icon -->
+        <!-- Janus mark, animated -->
         <div class="landing-icon-group">
           <div class="landing-glow"></div>
-          <svg
-            class="landing-icon"
-            viewBox="0 0 64 64"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <!-- Scroll -->
-            <rect
-              x="14"
-              y="12"
-              width="36"
-              height="44"
-              rx="4"
-              stroke="url(#scrollGrad)"
-              stroke-width="2"
-              fill="none"
-              opacity="0.6"
-            />
-            <line
-              x1="22"
-              y1="24"
-              x2="42"
-              y2="24"
-              stroke="var(--fg-muted)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              opacity="0.4"
-            />
-            <line
-              x1="22"
-              y1="30"
-              x2="38"
-              y2="30"
-              stroke="var(--fg-muted)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              opacity="0.3"
-            />
-            <line
-              x1="22"
-              y1="36"
-              x2="34"
-              y2="36"
-              stroke="var(--fg-muted)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              opacity="0.2"
-            />
-            <!-- Quill pen -->
-            <path
-              d="M44 8 C44 8 50 14 48 22 C46 30 40 32 40 32 L42 28 C42 28 46 24 46 16 C46 12 44 8 44 8Z"
-              fill="url(#quillGrad)"
-              opacity="0.9"
-            />
-            <line
-              x1="40"
-              y1="32"
-              x2="36"
-              y2="44"
-              stroke="url(#quillGrad)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-            />
-            <defs>
-              <linearGradient id="scrollGrad" x1="14" y1="12" x2="50" y2="56">
-                <stop offset="0%" stop-color="#8B5CF6" />
-                <stop offset="100%" stop-color="#BF40FF" />
-              </linearGradient>
-              <linearGradient id="quillGrad" x1="36" y1="8" x2="48" y2="44">
-                <stop offset="0%" stop-color="#00F2FF" />
-                <stop offset="100%" stop-color="#8B5CF6" />
-              </linearGradient>
-            </defs>
-          </svg>
+          <div class="landing-icon">
+            <JanusLoader size={62} label="" />
+          </div>
         </div>
 
-        <h2 class="landing-title">Begin Your Story</h2>
+        <h2 class="landing-title"><SplitHeading text="Begin Your Story" /></h2>
         <p class="landing-subtitle">
           Choose a character from the gallery to start a new conversation, or
           pick up where you left off from recent chats.
@@ -595,10 +568,15 @@
         {avatarUrl}
         {showContextPanel}
         {additionalCharacters}
+        {characterId}
+        conversationId={$activeConversationId}
         {parentConversationId}
         {parentConversationTitle}
+        {activeExplorerView}
+        onOpenExplorer={(view) => (activeExplorerView = view)}
         onNavigateToParent={navigateToParent}
         onTogglePanel={() => (showContextPanel = !showContextPanel)}
+        onOpenGallery={() => (showGalleryModal = true)}
         onGenerateScene={() => {
           showContextPanel = true;
         }}
@@ -607,6 +585,30 @@
       {#if $activeConversationId}
         <SceneStateBar sceneState={currentSceneState} />
       {/if}
+
+      {#if activeExplorerView}
+        {@const explorerMeta = {
+          lore: { icon: 'book-open', title: 'Lorebook', description: 'World info injected into the prompt when its keywords appear.' },
+          cast: { icon: 'users', title: 'Cast', description: 'Everyone in this conversation — hand-picked and auto-detected alike, with talkativeness, review, and a shared memory graph.' },
+          persona: { icon: 'user', title: 'Persona', description: 'Who you\'re playing as in this conversation.' },
+        }[activeExplorerView]}
+        <ChatExplorerView
+          icon={explorerMeta.icon}
+          title={explorerMeta.title}
+          description={explorerMeta.description}
+          onClose={() => (activeExplorerView = null)}
+        >
+          {#snippet children()}
+            {#if activeExplorerView === 'lore'}
+              <ContextLorebook {characterId} conversationId={$activeConversationId} wide />
+            {:else if activeExplorerView === 'cast'}
+              <ContextNpcPanel conversationId={$activeConversationId} {characterId} {characterName} primaryAvatarUrl={avatarUrl} {additionalCharacters} wide />
+            {:else if activeExplorerView === 'persona'}
+              <ContextPersonaPanel conversationId={$activeConversationId} wide />
+            {/if}
+          {/snippet}
+        </ChatExplorerView>
+      {:else}
 
       <!-- Messages -->
       <div
@@ -663,50 +665,25 @@
         {/if}
 
         {#if $isStreaming && ($messages.length === 0 || !$messages[$messages.length - 1]?.isStreaming)}
-          <div
-            class="typing-indicator"
-            aria-label="AI is generating a response"
-          >
-            {#if additionalCharacters.length > 0}
-              <!-- Multi-char: stacked avatar cluster -->
-              <div class="typing-avatar-stack">
-                {#if avatarUrl}
-                  <div class="typing-avatar-stacked" style="z-index: 3">
-                    <img src={avatarUrl} alt={characterName} class="typing-avatar-img" />
-                  </div>
-                {:else}
-                  <div class="typing-avatar-stacked typing-avatar-fallback" style="z-index: 3">
-                    <div class="typing-glow"></div>
-                  </div>
-                {/if}
-                {#each additionalCharacters.slice(0, 2) as ac, i}
-                  {#if ac.avatarUrl}
-                    <div class="typing-avatar-stacked" style="z-index: {2 - i}; margin-left: -10px;">
-                      <img src={ac.avatarUrl} alt={ac.name} class="typing-avatar-img" />
-                    </div>
-                  {:else}
-                    <div class="typing-avatar-stacked typing-avatar-fallback" style="z-index: {2 - i}; margin-left: -10px; background: {ac.avatarColor}">
-                      <div class="typing-glow"></div>
-                    </div>
-                  {/if}
-                {/each}
-              </div>
-            {:else if avatarUrl}
-              <!-- Single-char: show character avatar -->
-              <div class="typing-avatar">
-                <img src={avatarUrl} alt={characterName} class="typing-avatar-img" />
-                <div class="typing-glow"></div>
-              </div>
-            {:else}
-              <!-- Fallback: gradient orb -->
-              <div class="typing-avatar">
-                <div class="typing-glow"></div>
-              </div>
-            {/if}
-            <div class="typing-dots">
-              <span class="dot dot-1"></span>
-              <span class="dot dot-2"></span>
-              <span class="dot dot-3"></span>
+          <!-- Which character is about to speak isn't knowable until the
+               response finishes streaming and gets parsed (see
+               parse_multi_character_response) — guessing at an avatar here
+               was actively wrong as often as right in multi-character
+               scenes. A neutral, branded Janus loading card sidesteps the
+               guess entirely instead of trying to win it. -->
+          <div class="janus-typing-card" role="status" aria-label="Janus is generating a response">
+            <div class="janus-typing-header">
+              <JanusLoader size={16} label="" />
+              <span class="janus-typing-title">JANUS</span>
+            </div>
+            <div class="janus-typing-lines">
+              <div class="janus-typing-line janus-typing-line--1"></div>
+              <div class="janus-typing-line janus-typing-line--2"></div>
+              <div class="janus-typing-line janus-typing-line--3"></div>
+            </div>
+            <div class="janus-typing-status">
+              <JanusLoader size={12} label="" />
+              <span>Writing a response…</span>
             </div>
           </div>
         {/if}
@@ -811,20 +788,33 @@
         onRefreshModels={refreshModels}
         isBranching={branchFromId !== null}
         onStop={cancelGeneration}
+        bind:pendingAttachments
+        {selectedModelSupportsVision}
       />
+      {/if}
     </div>
 
     <!-- Context Panel -->
     {#if showContextPanel && $activeConversationId}
-      <ContextPanel
-        {characterId}
-        {characterName}
-        characterTagline={characterDescription}
-        {avatarUrl}
-        tags={characterTags}
-        {additionalCharacters}
+      {#key $activeConversationId}
+        <ContextPanel
+          {characterId}
+          {characterName}
+          characterTagline={characterDescription}
+          {avatarUrl}
+          avatarPath={characterAvatarPath}
+          tags={characterTags}
+          {additionalCharacters}
+          conversationId={$activeConversationId}
+          onClose={() => (showContextPanel = false)}
+        />
+      {/key}
+    {/if}
+
+    {#if showGalleryModal && $activeConversationId}
+      <SceneGalleryModal
         conversationId={$activeConversationId}
-        onClose={() => (showContextPanel = false)}
+        onClose={() => (showGalleryModal = false)}
       />
     {/if}
   {/if}
@@ -945,6 +935,9 @@
     height: 96px;
     position: relative;
     z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     animation: iconFloat 6s ease-in-out infinite;
   }
 
@@ -959,27 +952,18 @@
   }
 
   .landing-title {
-    font-size: var(--text-3xl);
-    font-weight: 700;
-    color: var(--fg-primary);
-    margin-bottom: 12px;
+    font-size: calc(38 / 14 * var(--app-font-size, 14px));
+    font-weight: 500;
+    margin-bottom: 14px;
     letter-spacing: -0.5px;
-    background: linear-gradient(
-      135deg,
-      var(--fg-primary),
-      var(--accent-primary)
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
   }
 
   .landing-subtitle {
-    font-size: var(--text-base);
+    font-size: var(--text-xl);
     color: var(--fg-muted);
     line-height: 1.7;
     margin-bottom: 32px;
-    max-width: 360px;
+    max-width: 400px;
   }
 
   .landing-actions {
@@ -1375,118 +1359,76 @@
     }
   }
 
-  /* Typing Indicator */
-  .typing-indicator {
+  /* Typing Indicator — a neutral, Janus-branded loading card. Which
+     character is about to speak isn't knowable until the response finishes
+     streaming (see the matching comment in the template above), so this
+     deliberately doesn't try to show any character's avatar. */
+  .janus-typing-card {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 12px;
+    width: 240px;
+    max-width: 80%;
+    padding: 14px 16px;
+    border-radius: var(--rounded-md);
+    background: var(--ai-bubble);
+    border: 1px solid var(--border-subtle);
     animation: fadeSlideUp 300ms var(--ease-out) forwards;
   }
 
-  .typing-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--rounded-full);
-    background: linear-gradient(
-      135deg,
-      var(--accent-primary),
-      var(--accent-secondary)
-    );
-    flex-shrink: 0;
-    position: relative;
-    animation: gentlePulse 2s ease-in-out infinite;
-  }
-
-  .typing-glow {
-    position: absolute;
-    inset: -3px;
-    border-radius: var(--rounded-full);
-    background: linear-gradient(
-      135deg,
-      var(--accent-primary),
-      var(--accent-secondary)
-    );
-    opacity: 0.2;
-    filter: blur(6px);
-    animation: glowPulse 2s ease-in-out infinite;
-  }
-
-  /* Avatar image inside typing indicator */
-  .typing-avatar-img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-    display: block;
-  }
-
-  /* Stacked avatar cluster for multi-char */
-  .typing-avatar-stack {
+  .janus-typing-header {
     display: flex;
     align-items: center;
-    flex-shrink: 0;
-    animation: gentlePulse 2s ease-in-out infinite;
+    gap: 8px;
   }
-  .typing-avatar-stacked {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    overflow: hidden;
-    position: relative;
-    border: 2px solid rgba(6, 6, 18, 0.9);
-    box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
-    flex-shrink: 0;
-  }
-  .typing-avatar-fallback {
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  .janus-typing-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
   }
 
-  .typing-dots {
+  .janus-typing-lines {
     display: flex;
-    gap: 4px;
-    padding: 10px 16px;
-    background: var(--ai-bubble);
-    border: 1px solid var(--border-subtle);
-    border-radius: 2px 12px 12px 12px;
+    flex-direction: column;
+    gap: 7px;
   }
+  .janus-typing-line {
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.06);
+    position: relative;
+    overflow: hidden;
+    animation: skeletonPulse 1.8s ease-in-out infinite;
+  }
+  .janus-typing-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.1) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmerSlide 1.8s ease-in-out infinite;
+  }
+  .janus-typing-line--1 { width: 84%; }
+  .janus-typing-line--2 { width: 60%; animation-delay: 150ms; }
+  .janus-typing-line--2::after { animation-delay: 150ms; }
+  .janus-typing-line--3 { width: 40%; animation-delay: 300ms; }
+  .janus-typing-line--3::after { animation-delay: 300ms; }
 
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: var(--rounded-full);
-    background: var(--fg-muted);
-    animation: dotBounce 1.4s ease-in-out infinite;
-  }
-
-  .dot-1 {
-    animation-delay: 0ms;
-  }
-  .dot-2 {
-    animation-delay: 160ms;
-  }
-  .dot-3 {
-    animation-delay: 320ms;
-  }
-
-  @keyframes dotBounce {
-    0%,
-    60%,
-    100% {
-      transform: translateY(0);
-      opacity: 0.4;
-    }
-    30% {
-      transform: translateY(-6px);
-      opacity: 1;
-    }
-  }
-
-  @keyframes gentlePulse {
-    0%,
-    100% {
-      transform: scale(1);
-    }
-    50% {
-      transform: scale(1.05);
-    }
+  .janus-typing-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: fit-content;
+    padding: 6px 10px;
+    border-radius: var(--rounded-sm);
+    background: rgba(139, 92, 246, 0.06);
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    font-size: 11px;
+    color: var(--fg-muted);
+    font-family: var(--font-body);
   }
 
   @keyframes glowPulse {

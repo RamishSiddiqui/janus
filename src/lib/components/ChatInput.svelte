@@ -1,13 +1,28 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import { browser } from '$app/environment';
+  import { error as toastError } from '$lib/stores/toast';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
+
+  // Soft cap — large images bloat the request and most vision models
+  // downscale internally anyway, so there's no quality benefit to allowing
+  // arbitrarily large uploads.
+  const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+  const MAX_ATTACHMENTS = 4;
+
+  export interface PendingAttachment {
+    relativePath: string;
+    mimeType: string;
+    previewUrl: string;
+  }
 
   let {
     value = $bindable(''), modelName, tokenCount, onSend, disabled = false,
     selectedModel = $bindable(''), availableModels = [],
     onRefreshModels, isBranching = false, onStop,
+    pendingAttachments = $bindable([]),
+    selectedModelSupportsVision = false,
   }: {
     value: string; modelName: string; tokenCount: string;
     onSend: () => void; disabled?: boolean;
@@ -16,12 +31,110 @@
     isBranching?: boolean;
     /** Shown in place of the Send button while `disabled` (streaming) is true. */
     onStop?: () => void;
+    /** Images picked but not yet sent — the parent reads this at send time
+     *  and clears it afterward. */
+    pendingAttachments?: PendingAttachment[];
+    /** Gates the attach button — only vision-capable models can actually
+     *  use an attached image as input. */
+    selectedModelSupportsVision?: boolean;
   } = $props();
 
   let inputElement: HTMLTextAreaElement | undefined = $state();
   let focused = $state(false);
   let showModelPicker = $state(false);
   let modelFilter = $state('');
+  let isUploadingAttachment = $state(false);
+
+  async function handleAttachClick() {
+    if (!isTauri || isUploadingAttachment) return;
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) {
+      toastError(`You can attach up to ${MAX_ATTACHMENTS} images per message`);
+      return;
+    }
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({
+      multiple: true,
+      filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+    });
+    if (!selected) return;
+    const paths = (Array.isArray(selected) ? selected : [selected]).slice(
+      0, MAX_ATTACHMENTS - pendingAttachments.length
+    );
+
+    isUploadingAttachment = true;
+    try {
+      const { stat } = await import('@tauri-apps/plugin-fs');
+      const ipc = await import('$lib/services/ipc');
+      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      for (const path of paths) {
+        const info = await stat(path);
+        if (info.size > MAX_ATTACHMENT_BYTES) {
+          toastError(`${path.split(/[\\/]/).pop()} is too large (max 10MB)`);
+          continue;
+        }
+        const attachment = await ipc.uploadMessageAttachment(path);
+        const previewUrl = await loadFileAsBlobUrl(attachment.relativePath, attachment.mimeType);
+        pendingAttachments = [...pendingAttachments, { ...attachment, previewUrl }];
+      }
+    } catch (err) {
+      console.error('Failed to attach image:', err);
+      toastError('Failed to attach image');
+    }
+    isUploadingAttachment = false;
+  }
+
+  function removePendingAttachment(index: number) {
+    const removed = pendingAttachments[index];
+    if (removed) URL.revokeObjectURL(removed.previewUrl);
+    pendingAttachments = pendingAttachments.filter((_, i) => i !== index);
+  }
+
+  const EXT_BY_MIME: Record<string, string> = {
+    'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif',
+  };
+
+  /** Handles pasting an image (e.g. a screenshot) directly into the
+   *  textarea with Ctrl+V — the file-picker path above is for images that
+   *  already exist on disk; this one has only raw clipboard bytes. Text
+   *  pastes fall through untouched. */
+  async function handlePaste(e: ClipboardEvent) {
+    if (!isTauri || isUploadingAttachment) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageItem = Array.from(items).find(i => i.type.startsWith('image/'));
+    if (!imageItem) return; // let normal text paste proceed
+
+    e.preventDefault();
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) {
+      toastError(`You can attach up to ${MAX_ATTACHMENTS} images per message`);
+      return;
+    }
+    const ext = EXT_BY_MIME[imageItem.type];
+    if (!ext) {
+      toastError('Unsupported clipboard image type');
+      return;
+    }
+    const blob = imageItem.getAsFile();
+    if (!blob) return;
+    if (blob.size > MAX_ATTACHMENT_BYTES) {
+      toastError('Pasted image is too large (max 10MB)');
+      return;
+    }
+
+    isUploadingAttachment = true;
+    try {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const ipc = await import('$lib/services/ipc');
+      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const attachment = await ipc.uploadMessageAttachmentBytes(bytes, ext);
+      const previewUrl = await loadFileAsBlobUrl(attachment.relativePath, attachment.mimeType);
+      pendingAttachments = [...pendingAttachments, { ...attachment, previewUrl }];
+    } catch (err) {
+      console.error('Failed to attach pasted image:', err);
+      toastError('Failed to attach pasted image');
+    }
+    isUploadingAttachment = false;
+  }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
@@ -84,6 +197,29 @@
   <!-- CARD -->
   <div class="ci-card">
 
+    <!-- Pending attachment previews -->
+    {#if pendingAttachments.length > 0}
+      <div class="ci-attachments-row">
+        {#each pendingAttachments as att, i}
+          <div
+            class="ci-attachment-chip"
+            class:ci-attachment-unsupported={!selectedModelSupportsVision}
+            title={selectedModelSupportsVision ? undefined : "Model doesn't support image input"}
+          >
+            <img src={att.previewUrl} alt="Attached" class="ci-attachment-thumb" />
+            {#if !selectedModelSupportsVision}
+              <span class="ci-attachment-unsupported-badge" aria-label="Model doesn't support image input">
+                <Icon name="alert-circle" size={13} color="#FFFFFF" />
+              </span>
+            {/if}
+            <button class="ci-attachment-remove" onclick={() => removePendingAttachment(i)} aria-label="Remove attachment" title="Remove">
+              <Icon name="x" size={10} color="#FFFFFF" />
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     <!-- Textarea row -->
     <div class="ci-textarea-row">
       <textarea
@@ -97,6 +233,7 @@
         oninput={autoResize}
         onfocus={() => focused = true}
         onblur={() => focused = false}
+        onpaste={handlePaste}
       ></textarea>
     </div>
 
@@ -108,7 +245,14 @@
 
       <!-- Left tools: paperclip / bold / sparkle -->
       <div class="ci-left-tools">
-        <button class="ci-tool-btn" title="Attach file" aria-label="Attach file">
+        <button
+          class="ci-tool-btn"
+          class:ci-tool-btn-disabled={isUploadingAttachment}
+          onclick={handleAttachClick}
+          disabled={isUploadingAttachment}
+          title="Attach an image"
+          aria-label="Attach file"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
@@ -218,7 +362,7 @@
 <style>
   /* ======================================================
      B3 PILL BUTTON - Pixel-perfect from Pencil spec
-     Design tokens from Violet Void + Inter + Geist Mono
+     Design tokens from Violet Void + Raleway + Geist Mono
   ====================================================== */
 
   /* -- Outer wrapper -- */
@@ -301,7 +445,7 @@
     outline: none;
     color: rgba(232, 224, 255, 0.92);
     font-size: 14px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Raleway', sans-serif;
     font-weight: 400;
     line-height: 1.6;
     resize: none;
@@ -357,6 +501,60 @@
     background: rgba(124, 58, 237, 0.08);
   }
   .ci-tool-btn:active { transform: scale(0.9); }
+  .ci-tool-btn-disabled { opacity: 0.35; cursor: default; }
+  .ci-tool-btn-disabled:hover { color: rgba(100, 90, 160, 0.45); background: transparent; }
+
+  /* -- Pending attachment previews -- */
+  .ci-attachments-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px 18px 0;
+    flex-wrap: wrap;
+  }
+  .ci-attachment-chip {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    flex-shrink: 0;
+  }
+  .ci-attachment-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .ci-attachment-remove {
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.6);
+    cursor: pointer;
+    padding: 0;
+    transition: background 150ms ease;
+  }
+  .ci-attachment-remove:hover { background: rgba(244, 63, 94, 0.85); }
+
+  .ci-attachment-unsupported {
+    border-color: rgba(244, 63, 94, 0.35);
+  }
+  .ci-attachment-unsupported .ci-attachment-thumb {
+    filter: grayscale(0.9) brightness(0.6);
+  }
+  .ci-attachment-unsupported-badge {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+  }
 
   /* Right cluster */
   .ci-right-tools {
@@ -420,7 +618,7 @@
     border-radius: 99px;
     border: none;
     cursor: not-allowed;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Raleway', sans-serif;
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -538,7 +736,7 @@
     outline: none;
     color: rgba(220, 210, 255, 0.9);
     font-size: 12px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Raleway', sans-serif;
   }
   .ci-search-input::placeholder { color: rgba(80, 70, 130, 0.5); }
 

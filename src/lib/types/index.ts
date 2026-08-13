@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Shared Type Definitions
+//   Janus — Shared Type Definitions
 // ============================================================
 
 /** A single chat message (user or AI). */
@@ -24,6 +24,20 @@ export interface Message {
   character_name?: string | null;
   /** Character avatar URL (resolved at render time from character data). */
   character_avatar_url?: string | null;
+  /** Chain-of-thought/reasoning trace from a reasoning model, kept separate
+   *  from `content` — rendered as a collapsible "Thinking" section. */
+  reasoning?: string | null;
+  /** True while reasoning is actively streaming and no real reply content has
+   *  arrived yet — live-only, never persisted. */
+  isThinking?: boolean;
+  /** Wall-clock ms when reasoning started streaming — live-only, used to
+   *  compute "Thought for Ns" once real content begins. */
+  thinkingStartedAt?: number;
+  /** Images attached to this message (user messages only) — sent as real
+   *  multimodal input to vision-capable models. Present immediately on the
+   *  optimistic local message when just sent, and reloaded from the
+   *  backend's `metadata.attachments` on history load. */
+  attachments?: { relativePath: string; mimeType: string }[];
 }
 
 /** A character card used across Gallery and Chat. */
@@ -87,6 +101,13 @@ export interface LorebookEntry {
   content: string;
   isActive: boolean;
   alwaysActive: boolean;
+  priority: number;
+  insertionOrder: number;
+  /** True for an entry parsed from a character card's embedded lorebook
+   *  that hasn't been imported as a real, persisted entry yet — its `id`
+   *  isn't a real lorebook_entries record, so edit/delete/toggle/reorder
+   *  don't apply until it's imported. */
+  isVirtual?: boolean;
 }
 
 /** Memory entry auto-saved from conversations. */

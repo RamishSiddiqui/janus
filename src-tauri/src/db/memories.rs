@@ -2,7 +2,8 @@ use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
 
 use crate::error::MythicError;
-use crate::models::memory::{Memory, MemoryGraph, MemoryGraphConversation, MemoryLink};
+use crate::db::conversation_characters::ConversationCharacterRepo;
+use crate::models::memory::{Memory, MemoryGraph, MemoryGraphCharacter, MemoryGraphConversation, MemoryLink};
 
 pub struct MemoryRepo;
 
@@ -35,15 +36,21 @@ impl MemoryRepo {
         Ok(memories)
     }
 
-    /// Lists memories for a conversation, plus all canon memories for the character.
-    /// This ensures canon facts are always available regardless of memory scope.
+    /// Lists memories for a conversation, plus this specific character's
+    /// canon memories. This ensures canon facts are always available
+    /// regardless of memory scope, without leaking an unrelated character's
+    /// canon secrets in from elsewhere in the app — the canon clause used to
+    /// have no character (or conversation) linkage at all (`OR is_canon =
+    /// true`), unioning in literally every canon memory in the database.
     pub async fn list_with_canon(
         db: &Surreal<Db>,
         conversation_id: &str,
+        character_id: &str,
     ) -> Result<Vec<Memory>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM memories WHERE conversation_id = type::thing('conversations', $conv_id) OR is_canon = true ORDER BY created_at DESC")
+            .query("SELECT * FROM memories WHERE conversation_id = type::thing('conversations', $conv_id) OR (is_canon = true AND character_id = type::thing('characters', $char_id)) ORDER BY created_at DESC")
             .bind(("conv_id", conversation_id.to_string()))
+            .bind(("char_id", character_id.to_string()))
             .await?;
         let memories: Vec<Memory> = result.take(0)?;
         Ok(memories)
@@ -417,6 +424,141 @@ impl MemoryRepo {
             memories,
             links,
             conversations,
+            characters: Vec::new(),
+        })
+    }
+
+    /// Returns a multi-character "cast graph" scoped to one conversation —
+    /// every character in that conversation's cast (gallery mains + NPCs)
+    /// plus their combined memories/links. Same 4-query-then-assemble shape
+    /// as `get_graph`, but seeded from the conversation's cast instead of a
+    /// single character.
+    pub async fn get_cast_graph(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+    ) -> Result<MemoryGraph, MythicError> {
+        // 1. Cast members for this conversation
+        let cast = ConversationCharacterRepo::list(db, conversation_id).await?;
+        let char_things: Vec<surrealdb::sql::Thing> = cast
+            .iter()
+            .map(|c| c.character_id.clone())
+            .collect();
+        let characters: Vec<MemoryGraphCharacter> = cast
+            .iter()
+            .map(|c| MemoryGraphCharacter {
+                id: c.character_id.id.to_raw(),
+                name: c.character_name.clone(),
+            })
+            .collect();
+
+        if char_things.is_empty() {
+            return Ok(MemoryGraph {
+                character_id: String::new(),
+                character_name: String::new(),
+                memories: Vec::new(),
+                links: Vec::new(),
+                conversations: Vec::new(),
+                characters,
+            });
+        }
+
+        // 2. Memories for any cast member, scoped to THIS conversation — the
+        // previous query filtered by character only, which for a
+        // 'character'-scope character (memories shared across all their
+        // conversations by design) pulled in that character's entire
+        // memory history from every conversation they've ever been in, not
+        // just this one's story. That's correct for `build_prompt`'s
+        // context injection, but wrong for this visualization, whose whole
+        // point is "what happened in this conversation."
+        //
+        // Canon memories are the one deliberate exception: promoting a
+        // memory to canon (see `promote_to_canon`) marks it a permanent,
+        // character-defining fact — often seeded outside any single
+        // conversation (character creation, a different story entirely) —
+        // and the whole point of "canon" is that it's true everywhere the
+        // character appears, not just wherever it happened to be recorded.
+        // Excluding it here just because its `conversation_id` doesn't
+        // match would silently drop a character's core traits/goals from
+        // their own cast graph.
+        let mut mem_result = db
+            .query("SELECT * FROM memories WHERE character_id IN $char_ids AND (conversation_id = type::thing('conversations', $conv_id) OR is_canon = true) ORDER BY created_at ASC")
+            .bind(("char_ids", char_things.clone()))
+            .bind(("conv_id", conversation_id.to_string()))
+            .await?;
+        let memories: Vec<Memory> = mem_result.take(0)?;
+
+        // 3. Collect memory IDs for link query
+        let memory_ids: Vec<String> = memories.iter().map(|m| m.id.id.to_raw()).collect();
+
+        // 4. All links from these memories
+        let links: Vec<MemoryLink> = if memory_ids.is_empty() {
+            Vec::new()
+        } else {
+            let memory_things: Vec<surrealdb::sql::Thing> = memory_ids
+                .iter()
+                .map(|id| surrealdb::sql::Thing::from(("memories", id.as_str())))
+                .collect();
+
+            let mut link_result = db
+                .query("SELECT * FROM memory_link WHERE in IN $memory_ids")
+                .bind(("memory_ids", memory_things))
+                .await?;
+            link_result.take(0)?
+        };
+
+        // 5. Just this conversation (kept as a list — and the query still
+        // scoped by id rather than hardcoded — so a future branch-aware
+        // version can widen it to the conversation's branch family without
+        // reshaping anything downstream).
+        #[derive(Debug, serde::Deserialize)]
+        struct ConvRow {
+            id: surrealdb::sql::Thing,
+            title: String,
+            #[serde(deserialize_with = "crate::models::deserialize_option_thing")]
+            parent_conversation_id: Option<surrealdb::sql::Thing>,
+        }
+
+        let mut conv_result = db
+            .query("SELECT id, title, parent_conversation_id, updated_at FROM conversations WHERE id = type::thing('conversations', $conv_id) ORDER BY updated_at DESC")
+            .bind(("conv_id", conversation_id.to_string()))
+            .await?;
+        let conv_rows: Vec<ConvRow> = conv_result.take(0)?;
+
+        // 6. Count memories per conversation in Rust
+        let mut conv_mem_counts: std::collections::HashMap<String, i32> =
+            std::collections::HashMap::new();
+        for mem in &memories {
+            if let Some(ref conv_thing) = mem.conversation_id {
+                let conv_id_raw = conv_thing.id.to_raw();
+                *conv_mem_counts.entry(conv_id_raw).or_insert(0) += 1;
+            }
+        }
+
+        let primary = characters.first();
+        let conversations = conv_rows
+            .into_iter()
+            .map(|row| {
+                let conv_id_raw = row.id.id.to_raw();
+                let memory_count = conv_mem_counts.get(&conv_id_raw).copied().unwrap_or(0);
+                MemoryGraphConversation {
+                    id: conv_id_raw,
+                    title: row.title,
+                    character_id: primary.map(|p| p.id.clone()).unwrap_or_default(),
+                    memory_count,
+                    parent_conversation_id: row
+                        .parent_conversation_id
+                        .map(|t| t.id.to_raw()),
+                }
+            })
+            .collect();
+
+        Ok(MemoryGraph {
+            character_id: primary.map(|p| p.id.clone()).unwrap_or_default(),
+            character_name: primary.map(|p| p.name.clone()).unwrap_or_default(),
+            memories,
+            links,
+            conversations,
+            characters,
         })
     }
 }

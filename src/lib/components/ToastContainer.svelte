@@ -1,12 +1,17 @@
 <script lang="ts">
-  import { toasts } from '$lib/stores/toast';
+  import { toasts, pauseToast, resumeToast, dismissToast } from '$lib/stores/toast';
   import Icon from './Icon.svelte';
 </script>
 
 {#if $toasts.length > 0}
   <div class="toast-container" aria-live="polite">
     {#each $toasts as toast (toast.id)}
-      <div class="toast toast-{toast.type}" role="alert">
+      <div
+        class="toast toast-{toast.type}"
+        role="alert"
+        onmouseenter={() => pauseToast(toast.id)}
+        onmouseleave={() => resumeToast(toast.id)}
+      >
         <Icon
           name={toast.type === 'success' ? 'check-circle' : toast.type === 'error' ? 'alert-circle' : 'info'}
           size={16}
@@ -16,6 +21,9 @@
         {#if toast.action}
           <button class="toast-action" onclick={toast.action.onClick}>{toast.action.label}</button>
         {/if}
+        <button class="toast-close" onclick={() => dismissToast(toast.id)} aria-label="Dismiss">
+          <Icon name="x" size={13} color="var(--fg-muted)" />
+        </button>
       </div>
     {/each}
   </div>
@@ -37,7 +45,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 18px;
+    padding: 12px 14px 12px 18px;
     border-radius: 14px;
     background: rgba(14,14,30,0.85);
     backdrop-filter: blur(16px);
@@ -49,7 +57,7 @@
     pointer-events: auto;
     animation: toastSlideIn 350ms cubic-bezier(0.34,1.56,0.64,1) forwards;
     min-width: 240px;
-    max-width: 400px;
+    max-width: 460px;
   }
 
   .toast-success {
@@ -70,6 +78,11 @@
   .toast-msg {
     flex: 1;
     line-height: 1.4;
+    /* Error messages can now carry a real (if summarized) diagnostic
+       sentence — wrap and select rather than clip, since the user may
+       want to read or copy it. */
+    white-space: pre-wrap;
+    user-select: text;
   }
 
   .toast-action {
@@ -87,6 +100,26 @@
   .toast-action:hover {
     background: rgba(139,92,246,0.22);
     border-color: rgba(139,92,246,0.4);
+  }
+
+  .toast-close {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 150ms, background 150ms;
+  }
+  .toast-close:hover {
+    opacity: 1;
+    background: rgba(139,92,246,0.1);
   }
 
   @keyframes toastSlideIn {

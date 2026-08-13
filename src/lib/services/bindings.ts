@@ -14,8 +14,25 @@ export const commands = {
 	listCharacters: () => typedError<Character_Serialize[], MythicError>(__TAURI_INVOKE("list_characters")),
 	/**  Updates an existing character's data. */
 	updateCharacter: (id: string, name: string | null, data: "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue } | null, avatarPath: string | null) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("update_character", { id, name, data, avatarPath })),
-	/**  Deletes a character by ID. Cascades are handled by SurrealDB events. */
+	/**
+	 *  Permanently deletes a character by ID. Cascades are handled by SurrealDB
+	 *  events. Only the Trash view should call this — normal deletion from
+	 *  Gallery should call `trash_character` instead.
+	 */
 	deleteCharacter: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_character", { id })),
+	/**  Moves a character to Trash (soft delete) — reversible via `restore_character`. */
+	trashCharacter: (id: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("trash_character", { id })),
+	/**  Restores a trashed character. */
+	restoreCharacter: (id: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("restore_character", { id })),
+	/**
+	 *  Sets a character's portrait directly from a user-picked image file,
+	 *  bypassing AI generation entirely — the "Upload Portrait" counterpart to
+	 *  `generate_npc_portrait`. Always marks the result "approved" (a manually
+	 *  chosen image needs no review gate). Copies the file into the app data
+	 *  dir's `portraits/` folder, same location and naming (`{character_id}.png`)
+	 *  AI-generated portraits use, so both paths are interchangeable afterward.
+	 */
+	uploadCharacterAvatar: (characterId: string, filePath: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("upload_character_avatar", { characterId, filePath })),
 	/**
 	 *  Returns the current emotional state for a character in a conversation.
 	 *  Returns `None` if no state has been recorded yet (first turn).
@@ -42,15 +59,28 @@ export const commands = {
 	 */
 	upsertCharacterState: (characterId: string, conversationId: string, mood: number, trust: number, arousal: number, dominantEmotion: string, stateSummary: string) => typedError<CharacterState_Serialize, MythicError>(__TAURI_INVOKE("upsert_character_state", { characterId, conversationId, mood, trust, arousal, dominantEmotion, stateSummary })),
 	/**  Creates a new conversation for a character. */
-	createConversation: (characterId: string | null, title: string | null) => typedError<Conversation_Serialize, MythicError>(__TAURI_INVOKE("create_conversation", { characterId, title })),
+	createConversation: (characterId: string | null, title: string | null, personaId: string | null) => typedError<Conversation_Serialize, MythicError>(__TAURI_INVOKE("create_conversation", { characterId, title, personaId })),
 	/**  Retrieves a single conversation by ID. */
 	getConversation: (id: string) => typedError<Conversation_Serialize, MythicError>(__TAURI_INVOKE("get_conversation", { id })),
 	/**  Lists conversations with pagination, ordered by most recently updated. */
 	listConversations: (limit: number | null, offset: number | null) => typedError<Conversation_Serialize[], MythicError>(__TAURI_INVOKE("list_conversations", { limit, offset })),
 	/**  Returns the total number of conversations (for pagination). */
 	countConversations: () => typedError<number, MythicError>(__TAURI_INVOKE("count_conversations")),
-	/**  Deletes a conversation and all its messages (cascade). */
+	/**
+	 *  Permanently deletes a conversation and all its messages (cascade). Only
+	 *  the Trash view should call this — normal deletion from the chat list
+	 *  should call `trash_conversation` instead.
+	 */
 	deleteConversation: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_conversation", { id })),
+	/**
+	 *  Moves a conversation to Trash (soft delete) — reversible via
+	 *  `restore_conversation`. Instant and durable the moment it returns, unlike
+	 *  the old client-side undo-window that silently lost the delete if the app
+	 *  reloaded before its timer fired.
+	 */
+	trashConversation: (id: string) => typedError<Conversation_Serialize, MythicError>(__TAURI_INVOKE("trash_conversation", { id })),
+	/**  Restores a trashed conversation. */
+	restoreConversation: (id: string) => typedError<Conversation_Serialize, MythicError>(__TAURI_INVOKE("restore_conversation", { id })),
 	/**
 	 *  Retrieves all messages in a conversation, ordered chronologically.
 	 *  Returns the linear message chain following the active branch.
@@ -95,7 +125,10 @@ export const commands = {
 	 *  Used for branch navigation — shows alternates at the same conversation point.
 	 */
 	getMessageSiblings: (messageId: string) => typedError<Message_Serialize[], MythicError>(__TAURI_INVOKE("get_message_siblings", { messageId })),
-	/**  Creates a new provider configuration. */
+	/**
+	 *  Creates a new provider configuration.
+	 *  Creates a new provider configuration.
+	 */
 	createProvider: (name: string, providerType: string, adapter: string, config: JsonValue, isDefault: boolean | null) => typedError<ProviderConfig_Serialize, MythicError>(__TAURI_INVOKE("create_provider", { name, providerType, adapter, config, isDefault })),
 	/**  Retrieves a single provider by ID. */
 	getProvider: (id: string) => typedError<ProviderConfig_Serialize, MythicError>(__TAURI_INVOKE("get_provider", { id })),
@@ -107,8 +140,7 @@ export const commands = {
 	deleteProvider: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_provider", { id })),
 	/**  Sets a provider as the default for its type. Unsets all others of the same type. */
 	setDefaultProvider: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("set_default_provider", { id })),
-	/**  Tests connectivity to a provider by attempting a health check. */
-	testProviderConnection: (id: string) => typedError<boolean, MythicError>(__TAURI_INVOKE("test_provider_connection", { id })),
+	testProviderConnection: (id: string) => typedError<ConnectionTestResult, MythicError>(__TAURI_INVOKE("test_provider_connection", { id })),
 	/**
 	 *  Lists available models from a provider's API.
 	 *  Supports Ollama (/api/tags), OpenRouter (/api/v1/models), and OpenAI-compatible (/v1/models).
@@ -145,6 +177,31 @@ export const commands = {
 	toggleLorebookEntry: (id: string, enabled: boolean) => typedError<null, MythicError>(__TAURI_INVOKE("toggle_lorebook_entry", { id, enabled })),
 	/**  Deletes a lorebook entry. */
 	deleteLorebookEntry: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_lorebook_entry", { id })),
+	/**
+	 *  Updates a lorebook entry's editable fields — previously entries could
+	 *  only be toggled on/off or deleted, never actually edited after creation.
+	 */
+	updateLorebookEntry: (id: string, name: string, keys: string[], content: string, alwaysActive: boolean, priority: number, insertionOrder: number) => typedError<LorebookEntry_Serialize, MythicError>(__TAURI_INVOKE("update_lorebook_entry", { id, name, keys, content, alwaysActive, priority, insertionOrder })),
+	/**
+	 *  Imports a character's embedded Character Card V2 `character_book` (if
+	 *  any) as real, persisted lorebook entries. PNG import already does this
+	 *  automatically now — this manual trigger exists for characters that were
+	 *  imported before that existed, whose card-embedded lorebook the UI could
+	 *  only ever *display*, never actually use during chat generation.
+	 * 
+	 *  Returns an empty list (not an error) if the character has no embedded
+	 *  character_book, or it has zero entries.
+	 */
+	importCharacterBookEntries: (characterId: string) => typedError<LorebookEntry_Serialize[], MythicError>(__TAURI_INVOKE("import_character_book_entries", { characterId })),
+	/**
+	 *  Generates new lorebook entries for a character via the LLM — the
+	 *  "Generate from Story" action. Grounds the generation in the character's
+	 *  profile, canon/conversation facts, and recent dialogue (same context
+	 *  `refresh_character_profile` uses), and tells the model which entries
+	 *  already exist so it doesn't produce near-duplicates on a re-run.
+	 *  Newly generated entries are persisted immediately, same as a manual add.
+	 */
+	generateCharacterLorebook: (characterId: string, conversationId: string) => typedError<LorebookEntry_Serialize[], MythicError>(__TAURI_INVOKE("generate_character_lorebook", { characterId, conversationId })),
 	/**  Lists memories for a character and/or conversation. */
 	listMemories: (characterId: string | null, conversationId: string | null) => typedError<Memory_Serialize[], MythicError>(__TAURI_INVOKE("list_memories", { characterId, conversationId })),
 	/**  Creates a new memory entry. */
@@ -189,7 +246,21 @@ export const commands = {
 	 *  3. Saves the resulting PNG to `scenes/{id}.png`
 	 *  4. Creates a database record linking the scene to the conversation
 	 */
-	generateScene: (conversationId: string, messageId: string | null, prompt: string, negativePrompt: string | null, width: number | null, height: number | null) => typedError<Scene_Serialize, MythicError>(__TAURI_INVOKE("generate_scene", { conversationId, messageId, prompt, negativePrompt, width, height })),
+	generateScene: (conversationId: string, messageId: string | null, prompt: string, options: GenerateSceneOptions) => typedError<Scene_Serialize, MythicError>(__TAURI_INVOKE("generate_scene", { conversationId, messageId, prompt, options })),
+	/**
+	 *  Lists everyone available as a portrait-reference source for this
+	 *  conversation's scene generation — the single source of truth the
+	 *  frontend's cast-portrait picker uses, instead of re-deriving it from
+	 *  several different props/stores that don't all carry raw avatar paths.
+	 */
+	listSceneCastMembers: (conversationId: string) => typedError<SceneCastMember[], MythicError>(__TAURI_INVOKE("list_scene_cast_members", { conversationId })),
+	/**
+	 *  Signals a running scene generation for this conversation to stop — the
+	 *  poll loop notices within one tick (up to `AI_HORDE_POLL_INTERVAL`) and
+	 *  issues a best-effort cancel to AI Horde before returning an error.
+	 *  A no-op if nothing is currently generating for this conversation.
+	 */
+	cancelSceneGeneration: (conversationId: string) => typedError<null, MythicError>(__TAURI_INVOKE("cancel_scene_generation", { conversationId })),
 	/**  Lists all scenes for a given conversation. */
 	listScenes: (conversationId: string) => typedError<Scene_Serialize[], MythicError>(__TAURI_INVOKE("list_scenes", { conversationId })),
 	/**  Deletes a scene and its media file. */
@@ -223,6 +294,16 @@ export const commands = {
 	upsertSceneState: (conversationId: string, locationName: string | null, locationDescription: string | null, timePeriod: string | null, weather: string | null, charactersPresent: string[] | null, ambientDetails: string | null, sceneMood: string | null) => typedError<SceneState_Serialize, MythicError>(__TAURI_INVOKE("upsert_scene_state", { conversationId, locationName, locationDescription, timePeriod, weather, charactersPresent, ambientDetails, sceneMood })),
 	/**  Deletes the scene state for a conversation. */
 	deleteSceneState: (conversationId: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_scene_state", { conversationId })),
+	listImagePresets: () => typedError<ImagePreset_Serialize[], MythicError>(__TAURI_INVOKE("list_image_presets")),
+	createImagePreset: (name: string, fields: CreateImagePresetFields) => typedError<ImagePreset_Serialize, MythicError>(__TAURI_INVOKE("create_image_preset", { name, fields })),
+	updateImagePreset: (id: string, fields: UpdateImagePresetFields) => typedError<ImagePreset_Serialize, MythicError>(__TAURI_INVOKE("update_image_preset", { id, fields })),
+	deleteImagePreset: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_image_preset", { id })),
+	setDefaultImagePreset: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("set_default_image_preset", { id })),
+	/**
+	 *  Sets (or clears, passing `null`) this conversation's chosen
+	 *  image-generation preset.
+	 */
+	setConversationImagePreset: (conversationId: string, presetId: string | null) => typedError<null, MythicError>(__TAURI_INVOKE("set_conversation_image_preset", { conversationId, presetId })),
 	/**  Lists all characters in a conversation. */
 	listConversationCharacters: (conversationId: string) => typedError<ConversationCharacter_Serialize[], MythicError>(__TAURI_INVOKE("list_conversation_characters", { conversationId })),
 	/**  Adds a character to a conversation. */
@@ -281,7 +362,25 @@ export const commands = {
 	 *  3. Streams the response from the active LLM provider
 	 *  4. Saves the completed AI response to the database
 	 */
-	sendMessage: (conversationId: string, content: string, model: string | null, systemPrompt: string | null, streaming: boolean | null, postHistoryInstructions: string | null) => typedError<SendMessageResult, MythicError>(__TAURI_INVOKE("send_message", { conversationId, content, model, systemPrompt, streaming, postHistoryInstructions })),
+	sendMessage: (conversationId: string, content: string, model: string | null, systemPrompt: string | null, streaming: boolean | null, postHistoryInstructions: string | null, attachments: MessageAttachment[] | null) => typedError<SendMessageResult, MythicError>(__TAURI_INVOKE("send_message", { conversationId, content, model, systemPrompt, streaming, postHistoryInstructions, attachments })),
+	/**
+	 *  Copies a user-picked image file (an absolute path from the frontend's
+	 *  file dialog) into `app_data_dir/attachments/`, so it can be attached to
+	 *  a chat message and later resolved via `crate::error::resolve_within`.
+	 * 
+	 *  Unlike `upload_character_avatar`, this preserves the source file's real
+	 *  extension instead of hardcoding `.png` — the extension is how
+	 *  `mime_type_for_extension` (and, on replay, `load_message_images`) knows
+	 *  what MIME type to hand the provider.
+	 */
+	uploadMessageAttachment: (filePath: string) => typedError<MessageAttachment, MythicError>(__TAURI_INVOKE("upload_message_attachment", { filePath })),
+	/**
+	 *  Same as `upload_message_attachment`, but for an image pasted directly
+	 *  from the clipboard (e.g. a screenshot) — there's no source file on disk
+	 *  to read, just raw bytes and the clipboard blob's MIME type from the
+	 *  frontend's `paste` event.
+	 */
+	uploadMessageAttachmentBytes: (bytes: number[], extension: string) => typedError<MessageAttachment, MythicError>(__TAURI_INVOKE("upload_message_attachment_bytes", { bytes, extension })),
 	/**
 	 *  Retries a failed message by reusing the existing user message already in the DB.
 	 *  Cleans up the empty/failed assistant placeholder from the previous attempt,
@@ -320,6 +419,162 @@ export const commands = {
 	 *  e.g. the user clicked Stop just as generation finished on its own.
 	 */
 	cancelGeneration: (conversationId: string) => typedError<null, MythicError>(__TAURI_INVOKE("cancel_generation", { conversationId })),
+	/**
+	 *  Kicks off scene-state extraction for a message that never went through
+	 *  the normal streaming pipeline — currently just the character's greeting.
+	 *  Fire-and-forget: returns as soon as the background task is spawned.
+	 */
+	extractInitialScene: (conversationId: string, text: string) => typedError<null, MythicError>(__TAURI_INVOKE("extract_initial_scene", { conversationId, text })),
+	/**
+	 *  Lists the auto-detected cast currently in a conversation — both
+	 *  `role = 'transient'` (just spoke for the first time, not yet confirmed
+	 *  significant) and `role = 'npc'` (crossed the two-pass debounce and got a
+	 *  real profile) members, plus already-promoted-to-gallery ones, since
+	 *  promotion only changes `origin`, not cast membership. Transients are
+	 *  included (not just 'npc') so a character who's clearly speaking and
+	 *  developing a real identity doesn't just vanish from this panel while
+	 *  waiting on the background debounce — the frontend badges them as
+	 *  "Unconfirmed" rather than hiding them outright.
+	 */
+	listConversationNpcs: (conversationId: string) => typedError<Character_Serialize[], MythicError>(__TAURI_INVOKE("list_conversation_npcs", { conversationId })),
+	/**
+	 *  Promotes an auto-generated NPC into a real, standalone Gallery character
+	 *  (`origin: 'npc' -> 'gallery'`). No cast/memory data moves — the NPC's
+	 *  memories were already keyed by its own real `character_id` from creation,
+	 *  and it keeps its existing `conversation_characters` row (still shows in
+	 *  this conversation's cast) while now also being independently listable
+	 *  and startable as a solo chat from the Gallery.
+	 */
+	promoteNpcToGallery: (characterId: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("promote_npc_to_gallery", { characterId })),
+	/**
+	 *  Manually promotes an auto-detected NPC from `role: 'transient'`
+	 *  ("Unconfirmed" in the UI) straight to `role: 'npc'`, skipping the
+	 *  automatic two-pass detector debounce (`pipeline::run_npc_detection`).
+	 *  That debounce is entirely invisible to the user — a character can speak
+	 *  repeatedly and be directly addressed without the periodic detection
+	 *  pass ever happening to re-flag them as recurring, leaving them stuck as
+	 *  "Unconfirmed" indefinitely with no visible reason and, until now, no way
+	 *  to override it.
+	 */
+	confirmNpc: (conversationId: string, characterId: string) => typedError<null, MythicError>(__TAURI_INVOKE("confirm_npc", { conversationId, characterId })),
+	/**
+	 *  Marks an NPC's auto-generated profile as reviewed — clears the "new
+	 *  profile" half of the needs-attention indicator's condition.
+	 */
+	markNpcReviewed: (characterId: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("mark_npc_reviewed", { characterId })),
+	/**
+	 *  Refreshes a character's description/personality/scenario against how
+	 *  they've actually appeared in this conversation — canon facts (settled,
+	 *  character-level truth) plus recent dialogue (voice/tone anchor), with
+	 *  the character's own current profile passed in so the model refines
+	 *  rather than reinvents (and knows to disregard the "just spoke for the
+	 *  first time" placeholder as if it were empty). Used by both the manual
+	 *  "Refresh from Story" button and the automatic still-placeholder trigger
+	 *  in the NPC detection pipeline.
+	 * 
+	 *  If this character appears in more than just this one conversation, the
+	 *  card is deliberately left untouched — see `ProfileRefreshResult::scope`.
+	 */
+	refreshCharacterProfile: (characterId: string, conversationId: string, systemPrompt: string | null) => typedError<ProfileRefreshResult_Serialize, MythicError>(__TAURI_INVOKE("refresh_character_profile", { characterId, conversationId, systemPrompt })),
+	/**
+	 *  TEMPORARY Phase-A dev command — runs the NPC detection pipeline directly
+	 *  and synchronously (unlike the real pipeline, which always runs as a
+	 *  swallowed-error background task) so it can be exercised and verified
+	 *  before it's wired into live chat. Remove once Phase B wires automatic
+	 *  triggers into `commands::chat`.
+	 */
+	debugRunNpcDetection: (conversationId: string, aiResponse: string) => typedError<null, MythicError>(__TAURI_INVOKE("debug_run_npc_detection", { conversationId, aiResponse })),
+	/**
+	 *  Generates a portrait for an NPC via the configured image provider,
+	 *  framed from its auto-generated description. Silently skips — returns the
+	 *  character unchanged, no error — if no image provider is configured; an
+	 *  auto-approved placeholder gradient standing in for a face would be worse
+	 *  than no portrait at all.
+	 */
+	generateNpcPortrait: (characterId: string, conversationId: string, autoApprove: boolean) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("generate_npc_portrait", { characterId, conversationId, autoApprove })),
+	/**
+	 *  Approves a pending NPC portrait (`portrait_status -> 'approved'`) — the
+	 *  avatar image itself is left unchanged.
+	 */
+	approveNpcPortrait: (characterId: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("approve_npc_portrait", { characterId })),
+	/**
+	 *  Rejects a pending NPC portrait — clears the avatar entirely (back to the
+	 *  initial-circle placeholder) rather than leaving a rejected image in place.
+	 */
+	rejectNpcPortrait: (characterId: string) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("reject_npc_portrait", { characterId })),
+	/**
+	 *  Returns a multi-character "cast graph" scoped to one conversation — every
+	 *  character in that conversation's cast (gallery mains + NPCs) plus their
+	 *  combined memories/links. Additive to (not a replacement for) the existing
+	 *  per-character `get_memory_graph`, which spans all of one character's
+	 *  conversations instead of all characters in one conversation.
+	 */
+	getCastMemoryGraph: (conversationId: string) => typedError<MemoryGraph_Serialize, MythicError>(__TAURI_INVOKE("get_cast_memory_graph", { conversationId })),
+	/**  Creates a new persona from a Character Card V2-shaped payload. */
+	createPersona: (name: string, data: JsonValue) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("create_persona", { name, data })),
+	/**  Retrieves a single persona by ID. */
+	getPersona: (id: string) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("get_persona", { id })),
+	/**  Lists all personas, ordered by most recently updated. */
+	listPersonas: () => typedError<Persona_Serialize[], MythicError>(__TAURI_INVOKE("list_personas")),
+	/**  Updates an existing persona's data. */
+	updatePersona: (id: string, name: string | null, data: "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue } | null, avatarPath: string | null) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("update_persona", { id, name, data, avatarPath })),
+	/**
+	 *  Permanently deletes a persona by ID. Cascade (clearing
+	 *  `conversations.persona_id`) is handled by the `cascade_persona_delete`
+	 *  SurrealDB event. Only the Trash view should call this — normal deletion
+	 *  should call `trash_persona` instead.
+	 */
+	deletePersona: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_persona", { id })),
+	/**  Moves a persona to Trash (soft delete) — reversible via `restore_persona`. */
+	trashPersona: (id: string) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("trash_persona", { id })),
+	/**  Restores a trashed persona. */
+	restorePersona: (id: string) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("restore_persona", { id })),
+	/**
+	 *  Generates a portrait for a persona via the configured image provider,
+	 *  framed from its description. Silently skips — returns the persona
+	 *  unchanged, no error — if no image provider is configured, same as NPC
+	 *  portrait generation.
+	 * 
+	 *  `conversation_id` is optional (personas aren't conversation-scoped —
+	 *  one persona may be used across many conversations): when given, the
+	 *  AI-Horde image preset is resolved for that conversation; otherwise the
+	 *  global default preset is used.
+	 */
+	generatePersonaPortrait: (personaId: string, conversationId: string | null) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("generate_persona_portrait", { personaId, conversationId })),
+	/**
+	 *  Imports a persona from a PNG file containing embedded Character Card V2
+	 *  data — the same "chara" tEXt-chunk convention as `import_character_card`,
+	 *  just landing in the `personas` table and its own `personas/` avatar
+	 *  subdirectory instead of `characters`/`avatars/`.
+	 */
+	importPersonaCard: (filePath: string) => typedError<Persona_Serialize, MythicError>(__TAURI_INVOKE("import_persona_card", { filePath })),
+	/**  Sets (or clears, passing `null`) this conversation's chosen persona. */
+	setConversationPersona: (conversationId: string, personaId: string | null) => typedError<null, MythicError>(__TAURI_INVOKE("set_conversation_persona", { conversationId, personaId })),
+	/**
+	 *  Lists everything currently in the Trash across conversations, characters,
+	 *  and personas — merged and sorted by deleted_at, most recently trashed
+	 *  first.
+	 */
+	listTrash: () => typedError<TrashItem[], MythicError>(__TAURI_INVOKE("list_trash")),
+	/**
+	 *  Permanently deletes every item currently in the Trash, across all three
+	 *  types. Best-effort per item — one failure is logged and skipped rather
+	 *  than aborting the rest of the sweep.
+	 */
+	emptyTrash: () => typedError<null, MythicError>(__TAURI_INVOKE("empty_trash")),
+	/**
+	 *  Returns the last `lines` (default 1000, capped at `MAX_LINES`) lines of
+	 *  the persisted backend log file, oldest first within that window. Empty
+	 *  string (not an error) if the file doesn't exist yet — e.g. right after a
+	 *  fresh install before anything's been logged.
+	 */
+	getBackendLogs: (lines: number | null) => typedError<string, MythicError>(__TAURI_INVOKE("get_backend_logs", { lines })),
+	/**
+	 *  Absolute path to the backend log file — shown in the Logging tab so the
+	 *  user can locate it directly (e.g. to attach to a bug report) without
+	 *  going through Export.
+	 */
+	getBackendLogPath: () => typedError<string, MythicError>(__TAURI_INVOKE("get_backend_log_path")),
 };
 
 /* Types */
@@ -335,6 +590,19 @@ export type AppInfo = {
  *  Stores the full V2 JSON in the `data` field as a native JSON object in SurrealDB.
  */
 export type Character = Character_Serialize | Character_Deserialize;
+
+/**
+ *  A single cast member's portrait, handed to a ComfyUI generation so it can
+ *  be uploaded and substituted into whichever `{{CHARACTER_IMAGE_n}}` token(s)
+ *  the user's workflow references — see `providers::comfyui`. `relative_path`
+ *  is relative to `app_data_dir` (e.g. a character's own `avatar_path`), the
+ *  same convention avatars/portraits already use everywhere else.
+ */
+export type CharacterImageRef = {
+	characterId: string,
+	characterName: string,
+	relativePath: string,
+};
 
 /**  The persisted emotional state of a character within one conversation. */
 export type CharacterState = CharacterState_Serialize | CharacterState_Deserialize;
@@ -389,6 +657,25 @@ export type Character_Deserialize = {
 	avatar_path: string | null,
 	created_at?: string,
 	updated_at?: string,
+	/**
+	 *  "gallery" (a real standalone character) or "npc" (auto-generated by
+	 *  the story-driven NPC detector, scoped to its originating conversation
+	 *  until the user promotes it). Rows predating this field read back as
+	 *  "gallery" via the serde default, matching the schema's own default.
+	 */
+	origin?: string,
+	/**
+	 *  Only meaningful for auto-generated portraits — "pending_review" means
+	 *  the image exists but hasn't been approved by the user yet.
+	 */
+	portrait_status?: string,
+	/**
+	 *  False only for a freshly auto-generated NPC profile the user hasn't
+	 *  opened yet — drives the needs-attention indicator.
+	 */
+	profile_reviewed?: boolean,
+	/**  Set when the character is in the Trash; None means it's live. */
+	deleted_at?: string | null,
 };
 
 /**
@@ -405,6 +692,38 @@ export type Character_Serialize = {
 	avatar_path: string | null,
 	created_at: string,
 	updated_at: string,
+	/**
+	 *  "gallery" (a real standalone character) or "npc" (auto-generated by
+	 *  the story-driven NPC detector, scoped to its originating conversation
+	 *  until the user promotes it). Rows predating this field read back as
+	 *  "gallery" via the serde default, matching the schema's own default.
+	 */
+	origin: string,
+	/**
+	 *  Only meaningful for auto-generated portraits — "pending_review" means
+	 *  the image exists but hasn't been approved by the user yet.
+	 */
+	portrait_status: string,
+	/**
+	 *  False only for a freshly auto-generated NPC profile the user hasn't
+	 *  opened yet — drives the needs-attention indicator.
+	 */
+	profile_reviewed: boolean,
+	/**  Set when the character is in the Trash; None means it's live. */
+	deleted_at: string | null,
+};
+
+/**
+ *  Tests connectivity to a provider by attempting a health check.
+ *  Result of a provider connection test — `ok: false` always comes with a
+ *  `detail` explaining *why*, since a bare "unreachable" collapses several
+ *  very different failure modes (bad API key, wrong Base URL, the actual
+ *  server being down, a timeout, DNS failure...) into one meaningless word
+ *  that gives the user nothing to act on.
+ */
+export type ConnectionTestResult = {
+	ok: boolean,
+	detail: string | null,
 };
 
 /**
@@ -497,8 +816,22 @@ export type Conversation_Deserialize = {
 	parent_conversation_id?: string | null,
 	/**  The exact message in the parent conversation where the fork happened. */
 	branch_point_message_id?: string | null,
+	/**
+	 *  This conversation's chosen image-generation preset. When unset, scene
+	 *  generation falls back to the global default preset (if any), then to
+	 *  the image provider's own config.
+	 */
+	image_preset_id?: string | null,
+	/**
+	 *  This conversation's chosen persona (the user's stand-in). When unset,
+	 *  prompt-building is a complete no-op with respect to persona features
+	 *  — no {{user}} substitution, no "About the User" context block.
+	 */
+	persona_id?: string | null,
 	created_at?: string,
 	updated_at?: string,
+	/**  Set when the conversation is in the Trash; None means it's live. */
+	deleted_at?: string | null,
 };
 
 /**  A conversation session between the user and a character. */
@@ -521,8 +854,42 @@ export type Conversation_Serialize = {
 	parent_conversation_id: string | null,
 	/**  The exact message in the parent conversation where the fork happened. */
 	branch_point_message_id: string | null,
+	/**
+	 *  This conversation's chosen image-generation preset. When unset, scene
+	 *  generation falls back to the global default preset (if any), then to
+	 *  the image provider's own config.
+	 */
+	image_preset_id: string | null,
+	/**
+	 *  This conversation's chosen persona (the user's stand-in). When unset,
+	 *  prompt-building is a complete no-op with respect to persona features
+	 *  — no {{user}} substitution, no "About the User" context block.
+	 */
+	persona_id: string | null,
 	created_at: string,
 	updated_at: string,
+	/**  Set when the conversation is in the Trash; None means it's live. */
+	deleted_at: string | null,
+};
+
+/**
+ *  Bundled fields for `create_image_preset` — kept as a struct rather than
+ *  individual params since AI Horde quality knobs (clip_skip, post_processing,
+ *  hires_fix) pushed this past tauri-specta's ~10-argument function limit.
+ */
+export type CreateImagePresetFields = {
+	model: string | null,
+	samplerName: string,
+	cfgScale: number | null,
+	steps: number,
+	karras: boolean,
+	style: string | null,
+	negativePrompt: string | null,
+	isDefault: boolean,
+	clipSkip: number | null,
+	postProcessing: string[],
+	hiresFix: boolean,
+	hiresFixDenoisingStrength: number | null,
 };
 
 /**  Embedding index status for the frontend Memory settings. */
@@ -543,6 +910,147 @@ export type EmbeddingIndexStatus = {
 	selected_dimension: number | null,
 	/**  Whether dimensions mismatch between stored and selected model */
 	dimension_mismatch: boolean,
+};
+
+/**
+ *  Optional knobs for `generate_scene`, bundled into one struct because
+ *  tauri-specta's command macro caps out around 10 top-level parameters.
+ */
+export type GenerateSceneOptions = {
+	negativePrompt: string | null,
+	width: number | null,
+	height: number | null,
+	/**
+	 *  Takes precedence over both the resolved preset's model and the
+	 *  provider's own default. Lets the user pick a different model for one
+	 *  generation without editing the preset.
+	 */
+	modelOverride: string | null,
+	/**
+	 *  Path (relative to app_data_dir, e.g. a character's avatar_path) to
+	 *  use as an img2img reference — anchors the generation to that image
+	 *  instead of generating from the text prompt alone.
+	 */
+	referenceImagePath: string | null,
+	/**
+	 *  img2img strength when reference_image_path is set: lower keeps the
+	 *  reference closer, higher lets the new scene diverge more. Defaults
+	 *  to 0.6 (a moderate anchor) if unset.
+	 */
+	denoisingStrength: number | null,
+	/**
+	 *  Mirrors the user's "Allow Mature Content" setting — sent as AI
+	 *  Horde's `nsfw` request flag so an ordinary (non-explicit) character
+	 *  description doesn't get false-positive censored by an overzealous
+	 *  worker-side classifier. Defaults to false (strict) if unset.
+	 */
+	allowNsfw: boolean | null,
+	/**
+	 *  Cast portraits to feed into a ComfyUI workflow's `{{CHARACTER_IMAGE_n}}`
+	 *  tokens (see `providers::comfyui`) — ignored by every other adapter,
+	 *  which has no multi-image mechanism. Unlike `reference_image_path`
+	 *  (AI Horde's single img2img anchor), this supports any number of
+	 *  characters, limited only by how many `{{CHARACTER_IMAGE_n}}` tokens
+	 *  the user's own workflow references.
+	 */
+	characterImages?: CharacterImageRef[] | null,
+};
+
+/**
+ *  A reusable image-generation style bundle (sampler/cfg/steps/karras,
+ *  optional AI Horde named style, optional negative prompt override).
+ *  Selectable per-conversation, or applied globally via `is_default`, so
+ *  different chats can use different visual styles without editing the
+ *  image provider's own connection config.
+ */
+export type ImagePreset = ImagePreset_Serialize | ImagePreset_Deserialize;
+
+/**
+ *  A reusable image-generation style bundle (sampler/cfg/steps/karras,
+ *  optional AI Horde named style, optional negative prompt override).
+ *  Selectable per-conversation, or applied globally via `is_default`, so
+ *  different chats can use different visual styles without editing the
+ *  image provider's own connection config.
+ */
+export type ImagePreset_Deserialize = {
+	id: string,
+	name: string,
+	model: string | null,
+	sampler_name: string,
+	cfg_scale: number | null,
+	steps: number,
+	karras: boolean,
+	/**
+	 *  A named/shared AI Horde style (see aihorde.net styles) — when set,
+	 *  overrides model/sampler/cfg_scale/steps/karras/negative_prompt above
+	 *  entirely at generation time.
+	 */
+	style: string | null,
+	negative_prompt: string | null,
+	/**
+	 *  CLIP layers to skip (1-12). Most anime/illustration checkpoints
+	 *  (Pony Diffusion V6 XL, AAM XL AnimeMix) are trained expecting 2;
+	 *  `None` lets AI Horde apply its own default (1).
+	 */
+	clip_skip?: number | null,
+	/**
+	 *  AI Horde post-processors to run, in order — face-fixers (GFPGAN,
+	 *  CodeFormers) and/or upscalers (RealESRGAN variants, 4x_AnimeSharp).
+	 */
+	post_processing?: string[],
+	/**
+	 *  Re-processes the image at a higher resolution after the base
+	 *  generation — the single biggest lever for fixing composition/anatomy
+	 *  errors, at the cost of roughly doubling generation time and kudos.
+	 */
+	hires_fix?: boolean,
+	hires_fix_denoising_strength?: number | null,
+	is_default: boolean,
+	created_at?: string,
+};
+
+/**
+ *  A reusable image-generation style bundle (sampler/cfg/steps/karras,
+ *  optional AI Horde named style, optional negative prompt override).
+ *  Selectable per-conversation, or applied globally via `is_default`, so
+ *  different chats can use different visual styles without editing the
+ *  image provider's own connection config.
+ */
+export type ImagePreset_Serialize = {
+	id: string,
+	name: string,
+	model: string | null,
+	sampler_name: string,
+	cfg_scale: number | null,
+	steps: number,
+	karras: boolean,
+	/**
+	 *  A named/shared AI Horde style (see aihorde.net styles) — when set,
+	 *  overrides model/sampler/cfg_scale/steps/karras/negative_prompt above
+	 *  entirely at generation time.
+	 */
+	style: string | null,
+	negative_prompt: string | null,
+	/**
+	 *  CLIP layers to skip (1-12). Most anime/illustration checkpoints
+	 *  (Pony Diffusion V6 XL, AAM XL AnimeMix) are trained expecting 2;
+	 *  `None` lets AI Horde apply its own default (1).
+	 */
+	clip_skip: number | null,
+	/**
+	 *  AI Horde post-processors to run, in order — face-fixers (GFPGAN,
+	 *  CodeFormers) and/or upscalers (RealESRGAN variants, 4x_AnimeSharp).
+	 */
+	post_processing: string[],
+	/**
+	 *  Re-processes the image at a higher resolution after the base
+	 *  generation — the single biggest lever for fixing composition/anatomy
+	 *  errors, at the cost of roughly doubling generation time and kudos.
+	 */
+	hires_fix: boolean,
+	hires_fix_denoising_strength: number | null,
+	is_default: boolean,
+	created_at: string,
 };
 
 /**
@@ -592,7 +1100,7 @@ export type LorebookEntry = LorebookEntry_Serialize | LorebookEntry_Deserialize;
 export type LorebookEntry_Deserialize = {
 	id: string,
 	/**  The character this entry belongs to (None = global lorebook) */
-	character_id: string | null,
+	character_id?: string | null,
 	/**
 	 *  Trigger keywords — entry activates when any keyword is found in chat.
 	 *  Stored as native array in SurrealDB.
@@ -656,6 +1164,12 @@ export type Memory = Memory_Serialize | Memory_Deserialize;
 /**  The full memory graph for a character — used by the frontend graph UI. */
 export type MemoryGraph = MemoryGraph_Serialize | MemoryGraph_Deserialize;
 
+/**  One cast member in a multi-character `MemoryGraph`. */
+export type MemoryGraphCharacter = {
+	id: string,
+	name: string,
+};
+
 /**  Minimal conversation info for graph rendering. */
 export type MemoryGraphConversation = {
 	id: string,
@@ -674,6 +1188,12 @@ export type MemoryGraph_Deserialize = {
 	links: MemoryLink_Deserialize[],
 	/**  Conversations that have memories for this character */
 	conversations: MemoryGraphConversation[],
+	/**
+	 *  Populated (one entry per cast member) for a multi-character
+	 *  per-conversation "cast graph"; empty for the single-character graph,
+	 *  in which case the frontend falls back to `character_id`/`character_name`.
+	 */
+	characters?: MemoryGraphCharacter[],
 };
 
 /**  The full memory graph for a character — used by the frontend graph UI. */
@@ -684,6 +1204,12 @@ export type MemoryGraph_Serialize = {
 	links: MemoryLink_Serialize[],
 	/**  Conversations that have memories for this character */
 	conversations: MemoryGraphConversation[],
+	/**
+	 *  Populated (one entry per cast member) for a multi-character
+	 *  per-conversation "cast graph"; empty for the single-character graph,
+	 *  in which case the frontend falls back to `character_id`/`character_name`.
+	 */
+	characters: MemoryGraphCharacter[],
 };
 
 /**
@@ -819,6 +1345,18 @@ export type Memory_Serialize = {
  */
 export type Message = Message_Serialize | Message_Deserialize;
 
+/**
+ *  A single image attached to a user message, sent as real multimodal
+ *  input to vision-capable models (see `providers::unified::convert_messages`).
+ *  Stored in `Message.metadata` as `{"attachments": [MessageAttachment, ...]}`
+ *  — `relative_path` follows the same app_data_dir-relative convention as
+ *  avatars/portraits/scenes, resolved via `crate::error::resolve_within`.
+ */
+export type MessageAttachment = {
+	relativePath: string,
+	mimeType: string,
+};
+
 /**  The role of a message sender in a conversation. */
 export type MessageRole = 
 /**  Message from the user */
@@ -854,6 +1392,12 @@ export type Message_Deserialize = {
 	/**  Denormalized character name for display (avoids extra lookups). */
 	character_name?: string | null,
 	created_at?: string,
+	/**
+	 *  Chain-of-thought/reasoning trace from a reasoning model, kept separate
+	 *  from `content` — rendered as a collapsible "thinking" section rather
+	 *  than as if the character said it.
+	 */
+	reasoning?: string | null,
 };
 
 /**
@@ -882,6 +1426,12 @@ export type Message_Serialize = {
 	/**  Denormalized character name for display (avoids extra lookups). */
 	character_name: string | null,
 	created_at: string,
+	/**
+	 *  Chain-of-thought/reasoning trace from a reasoning model, kept separate
+	 *  from `content` — rendered as a collapsible "thinking" section rather
+	 *  than as if the character said it.
+	 */
+	reasoning: string | null,
 };
 
 /**  A single model entry returned by `list_all_models`. */
@@ -913,6 +1463,20 @@ export type ModelEntry = {
 	 *  show the user what's enabled and let them turn it off.
 	 */
 	is_stale: boolean,
+	/**
+	 *  Model architecture (e.g. "stable diffusion 1", "stable_cascade") —
+	 *  only populated for AI Horde image models.
+	 */
+	baseline: string | null,
+	/**
+	 *  Whether this model reliably supports img2img on AI Horde. Derived
+	 *  from `baseline`, not a literal per-model API flag — img2img is a
+	 *  generic diffusion capability, but newer architectures (Flux, Stable
+	 *  Cascade) are documented as unreliable/unsupported for it.
+	 */
+	img2img_supported: boolean | null,
+	/**  Whether this is a dedicated inpainting-specialized checkpoint. */
+	inpainting: boolean | null,
 };
 
 /**
@@ -932,6 +1496,102 @@ export type MythicError = {
 	message: string,
 };
 
+/**
+ *  A user-controlled persona — the player's own stand-in for a conversation.
+ *  Shares the same CharacterCardV2-shaped `data` JSON as `characters`
+ *  (see `models::character::CharacterCardV2`/`CharacterData`), but carries
+ *  none of the NPC-pipeline-only fields (`origin`/`portrait_status`/
+ *  `profile_reviewed`) since every persona is user-facing by definition.
+ */
+export type Persona = Persona_Serialize | Persona_Deserialize;
+
+/**
+ *  A user-controlled persona — the player's own stand-in for a conversation.
+ *  Shares the same CharacterCardV2-shaped `data` JSON as `characters`
+ *  (see `models::character::CharacterCardV2`/`CharacterData`), but carries
+ *  none of the NPC-pipeline-only fields (`origin`/`portrait_status`/
+ *  `profile_reviewed`) since every persona is user-facing by definition.
+ */
+export type Persona_Deserialize = {
+	id: string,
+	name: string,
+	spec: string,
+	/**  Full Character Card V2 JSON, stored as native JSON in SurrealDB. */
+	data: JsonValue,
+	/**  Path to the persona's avatar image file (relative to app data dir). */
+	avatar_path: string | null,
+	created_at?: string,
+	updated_at?: string,
+	/**  Set when the persona is in the Trash; None means it's live. */
+	deleted_at?: string | null,
+};
+
+/**
+ *  A user-controlled persona — the player's own stand-in for a conversation.
+ *  Shares the same CharacterCardV2-shaped `data` JSON as `characters`
+ *  (see `models::character::CharacterCardV2`/`CharacterData`), but carries
+ *  none of the NPC-pipeline-only fields (`origin`/`portrait_status`/
+ *  `profile_reviewed`) since every persona is user-facing by definition.
+ */
+export type Persona_Serialize = {
+	id: string,
+	name: string,
+	spec: string,
+	/**  Full Character Card V2 JSON, stored as native JSON in SurrealDB. */
+	data: JsonValue,
+	/**  Path to the persona's avatar image file (relative to app data dir). */
+	avatar_path: string | null,
+	created_at: string,
+	updated_at: string,
+	/**  Set when the persona is in the Trash; None means it's live. */
+	deleted_at: string | null,
+};
+
+/**
+ *  Outcome of [`refresh_character_profile`] — the frontend uses `scope` to
+ *  tell the user which thing actually happened, since a shared character's
+ *  card is deliberately left untouched (see the matching comment below).
+ */
+export type ProfileRefreshResult = ProfileRefreshResult_Serialize | ProfileRefreshResult_Deserialize;
+
+/**
+ *  Outcome of [`refresh_character_profile`] — the frontend uses `scope` to
+ *  tell the user which thing actually happened, since a shared character's
+ *  card is deliberately left untouched (see the matching comment below).
+ */
+export type ProfileRefreshResult_Deserialize = {
+	character: Character_Deserialize,
+	/**
+	 *  "character" — the card's description/personality/scenario were
+	 *  updated directly (this character only appears in this conversation).
+	 *  "memory" — this character is shared across multiple conversations,
+	 *  so the refresh was saved as a conversation-scoped memory instead of
+	 *  touching the shared card, to avoid one story's details bleeding into
+	 *  another conversation's version of the same character. `character` in
+	 *  this case is returned unchanged.
+	 */
+	scope: string,
+};
+
+/**
+ *  Outcome of [`refresh_character_profile`] — the frontend uses `scope` to
+ *  tell the user which thing actually happened, since a shared character's
+ *  card is deliberately left untouched (see the matching comment below).
+ */
+export type ProfileRefreshResult_Serialize = {
+	character: Character_Serialize,
+	/**
+	 *  "character" — the card's description/personality/scenario were
+	 *  updated directly (this character only appears in this conversation).
+	 *  "memory" — this character is shared across multiple conversations,
+	 *  so the refresh was saved as a conversation-scoped memory instead of
+	 *  touching the shared card, to avoid one story's details bleeding into
+	 *  another conversation's version of the same character. `character` in
+	 *  this case is returned unchanged.
+	 */
+	scope: string,
+};
+
 /**  The specific adapter implementation for a provider. */
 export type ProviderAdapter = 
 /**  Local Ollama instance */
@@ -946,6 +1606,13 @@ export type ProviderAdapter =
 "hugging_face" | 
 /**  Local ComfyUI instance for image/video generation */
 "comfy_ui" | 
+/**
+ *  AI Horde (formerly Stable Horde) — free, crowdsourced, asynchronous
+ *  image generation cluster. Works anonymously (no signup) via the
+ *  well-known "0000000000" API key, though registered keys get queue
+ *  priority through the kudos system.
+ */
+"ai_horde" | 
 /**  Anthropic API (Claude models) */
 "anthropic" | 
 /**  Google Gemini API */
@@ -995,7 +1662,11 @@ export type ProviderConfig_Deserialize = {
 	 *  For Ollama: `{ "base_url": "http://localhost:11434" }`
 	 *  For OpenRouter: `{ "api_key": "sk-...", "model": "meta-llama/llama-4-maverick" }`
 	 *  For OpenAI-compat: `{ "base_url": "...", "api_key": "...", "model": "..." }`
-	 *  For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }`
+	 *  For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }` — `workflow`
+	 *  is the user's own exported (API-format) workflow JSON, stored as a raw string and
+	 *  parsed at generation time. It may contain `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`,
+	 *  `{{SEED}}`, `{{WIDTH}}`, `{{HEIGHT}}`, and `{{CHARACTER_IMAGE_1..N}}` placeholder tokens —
+	 *  see `providers::comfyui::substitute_placeholders`.
 	 */
 	config: JsonValue,
 	/**  Whether this is the default provider for its type */
@@ -1022,7 +1693,11 @@ export type ProviderConfig_Serialize = {
 	 *  For Ollama: `{ "base_url": "http://localhost:11434" }`
 	 *  For OpenRouter: `{ "api_key": "sk-...", "model": "meta-llama/llama-4-maverick" }`
 	 *  For OpenAI-compat: `{ "base_url": "...", "api_key": "...", "model": "..." }`
-	 *  For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }`
+	 *  For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }` — `workflow`
+	 *  is the user's own exported (API-format) workflow JSON, stored as a raw string and
+	 *  parsed at generation time. It may contain `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`,
+	 *  `{{SEED}}`, `{{WIDTH}}`, `{{HEIGHT}}`, and `{{CHARACTER_IMAGE_1..N}}` placeholder tokens —
+	 *  see `providers::comfyui::substitute_placeholders`.
 	 */
 	config: JsonValue,
 	/**  Whether this is the default provider for its type */
@@ -1040,6 +1715,23 @@ export type ProviderType =
 
 /**  A generated or imported scene (image/video) tied to a conversation. */
 export type Scene = Scene_Serialize | Scene_Deserialize;
+
+/**
+ *  One cast member available as a portrait-reference source for scene
+ *  generation — the primary character plus everyone in this conversation's
+ *  `conversation_characters` roster (any role, including still-"Unconfirmed"
+ *  transients; the frontend decides what to show/select).
+ */
+export type SceneCastMember = {
+	characterId: string,
+	name: string,
+	avatarPath: string | null,
+	/**
+	 *  "primary" for the conversation's own character, otherwise whatever
+	 *  `conversation_characters.role` holds ("secondary" | "npc" | "transient").
+	 */
+	role: string,
+};
 
 /**
  *  Dynamic scene state for a conversation — tracks location, time, weather,
@@ -1096,7 +1788,7 @@ export type SceneState_Serialize = {
 export type Scene_Deserialize = {
 	id: string,
 	conversation_id: string,
-	message_id: string | null,
+	message_id?: string | null,
 	media_type: string,
 	prompt: string,
 	file_path: string,
@@ -1170,6 +1862,39 @@ export type SearchResult_Serialize = {
 export type SendMessageResult = {
 	user_message_id: string,
 	assistant_message_id: string,
+};
+
+/**
+ *  A single row in the unified Trash view. `item_type` is one of
+ *  "conversation" | "character" | "persona" — the frontend uses it to pick
+ *  the right restore/delete-forever command and display treatment.
+ */
+export type TrashItem = {
+	id: string,
+	item_type: string,
+	name: string,
+	avatar_path: string | null,
+	deleted_at: string,
+};
+
+/**
+ *  Bundled fields for `update_image_preset` — same "None (unsent) means
+ *  leave as-is" convention as `ImagePresetRepo::update`; for `clip_skip`,
+ *  `0` clears it back to "no override" (valid range is 1-12).
+ */
+export type UpdateImagePresetFields = {
+	name: string | null,
+	model: string | null,
+	samplerName: string | null,
+	cfgScale: number | null,
+	steps: number | null,
+	karras: boolean | null,
+	style: string | null,
+	negativePrompt: string | null,
+	clipSkip: number | null,
+	postProcessing: string[] | null,
+	hiresFix: boolean | null,
+	hiresFixDenoisingStrength: number | null,
 };
 
 /* Tauri Specta runtime */

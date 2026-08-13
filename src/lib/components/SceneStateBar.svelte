@@ -1,13 +1,47 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import Icon from './Icon.svelte';
+  import { activeConversationId } from '$lib/stores/chat';
+  import { substituteUserMacro } from '$lib/utils/personaMacros';
   import type { SceneState } from '$lib/services/ipc';
 
   let { sceneState = null, expanded = false }: { sceneState: SceneState | null; expanded?: boolean } = $props();
+
+  const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   let isExpanded = $state(false);
 
   // Initialize from prop
   $effect(() => { isExpanded = expanded; });
+
+  // Scene extraction is told to use the literal "{{user}}" token to refer
+  // to the player character in `characters_present` — resolve it to the
+  // active persona's name (or the generic "User" fallback) for display,
+  // same convention as the backend prompt's macro substitution.
+  let personaName: string | null = $state(null);
+  $effect(() => {
+    const convId = $activeConversationId;
+    if (convId && isTauri) {
+      resolvePersonaName(convId);
+    } else {
+      personaName = null;
+    }
+  });
+
+  async function resolvePersonaName(convId: string) {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const conv = await ipc.getConversation(convId);
+      const personaId = (conv as unknown as { persona_id: string | null }).persona_id;
+      personaName = personaId ? (await ipc.getPersona(personaId)).name : null;
+    } catch {
+      personaName = null;
+    }
+  }
+
+  function displayCharName(name: string): string {
+    return substituteUserMacro(name, personaName);
+  }
 
   function toggle() {
     isExpanded = !isExpanded;
@@ -105,7 +139,7 @@
             <span class="ssb-detail-label">Present</span>
             <div class="ssb-char-list">
               {#each sceneState.characters_present as char}
-                <span class="ssb-char-tag">{char}</span>
+                <span class="ssb-char-tag">{displayCharName(char)}</span>
               {/each}
             </div>
           </div>

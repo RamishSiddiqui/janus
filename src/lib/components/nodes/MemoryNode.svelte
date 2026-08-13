@@ -76,7 +76,7 @@
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Raleway', -apple-system, sans-serif;
   }
 
   /* Left accent strip — the only place accent color appears */

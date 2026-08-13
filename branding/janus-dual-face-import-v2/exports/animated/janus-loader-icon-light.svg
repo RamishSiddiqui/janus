@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-110 -110 220 220" width="512" height="512"><defs>
+<linearGradient id="jsplitL" gradientUnits="userSpaceOnUse" x1="0" y1="-80" x2="0" y2="80">
+<stop offset="0" stop-color="#A6802F"></stop><stop offset="0.485" stop-color="#A6802F"></stop>
+<stop offset="0.515" stop-color="#6D5BB0"></stop><stop offset="1" stop-color="#6D5BB0"></stop>
+</linearGradient></defs>
+<rect x="-110" y="-110" width="220" height="220" rx="48" fill="#F4F1EA"></rect>
+<g transform="scale(0.86)"><g fill="none" stroke-width="18" stroke-linecap="round">
+<path stroke="url(#jsplitL)" opacity="0.22" d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
+<path class="s" stroke="url(#jsplitL)" pathLength="100" stroke-dasharray="62 200" d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
+</g></g></svg>

@@ -3,8 +3,11 @@
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { success } from '$lib/stores/toast';
+  import SplitHeading from '$lib/components/SplitHeading.svelte';
+  import { success, error as toastError } from '$lib/stores/toast';
   import { handleIpcError } from '$lib/utils/error';
+  import { humanizeProviderError } from '$lib/utils/providerError';
+  import { HORDE_SAMPLERS } from '$lib/constants/aiHorde';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -35,12 +38,66 @@
   let newBaseUrl = $state('');
   let newModel = $state('');
 
-  // Cloud providers that don't need a base URL
+  // Per-provider inline JSON validation errors for the ComfyUI workflow
+  // textarea in the expanded/existing-provider card, keyed by provider id.
+  let comfyWorkflowErrors = $state<Record<string, string>>({});
+
+  // AI Horde generation settings — only shown/used when newAdapter === 'ai_horde'.
+  // Defaults match the researched AI Horde API defaults, with `karras: true`
+  // overriding the API's bare default of `false` per community consensus for
+  // smoother results at the same step count.
+  let newHordeSampler = $state('k_euler_a');
+  let newHordeCfgScale = $state(7.5);
+  let newHordeSteps = $state(30);
+  let newHordeKarras = $state(true);
+  // A named Horde style (browsable at artbot.site) overrides sampler/model/
+  // resolution entirely — leave blank to use the manual settings above.
+  let newHordeStyle = $state('');
+  // Only used when no style is set — left blank to use the built-in
+  // researched default (blurry/bad-anatomy/watermark/etc. avoidance).
+  let newHordeNegativePrompt = $state('');
+
+  // ComfyUI workflow — only shown/used when newAdapter === 'comfy_ui'. The
+  // user's own exported (API-format) workflow JSON, with placeholder tokens
+  // ({{POSITIVE_PROMPT}}, {{SEED}}, {{CHARACTER_IMAGE_n}}, ...) dropped into
+  // whichever node fields they want Janus to fill in dynamically — see
+  // `providers::comfyui` on the backend for the full token contract.
+  let newComfyWorkflow = $state('');
+  let newComfyWorkflowError = $state('');
+
+  // Cloud providers that don't need a base URL — AI Horde has one fixed,
+  // well-known endpoint (aihorde.net), so it's treated the same way.
   const cloudAdapters = new Set([
     'open_router', 'anthropic', 'gemini', 'cohere', 'deepseek',
     'groq', 'perplexity', 'xai', 'hugging_face', 'hyperbolic', 'moonshot', 'together',
+    'ai_horde',
   ]);
   let adapterNeedsBaseUrl = $derived(!cloudAdapters.has(newAdapter));
+
+  // Pre-fill excellent defaults on switching to AI Horde — the anonymous key
+  // works with zero registration, "Deliberate" is the most-served model on
+  // the Horde (fastest turnaround) — but never clobber something the user
+  // already typed.
+  $effect(() => {
+    if (newAdapter === 'ai_horde') {
+      if (!newApiKey) newApiKey = '0000000000';
+      if (!newModel) newModel = 'Deliberate';
+      newType = 'image';
+    } else if (newAdapter === 'comfy_ui') {
+      if (!newBaseUrl) newBaseUrl = 'http://localhost:8188';
+      newType = 'image';
+    } else if (newAdapter === 'puter') {
+      // Puter (puter.com) speaks the OpenAI-compatible wire format, so it
+      // rides the existing open_ai_compatible adapter with zero backend
+      // changes — see the "puter" -> "open_ai_compatible" normalization in
+      // addProvider(). Auth is a personal token from the user's own
+      // dashboard (puter.com/dashboard#account -> Account -> Create token),
+      // not an account password — unlike the unofficial reverse-engineered
+      // login flow some third-party wrappers use.
+      if (!newBaseUrl) newBaseUrl = 'https://api.puter.com/puterai/openai/v1/';
+      newType = 'text';
+    }
+  });
 
   // Edit state per provider
   let editFields = $state<Record<string, { apiKey: string; model: string; baseUrl: string }>>({});
@@ -76,11 +133,20 @@
     const t0 = Date.now();
     try {
       const ipc = await import('$lib/services/ipc');
-      const ok = await ipc.testProviderConnection(p.id);
-      p.isConnected = ok;
-      p.latencyMs = ok ? Date.now() - t0 : null;
-      success(ok ? `${p.name} connected (${p.latencyMs}ms)` : `${p.name} unreachable`);
-    } catch (err) { console.error('[Mythic IPC] Failed to test connection:', err); p.isConnected = false; }
+      const result = await ipc.testProviderConnection(p.id);
+      p.isConnected = result.ok;
+      p.latencyMs = result.ok ? Date.now() - t0 : null;
+      if (result.ok) {
+        success(`${p.name} connected (${p.latencyMs}ms)`);
+      } else {
+        // A bare "unreachable" collapses several very different problems
+        // (bad key, wrong Base URL, the server genuinely being down,
+        // a timeout...) into one useless word — show the actual reason
+        // the backend determined instead.
+        const reason = result.detail ? humanizeProviderError(result.detail) : 'Connection failed.';
+        toastError(`${p.name}: ${reason}`);
+      }
+    } catch (err) { console.error('[Janus IPC] Failed to test connection:', err); p.isConnected = false; }
     p.isTestingConnection = false;
     providers = [...providers];
   }
@@ -117,6 +183,15 @@
 
   async function addProvider() {
     if (!newName.trim()) return;
+    if (newAdapter === 'comfy_ui' && newComfyWorkflow.trim()) {
+      try {
+        JSON.parse(newComfyWorkflow);
+        newComfyWorkflowError = '';
+      } catch (e) {
+        newComfyWorkflowError = `Not valid JSON: ${(e as Error).message}`;
+        return;
+      }
+    }
     isSaving = true;
     try {
       const ipc = await import('$lib/services/ipc');
@@ -124,7 +199,22 @@
       if (newApiKey) config.api_key = newApiKey;
       if (newBaseUrl && adapterNeedsBaseUrl) config.base_url = newBaseUrl;
       if (newModel) config.model = newModel;
-      const p = await ipc.createProvider(newName, newType, newAdapter, config, false);
+      if (newAdapter === 'ai_horde') {
+        config.sampler_name = newHordeSampler;
+        config.cfg_scale = String(newHordeCfgScale);
+        config.steps = String(newHordeSteps);
+        config.karras = String(newHordeKarras);
+        if (newHordeStyle) config.style = newHordeStyle;
+        if (newHordeNegativePrompt) config.negative_prompt = newHordeNegativePrompt;
+      }
+      if (newAdapter === 'comfy_ui' && newComfyWorkflow.trim()) {
+        config.workflow = newComfyWorkflow;
+      }
+      // "puter" is a UI-only preset — Puter speaks the OpenAI-compatible
+      // wire format, so it's stored as the real open_ai_compatible adapter
+      // (see the matching comment in the prefill $effect above).
+      const actualAdapter = newAdapter === 'puter' ? 'open_ai_compatible' : newAdapter;
+      const p = await ipc.createProvider(newName, newType, actualAdapter, config, false);
       providers = [...providers, {
         id: p.id, name: p.name, provider_type: p.provider_type,
         adapter: p.adapter, config: p.config as Record<string, string>,
@@ -132,6 +222,9 @@
       }];
       showAddForm = false;
       newName = ''; newApiKey = ''; newBaseUrl = ''; newModel = '';
+      newHordeSampler = 'k_euler_a'; newHordeCfgScale = 7.5; newHordeSteps = 30; newHordeKarras = true;
+      newHordeStyle = ''; newHordeNegativePrompt = '';
+      newComfyWorkflow = ''; newComfyWorkflowError = '';
       success(`Added ${p.name}`);
     } catch (err) { handleIpcError('add provider', err); }
     isSaving = false;
@@ -146,6 +239,7 @@
       cohere: 'Cohere', deepseek: 'DeepSeek', groq: 'Groq',
       perplexity: 'Perplexity', xai: 'xAI', hugging_face: 'HuggingFace',
       hyperbolic: 'Hyperbolic', moonshot: 'Moonshot', together: 'Together',
+      ai_horde: 'AI Horde', comfy_ui: 'ComfyUI',
     };
     return map[a] ?? a;
   }
@@ -169,12 +263,12 @@
   }
 </script>
 
-<svelte:head><title>Providers — Mythic</title></svelte:head>
+<svelte:head><title>Providers — Janus</title></svelte:head>
 
 <div class="page">
   <header class="hdr">
     <div class="hdr-left">
-      <h1 class="hdr-title">Providers</h1>
+      <h1 class="hdr-title"><SplitHeading text="Providers" /></h1>
       <span class="hdr-sub">Manage API credentials and connections</span>
     </div>
     <button class="btn-add" onclick={() => showAddForm = !showAddForm} aria-label="Add provider">
@@ -205,6 +299,7 @@
             <select id="pf-adapter" class="finput fselect" bind:value={newAdapter}>
               <optgroup label="Cloud Providers">
                 <option value="open_router">OpenRouter</option>
+                <option value="puter">Puter (free)</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="gemini">Gemini</option>
                 <option value="groq">Groq</option>
@@ -224,6 +319,8 @@
               </optgroup>
               <optgroup label="Image">
                 <option value="silicon_flow">SiliconFlow</option>
+                <option value="ai_horde">AI Horde (free)</option>
+                <option value="comfy_ui">ComfyUI</option>
               </optgroup>
             </select>
           </div>
@@ -233,6 +330,19 @@
             <div class="form-field">
               <label class="flabel" for="pf-url">Base URL</label>
               <input id="pf-url" class="finput mono" bind:value={newBaseUrl} placeholder="http://localhost:11434" />
+            </div>
+            {#if newAdapter === 'puter'}
+              <div class="adapter-hint">
+                <span>🌐</span>
+                <span>Free access to 500+ models. Generate a personal token from your own Puter account (not your password) — paste it as the API key below.</span>
+                <a href="https://puter.com/dashboard#account" target="_blank" class="hint-link">Create token →</a>
+              </div>
+            {/if}
+          {:else if newAdapter === 'ai_horde'}
+            <div class="adapter-hint">
+              <span>🌐</span>
+              <span>Free, crowdsourced generation. The default "0000000000" key works with zero signup (lowest priority) — register at aihorde.net for faster queueing.</span>
+              <a href="https://aihorde.net/register" target="_blank" class="hint-link">Register →</a>
             </div>
           {:else}
             <div class="adapter-hint">
@@ -253,12 +363,89 @@
             <label class="flabel" for="pf-key">API Key</label>
             <input id="pf-key" class="finput mono" type="password" bind:value={newApiKey} placeholder="sk-or-..." />
           </div>
-          <div class="form-field">
-            <label class="flabel" for="pf-model">Default Model</label>
-            <input id="pf-model" class="finput mono" bind:value={newModel}
-              placeholder={newAdapter === 'open_router' ? 'anthropic/claude-3.5-sonnet' : 'model-name'} />
-          </div>
+          {#if newType !== 'llm'}
+            <!-- LLM providers pick their active model on the Models page
+                 (the enabled_models table) — a free-text default here was
+                 disconnected from that and a recurring source of "wrong
+                 model silently used" bugs. Image/video providers have no
+                 equivalent picker yet, so they still need it. -->
+            <div class="form-field">
+              <label class="flabel" for="pf-model">Default Model</label>
+              <input id="pf-model" class="finput mono" bind:value={newModel}
+                placeholder={newAdapter === 'ai_horde' ? 'Deliberate' : 'model-name'} />
+            </div>
+          {/if}
         </div>
+        {#if newAdapter === 'ai_horde'}
+          <div class="form-row">
+            <div class="form-field">
+              <label class="flabel" for="pf-horde-sampler">Sampler</label>
+              <select id="pf-horde-sampler" class="finput fselect" bind:value={newHordeSampler}>
+                {#each HORDE_SAMPLERS as s}<option value={s}>{s}</option>{/each}
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="flabel" for="pf-horde-cfg">CFG Scale</label>
+              <input id="pf-horde-cfg" class="finput mono" type="number" step="0.5" min="1" max="30" bind:value={newHordeCfgScale} />
+            </div>
+            <div class="form-field">
+              <label class="flabel" for="pf-horde-steps">Steps</label>
+              <input id="pf-horde-steps" class="finput mono" type="number" step="1" min="1" max="150" bind:value={newHordeSteps} />
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="flabel" for="pf-horde-karras">Karras</label>
+              <label class="checkbox-wrap">
+                <input id="pf-horde-karras" type="checkbox" bind:checked={newHordeKarras} />
+                <span class="checkbox-hint">Smoother noise schedule</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="flabel" for="pf-horde-style">Style (optional)</label>
+              <input id="pf-horde-style" class="finput mono" bind:value={newHordeStyle}
+                placeholder="e.g. raw-png, pixel-art — overrides sampler/model/resolution above" />
+            </div>
+          </div>
+          <div class="adapter-hint">
+            <span>🎨</span>
+            <span>A named Horde style bundles a curated prompt, model, sampler and resolution for a specific look. Leave blank to use the manual settings above.</span>
+            <a href="https://artbot.site/" target="_blank" class="hint-link">Browse styles →</a>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label class="flabel" for="pf-horde-negative">Negative Prompt (optional, ignored if a style is set)</label>
+              <input id="pf-horde-negative" class="finput mono" bind:value={newHordeNegativePrompt}
+                placeholder="Leave blank to use the built-in default (blurry, bad anatomy, watermark, …)" />
+            </div>
+          </div>
+        {/if}
+        {#if newAdapter === 'comfy_ui'}
+          <div class="form-row">
+            <div class="form-field form-field-full">
+              <label class="flabel" for="pf-comfy-workflow">Workflow (API format JSON)</label>
+              <textarea id="pf-comfy-workflow" class="finput mono comfy-workflow-textarea" rows="8"
+                bind:value={newComfyWorkflow}
+                oninput={() => (newComfyWorkflowError = '')}
+                placeholder={'{ "3": { "class_type": "KSampler", "inputs": { "seed": "{{SEED}}", ... } }, ... }'}
+              ></textarea>
+              {#if newComfyWorkflowError}
+                <span class="field-error">{newComfyWorkflowError}</span>
+              {/if}
+            </div>
+          </div>
+          <div class="adapter-hint comfy-hint">
+            <span>🧩</span>
+            <span>
+              Export your workflow from ComfyUI with <strong>"Save (API Format)"</strong>, then replace whichever
+              node values you want filled in dynamically with one of these tokens:
+              <code>{'{{POSITIVE_PROMPT}}'}</code>, <code>{'{{NEGATIVE_PROMPT}}'}</code>, <code>{'{{SEED}}'}</code>,
+              <code>{'{{WIDTH}}'}</code>, <code>{'{{HEIGHT}}'}</code>, and <code>{'{{CHARACTER_IMAGE_1}}'}</code>,
+              <code>{'{{CHARACTER_IMAGE_2}}'}</code>… (one per <code>LoadImage</code> node you want a cast portrait
+              sent to). All tokens are optional — only add the ones your workflow actually needs.
+            </span>
+          </div>
+        {/if}
         <div class="form-actions">
           <button class="btn-add" onclick={addProvider} disabled={isSaving || !newName.trim()}>
             {isSaving ? 'Adding…' : 'Add Provider'}
@@ -327,20 +514,24 @@
             <div class="pcard-body">
               <div class="pfield-row">
 
-                <!-- Model field -->
-                <div class="pfield">
-                  <span class="pflabel">Default Model</span>
-                  {#if p.config.model}
-                    <input class="pfinput mono" value={p.config.model}
-                      onblur={(e) => { const v = e.currentTarget.value; p.config.model = v; providers = [...providers]; saveField(p, 'model', v); }} />
-                  {:else}
-                    <div class="field-empty-wrap">
-                      <span class="field-empty-chip">No model set</span>
-                      <input class="pfinput mono field-empty-input" placeholder="Enter model ID…"
-                        onblur={(e) => { const v = e.currentTarget.value.trim(); if (v) { p.config.model = v; providers = [...providers]; saveField(p, 'model', v); } }} />
-                    </div>
-                  {/if}
-                </div>
+                {#if p.provider_type !== 'llm'}
+                  <!-- LLM providers pick their active model on the Models
+                       page instead — see the matching comment on the Add
+                       Provider form. -->
+                  <div class="pfield">
+                    <span class="pflabel">Default Model</span>
+                    {#if p.config.model}
+                      <input class="pfinput mono" value={p.config.model}
+                        onblur={(e) => { const v = e.currentTarget.value; p.config.model = v; providers = [...providers]; saveField(p, 'model', v); }} />
+                    {:else}
+                      <div class="field-empty-wrap">
+                        <span class="field-empty-chip">No model set</span>
+                        <input class="pfinput mono field-empty-input" placeholder="Enter model ID…"
+                          onblur={(e) => { const v = e.currentTarget.value.trim(); if (v) { p.config.model = v; providers = [...providers]; saveField(p, 'model', v); } }} />
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
 
                 <!-- API Key field -->
                 <div class="pfield">
@@ -369,7 +560,7 @@
                 </div>
 
               </div>
-              {#if p.adapter !== 'open_router'}
+              {#if p.adapter !== 'open_router' && p.adapter !== 'ai_horde'}
                 <div class="pfield">
                   <span class="pflabel">Base URL</span>
                   <input class="pfinput mono" value={p.config.base_url ?? ''} placeholder="http://..."
@@ -377,40 +568,97 @@
                 </div>
               {/if}
 
-              <!-- Embedder Config -->
-              <div class="embedder-section">
-                <div class="embedder-header">
-                  <Icon name="cpu" size={12} color="#a78bfa" />
-                  <span class="embedder-title">Embedder</span>
-                  <span class="embedder-hint">Model used for semantic memory indexing</span>
+              {#if p.adapter === 'ai_horde'}
+                <!-- AI Horde Generation Settings -->
+                <div class="embedder-section">
+                  <div class="embedder-header">
+                    <Icon name="cpu" size={12} color="#a78bfa" />
+                    <span class="embedder-title">AI Horde Generation Settings</span>
+                    <span class="embedder-hint">Tunables sent with every generation request</span>
+                  </div>
+                  <div class="pfield-row">
+                    <div class="pfield">
+                      <span class="pflabel">Sampler</span>
+                      <select class="pfinput mono fselect" value={p.config.sampler_name ?? 'k_euler_a'}
+                        onchange={(e) => { const v = e.currentTarget.value; p.config.sampler_name = v; providers = [...providers]; saveField(p, 'sampler_name', v); }}>
+                        {#each HORDE_SAMPLERS as s}<option value={s}>{s}</option>{/each}
+                      </select>
+                    </div>
+                    <div class="pfield">
+                      <span class="pflabel">CFG Scale</span>
+                      <input class="pfinput mono" type="number" step="0.5" min="1" max="30" value={p.config.cfg_scale ?? '7.5'}
+                        onblur={(e) => { const v = e.currentTarget.value; p.config.cfg_scale = v; providers = [...providers]; saveField(p, 'cfg_scale', v); }} />
+                    </div>
+                  </div>
+                  <div class="pfield-row">
+                    <div class="pfield">
+                      <span class="pflabel">Steps</span>
+                      <input class="pfinput mono" type="number" step="1" min="1" max="150" value={p.config.steps ?? '30'}
+                        onblur={(e) => { const v = e.currentTarget.value; p.config.steps = v; providers = [...providers]; saveField(p, 'steps', v); }} />
+                    </div>
+                    <div class="pfield">
+                      <span class="pflabel">Karras</span>
+                      <label class="checkbox-wrap">
+                        <input type="checkbox" checked={(p.config.karras ?? 'true') === 'true'}
+                          onchange={(e) => { const v = String(e.currentTarget.checked); p.config.karras = v; providers = [...providers]; saveField(p, 'karras', v); }} />
+                        <span class="checkbox-hint">Smoother noise schedule</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="pfield">
+                    <span class="pflabel">Style (optional — overrides sampler/model/resolution above)</span>
+                    <input class="pfinput mono" value={p.config.style ?? ''} placeholder="e.g. raw-png, pixel-art"
+                      onblur={(e) => { const v = e.currentTarget.value.trim(); p.config.style = v; providers = [...providers]; saveField(p, 'style', v); }} />
+                    <a href="https://artbot.site/" target="_blank" class="hint-link" style="margin-top:2px;">Browse styles →</a>
+                  </div>
+                  <div class="pfield">
+                    <span class="pflabel">Negative Prompt (optional, ignored if a style is set)</span>
+                    <input class="pfinput mono" value={p.config.negative_prompt ?? ''}
+                      placeholder="Leave blank for the built-in default"
+                      onblur={(e) => { const v = e.currentTarget.value; p.config.negative_prompt = v; providers = [...providers]; saveField(p, 'negative_prompt', v); }} />
+                  </div>
                 </div>
-                <div class="pfield">
-                  <span class="pflabel">Embedding Model</span>
-                  {#if p.config.embedding_model}
-                    <input class="pfinput mono" value={p.config.embedding_model}
+              {/if}
+
+              {#if p.adapter === 'comfy_ui'}
+                <!-- ComfyUI Workflow Settings -->
+                <div class="embedder-section">
+                  <div class="embedder-header">
+                    <Icon name="cpu" size={12} color="#a78bfa" />
+                    <span class="embedder-title">ComfyUI Workflow</span>
+                    <span class="embedder-hint">Your exported (API format) workflow JSON</span>
+                  </div>
+                  <div class="pfield">
+                    <span class="pflabel">Workflow (API format JSON)</span>
+                    <textarea class="pfinput mono comfy-workflow-textarea" rows="8"
+                      value={p.config.workflow ?? ''}
                       onblur={(e) => {
                         const v = e.currentTarget.value;
-                        p.config.embedding_model = v;
-                        providers = [...providers];
-                        saveField(p, 'embedding_model', v);
-                      }} />
-                  {:else}
-                    <div class="field-empty-wrap">
-                      <span class="field-empty-chip">No embedder set</span>
-                      <input class="pfinput mono field-empty-input"
-                        placeholder={p.adapter === 'open_router' ? 'openai/text-embedding-3-small' : p.adapter === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-small'}
-                        onblur={(e) => {
-                          const v = e.currentTarget.value.trim();
-                          if (v) {
-                            p.config.embedding_model = v;
-                            providers = [...providers];
-                            saveField(p, 'embedding_model', v);
-                          }
-                        }} />
-                    </div>
-                  {/if}
+                        try {
+                          if (v.trim()) JSON.parse(v);
+                          p.config.workflow = v; providers = [...providers];
+                          saveField(p, 'workflow', v);
+                          comfyWorkflowErrors = { ...comfyWorkflowErrors, [p.id]: '' };
+                        } catch (err) {
+                          comfyWorkflowErrors = { ...comfyWorkflowErrors, [p.id]: `Not valid JSON: ${(err as Error).message}` };
+                        }
+                      }}
+                    ></textarea>
+                    {#if comfyWorkflowErrors[p.id]}
+                      <span class="field-error">{comfyWorkflowErrors[p.id]}</span>
+                    {/if}
+                  </div>
+                  <div class="adapter-hint comfy-hint">
+                    <span>🧩</span>
+                    <span>
+                      Placeholder tokens: <code>{'{{POSITIVE_PROMPT}}'}</code>, <code>{'{{NEGATIVE_PROMPT}}'}</code>,
+                      <code>{'{{SEED}}'}</code>, <code>{'{{WIDTH}}'}</code>, <code>{'{{HEIGHT}}'}</code>,
+                      <code>{'{{CHARACTER_IMAGE_1}}'}</code>, <code>{'{{CHARACTER_IMAGE_2}}'}</code>…
+                    </span>
+                  </div>
                 </div>
-              </div>
+              {/if}
+
             </div>
           {/if}
 
@@ -448,12 +696,10 @@
   }
   .hdr-left { display: flex; flex-direction: column; gap: 3px; }
   .hdr-title {
-    font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-size: 24px; font-weight: 600; letter-spacing: -0.5px;
     margin: 0;
   }
-  .hdr-sub { font-size: 12px; color: #4a4a6a; }
+  .hdr-sub { font-size: 13px; color: #4a4a6a; }
 
   .btn-add {
     display: flex; align-items: center; gap: 6px;
@@ -498,8 +744,15 @@
     background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.1);
     font-size: 12px; color: #8b8ba7;
   }
-  .hint-link { color: #a78bfa; font-weight: 600; text-decoration: none; margin-left: auto; }
+  .hint-link { color: #a78bfa; font-weight: 600; text-decoration: none; margin-left: auto; white-space: nowrap; }
   .form-actions { display: flex; justify-content: flex-end; }
+
+  .form-field-checkbox { justify-content: flex-end; }
+  .checkbox-wrap {
+    display: flex; align-items: center; gap: 8px; height: 36px;
+    font-size: 11px; color: #6b6b8a; cursor: pointer;
+  }
+  .checkbox-wrap input[type="checkbox"] { accent-color: #8B5CF6; width: 14px; height: 14px; cursor: pointer; }
 
   /* Provider list */
   .provider-list {
@@ -654,5 +907,19 @@
   }
   .embedder-hint {
     font-size: 10px; color: #4a4a6a; margin-left: auto;
+  }
+
+  /* ── ComfyUI workflow textarea ── */
+  .form-field-full { flex-basis: 100%; }
+  .comfy-workflow-textarea {
+    height: auto !important; min-height: 140px; padding: 10px 12px;
+    resize: vertical; line-height: 1.5; white-space: pre;
+  }
+  .field-error {
+    font-size: 11px; color: #F43F5E; font-family: var(--font-mono);
+  }
+  .comfy-hint code {
+    background: rgba(139,92,246,0.1); border-radius: 4px; padding: 1px 5px;
+    font-family: var(--font-mono); color: #c4a1ff; font-size: 11px;
   }
 </style>

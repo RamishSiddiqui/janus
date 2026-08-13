@@ -19,9 +19,51 @@
     data: MemoryGraphData;
     avatars?: Record<string, string | null>;
     onRefresh: () => void;
+    /** Conversation ids to show, controlled by the host's TimelineFilter.
+        `null`/`undefined` means "no filter — show every conversation" (canon
+        is always shown regardless, it has no single conversation home). */
+    visibleConvIds?: Set<string> | null;
   }
 
-  let { data, avatars = {}, onRefresh }: Props = $props();
+  let { data, avatars = {}, onRefresh, visibleConvIds = null }: Props = $props();
+
+  /** `data`, but with hidden conversations (and their memories) dropped —
+      everything downstream (node/edge building, legend) reads this instead
+      of `data` directly so filtering only has to happen in one place. */
+  let visibleData = $derived.by((): MemoryGraphData => {
+    if (!visibleConvIds) return data;
+    return {
+      ...data,
+      conversations: data.conversations.filter(c => visibleConvIds!.has(c.id)),
+      memories: data.memories.filter(m => m.is_canon || (m.conversation_id && visibleConvIds!.has(m.conversation_id))),
+    };
+  });
+
+  // conversation_id → titles of conversations it links to that are
+  // currently filtered out — the edge itself just quietly fails to render
+  // once the target node is gone, so this drives a small pulsing badge on
+  // the conversation node instead (mirrors MemoryTimeline's lane pill).
+  // Computed from the FULL unfiltered `data`, not `visibleData`.
+  let laneHiddenLinks = $derived.by(() => {
+    const map = new Map<string, string[]>();
+    if (!visibleConvIds) return map;
+    const visibleSet = visibleConvIds;
+    const memConvMap = new Map<string, string>();
+    data.memories.forEach(m => { if (m.conversation_id) memConvMap.set(m.id, m.conversation_id); });
+    const convTitleMap = new Map(data.conversations.map(c => [c.id, c.title]));
+    const markHidden = (laneId: string | null | undefined, otherConvId: string | null | undefined) => {
+      if (!laneId || !otherConvId || laneId === otherConvId || !visibleSet.has(laneId) || visibleSet.has(otherConvId)) return;
+      const title = convTitleMap.get(otherConvId) ?? 'another timeline';
+      const existing = map.get(laneId) ?? [];
+      if (!existing.includes(title)) map.set(laneId, [...existing, title]);
+    };
+    for (const l of data.links) {
+      const sourceConvId = memConvMap.get(l.source_memory_id);
+      markHidden(sourceConvId, l.target_conversation_id);
+      markHidden(l.target_conversation_id, sourceConvId);
+    }
+    return map;
+  });
 
   /* ── Action Panel state ── */
   let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
@@ -179,13 +221,14 @@
   }
 
   /* ── Build graph ── */
-  function buildGraph(g: MemoryGraphData): { nodes: Node[]; edges: Edge[] } {
+  // Colors are keyed off the FULL (unfiltered) conversation list order, not
+  // whatever subset ends up visible — otherwise a conversation's node color
+  // would shift depending on what the timeline filter currently hides,
+  // breaking the color match with its dot in the filter dropdown.
+  function buildGraph(g: MemoryGraphData, convColorMap: Map<string, typeof PALETTE[0]>, hiddenLinks: Map<string, string[]>): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const treeEdges: Edge[] = [];
     const extraEdges: Edge[] = [];
-
-    const convColorMap = new Map<string, typeof PALETTE[0]>();
-    g.conversations.forEach((c, i) => convColorMap.set(c.id, pal(i)));
 
     const memCountMap = new Map<string, number>();
     g.memories.forEach(m => {
@@ -302,6 +345,7 @@
           isShared,
           // Pass branch info for potential UI indicators
           isBranch: !!conv.parent_conversation_id,
+          hiddenLinkTitles: hiddenLinks.get(conv.id) ?? null,
         },
       });
 
@@ -487,11 +531,17 @@
     return { nodes: layoutNodes, edges: [...treeEdges, ...extraEdges] };
   }
 
+  let stableConvColorMap = $derived.by(() => {
+    const map = new Map<string, typeof PALETTE[0]>();
+    data.conversations.forEach((c, i) => map.set(c.id, pal(i)));
+    return map;
+  });
+
   let nodes: Node[] = $state.raw([]);
   let edges: Edge[] = $state.raw([]);
 
   $effect(() => {
-    const result = buildGraph(data);
+    const result = buildGraph(visibleData, stableConvColorMap, laneHiddenLinks);
     nodes = result.nodes;
     edges = result.edges;
   });
@@ -538,9 +588,9 @@
       <span class="dot canon"></span>
       Canon
     </div>
-    {#each data.conversations as conv, i}
+    {#each visibleData.conversations as conv}
       <div class="legend-item">
-        <span class="dot" style="background: {pal(i).text};"></span>
+        <span class="dot" style="background: {(stableConvColorMap.get(conv.id) ?? PALETTE[0]).text};"></span>
         {conv.title.length > 18 ? conv.title.slice(0, 16) + '…' : conv.title}
       </div>
     {/each}

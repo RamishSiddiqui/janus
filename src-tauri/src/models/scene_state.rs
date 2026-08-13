@@ -44,4 +44,10 @@ pub struct SceneStateUpdate {
     /// Whether the scene actually changed (used to decide if we emit an event)
     #[serde(default)]
     pub scene_changed: bool,
+    /// True if a new character was just introduced with dialogue/action, or
+    /// an existing character's story role just escalated — triggers an
+    /// immediate (out-of-cadence) NPC detection pass. Not persisted as part
+    /// of `SceneState` itself; purely a one-shot trigger signal.
+    #[serde(default)]
+    pub notable_character_event: bool,
 }

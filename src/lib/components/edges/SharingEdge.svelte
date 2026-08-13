@@ -158,7 +158,7 @@
     justify-content: center;
     font-size: 8px;
     font-weight: 700;
-    font-family: Inter, sans-serif;
+    font-family: Raleway, sans-serif;
     color: var(--badge-color);
     background: rgba(7, 7, 26, 0.9);
     border: 1px solid var(--badge-color);

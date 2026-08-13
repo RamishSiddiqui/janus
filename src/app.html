@@ -4,10 +4,15 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="Mythic — Open source AI roleplay platform with multimodal generation" />
-    <meta name="theme-color" content="#07071a" />
+    <meta name="description" content="Janus — Open source AI roleplay platform with multimodal generation" />
+    <meta name="theme-color" content="#0A0A13" />
+    <!-- Declares that this page supports both schemes and is deliberately
+         themed itself, opting out of the browser's forced-dark-mode content
+         repaint (which otherwise auto-inverts colors on load, before our own
+         [data-theme] CSS can take effect). -->
+    <meta name="color-scheme" content="dark light" />
     <!-- Open Graph -->
-    <meta property="og:title" content="Mythic" />
+    <meta property="og:title" content="Janus" />
     <meta property="og:description" content="Open source AI roleplay platform with multimodal generation" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary" />
@@ -15,13 +20,64 @@
     <link rel="manifest" href="%sveltekit.assets%/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Mythic</title>
+    <title>Janus</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Raleway:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <div id="janus-splash" aria-hidden="true">
+      <svg viewBox="-61 -83 122 166" width="72" height="98">
+        <defs>
+          <linearGradient id="janus-splash-grad" gradientUnits="userSpaceOnUse" x1="0" y1="-80" x2="0" y2="80">
+            <stop offset="0" stop-color="#CDA15F" />
+            <stop offset="0.485" stop-color="#CDA15F" />
+            <stop offset="0.515" stop-color="#9075F2" />
+            <stop offset="1" stop-color="#9075F2" />
+          </linearGradient>
+        </defs>
+        <g fill="none" stroke-width="18" stroke-linecap="round">
+          <path stroke="url(#janus-splash-grad)" opacity="0.22"
+            d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52" />
+          <path class="run" stroke="url(#janus-splash-grad)" pathLength="100" stroke-dasharray="62 200"
+            d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52" />
+        </g>
+      </svg>
+      <span id="janus-splash-word">JANUS</span>
+    </div>
     <div style="display: contents">%sveltekit.body%</div>
-  </body>
+    <style>
+      #janus-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(ellipse 70% 55% at 50% 34%, #1B1438, #0A0A13);
+        transition: opacity 320ms ease;
+      }
+      #janus-splash.janus-splash-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #janus-splash-word {
+        font-family: Raleway, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+        font-weight: 500;
+        font-size: 14px;
+        letter-spacing: 4.2px;
+        color: #8a8a9c;
+      }
+      @keyframes janus-splash-run  { from { stroke-dashoffset: 62; } to { stroke-dashoffset: -100; } }
+      @keyframes janus-splash-fade { 0%, 100% { opacity: 0; } 11%, 89% { opacity: 1; } }
+      #janus-splash .run {
+        animation: janus-splash-run 2.6s linear infinite, janus-splash-fade 2.6s linear infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #janus-splash .run { animation: none; stroke-dasharray: none; opacity: 1; }
+      }
+    </style>
 </html>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import JanusMark from './JanusMark.svelte';
   import SidebarNav from './SidebarNav.svelte';
   import SidebarSearch from './SidebarSearch.svelte';
   import SidebarConversationList from './SidebarConversationList.svelte';
@@ -7,8 +8,10 @@
   import type { NavItem } from '$lib/types';
   import { conversations, deleteConversationWithUndo, createConversation } from '$lib/stores/chat';
   import { error as toastError } from '$lib/stores/toast';
+  import { selectedPersonaId } from '$lib/stores/personas';
   import { browser } from '$app/environment';
   import { tick } from 'svelte';
+  import { get } from 'svelte/store';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -51,7 +54,12 @@
     });
   }
 
-  async function handleNewChat() { if (!isTauri) return; await createConversation('', 'New Chat'); onNavigate('/'); }
+  async function handleNewChat() {
+    if (!isTauri) return;
+    const personaId = get(selectedPersonaId) ?? undefined;
+    await createConversation('', 'New Chat', personaId);
+    onNavigate('/');
+  }
 </script>
 
 <aside class="sidebar" class:collapsed aria-label="Application sidebar">
@@ -62,10 +70,10 @@
   <div class="sb-brand">
     <div class="brand-mark" role="button" tabindex="0" onclick={() => onNavigate('/')} onkeydown={(e) => e.key === 'Enter' && onNavigate('/')}>
       <div class="brand-icon">
-        <Icon name="sparkles" size={18} color="#c4a1ff" />
+        <JanusMark size={20} />
         <div class="brand-icon-glow"></div>
       </div>
-      {#if !collapsed}<span class="brand-name">Mythic</span>{/if}
+      {#if !collapsed}<span class="brand-name"><span class="brand-name-ja">JA</span><span class="brand-name-nus">NUS</span></span>{/if}
     </div>
     {#if !collapsed}
       <button class="btn-new" title="New Chat" aria-label="Start new chat" onclick={handleNewChat}>
@@ -92,9 +100,15 @@
     {/if}
   {/if}
 
-  <!-- Bottom-pinned Settings -->
+  <!-- Bottom-pinned Trash + Settings -->
   <div class="sb-bottom">
     <div class="sb-divider"><div class="divider-grad"></div></div>
+    <button class="sb-nav-item" class:active={currentPath === '/trash'} onclick={() => onNavigate('/trash')}
+      title={collapsed ? 'Trash' : undefined} aria-current={currentPath === '/trash' ? 'page' : undefined}>
+      {#if currentPath === '/trash'}<span class="nav-glow-bar"></span>{/if}
+      <span class="nav-icon"><Icon name="trash-2" size={16} color={currentPath === '/trash' ? '#c4a1ff' : '#6b6b8a'} /></span>
+      {#if !collapsed}<span class="nav-text">Trash</span>{/if}
+    </button>
     <button class="sb-nav-item" class:active={currentPath === '/settings'} onclick={() => onNavigate('/settings')}
       title={collapsed ? 'Settings' : undefined} aria-current={currentPath === '/settings' ? 'page' : undefined}>
       {#if currentPath === '/settings'}<span class="nav-glow-bar"></span>{/if}
@@ -165,23 +179,21 @@
   .brand-icon {
     position: relative;
     width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(139,92,246,0.22), rgba(0,242,255,0.08));
-    border: 1px solid rgba(139,92,246,0.2);
   }
   .brand-icon-glow {
     position: absolute; inset: -4px; border-radius: 14px;
-    background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(144,117,242,0.25) 0%, transparent 70%);
     pointer-events: none; opacity: 0.6;
     animation: brandPulse 3s ease-in-out infinite;
   }
   @keyframes brandPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
 
   .brand-name {
-    font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.5px; white-space: nowrap;
-    background: linear-gradient(135deg, #fff 10%, #c4a1ff 60%, #bf40ff 100%);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    font-size: var(--text-2xl); font-weight: 500; letter-spacing: 0.32em; white-space: nowrap;
+    text-transform: uppercase;
   }
+  .brand-name-ja { color: #9075F2; }
+  .brand-name-nus { color: #CDA15F; }
 
   .btn-new {
     width: 34px; height: 34px; border-radius: 10px; border: none; cursor: pointer;

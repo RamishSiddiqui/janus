@@ -1,10 +1,17 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import ContextNpcPanel from './ContextNpcPanel.svelte';
+
+  export type ExplorerView = 'lore' | 'cast' | 'persona';
 
   let {
     characterName, modelName, avatarUrl = null, showContextPanel = true,
     additionalCharacters = [],
-    onTogglePanel, onGenerateScene,
+    characterId = null,
+    conversationId = null,
+    activeExplorerView = null,
+    onOpenExplorer,
+    onTogglePanel, onGenerateScene, onOpenGallery,
     parentConversationId = null,
     parentConversationTitle = null,
     onNavigateToParent,
@@ -12,7 +19,19 @@
     characterName: string; modelName: string; avatarUrl?: string | null;
     showContextPanel?: boolean; onTogglePanel: () => void;
     onGenerateScene?: () => void;
+    /** Opens the scene gallery for the current conversation. */
+    onOpenGallery?: () => void;
     additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
+    characterId?: string | null;
+    conversationId?: string | null;
+    /** Which full-chat-area explorer view (if any) is currently open —
+     *  drives which of these four buttons renders as active. */
+    activeExplorerView?: ExplorerView | null;
+    /** Opens (or switches to) a full-chat-area explorer view, replacing the
+     *  message list/composer — see ChatExplorerView.svelte. Pass `null` to
+     *  close it (back to the normal chat view) — the same button toggles
+     *  this when clicked while already active. */
+    onOpenExplorer?: (view: ExplorerView | null) => void;
     /** Set if this conversation was branched from another conversation. */
     parentConversationId?: string | null;
     /** Human-readable title of the parent conversation. */
@@ -29,6 +48,15 @@
       onNavigateToParent(parentConversationId);
     }
   }
+
+  function toggleExplorer(view: ExplorerView) {
+    onOpenExplorer?.(activeExplorerView === view ? null : view);
+  }
+
+  // Tracked here (not just inside the NPC Cast explorer view) so the
+  // needs-attention dot on this header button stays live even while that
+  // view isn't open — see the always-mounted, visually hidden panel below.
+  let npcNeedsAttention = $state(false);
 </script>
 
 <header class="ch">
@@ -88,9 +116,43 @@
     {/if}
   </div>
   <div class="ch-right" role="toolbar" aria-label="Chat tools">
+    <button class="ch-btn" class:active={activeExplorerView === 'lore'}
+      title="Lorebook" aria-label="Lorebook" aria-pressed={activeExplorerView === 'lore'}
+      onclick={() => toggleExplorer('lore')}>
+      <Icon name="book-open" size={15} color={activeExplorerView === 'lore' ? '#c4a1ff' : '#6b6b8a'} />
+    </button>
+
+    <button class="ch-btn" class:active={activeExplorerView === 'cast'}
+      title="Cast" aria-label="Cast" aria-pressed={activeExplorerView === 'cast'}
+      onclick={() => toggleExplorer('cast')}>
+      <Icon name="users" size={15} color={activeExplorerView === 'cast' ? '#c4a1ff' : '#6b6b8a'} />
+      {#if npcNeedsAttention}<span class="ch-btn-dot" aria-label="Needs attention"></span>{/if}
+    </button>
+
+    <button class="ch-btn" class:active={activeExplorerView === 'persona'}
+      title="Persona" aria-label="Persona" aria-pressed={activeExplorerView === 'persona'}
+      onclick={() => toggleExplorer('persona')}>
+      <Icon name="user" size={15} color={activeExplorerView === 'persona' ? '#c4a1ff' : '#6b6b8a'} />
+    </button>
+
+    <!-- Kept mounted (but invisible) regardless of which explorer view is
+         open, purely so the NPC Cast needs-attention dot above stays live —
+         it depends on this panel's own data-loading effect running
+         continuously, not just while that view happens to be open. -->
+    <div class="ch-hidden-mount" aria-hidden="true">
+      <ContextNpcPanel {conversationId} {characterId} {characterName} primaryAvatarUrl={avatarUrl} {additionalCharacters} onAttentionChange={(v) => npcNeedsAttention = v} />
+    </div>
+
+    <div class="ch-tools-divider" aria-hidden="true"></div>
+
+    {#if onOpenGallery}
+      <button class="ch-btn" title="Scene Gallery" aria-label="Open scene gallery" onclick={onOpenGallery}>
+        <Icon name="image" size={15} color="#6b6b8a" />
+      </button>
+    {/if}
     <button class="ch-btn" class:active={showContextPanel} title="Context Panel"
       aria-label="Toggle context panel" aria-pressed={showContextPanel} onclick={onTogglePanel}>
-      <Icon name="settings" size={15} color={showContextPanel ? '#c4a1ff' : '#6b6b8a'} />
+      <Icon name="info" size={15} color={showContextPanel ? '#c4a1ff' : '#6b6b8a'} />
     </button>
   </div>
 </header>
@@ -103,6 +165,13 @@
     border-bottom: 1px solid rgba(139,92,246,0.08);
     backdrop-filter: blur(12px);
     position: relative;
+    /* backdrop-filter alone creates a stacking context, but with no explicit
+       z-index it still sits at the same "auto" paint level as the message
+       list below it — since that list comes later in the DOM, it was
+       painting over the popovers wherever they extend past the header's own
+       box. An explicit z-index elevates the whole header (popovers included)
+       above it, while staying under modal overlays (z-index 200). */
+    z-index: 30;
   }
   .ch::after {
     content: ''; position: absolute; bottom: 0; left: 24px; right: 24px; height: 1px;
@@ -171,11 +240,16 @@
   }
 
   .ch-right { display: flex; align-items: center; gap: 6px; }
+  .ch-tools-divider {
+    width: 1px; height: 20px; margin: 0 2px;
+    background: rgba(139,92,246,0.12);
+  }
   .ch-btn {
     width: 34px; height: 34px; border-radius: 10px;
     border: 1px solid rgba(139,92,246,0.08); background: transparent;
     display: flex; align-items: center; justify-content: center; cursor: pointer;
     transition: all 180ms var(--ease-out);
+    position: relative;
   }
   .ch-btn:hover {
     background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.15);
@@ -185,6 +259,17 @@
     background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25);
     box-shadow: 0 0 12px rgba(139,92,246,0.15);
   }
+  .ch-btn-dot {
+    position: absolute; top: 4px; right: 4px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #F59E0B;
+    animation: chBtnPulse 1.1s ease-in-out infinite;
+  }
+  @keyframes chBtnPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.75); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+    50%      { opacity: 1;   transform: scale(1);    box-shadow: 0 0 6px 2px rgba(245,158,11,0.35); }
+  }
+  .ch-hidden-mount { display: none; }
 
   /* ── Branch Lineage Pill ── */
   .ch-info {

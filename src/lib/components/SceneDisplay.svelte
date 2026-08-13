@@ -1,29 +1,407 @@
 <script lang="ts">
   import { browser } from '$app/environment';
+  import { onMount, onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
   import { activeConversationId } from '$lib/stores/chat';
+  import { settings } from '$lib/stores/settings';
+  import { get } from 'svelte/store';
+  import type { SceneState } from '$lib/services/ipc';
+  import {
+    sceneGenerations, getSceneGenerationState, runSceneGeneration, describeProgress,
+  } from '$lib/stores/sceneGeneration';
+
+  let {
+    characterId = null,
+    characterName = '',
+    characterDescription = '',
+    avatarPath = null,
+    additionalCharacters = [],
+  }: {
+    characterId?: string | null;
+    characterName?: string;
+    characterDescription?: string;
+    /** Raw relative avatar path (not a blob: URL) — used as the img2img
+     *  reference when that toggle is on. */
+    avatarPath?: string | null;
+    additionalCharacters?: { id: string; name: string; description: string }[];
+  } = $props();
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   let activeTab: 'image' | 'video' = $state('image');
-  let isLoading = $state(false);
   let sceneCaption = $state('No scene generated yet');
   let sceneImageUrl: string | null = $state(null);
   let currentSceneId: string | null = $state(null);
   let promptText = $state('');
   let isEditingPrompt = $state(false);
 
-  // Load existing scenes when conversation changes
+  // Image generation presets — the list is shared across all chats, but the
+  // *selection* (null = "use whatever the default preset is") is per-conversation.
+  let presets = $state<{ id: string; name: string; model: string | null }[]>([]);
+  let selectedPresetId = $state<string | null>(null);
+
+  // Models the user has enabled for image generation (Models page) — the
+  // pool the "Model" override dropdown picks from.
+  let enabledImageModels = $state<{ model_id: string; img2img_supported: boolean | null }[]>([]);
+  // Per-generation model override: auto-filled from whichever preset is
+  // selected (its own `model`, if set), but freely editable just before
+  // generating — not persisted, so it re-derives from the preset every time
+  // the conversation/preset changes rather than sticking around stale.
+  let modelOverride = $state<string | null>(null);
+
+  // Whether the currently-resolved model is known to support img2img — used
+  // to gate the "use avatar as reference" toggle. Unknown models (no
+  // capability data cached yet) default to allowed rather than blocking.
+  let modelSupportsImg2Img = $derived.by(() => {
+    if (!modelOverride) return true;
+    const m = enabledImageModels.find(e => e.model_id === modelOverride);
+    return m?.img2img_supported ?? true;
+  });
+
+  // Community-favorite checkpoints as of this writing (Civitai + AI Horde
+  // usage) worth surfacing above the raw alphabetical list — Pony/AAM for
+  // anime-leaning character art like Aria's, Juggernaut/RealVis for more
+  // painterly/semi-realistic scenes. Matched fuzzily since AI Horde's exact
+  // registered model name can vary slightly from the Civitai listing name.
+  const RECOMMENDED_MODEL_PATTERNS = ['pony', 'aam', 'juggernaut', 'realvis', 'albedo'];
+  function isRecommendedModel(modelId: string): boolean {
+    const lower = modelId.toLowerCase();
+    return RECOMMENDED_MODEL_PATTERNS.some(p => lower.includes(p));
+  }
+  let sortedImageModels = $derived(
+    [...enabledImageModels].sort((a, b) => {
+      const ra = isRecommendedModel(a.model_id), rb = isRecommendedModel(b.model_id);
+      if (ra !== rb) return ra ? -1 : 1;
+      return a.model_id.localeCompare(b.model_id);
+    })
+  );
+
+  // img2img: anchor the generation to the primary character's avatar
+  // instead of generating purely from text. Off by default (avatars are
+  // usually portraits, which bias every output toward a portrait framing —
+  // see the img2img composition-bias caveat), and only offered when there's
+  // an avatar to use and the resolved model supports it.
+  let useAvatarReference = $state(false);
+  // 0.6 kept too much of the avatar's exact pose/crop (avatars are almost
+  // always tight portrait shots), so every scene generation came out as a
+  // close-up of the character instead of the actual described scene.
+  // 0.75 lets the text prompt drive composition while the avatar still
+  // contributes a likeness/style cue rather than dictating the framing.
+  let denoisingStrength = $state(0.75);
+
+  // ComfyUI multi-character portrait conditioning — only relevant when the
+  // resolved default image provider's adapter is 'comfy_ui', since that's
+  // the only adapter with a generic multi-image mechanism (the
+  // {{CHARACTER_IMAGE_n}} placeholder tokens in the user's own workflow —
+  // see providers::comfyui on the backend). Every other adapter keeps the
+  // existing single "use avatar as reference" toggle above, unchanged.
+  let providerAdapter: string | null = $state(null);
+  let sceneCast: { characterId: string; name: string; avatarPath: string | null; role: string }[] = $state([]);
+  let selectedCastIds = $state<Set<string>>(new Set());
+  let castThumbUrls: Record<string, string> = $state({});
+
+  // "Unconfirmed" cast members (role 'transient') are excluded — same
+  // semantics as the "Unconfirmed" badge elsewhere in this app (see
+  // ContextNpcPanel): they haven't survived the two-pass NPC detector yet,
+  // so their portrait (if any) is likely a placeholder, not a real one.
+  let comfyEligibleCast = $derived(sceneCast.filter(m => m.avatarPath && m.role !== 'transient'));
+
+  async function loadProviderAdapter() {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const providers = await ipc.listProviders('image');
+      const def = providers.find(p => p.is_default) ?? providers[0];
+      providerAdapter = def?.adapter ?? null;
+    } catch (err) {
+      console.error('Failed to load image provider adapter:', err);
+      providerAdapter = null;
+    }
+  }
+
+  async function loadSceneCast(convId: string) {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      sceneCast = await ipc.listSceneCastMembers(convId);
+      await loadCastThumbnails(sceneCast);
+    } catch (err) {
+      console.error('Failed to load scene cast members:', err);
+      sceneCast = [];
+    }
+  }
+
+  /** Thumbnails are keyed by characterId (not cached across conversations
+   *  like chat.ts's avatar cache) since this list is small and conversation-
+   *  scoped — simplest to just reload/revoke wholesale on every switch. */
+  async function loadCastThumbnails(members: typeof sceneCast) {
+    const { loadFileAsBlobUrl, revokeIfSet } = await import('$lib/utils/blobUrl');
+    for (const url of Object.values(castThumbUrls)) revokeIfSet(url);
+    const next: Record<string, string> = {};
+    await Promise.all(members.filter(m => m.avatarPath).map(async (m) => {
+      try {
+        next[m.characterId] = await loadFileAsBlobUrl(m.avatarPath!, 'image/png');
+      } catch (err) {
+        console.error(`Failed to load cast thumbnail for ${m.name}:`, err);
+      }
+    }));
+    castThumbUrls = next;
+  }
+
+  function toggleCastMember(characterId: string, checked: boolean) {
+    const next = new Set(selectedCastIds);
+    if (checked) next.add(characterId); else next.delete(characterId);
+    selectedCastIds = next;
+  }
+
+  // Scene extraction is told to use the literal "{{user}}" token to refer
+  // to the player character in `characters_present` — resolving it here
+  // (rather than leaving it literal) matters beyond display: this feeds
+  // straight into the actual image-generation prompt text via
+  // `buildAutoPrompt` below, and a raw "{{user}}" token sent to a
+  // text-to-image model is meaningless.
+  let personaName: string | null = $state(null);
+  let personaDescription: string | null = $state(null);
   $effect(() => {
     const convId = $activeConversationId;
     if (convId && isTauri) {
+      resolvePersona(convId);
+    } else {
+      personaName = null;
+      personaDescription = null;
+    }
+  });
+
+  async function resolvePersona(convId: string) {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const conv = await ipc.getConversation(convId);
+      const personaId = (conv as unknown as { persona_id: string | null }).persona_id;
+      if (personaId) {
+        const persona = await ipc.getPersona(personaId);
+        const { parseCharacterData } = await import('$lib/utils/character');
+        personaName = persona.name;
+        personaDescription = (parseCharacterData(persona.data).description as string) || null;
+      } else {
+        personaName = null;
+        personaDescription = null;
+      }
+    } catch {
+      personaName = null;
+      personaDescription = null;
+    }
+  }
+
+  /** Best-available description for a character mentioned in a scene —
+   *  matches the primary character or the known extra cast by name, and
+   *  falls back to just the bare name for anyone not in either (a one-off
+   *  NPC the AI introduced that was never explicitly added to the cast). */
+  function characterDescriptor(rawName: string): string {
+    const trim = (s: string) => s.length > 160 ? s.slice(0, 160).trimEnd() + '…' : s;
+    if (/^\{\{user\}\}$/i.test(rawName.trim())) {
+      const name = personaName || 'the user';
+      return personaDescription ? `${name} (${trim(personaDescription)})` : name;
+    }
+    const name = rawName;
+    if (name === characterName && characterDescription) {
+      return `${name} (${trim(characterDescription)})`;
+    }
+    const extra = additionalCharacters.find(c => c.name === name);
+    if (extra?.description) return `${name} (${trim(extra.description)})`;
+    return name;
+  }
+
+  // Generation status lives in a shared store keyed by conversation_id (not
+  // local component state) — it needs to survive this component remounting
+  // (e.g. switching chats and back, or the context panel key-remounting) and
+  // stay visible to other components like the scene gallery.
+  let genState = $derived(getSceneGenerationState($sceneGenerations, $activeConversationId));
+  let isLoading = $derived(genState.isLoading);
+  let progressLabel = $derived(describeProgress(genState.progress));
+
+  // Reloads the latest scene once a generation for the active conversation
+  // completes — fires even if this component instance didn't start it (e.g.
+  // it finished while the user was on a different chat).
+  let lastHandledCompletion: number | null = $state(null);
+  $effect(() => {
+    const convId = $activeConversationId;
+    if (convId && genState.completedAt && genState.completedAt !== lastHandledCompletion) {
+      lastHandledCompletion = genState.completedAt;
       loadLatestScene(convId);
+    }
+  });
+
+  // Load existing scenes when conversation changes
+  $effect(() => {
+    const convId = $activeConversationId;
+    useAvatarReference = false;
+    selectedCastIds = new Set();
+    if (convId && isTauri) {
+      loadLatestScene(convId);
+      loadPresetSelection(convId);
+      loadSceneCast(convId);
     } else {
       sceneImageUrl = null;
       sceneCaption = 'No scene generated yet';
       currentSceneId = null;
+      selectedPresetId = null;
+      sceneCast = [];
     }
   });
+
+  onMount(() => {
+    if (!isTauri) return;
+    import('$lib/services/ipc').then(async (ipc) => {
+      const [rows, enabled] = await Promise.all([ipc.listImagePresets(), ipc.listEnabledModels()]);
+      presets = rows.map(p => ({ id: p.id, name: p.name, model: p.model }));
+      enabledImageModels = enabled.filter(m => m.model_type === 'image').map(m => ({
+        model_id: m.model_id, img2img_supported: m.img2img_supported ?? null,
+      }));
+    }).catch(err => console.error('Failed to load image presets/models:', err));
+    loadProviderAdapter();
+  });
+
+  async function loadPresetSelection(convId: string) {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const conv = await ipc.getConversation(convId);
+      selectedPresetId = conv.image_preset_id ?? null;
+    } catch (err) {
+      console.error('Failed to load conversation preset selection:', err);
+    }
+  }
+
+  async function handlePresetChange(value: string) {
+    const convId = $activeConversationId;
+    if (!convId) return;
+    const presetId = value || null;
+    selectedPresetId = presetId;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      await ipc.setConversationImagePreset(convId, presetId);
+    } catch (err) {
+      console.error('Failed to set conversation preset:', err);
+    }
+  }
+
+  // Auto-fills the model override from whichever preset is selected — reacts
+  // to `presets` too so it self-corrects if the preset list is still loading
+  // when `selectedPresetId` first arrives, without re-running (and clobbering
+  // a manual override) on anything else.
+  let lastAutoFilledPresetId: string | null | undefined = undefined;
+  $effect(() => {
+    if (selectedPresetId !== lastAutoFilledPresetId || presets.length > 0) {
+      lastAutoFilledPresetId = selectedPresetId;
+      modelOverride = presets.find(p => p.id === selectedPresetId)?.model ?? null;
+    }
+  });
+
+  // Auto-generate a scene image whenever the backend detects a meaningful
+  // narrative scene change (location/mood/etc.) — gated by the "Auto-Generate
+  // Images" setting. Deliberately NOT triggered per-message: that would be
+  // both spammy and, for a paid/kudos-metered image provider, wasteful.
+  onMount(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<SceneState>('scene_state_changed', (event) => {
+        if (!get(settings).autoGenerateImages) return;
+        const convId = get(activeConversationId);
+        if (!convId || isLoading) return;
+        if (providerAdapter === 'comfy_ui') autoSelectCastFromScene(event.payload);
+        handleAutoGenerate(convId, buildAutoPrompt(event.payload));
+      }).then(fn => { unlisten = fn; });
+    });
+    return () => unlisten?.();
+  });
+
+  // Tracks the currently-displayed blob URL so it can be revoked before the
+  // next one is created (otherwise each generation/switch leaks one) — and
+  // on unmount, since the context panel remounts this component on every
+  // conversation switch (see the {#key} wrapper in +page.svelte).
+  let currentImageBlobUrl: string | null = null;
+  onDestroy(() => {
+    if (currentImageBlobUrl) URL.revokeObjectURL(currentImageBlobUrl);
+    for (const url of Object.values(castThumbUrls)) URL.revokeObjectURL(url);
+  });
+
+  /** Reads a scene's PNG bytes and turns them into a blob: URL for <img src>.
+   *  NOT convertFileSrc()/asset:// — the app's CSP only allows `img-src 'self'
+   *  blob: data:`, so an asset:// URL is silently blocked by the browser and
+   *  renders as a broken image. This mirrors how character avatars are
+   *  loaded elsewhere in the app (see chat.ts's resolveCachedAvatarUrl). */
+  async function loadSceneImageBlob(fileRelative: string): Promise<string | null> {
+    try {
+      const { loadFileAsBlobUrl, revokeIfSet } = await import('$lib/utils/blobUrl');
+      const url = await loadFileAsBlobUrl(fileRelative, 'image/png');
+      revokeIfSet(currentImageBlobUrl);
+      currentImageBlobUrl = url;
+      return currentImageBlobUrl;
+    } catch (err) {
+      console.error('Failed to load scene image:', err);
+      return null;
+    }
+  }
+
+  /** Builds a prompt from the current scene state for auto-generation. */
+  function buildAutoPrompt(state: SceneState): string {
+    const parts = [state.location_description || state.location_name];
+    if (state.time_period && state.time_period !== 'unspecified') parts.push(state.time_period);
+    if (state.weather) parts.push(state.weather);
+    if (state.characters_present?.length) {
+      parts.push(`featuring ${state.characters_present.map(characterDescriptor).join(', ')}`);
+    }
+    if (state.scene_mood && state.scene_mood !== 'neutral') parts.push(`${state.scene_mood} atmosphere`);
+    if (state.ambient_details) parts.push(state.ambient_details);
+    return parts.filter(Boolean).join(', ');
+  }
+
+  /** Default-selects whichever eligible cast portraits match the scene's
+   *  `characters_present` names, so automatic ComfyUI generation reasonably
+   *  picks the right images without the user manually reselecting every
+   *  time. Manual generation is untouched — it just uses whatever was last
+   *  selected (or nothing). `{{user}}` resolves to the persona name, same
+   *  as `characterDescriptor` above. */
+  function autoSelectCastFromScene(state: SceneState) {
+    const present = state.characters_present ?? [];
+    if (present.length === 0) return;
+    const names = present.map(n => /^\{\{user\}\}$/i.test(n.trim()) ? (personaName || '') : n);
+    const matched = comfyEligibleCast.filter(m => names.some(n => n && n.toLowerCase() === m.name.toLowerCase()));
+    if (matched.length > 0) selectedCastIds = new Set(matched.map(m => m.characterId));
+  }
+
+  /** Shared options for both manual and auto generation — includes the
+   *  img2img reference only when the toggle is on, an avatar is available,
+   *  and the resolved model actually supports it. */
+  function buildGenOptions() {
+    const opts: {
+      width: number; height: number; modelOverride?: string; referenceImagePath?: string;
+      denoisingStrength?: number; allowNsfw?: boolean;
+      characterImages?: { characterId: string; characterName: string; relativePath: string }[];
+    } = {
+      width: 512, height: 512,
+      allowNsfw: get(settings).allowMatureContent,
+    };
+    if (modelOverride) opts.modelOverride = modelOverride;
+    if (providerAdapter === 'comfy_ui' && selectedCastIds.size > 0) {
+      opts.characterImages = comfyEligibleCast
+        .filter(m => selectedCastIds.has(m.characterId))
+        .map(m => ({ characterId: m.characterId, characterName: m.name, relativePath: m.avatarPath! }));
+    } else if (useAvatarReference && avatarPath && modelSupportsImg2Img) {
+      opts.referenceImagePath = avatarPath;
+      opts.denoisingStrength = denoisingStrength;
+    }
+    return opts;
+  }
+
+  /** Same generation flow as handleGenerate(), but silent and non-destructive
+   *  toward whatever the user may be typing in the manual prompt field. */
+  async function handleAutoGenerate(convId: string, prompt: string) {
+    if (!prompt.trim() || get(sceneGenerations)[convId]?.isLoading) return;
+    try {
+      await runSceneGeneration(convId, prompt, buildGenOptions());
+    } catch (err) {
+      if (!isCancellationError(err)) console.error('Auto scene generation failed:', err);
+    }
+  }
 
   async function loadLatestScene(convId: string) {
     try {
@@ -34,11 +412,7 @@
         currentSceneId = latest.id;
         sceneCaption = latest.caption || latest.prompt;
         promptText = latest.prompt;
-
-        // Resolve the file URL
-        const { convertFileSrc } = await import('@tauri-apps/api/core');
-        const absPath = await ipc.getScenePath(latest.file_path);
-        sceneImageUrl = convertFileSrc(absPath);
+        sceneImageUrl = await loadSceneImageBlob(latest.file_path);
       } else {
         sceneImageUrl = null;
         sceneCaption = 'No scene generated yet';
@@ -49,47 +423,89 @@
     }
   }
 
+  /** Falls back to the current scene state (same description auto-generate
+   *  would use) when the user hasn't typed a manual prompt, instead of a
+   *  generic placeholder unrelated to the actual scene/characters. */
+  async function resolveDefaultPrompt(convId: string): Promise<string> {
+    const fallback = 'A detailed scene from the current conversation';
+    if (!isTauri) return fallback;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const state = await ipc.getSceneState(convId);
+      if (state) {
+        const built = buildAutoPrompt(state);
+        if (built) return built;
+      }
+
+      // No structured scene state yet — happens for conversations started
+      // before scene extraction existed, or when the background extraction
+      // from the greeting/last reply just hasn't finished. Use the latest
+      // in-character reply itself as the prompt rather than a placeholder
+      // that carries zero information about the actual scene/characters,
+      // and kick off extraction now so the next generation gets the richer
+      // structured prompt.
+      const history = await ipc.getConversationMessages(convId);
+      const lastAssistant = [...history].reverse().find(m => m.role === 'assistant' && m.content.trim());
+      if (lastAssistant) {
+        ipc.extractInitialScene(convId, lastAssistant.content).catch(() => {});
+        return lastAssistant.content.trim();
+      }
+    } catch (err) {
+      console.error('Failed to load scene state for default prompt:', err);
+    }
+    return fallback;
+  }
+
   async function handleGenerate() {
     const convId = $activeConversationId;
-    if (!convId || isLoading) return;
+    if (!convId || get(sceneGenerations)[convId]?.isLoading) return;
 
-    const prompt = promptText.trim() || 'A detailed scene from the current conversation';
-    isLoading = true;
     isEditingPrompt = false;
+    const prompt = promptText.trim() || await resolveDefaultPrompt(convId);
 
     if (!isTauri) {
-      // Dev mode: simulate generation
-      setTimeout(() => {
-        sceneCaption = `${prompt} — generated (mock)`;
-        isLoading = false;
-      }, 2000);
+      // Dev mode preview (outside Tauri) — no real backend to call.
+      sceneCaption = `${prompt} — generated (mock)`;
       return;
     }
 
     try {
-      const ipc = await import('$lib/services/ipc');
-      const scene = await ipc.generateScene(convId, prompt, {
-        width: 512,
-        height: 512,
-      });
-
-      currentSceneId = scene.id;
-      sceneCaption = scene.caption || scene.prompt;
-      promptText = scene.prompt;
-
-      // Load the generated image
-      const { convertFileSrc } = await import('@tauri-apps/api/core');
-      const absPath = await ipc.getScenePath(scene.file_path);
-      sceneImageUrl = convertFileSrc(absPath);
+      await runSceneGeneration(convId, prompt, buildGenOptions());
     } catch (err) {
-      console.error('Failed to generate scene:', err);
-      sceneCaption = 'Generation failed — check your image provider settings';
+      if (isCancellationError(err)) {
+        sceneCaption = 'Generation stopped';
+      } else {
+        console.error('Failed to generate scene:', err);
+        sceneCaption = 'Generation failed — check your image provider settings';
+      }
     }
-    isLoading = false;
+  }
+
+  /** Distinguishes a user-initiated Stop from an actual failure — without
+   *  this, cancelling looked identical to an error ("check your provider
+   *  settings"), which gave no confirmation Stop had worked at all. */
+  function isCancellationError(err: unknown): boolean {
+    const msg = (err as { message?: string } | null)?.message ?? '';
+    return msg.toLowerCase().includes('cancelled');
   }
 
   async function handleRegenerate() {
     await handleGenerate();
+  }
+
+  let isCancelling = $state(false);
+
+  async function handleStopGeneration() {
+    const convId = $activeConversationId;
+    if (!convId || isCancelling) return;
+    isCancelling = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      await ipc.cancelSceneGeneration(convId);
+    } catch (err) {
+      console.error('Failed to cancel scene generation:', err);
+    }
+    isCancelling = false;
   }
 
   async function handleSave() {
@@ -159,7 +575,14 @@
     {#if isLoading}
       <div class="scene-loading animate-shimmer">
         <Icon name="image" size={24} color="var(--fg-muted)" />
-        <span class="loading-text">Generating...</span>
+        <span class="loading-text">{progressLabel}</span>
+        {#if genState.progress?.is_possible === false}
+          <span class="loading-subtext">No matching worker online right now — still waiting</span>
+        {/if}
+        <button class="stop-gen-btn" onclick={handleStopGeneration} disabled={isCancelling}>
+          <Icon name="x" size={11} color="#F43F5E" />
+          {isCancelling ? 'Stopping…' : 'Stop'}
+        </button>
       </div>
     {:else if activeTab === 'image'}
       <div class="scene-image">
@@ -209,6 +632,97 @@
     <span class="caption-text">{sceneCaption}</span>
   </div>
 
+  <!-- Preset Picker -->
+  <div class="preset-picker">
+    <span class="preset-picker-label">Style Preset</span>
+    {#if presets.length > 0}
+      <select
+        class="preset-picker-select"
+        value={selectedPresetId ?? ''}
+        onchange={(e) => handlePresetChange(e.currentTarget.value)}
+        aria-label="Image generation preset for this chat"
+      >
+        <option value="">Use Default</option>
+        {#each presets as p (p.id)}
+          <option value={p.id}>{p.name}</option>
+        {/each}
+      </select>
+    {:else}
+      <a href="/settings" class="preset-picker-link">Add one in Settings →</a>
+    {/if}
+  </div>
+
+  <!-- Model Override -->
+  <div class="preset-picker">
+    <span class="preset-picker-label">Model</span>
+    {#if enabledImageModels.length > 0}
+      <select
+        class="preset-picker-select"
+        value={modelOverride ?? ''}
+        onchange={(e) => modelOverride = e.currentTarget.value || null}
+        aria-label="Model for this generation"
+      >
+        <option value="">Use Default</option>
+        {#each sortedImageModels as m}
+          <option value={m.model_id}>{isRecommendedModel(m.model_id) ? `★ ${m.model_id}` : m.model_id}</option>
+        {/each}
+      </select>
+    {:else}
+      <a href="/models" class="preset-picker-link">Enable models →</a>
+    {/if}
+  </div>
+
+  <!-- Multi-character portrait conditioning (ComfyUI only) -->
+  {#if providerAdapter === 'comfy_ui'}
+    <div class="preset-picker">
+      <span class="preset-picker-label">Cast Portraits</span>
+      {#if comfyEligibleCast.length === 0}
+        <span class="preset-picker-hint">No confirmed cast portraits yet</span>
+      {/if}
+    </div>
+    {#if comfyEligibleCast.length > 0}
+      <div class="cast-picker-grid">
+        {#each comfyEligibleCast as member (member.characterId)}
+          <label class="cast-chip" class:selected={selectedCastIds.has(member.characterId)}>
+            <input type="checkbox" checked={selectedCastIds.has(member.characterId)}
+              onchange={(e) => toggleCastMember(member.characterId, e.currentTarget.checked)} />
+            {#if castThumbUrls[member.characterId]}
+              <img src={castThumbUrls[member.characterId]} alt={member.name} class="cast-chip-thumb" />
+            {/if}
+            <span class="cast-chip-name">{member.name}</span>
+          </label>
+        {/each}
+      </div>
+      <span class="preset-picker-hint">Sent to your workflow's {'{{CHARACTER_IMAGE_n}}'} tokens, in the order selected here</span>
+    {/if}
+  {:else if avatarPath}
+    <!-- img2img Reference -->
+    <div class="preset-picker">
+      <span class="preset-picker-label">Avatar Reference</span>
+      {#if modelSupportsImg2Img}
+        <label class="ref-toggle">
+          <input type="checkbox" bind:checked={useAvatarReference} />
+          <span>Anchor to {characterName || 'character'}'s avatar</span>
+        </label>
+      {:else}
+        <span class="preset-picker-hint">Not supported by this model</span>
+      {/if}
+    </div>
+    {#if useAvatarReference && modelSupportsImg2Img}
+      <div class="preset-picker">
+        <span class="preset-picker-label">Reference Strength</span>
+        <input
+          class="ref-strength-input"
+          type="range" min="0.2" max="0.9" step="0.05"
+          bind:value={denoisingStrength}
+          aria-label="How closely to match the avatar vs. the new scene"
+        />
+        <span class="ref-strength-value">{denoisingStrength.toFixed(2)}</span>
+      </div>
+      <span class="preset-picker-hint">Lower = closer to the avatar's exact pose/crop, higher = more freedom to match the described scene</span>
+    {/if}
+  {/if}
+
   <!-- Actions -->
   <div class="scene-actions">
     <button class="scene-action-btn" onclick={handleRegenerate} aria-label="Regenerate scene" disabled={isLoading}>
@@ -240,7 +754,7 @@
   }
 
   .scene-title {
-    font-size: var(--text-xs);
+    font-size: clamp(10px, 2.6cqi, 13px);
     font-weight: 600;
     color: var(--fg-muted);
     font-family: var(--font-mono);
@@ -259,11 +773,11 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 5px 10px;
+    padding: clamp(5px, 1.2cqi, 8px) clamp(10px, 2.5cqi, 16px);
     background: transparent;
     border: none;
     color: var(--fg-muted);
-    font-size: var(--text-xs);
+    font-size: clamp(10px, 2.6cqi, 13px);
     font-family: var(--font-body);
     transition: all var(--duration-fast) var(--ease-out);
   }
@@ -282,10 +796,12 @@
     border-radius: 0 7px 7px 0;
   }
 
-  /* Scene Frame */
+  /* Scene Frame — square aspect-ratio (generated images are 512x512) instead
+     of a fixed height, so the frame scales with the panel's width instead of
+     forcing object-fit: cover to crop more of the image as it widens. */
   .scene-frame {
     width: 100%;
-    height: 180px;
+    aspect-ratio: 1;
     border-radius: var(--rounded-md);
     background: var(--surface-card);
     border: 1px solid var(--border-subtle);
@@ -334,7 +850,7 @@
   }
 
   .gen-hint {
-    font-size: var(--text-xs);
+    font-size: clamp(10px, 2.6cqi, 13px);
     color: rgba(255, 255, 255, 0.5);
     font-family: var(--font-mono);
   }
@@ -351,9 +867,42 @@
   }
 
   .loading-text {
-    font-size: var(--text-sm);
+    font-size: clamp(11px, 2.8cqi, 15px);
     color: var(--fg-muted);
     font-family: var(--font-mono);
+    text-align: center;
+    padding: 0 12px;
+  }
+
+  .loading-subtext {
+    font-size: clamp(9px, 2.2cqi, 11px);
+    color: rgba(245, 158, 11, 0.8);
+    text-align: center;
+    padding: 0 16px;
+  }
+
+  .stop-gen-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 4px 10px;
+    border-radius: var(--rounded-sm);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+    background: rgba(244, 63, 94, 0.08);
+    color: #F43F5E;
+    font-size: clamp(9px, 2.2cqi, 11px);
+    font-weight: 600;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .stop-gen-btn:hover:not(:disabled) {
+    background: rgba(244, 63, 94, 0.16);
+  }
+  .stop-gen-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
 
   /* Video placeholder */
@@ -369,7 +918,7 @@
   }
 
   .video-text {
-    font-size: var(--text-sm);
+    font-size: clamp(11px, 2.8cqi, 15px);
     color: var(--fg-muted);
   }
 
@@ -377,12 +926,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: clamp(6px, 1.4cqi, 10px) clamp(12px, 3cqi, 18px);
     border-radius: var(--rounded-md);
     background: var(--accent-tertiary);
     border: none;
     color: #000;
-    font-size: var(--text-sm);
+    font-size: clamp(11px, 2.8cqi, 15px);
     font-weight: 600;
     font-family: var(--font-body);
     margin-top: 4px;
@@ -403,12 +952,12 @@
 
   .prompt-input {
     width: 100%;
-    padding: 8px 10px;
+    padding: clamp(8px, 1.8cqi, 12px) clamp(10px, 2.2cqi, 14px);
     border-radius: var(--rounded-sm);
     border: 1px solid var(--border-subtle);
     background: var(--surface-input);
     color: var(--fg-primary);
-    font-size: var(--text-sm);
+    font-size: clamp(11px, 2.8cqi, 15px);
     font-family: var(--font-body);
     resize: vertical;
     min-height: 40px;
@@ -429,12 +978,12 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 5px 10px;
+    padding: clamp(5px, 1.2cqi, 8px) clamp(10px, 2.4cqi, 15px);
     border-radius: var(--rounded-sm);
     background: var(--accent-primary);
     border: none;
     color: #FFFFFF;
-    font-size: var(--text-xs);
+    font-size: clamp(10px, 2.6cqi, 13px);
     font-weight: 600;
     font-family: var(--font-body);
     transition: all var(--duration-fast) var(--ease-out);
@@ -456,11 +1005,164 @@
   }
 
   .caption-text {
-    font-size: var(--text-xs);
+    font-size: clamp(10px, 2.6cqi, 13px);
     color: var(--fg-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Preset Picker */
+  .preset-picker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .preset-picker-label {
+    font-size: clamp(10px, 2.6cqi, 13px);
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+
+  .preset-picker-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 220px;
+    height: clamp(26px, 6cqi, 32px);
+    padding: 0 clamp(6px, 1.5cqi, 10px);
+    border-radius: 7px;
+    background: rgba(10,10,22,0.7);
+    border: 1px solid var(--border-subtle);
+    color: var(--fg-secondary);
+    font-size: clamp(10px, 2.6cqi, 13px);
+    font-family: var(--font-body);
+    outline: none;
+    cursor: pointer;
+  }
+
+  .preset-picker-select:focus {
+    border-color: var(--accent-primary);
+  }
+
+  .preset-picker-link {
+    font-size: clamp(10px, 2.6cqi, 13px);
+    color: var(--accent-primary);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .preset-picker-link:hover {
+    text-decoration: underline;
+  }
+
+  .preset-picker-hint {
+    font-size: clamp(10px, 2.6cqi, 13px);
+    color: var(--fg-muted);
+    font-style: italic;
+  }
+
+  .ref-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: clamp(10px, 2.6cqi, 13px);
+    color: var(--fg-secondary);
+    cursor: pointer;
+  }
+  .ref-toggle input {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    margin: 0;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    background: rgba(10, 10, 22, 0.7);
+    cursor: pointer;
+    position: relative;
+    transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  }
+  .ref-toggle input:hover {
+    border-color: var(--accent-primary);
+  }
+  .ref-toggle input:checked {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+  .ref-toggle input:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  .ref-toggle input:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+  }
+
+  /* Cast Portrait Picker (ComfyUI) */
+  .cast-picker-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .cast-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 4px;
+    border-radius: var(--rounded-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-card);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+  .cast-chip:hover {
+    border-color: var(--accent-primary);
+  }
+  .cast-chip.selected {
+    border-color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--surface-card));
+  }
+  .cast-chip input[type="checkbox"] {
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+    margin: 0;
+  }
+  .cast-chip-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .cast-chip-name {
+    font-size: clamp(10px, 2.6cqi, 13px);
+    color: var(--fg-secondary);
+    white-space: nowrap;
+  }
+
+  .ref-strength-input {
+    flex: 1;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+  }
+  .ref-strength-value {
+    font-size: clamp(10px, 2.6cqi, 13px);
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    min-width: 2.5em;
+    text-align: right;
   }
 
   /* Actions */
@@ -473,12 +1175,12 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
+    padding: clamp(4px, 1cqi, 7px) clamp(8px, 2cqi, 13px);
     border-radius: var(--rounded-sm);
     border: 1px solid var(--border-subtle);
     background: transparent;
     color: var(--fg-muted);
-    font-size: var(--text-xs);
+    font-size: clamp(10px, 2.6cqi, 13px);
     font-family: var(--font-body);
     transition: all var(--duration-fast) var(--ease-out);
   }

@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — HTML Sanitization
+//   Janus — HTML Sanitization
 // ============================================================
 
 import DOMPurify from 'dompurify';

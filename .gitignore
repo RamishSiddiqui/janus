@@ -8,3 +8,11 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Local tooling / dev-run artifacts
+.rtk/
+tauri_dev_*.log
+*.tmp.*
+
+# Raw design source uploads (extracted copies live under branding/)
+/Janus Dual-Face Logo.zip

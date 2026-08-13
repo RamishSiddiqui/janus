@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Emotion Updater Pipeline
+//   Janus — Emotion Updater Pipeline
 //
 //   After each assistant response completes, infers the character's
 //   new emotional state via a secondary generate_raw LLM call.
@@ -123,7 +123,7 @@ export async function updateEmotionalState(
 
     const state = parseEmotionResponse(raw);
     if (!state) {
-      console.warn('[Mythic] Emotion parser returned null for raw:', raw.slice(0, 100));
+      console.warn('[Janus] Emotion parser returned null for raw:', raw.slice(0, 100));
       return;
     }
 
@@ -138,10 +138,10 @@ export async function updateEmotionalState(
     );
 
     console.debug(
-      `[Mythic] Emotion updated → ${state.dominant_emotion} (mood=${state.mood} trust=${state.trust} arousal=${state.arousal})`
+      `[Janus] Emotion updated → ${state.dominant_emotion} (mood=${state.mood} trust=${state.trust} arousal=${state.arousal})`
     );
   } catch (err) {
     // Never surface emotion errors to the user — it's a background enhancement
-    console.warn('[Mythic] Emotion update failed silently:', err);
+    console.warn('[Janus] Emotion update failed silently:', err);
   }
 }

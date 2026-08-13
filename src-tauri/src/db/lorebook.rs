@@ -82,6 +82,90 @@ impl LorebookRepo {
         Ok(())
     }
 
+    /// Updates a lorebook entry's editable fields. Unlike `toggle` (which
+    /// only flips `enabled`), this covers everything the entry has —
+    /// previously there was no way to change an entry's name/keys/content/
+    /// always_active/priority/insertion_order after creation at all, only
+    /// toggle-on-off or delete-and-recreate.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update(
+        db: &Surreal<Db>,
+        id: &str,
+        name: &str,
+        keys: Vec<String>,
+        content: &str,
+        always_active: bool,
+        priority: i32,
+        insertion_order: i32,
+    ) -> Result<LorebookEntry, MythicError> {
+        let mut result = db
+            .query(
+                "UPDATE type::thing('lorebook_entries', $id) SET \
+                    name = $name, keys = $keys, content = $content, \
+                    always_active = $always_active, priority = $priority, \
+                    insertion_order = $insertion_order",
+            )
+            .bind(("id", id.to_string()))
+            .bind(("name", name.to_string()))
+            .bind(("keys", keys))
+            .bind(("content", content.to_string()))
+            .bind(("always_active", always_active))
+            .bind(("priority", priority))
+            .bind(("insertion_order", insertion_order))
+            .await?;
+
+        let updated: Option<LorebookEntry> = result.take(0)?;
+        updated.ok_or_else(|| MythicError::NotFound(format!("Lorebook entry not found: {}", id)))
+    }
+
+    /// Imports every entry from a parsed Character Card V2 `character_book`
+    /// as real, persisted lorebook entries for `character_id`. Used both by
+    /// PNG import (so a card's built-in lorebook actually participates in
+    /// chat generation, not just a read-only display) and by a manual
+    /// "Import from Character Card" action for characters that were
+    /// imported before this existed.
+    ///
+    /// `constant` (the V2 spec's field name) maps to this app's
+    /// `always_active`. `case_sensitive` has no equivalent here yet — every
+    /// entry's keywords match case-insensitively, same as manually-created
+    /// entries.
+    pub async fn import_from_character_book(
+        db: &Surreal<Db>,
+        character_id: &str,
+        book: &crate::models::character::CharacterBook,
+    ) -> Result<Vec<LorebookEntry>, MythicError> {
+        let mut imported = Vec::with_capacity(book.entries.len());
+        for (i, entry) in book.entries.iter().enumerate() {
+            if entry.keys.is_empty() && !entry.constant {
+                // Neither keyword-triggered nor always-active — would never
+                // fire, so importing it would just be silent dead weight.
+                continue;
+            }
+            let name = entry.name.clone().unwrap_or_else(|| format!("Entry {}", i + 1));
+            let created = Self::create(
+                db, Some(character_id), &name, entry.keys.clone(), &entry.content, entry.constant,
+            ).await?;
+            // `create` always sets enabled=true/priority=10/insertion_order=100 —
+            // carry over the source card's real values in a follow-up update
+            // when they differ, rather than losing that fidelity.
+            let needs_update = entry.priority != 10 || entry.insertion_order != 100;
+            let mut final_entry = if needs_update {
+                Self::update(
+                    db, &created.id.id.to_raw(), &name, entry.keys.clone(), &entry.content,
+                    entry.constant, entry.priority, entry.insertion_order,
+                ).await?
+            } else {
+                created
+            };
+            if !entry.enabled {
+                Self::toggle(db, &final_entry.id.id.to_raw(), false).await?;
+                final_entry.enabled = false;
+            }
+            imported.push(final_entry);
+        }
+        Ok(imported)
+    }
+
     /// Deletes a lorebook entry by ID.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         let _: Option<LorebookEntry> = db.delete(("lorebook_entries", id)).await?;

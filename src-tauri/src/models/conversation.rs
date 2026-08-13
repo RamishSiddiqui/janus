@@ -52,6 +52,11 @@ pub struct Message {
     #[specta(type = String)]
     pub created_at: String,
 
+    /// Chain-of-thought/reasoning trace from a reasoning model, kept separate
+    /// from `content` — rendered as a collapsible "thinking" section rather
+    /// than as if the character said it.
+    #[serde(default)]
+    pub reasoning: Option<String>,
 }
 
 /// A search result from full-text message search.
@@ -110,12 +115,32 @@ pub struct Conversation {
     #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
     #[specta(type = Option<String>)]
     pub branch_point_message_id: Option<Thing>,
+
+    /// This conversation's chosen image-generation preset. When unset, scene
+    /// generation falls back to the global default preset (if any), then to
+    /// the image provider's own config.
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
+    pub image_preset_id: Option<Thing>,
+
+    /// This conversation's chosen persona (the user's stand-in). When unset,
+    /// prompt-building is a complete no-op with respect to persona features
+    /// — no {{user}} substitution, no "About the User" context block.
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[specta(type = Option<String>)]
+    pub persona_id: Option<Thing>,
+
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     #[specta(type = String)]
     pub created_at: String,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     #[specta(type = String)]
     pub updated_at: String,
+
+    /// Set when the conversation is in the Trash; None means it's live.
+    #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+    #[specta(type = Option<String>)]
+    pub deleted_at: Option<String>,
 }
 
 fn default_memory_scope() -> String {
@@ -180,4 +205,16 @@ fn default_top_p() -> f32 {
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
+}
+
+/// A single image attached to a user message, sent as real multimodal
+/// input to vision-capable models (see `providers::unified::convert_messages`).
+/// Stored in `Message.metadata` as `{"attachments": [MessageAttachment, ...]}`
+/// — `relative_path` follows the same app_data_dir-relative convention as
+/// avatars/portraits/scenes, resolved via `crate::error::resolve_within`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageAttachment {
+    pub relative_path: String,
+    pub mime_type: String,
 }

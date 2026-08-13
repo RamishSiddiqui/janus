@@ -5,3 +5,4 @@ pub mod summary;
 pub mod rag;
 pub mod scene_extractor;
 pub mod response_parser;
+pub mod npc;

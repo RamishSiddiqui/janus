@@ -89,6 +89,11 @@ pub struct MemoryGraph {
     pub links: Vec<MemoryLink>,
     /// Conversations that have memories for this character
     pub conversations: Vec<MemoryGraphConversation>,
+    /// Populated (one entry per cast member) for a multi-character
+    /// per-conversation "cast graph"; empty for the single-character graph,
+    /// in which case the frontend falls back to `character_id`/`character_name`.
+    #[serde(default)]
+    pub characters: Vec<MemoryGraphCharacter>,
 }
 
 /// Minimal conversation info for graph rendering.
@@ -100,4 +105,11 @@ pub struct MemoryGraphConversation {
     pub memory_count: i32,
     /// If this conversation was branched from another, this is the parent's ID.
     pub parent_conversation_id: Option<String>,
+}
+
+/// One cast member in a multi-character `MemoryGraph`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct MemoryGraphCharacter {
+    pub id: String,
+    pub name: String,
 }

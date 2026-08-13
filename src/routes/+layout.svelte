@@ -1,5 +1,6 @@
 <script lang="ts">
   import '../app.css';
+  import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
@@ -8,20 +9,39 @@
   import ToastContainer from '$lib/components/ToastContainer.svelte';
   import { settings } from '$lib/stores/settings';
   import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
+  import { initFrontendLogCapture } from '$lib/stores/logs';
   import type { NavItem } from '$lib/types';
 
   let { children } = $props();
-  
+
   let sidebarCollapsed = $state(false);
+
+  // As early as possible so nothing logged during the rest of this page's
+  // own initialization is missed.
+  if (browser) initFrontendLogCapture();
+
+  // The cold-start splash (#janus-splash in app.html) renders as plain HTML
+  // before Svelte even boots, so there's no blank-frame flash while the
+  // webview spins up. Once this layout has actually mounted — real content
+  // is ready behind it — fade it out and drop it from the DOM.
+  onMount(() => {
+    const splash = document.getElementById('janus-splash');
+    if (!splash) return;
+    splash.classList.add('janus-splash-hidden');
+    setTimeout(() => splash.remove(), 400);
+  });
 
   // Navigation items for the sidebar
   const navItems = [
     { path: '/',          label: 'Chats',     icon: 'message-circle' },
     { path: '/gallery',   label: 'Characters', icon: 'users' },
+    { path: '/personas',  label: 'Personas',  icon: 'user' },
     { path: '/memories',  label: 'Memories',  icon: 'brain' },
     { path: '/providers',  label: 'Providers',  icon: 'plug',   group: 'ai-studio' },
     { path: '/models',     label: 'LLM Models',     icon: 'layers', group: 'ai-studio' },
+    { path: '/media-models', label: 'Image/Video Models', icon: 'image', group: 'ai-studio' },
     { path: '/embedders',  label: 'Embedding Models',  icon: 'zap',    group: 'ai-studio' },
+    { path: '/trash',     label: 'Trash',     icon: 'trash-2' },
     { path: '/settings',  label: 'Settings',  icon: 'settings' },
   ] as const satisfies readonly NavItem[];
 

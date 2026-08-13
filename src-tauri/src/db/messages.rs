@@ -111,6 +111,17 @@ impl MessageRepo {
         updated.ok_or_else(|| MythicError::NotFound(format!("Message not found: {}", id)))
     }
 
+    /// Stores the chain-of-thought/reasoning trace alongside a message,
+    /// separate from `update()` since it's set once at stream completion
+    /// rather than edited by the user like `content` is.
+    pub async fn set_reasoning(db: &Surreal<Db>, id: &str, reasoning: &str) -> Result<(), MythicError> {
+        db.query("UPDATE type::thing('messages', $id) SET reasoning = $reasoning")
+            .bind(("id", id.to_string()))
+            .bind(("reasoning", reasoning.to_string()))
+            .await?;
+        Ok(())
+    }
+
     /// Deletes a message.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         let result: Option<Message> = db.delete(("messages", id)).await?;

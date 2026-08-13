@@ -13,7 +13,7 @@ use std::sync::Mutex as StdMutex;
 use tauri::Manager;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 /// A single in-flight streaming (or non-streaming) generation, tracked so
 /// `cancel_generation` can abort it and — for the streaming case — persist
@@ -43,6 +43,14 @@ pub struct AppState {
     /// another message while `isStreaming` is true), so conversation_id is
     /// a sufficient key.
     pub active_generations: Arc<AsyncMutex<HashMap<String, GenerationHandle>>>,
+
+    /// In-flight AI Horde scene generations keyed by conversation_id. Unlike
+    /// chat generation (a spawned task we can `.abort()` outright), the
+    /// scene poll loop runs inline in the command's own async fn — so
+    /// cancellation is a flag the loop checks each tick instead, letting it
+    /// still issue a best-effort DELETE to free the worker slot before
+    /// returning a "cancelled" error.
+    pub active_scene_generations: Arc<AsyncMutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -60,6 +68,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::characters::list_characters,
             commands::characters::update_character,
             commands::characters::delete_character,
+            commands::characters::trash_character,
+            commands::characters::restore_character,
+            commands::characters::upload_character_avatar,
             commands::character_state::get_character_state,
             commands::character_state::upsert_character_state,
             commands::conversations::create_conversation,
@@ -67,6 +78,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::conversations::list_conversations,
             commands::conversations::count_conversations,
             commands::conversations::delete_conversation,
+            commands::conversations::trash_conversation,
+            commands::conversations::restore_conversation,
             commands::conversations::get_conversation_messages,
             commands::conversations::set_active_message,
             commands::conversations::update_conversation,
@@ -94,6 +107,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::lorebook::create_lorebook_entry,
             commands::lorebook::toggle_lorebook_entry,
             commands::lorebook::delete_lorebook_entry,
+            commands::lorebook::update_lorebook_entry,
+            commands::lorebook::import_character_book_entries,
+            commands::lorebook::generate_character_lorebook,
             commands::memories::list_memories,
             commands::memories::create_memory,
             commands::memories::update_memory,
@@ -104,12 +120,20 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::memories::unlink_memory,
             commands::memories::get_memory_graph,
             commands::scenes::generate_scene,
+            commands::scenes::list_scene_cast_members,
+            commands::scenes::cancel_scene_generation,
             commands::scenes::list_scenes,
             commands::scenes::delete_scene,
             commands::scenes::get_scene_path,
             commands::scene_states::get_scene_state,
             commands::scene_states::upsert_scene_state,
             commands::scene_states::delete_scene_state,
+            commands::image_presets::list_image_presets,
+            commands::image_presets::create_image_preset,
+            commands::image_presets::update_image_preset,
+            commands::image_presets::delete_image_preset,
+            commands::image_presets::set_default_image_preset,
+            commands::conversations::set_conversation_image_preset,
             commands::conversation_characters::list_conversation_characters,
             commands::conversation_characters::add_conversation_character,
             commands::conversation_characters::remove_conversation_character,
@@ -121,26 +145,63 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::import::import_character_card,
             commands::import::get_avatar_path,
             commands::chat::send_message,
+            commands::chat::upload_message_attachment,
+            commands::chat::upload_message_attachment_bytes,
             commands::chat::retry_failed_message,
             commands::chat::regenerate_message,
             commands::chat::generate_raw,
             commands::chat::get_context_stats,
             commands::chat::cancel_generation,
+            commands::chat::extract_initial_scene,
+            commands::npc::list_conversation_npcs,
+            commands::npc::promote_npc_to_gallery,
+            commands::npc::confirm_npc,
+            commands::npc::mark_npc_reviewed,
+            commands::npc::refresh_character_profile,
+            commands::npc::debug_run_npc_detection,
+            commands::npc::generate_npc_portrait,
+            commands::npc::approve_npc_portrait,
+            commands::npc::reject_npc_portrait,
+            commands::npc::get_cast_memory_graph,
+            // Personas
+            commands::personas::create_persona,
+            commands::personas::get_persona,
+            commands::personas::list_personas,
+            commands::personas::update_persona,
+            commands::personas::delete_persona,
+            commands::personas::trash_persona,
+            commands::personas::restore_persona,
+            commands::personas::generate_persona_portrait,
+            commands::import::import_persona_card,
+            commands::conversations::set_conversation_persona,
+            // Trash
+            commands::trash::list_trash,
+            commands::trash::empty_trash,
+            commands::logs::get_backend_logs,
+            commands::logs::get_backend_log_path,
         ])
+}
+
+/// Recursively copies a directory tree. Fallback for the identifier-rename
+/// data migration when `std::fs::rename` fails (e.g. old and new app data
+/// dirs land on different volumes, where a rename can't just repoint a
+/// directory entry and must actually move bytes).
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let dest_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest_path)?;
+        } else {
+            std::fs::copy(entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize tracing/logging
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("mythic=debug,info")),
-        )
-        .init();
-
-    info!("Starting Mythic v{}", env!("CARGO_PKG_VERSION"));
-
     let specta_builder = specta_builder();
 
     #[cfg(debug_assertions)]
@@ -164,6 +225,71 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
+
+            // One-time migration: the app identifier changed from com.mythic.app
+            // to com.janus.app as part of the Mythic -> Janus rebrand, which
+            // moves app_data_dir to a brand-new, empty path on every platform
+            // (Roaming/<identifier> on Windows, Application Support/<identifier>
+            // on macOS, XDG data dir/<identifier> on Linux). Without this, every
+            // conversation/character/lorebook entry a user already has would
+            // silently appear to vanish on first launch under the new name —
+            // nothing is actually lost, the app would just be looking in the
+            // wrong folder. Runs once: only fires when the new dir doesn't
+            // exist yet and the old one does; a no-op for fresh installs and
+            // for anyone who's already migrated.
+            if !app_data_dir.exists() {
+                if let Some(data_root) = app_data_dir.parent() {
+                    let old_dir = data_root.join("com.mythic.app");
+                    if old_dir.exists() {
+                        if let Err(e) = std::fs::rename(&old_dir, &app_data_dir) {
+                            // Cross-device rename (e.g. old dir on a different
+                            // volume) fails with an OS error rather than
+                            // silently losing data — fall back to a recursive
+                            // copy so the migration still succeeds.
+                            eprintln!("Rename migration failed ({e}), falling back to copy");
+                            if let Err(copy_err) = copy_dir_recursive(&old_dir, &app_data_dir) {
+                                eprintln!("Data migration copy also failed: {copy_err}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Initialize tracing/logging — dual output to stdout (dev console,
+            // unchanged from before) AND a persisted file under the app data
+            // dir, since a packaged GUI app has no visible console at all and
+            // every hidden-bug hunt this session ended up needing whatever got
+            // printed to a terminal that happened to still be open. The file
+            // is what backs the Settings > Logging tab and its Export button.
+            // Must happen before `db::init_database` — that's the first thing
+            // that actually logs anything.
+            fn build_log_filter() -> EnvFilter {
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("janus_lib=debug,info"))
+            }
+            let logs_dir = app_data_dir.join("logs");
+            std::fs::create_dir_all(&logs_dir).expect("Failed to create logs directory");
+            let file_appender = tracing_appender::rolling::RollingFileAppender::new(
+                tracing_appender::rolling::Rotation::NEVER,
+                &logs_dir,
+                "janus.log",
+            );
+            // `non_blocking` hands back a writer plus a guard that must stay
+            // alive for the whole process — its drop flushes and stops the
+            // background writer thread. Handing it to Tauri's managed state
+            // keeps it alive for exactly the app's lifetime without a leak.
+            let (file_writer, log_guard) = tracing_appender::non_blocking(file_appender);
+            tracing_subscriber::registry()
+                .with(tracing_subscriber::fmt::layer().with_filter(build_log_filter()))
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_writer(file_writer)
+                        .with_ansi(false)
+                        .with_filter(build_log_filter()),
+                )
+                .init();
+            app_handle.manage(log_guard);
+
+            info!("Starting Janus v{}", env!("CARGO_PKG_VERSION"));
 
             // Initialize the database using Tauri's own async runtime.
             // IMPORTANT: We must NOT create a temporary tokio::runtime::Runtime here.
@@ -210,7 +336,7 @@ pub fn run() {
 
             // Build a shared HTTP client for all providers
             let http_client = reqwest::Client::builder()
-                .user_agent(format!("Mythic/{}", env!("CARGO_PKG_VERSION")))
+                .user_agent(format!("Janus/{}", env!("CARGO_PKG_VERSION")))
                 // Only set a connect timeout — NOT an overall timeout.
                 // Streaming SSE responses can legitimately run for minutes;
                 // an overall timeout would kill them mid-stream.
@@ -223,11 +349,12 @@ pub fn run() {
                 db,
                 http_client,
                 active_generations: Arc::new(AsyncMutex::new(HashMap::new())),
+                active_scene_generations: Arc::new(AsyncMutex::new(HashMap::new())),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
 
-            info!("Mythic initialized successfully");
+            info!("Janus initialized successfully");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -239,12 +366,17 @@ pub fn run() {
             commands::characters::list_characters,
             commands::characters::update_character,
             commands::characters::delete_character,
+            commands::characters::trash_character,
+            commands::characters::restore_character,
+            commands::characters::upload_character_avatar,
             // Conversations
             commands::conversations::create_conversation,
             commands::conversations::get_conversation,
             commands::conversations::list_conversations,
             commands::conversations::count_conversations,
             commands::conversations::delete_conversation,
+            commands::conversations::trash_conversation,
+            commands::conversations::restore_conversation,
             commands::conversations::get_conversation_messages,
             commands::conversations::set_active_message,
             commands::conversations::update_conversation,
@@ -271,16 +403,21 @@ pub fn run() {
             commands::providers::list_enabled_models,
             // Chat
             commands::chat::send_message,
+            commands::chat::upload_message_attachment,
+            commands::chat::upload_message_attachment_bytes,
             commands::chat::retry_failed_message,
             commands::chat::regenerate_message,
             commands::chat::generate_raw,
             commands::chat::get_context_stats,
             commands::chat::cancel_generation,
+            commands::chat::extract_initial_scene,
             // Import
             commands::import::import_character_card,
             commands::import::get_avatar_path,
             // Scenes
             commands::scenes::generate_scene,
+            commands::scenes::list_scene_cast_members,
+            commands::scenes::cancel_scene_generation,
             commands::scenes::list_scenes,
             commands::scenes::delete_scene,
             commands::scenes::get_scene_path,
@@ -289,6 +426,9 @@ pub fn run() {
             commands::lorebook::create_lorebook_entry,
             commands::lorebook::toggle_lorebook_entry,
             commands::lorebook::delete_lorebook_entry,
+            commands::lorebook::update_lorebook_entry,
+            commands::lorebook::import_character_book_entries,
+            commands::lorebook::generate_character_lorebook,
             // Memories
             commands::memories::list_memories,
             commands::memories::create_memory,
@@ -308,6 +448,13 @@ pub fn run() {
             commands::scene_states::get_scene_state,
             commands::scene_states::upsert_scene_state,
             commands::scene_states::delete_scene_state,
+            // Image Presets
+            commands::image_presets::list_image_presets,
+            commands::image_presets::create_image_preset,
+            commands::image_presets::update_image_preset,
+            commands::image_presets::delete_image_preset,
+            commands::image_presets::set_default_image_preset,
+            commands::conversations::set_conversation_image_preset,
             // Conversation Characters
             commands::conversation_characters::list_conversation_characters,
             commands::conversation_characters::add_conversation_character,
@@ -318,9 +465,36 @@ pub fn run() {
             commands::embeddings::get_embedding_index_status,
             commands::embeddings::rebuild_embedding_index,
             commands::embeddings::backfill_missing_embeddings,
+            // NPCs
+            commands::npc::list_conversation_npcs,
+            commands::npc::promote_npc_to_gallery,
+            commands::npc::confirm_npc,
+            commands::npc::mark_npc_reviewed,
+            commands::npc::refresh_character_profile,
+            commands::npc::debug_run_npc_detection,
+            commands::npc::generate_npc_portrait,
+            commands::npc::approve_npc_portrait,
+            commands::npc::reject_npc_portrait,
+            commands::npc::get_cast_memory_graph,
+            // Personas
+            commands::personas::create_persona,
+            commands::personas::get_persona,
+            commands::personas::list_personas,
+            commands::personas::update_persona,
+            commands::personas::delete_persona,
+            commands::personas::trash_persona,
+            commands::personas::restore_persona,
+            commands::personas::generate_persona_portrait,
+            commands::import::import_persona_card,
+            commands::conversations::set_conversation_persona,
+            // Trash
+            commands::trash::list_trash,
+            commands::trash::empty_trash,
+            commands::logs::get_backend_logs,
+            commands::logs::get_backend_log_path,
         ])
         .run(tauri::generate_context!())
-        .expect("Error while running Mythic");
+        .expect("Error while running Janus");
 }
 
 /// Basic app metadata surfaced to the frontend (About screen, etc.).
@@ -336,7 +510,7 @@ pub struct AppInfo {
 #[specta::specta]
 fn get_app_info() -> AppInfo {
     AppInfo {
-        name: "Mythic".to_string(),
+        name: "Janus".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         description: env!("CARGO_PKG_DESCRIPTION").to_string(),
     }

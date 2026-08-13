@@ -1,13 +1,13 @@
 [package]
-name = "mythic"
+name = "janus"
 version = "0.1.0"
 description = "Open-source LLM-powered role-playing desktop app with image and video generation"
-authors = ["Mythic Contributors"]
+authors = ["Janus Contributors"]
 edition = "2021"
-default-run = "mythic"
+default-run = "janus"
 
 [lib]
-name = "mythic_lib"
+name = "janus_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -32,7 +32,7 @@ tokio = { version = "1", features = ["full"] }
 rig-core = { version = "0.37", features = ["derive", "image"] }
 
 # HTTP client (for non-LLM HTTP calls: image gen, health checks)
-reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "stream", "multipart", "rustls-tls"], default-features = false }
 
 # Database
 surrealdb = { version = "2", features = ["kv-rocksdb"] }
@@ -51,6 +51,7 @@ anyhow = "1"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 # Image processing (for character card PNG embedding)
 image = "0.25"
@@ -73,6 +74,15 @@ tokio-stream = "0.1"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.dev]
+# This crate compiles staticlib+cdylib+rlib together with full debug info
+# (the tauri-cli default), which pushes LLVM codegen's peak memory high
+# enough to reliably OOM-crash on memory-constrained machines. Logging
+# (tracing, Settings > Logging) is this app's primary debugging tool, not a
+# source-level debugger, so trading rich debug symbols for a build that
+# actually completes is the right call here.
+debug = 0
 
 [profile.release]
 opt-level = "z"       # Optimize for binary size

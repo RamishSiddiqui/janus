@@ -1,12 +1,13 @@
 // ============================================================
-//   Mythic — Chat State Store
+//   Janus — Chat State Store
 //   Bridges frontend state with Tauri backend via IPC
 // ============================================================
 
 import { writable, derived, get } from 'svelte/store';
 import type { Message, ConversationPreview } from '$lib/types';
 import { browser } from '$app/environment';
-import { error as toastError, undoableDelete } from '$lib/stores/toast';
+import { error as toastError, addToast } from '$lib/stores/toast';
+import { humanizeProviderError } from '$lib/utils/providerError';
 import { settings } from '$lib/stores/settings';
 import { parseCharacterData } from '$lib/utils/character';
 import type { CharacterState } from '$lib/services/ipc';
@@ -14,6 +15,22 @@ import { PresentationBuffer, charAccentColor, type CharMeta, type PresentationCa
 
 // Detect if we're running inside Tauri (desktop app) or browser (dev mode)
 const isTauri = browser && '__TAURI_INTERNALS__' in window;
+
+/** Extracts `{ relativePath, mimeType }[]` from a stored message's raw
+ *  `metadata` JSON (`{"attachments": [...]}`, see backend `MessageAttachment`)
+ *  — used when reloading conversation history so attachment thumbnails
+ *  persist across a reload, not just on the freshly-sent optimistic message. */
+function parseAttachments(metadata: unknown): { relativePath: string; mimeType: string }[] | undefined {
+  const raw = (metadata as { attachments?: unknown } | null | undefined)?.attachments;
+  if (!Array.isArray(raw)) return undefined;
+  const parsed = raw.filter(
+    (a): a is { relativePath: string; mimeType: string } =>
+      typeof a === 'object' && a !== null &&
+      typeof (a as Record<string, unknown>).relativePath === 'string' &&
+      typeof (a as Record<string, unknown>).mimeType === 'string'
+  );
+  return parsed.length > 0 ? parsed : undefined;
+}
 
 /// ── Presentation Buffer Factory ──
 // Creates a PresentationBuffer per stream with callbacks wired to the messages store.
@@ -45,6 +62,20 @@ function createPresentationCallbacks(): PresentationCallbacks {
         return next;
       });
     },
+    appendReasoning(messageId: string, text: string) {
+      messages.update(msgs => {
+        const idx = msgs.findIndex(m => m.id === messageId);
+        if (idx < 0) return msgs;
+        const msg = msgs[idx];
+        const updated = { ...msg, reasoning: (msg.reasoning ?? '') + text };
+        const next = msgs.slice();
+        next[idx] = updated;
+        return next;
+      });
+    },
+    markThinkingDone(messageId: string) {
+      messages.update(msgs => msgs.map(m => m.id === messageId ? { ...m, isThinking: false } : m));
+    },
     finalizeMessage(messageId: string) {
       messages.update(msgs =>
         msgs.map(m => m.id === messageId ? { ...m, isStreaming: false } : m)
@@ -72,6 +103,22 @@ let activeBuffer: PresentationBuffer | null = null;
 
 // In-memory cache for avatar blob URLs to avoid re-reading filesystem on every load
 const avatarCache = new Map<string, string>();
+
+/** Resolves an avatar path to a blob: URL, reading the file only once per
+ *  path (cached indefinitely — avatars don't change without a new path). */
+async function resolveCachedAvatarUrl(avatarPath: string | null): Promise<string | null> {
+  if (!avatarPath) return null;
+  const cached = avatarCache.get(avatarPath);
+  if (cached) return cached;
+  try {
+    const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+    const url = await loadFileAsBlobUrl(avatarPath);
+    avatarCache.set(avatarPath, url);
+    return url;
+  } catch {
+    return null;
+  }
+}
 
 // Active conversation ID
 export const activeConversationId = writable<string>('');
@@ -174,34 +221,34 @@ export async function loadConversations() {
   conversationPage.set(0);
   const ipc = await import('$lib/services/ipc');
   try {
-    console.log('[Mythic] loadConversations: calling listConversations...');
+    console.log('[Janus] loadConversations: calling listConversations...');
     let convos;
     try {
       convos = await ipc.listConversations(PAGE_SIZE, 0);
-      console.log('[Mythic] loadConversations: listConversations OK, got', convos.length, 'conversations');
+      console.log('[Janus] loadConversations: listConversations OK, got', convos.length, 'conversations');
     } catch (listErr) {
-      console.error('[Mythic] loadConversations: listConversations FAILED:', listErr);
-      console.error('[Mythic] listErr type:', typeof listErr, 'keys:', listErr ? Object.keys(listErr as object) : 'null');
+      console.error('[Janus] loadConversations: listConversations FAILED:', listErr);
+      console.error('[Janus] listErr type:', typeof listErr, 'keys:', listErr ? Object.keys(listErr as object) : 'null');
       throw listErr;
     }
 
-    console.log('[Mythic] loadConversations: calling countConversations...');
+    console.log('[Janus] loadConversations: calling countConversations...');
     let count;
     try {
       count = await ipc.countConversations();
-      console.log('[Mythic] loadConversations: countConversations OK, count=', count);
+      console.log('[Janus] loadConversations: countConversations OK, count=', count);
     } catch (countErr) {
-      console.error('[Mythic] loadConversations: countConversations FAILED:', countErr);
-      console.error('[Mythic] countErr type:', typeof countErr, 'keys:', countErr ? Object.keys(countErr as object) : 'null');
+      console.error('[Janus] loadConversations: countConversations FAILED:', countErr);
+      console.error('[Janus] countErr type:', typeof countErr, 'keys:', countErr ? Object.keys(countErr as object) : 'null');
       throw countErr;
     }
 
     totalConversations.set(count);
     hasMoreConversations.set(convos.length < count);
 
-    console.log('[Mythic] loadConversations: resolving previews...');
+    console.log('[Janus] loadConversations: resolving previews...');
     const previews = await resolveConversationPreviews(convos);
-    console.log('[Mythic] loadConversations: previews resolved, count=', previews.length);
+    console.log('[Janus] loadConversations: previews resolved, count=', previews.length);
     conversations.set(previews);
   } catch (err) {
     console.error('Failed to load conversations:', err);
@@ -248,22 +295,7 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         try {
           const char = await ipc.getCharacter(conv.character_id);
           characterName = char.name;
-          // Resolve avatar image (use cache if available)
-          if (char.avatar_path) {
-            if (avatarCache.has(char.avatar_path)) {
-              avatarUrl = avatarCache.get(char.avatar_path)!;
-            } else {
-              try {
-                const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-                const bytes = await readFile(char.avatar_path, { baseDir: BaseDirectory.AppData });
-                const ext = char.avatar_path.split('.').pop()?.toLowerCase() || 'jpeg';
-                const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-                const blob = new Blob([bytes], { type: mime });
-                avatarUrl = URL.createObjectURL(blob);
-                avatarCache.set(char.avatar_path, avatarUrl);
-              } catch { /* avatar file missing */ }
-            }
-          }
+          avatarUrl = await resolveCachedAvatarUrl(char.avatar_path);
         } catch {
           // Character may have been deleted
         }
@@ -277,22 +309,7 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         for (const sharedId of sharedIds) {
           try {
             const char = await ipc.getCharacter(sharedId);
-            let sharedAvatarUrl: string | null = null;
-            if (char.avatar_path) {
-              if (avatarCache.has(char.avatar_path)) {
-                sharedAvatarUrl = avatarCache.get(char.avatar_path)!;
-              } else {
-                try {
-                  const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-                  const bytes = await readFile(char.avatar_path, { baseDir: BaseDirectory.AppData });
-                  const ext = char.avatar_path.split('.').pop()?.toLowerCase() || 'jpeg';
-                  const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-                  const blob = new Blob([bytes], { type: mime });
-                  sharedAvatarUrl = URL.createObjectURL(blob);
-                  avatarCache.set(char.avatar_path, sharedAvatarUrl);
-                } catch { /* missing */ }
-              }
-            }
+            const sharedAvatarUrl = await resolveCachedAvatarUrl(char.avatar_path);
             const charData = parseCharacterData(char.data);
             const charDesc = (charData.description as string) || '';
             additionalCharacters.push({
@@ -579,6 +596,8 @@ export async function loadMessages(conversationId: string) {
         // Cross-conversation branch siblings
         siblingConversationIds: convSibling?.ids,
         siblingConversationIndex: convSibling?.index,
+        reasoning: m.reasoning ?? null,
+        attachments: parseAttachments(m.metadata),
       };
     });
 
@@ -627,27 +646,13 @@ export async function loadMessages(conversationId: string) {
     // and historical messages can resolve character_avatar_url instantly.
     try {
       const metaMap = new Map<string, CharMeta>();
-      const resolveAvatar = async (avatarPath: string | null): Promise<string | null> => {
-        if (!avatarPath) return null;
-        if (avatarCache.has(avatarPath)) return avatarCache.get(avatarPath)!;
-        try {
-          const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-          const bytes = await readFile(avatarPath, { baseDir: BaseDirectory.AppData });
-          const ext = avatarPath.split('.').pop()?.toLowerCase() || 'jpeg';
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-          const blob = new Blob([bytes], { type: mime });
-          const url = URL.createObjectURL(blob);
-          avatarCache.set(avatarPath, url);
-          return url;
-        } catch { return null; }
-      };
 
       // Primary character
       const primaryCharId = conv.character_id;
       if (primaryCharId) {
         try {
           const char = await ipc.getCharacter(primaryCharId);
-          const avUrl = await resolveAvatar(char.avatar_path);
+          const avUrl = await resolveCachedAvatarUrl(char.avatar_path);
           metaMap.set(primaryCharId, {
             id: primaryCharId,
             name: char.name,
@@ -664,7 +669,7 @@ export async function loadMessages(conversationId: string) {
           if (cc.character_id && !metaMap.has(cc.character_id)) {
             try {
               const char = await ipc.getCharacter(cc.character_id);
-              const avUrl = await resolveAvatar(char.avatar_path);
+              const avUrl = await resolveCachedAvatarUrl(char.avatar_path);
               metaMap.set(cc.character_id, {
                 id: cc.character_id,
                 name: char.name,
@@ -761,26 +766,71 @@ export async function cancelGeneration() {
   }
 }
 
+/**
+ * Client-side safety net for chat streams. The backend now gives up on a
+ * stalled provider on its own (see RigProvider::generate_stream's
+ * STREAM_EVENT_TIMEOUT) and emits a real 'error' event when it does — but
+ * this guards against the rarer case where that event never reaches the
+ * frontend at all (a dropped Tauri event, a lost listener). Without it,
+ * `isStreaming` would stay true forever with nothing for the user to do but
+ * restart the app. Call `.reset()` on every stream event received (or once
+ * right after registering the listener, to start the clock); if
+ * `timeoutMs` passes with total silence, `onTimeout` fires once. Set well
+ * past the backend's own 90s timeout so a real backend error always wins
+ * the race and produces the normal, more specific error message.
+ */
+function createStreamWatchdog(onTimeout: () => void, timeoutMs = 105_000) {
+  let handle: ReturnType<typeof setTimeout> | undefined;
+  return {
+    reset() {
+      if (handle) clearTimeout(handle);
+      handle = setTimeout(onTimeout, timeoutMs);
+    },
+    clear() {
+      if (handle) { clearTimeout(handle); handle = undefined; }
+    },
+  };
+}
+
 /** Sends a user message and initiates streaming response from the backend. */
-export async function sendMessage(conversationId: string, content: string, model?: string) {
+export async function sendMessage(
+  conversationId: string,
+  content: string,
+  model?: string,
+  attachments?: { relativePath: string; mimeType: string }[],
+) {
   if (!isTauri) {
     // Dev mode — just add user message locally
     messages.update(msgs => [...msgs, {
       id: crypto.randomUUID(),
       role: 'user' as const,
       content,
+      attachments,
     }]);
     return;
   }
 
   const ipc = await import('$lib/services/ipc');
   const tempUserId = crypto.randomUUID();
+  // Declared outside the try block (not `const unlisten = ...` inside it) so
+  // the catch block below can reach it too — if the backend call throws
+  // AFTER the listener was registered, the listener must still be torn down,
+  // or it stays subscribed to the shared chat-stream channel forever and
+  // double-processes the next real generation in this conversation once the
+  // user fixes whatever failed and retries (visibly duplicating the
+  // streamed reply).
+  let unlisten: (() => void) | undefined;
+  // Same reasoning as `unlisten` above — declared outside try so the catch
+  // block can silence a pending watchdog timer if sendMessage itself throws
+  // after the listener (and watchdog) were already set up.
+  let watchdog: ReturnType<typeof createStreamWatchdog> | undefined;
   try {
     // Add user message to local state immediately for responsiveness
     const userMsg: Message = {
       id: tempUserId,
       role: 'user' as const,
       content,
+      attachments,
     };
     messages.update(msgs => [...msgs, userMsg]);
     fullActivePath.push(userMsg);
@@ -793,16 +843,34 @@ export async function sendMessage(conversationId: string, content: string, model
     activeBuffer = createStreamBuffer();
     const buffer = activeBuffer;
 
+    watchdog = createStreamWatchdog(() => {
+      console.error('[Janus] Stream watchdog fired — no event from backend for 105s');
+      buffer.reset();
+      toastError('AI response timed out — no reply from the backend. Please try again.');
+      const timeoutMsgId = crypto.randomUUID();
+      const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
+      messages.update(msgs => [...msgs, timeoutMsg]);
+      fullActivePath.push(timeoutMsg);
+      currentRenderCount++;
+      const realUserMsgId = get(messages).filter(m => m.role === 'user').pop()?.id;
+      lastStreamError.set({ conversationId, lastUserContent: content, userMessageId: realUserMsgId });
+      isStreaming.set(false);
+      unlisten?.();
+    });
+
     // Set up stream listener BEFORE sending
-    const unlisten = await ipc.onChatStream((event) => {
+    unlisten = await ipc.onChatStream((event) => {
       // Guard: if the user switched to a different conversation, discard stale events
       if (get(activeConversationId) !== conversationId) {
-        if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten();
+        if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten?.();
         return;
       }
+      watchdog?.reset();
 
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
+      } else if (event.event_type === 'reasoning') {
+        buffer.pushReasoning(event.message_id, event.content);
       } else if (event.event_type === 'cancelled') {
         // User stopped generation early — finalize like 'done' (lock in
         // whatever streamed so far, clear streaming state), but skip the
@@ -813,8 +881,9 @@ export async function sendMessage(conversationId: string, content: string, model
         for (let i = 0; i < fullActivePath.length; i++) {
           if (fullActivePath[i].isStreaming) fullActivePath[i] = { ...fullActivePath[i], isStreaming: false };
         }
+        watchdog?.clear();
         isStreaming.set(false);
-        unlisten();
+        unlisten?.();
       } else if (event.event_type === 'done') {
         // Finalize the presentation buffer — flushes remaining content,
         // marks all active bubbles as done streaming
@@ -826,8 +895,9 @@ export async function sendMessage(conversationId: string, content: string, model
         messages.update(msgs =>
           msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
         );
+        watchdog?.clear();
         isStreaming.set(false);
-        unlisten();
+        unlisten?.();
 
         // --- Auto-save memories pipeline ---
         // The per-conversation memory_scope is the single source of truth.
@@ -851,10 +921,10 @@ export async function sendMessage(conversationId: string, content: string, model
                 event.content,     // assistant's response
               );
               if (saved > 0) {
-                console.debug(`[Mythic] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'} (scope: ${conv.memory_scope})`);
+                console.debug(`[Janus] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'} (scope: ${conv.memory_scope})`);
               }
             } catch (err) {
-              console.warn('[Mythic] Auto-memory extraction failed:', err);
+              console.warn('[Janus] Auto-memory extraction failed:', err);
             }
           })();
         }
@@ -904,7 +974,7 @@ export async function sendMessage(conversationId: string, content: string, model
                 }
               }));
             } catch (err) {
-              console.warn('[Mythic] Emotion update failed:', err);
+              console.warn('[Janus] Emotion update failed:', err);
             }
           })();
         }
@@ -912,7 +982,7 @@ export async function sendMessage(conversationId: string, content: string, model
       } else if (event.event_type === 'error') {
         buffer.reset();
         console.error('Stream error:', event.content);
-        toastError(`AI response failed: ${event.content}`);
+        toastError(`AI response failed: ${humanizeProviderError(event.content)}`);
         // Mark or create the assistant message as failed so UI shows the error bubble
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
@@ -934,10 +1004,12 @@ export async function sendMessage(conversationId: string, content: string, model
         // Grab it from the current messages array to pass to retry
         const realUserMsgId = get(messages).filter(m => m.role === 'user').pop()?.id;
         lastStreamError.set({ conversationId, lastUserContent: content, userMessageId: realUserMsgId });
+        watchdog?.clear();
         isStreaming.set(false);
-        unlisten();
+        unlisten?.();
       }
     });
+    watchdog?.reset();
 
     // Send the message — backend will stream/generate response via events
     const currentSettings = get(settings);
@@ -946,6 +1018,7 @@ export async function sendMessage(conversationId: string, content: string, model
       currentSettings.systemPrompt || undefined,
       currentSettings.streamingEnabled,
       currentSettings.postHistoryInstructions || undefined,
+      attachments,
     );
 
     // Replace temp user message ID with real one from backend
@@ -957,6 +1030,8 @@ export async function sendMessage(conversationId: string, content: string, model
     if (fpIdx >= 0) fullActivePath[fpIdx] = { ...fullActivePath[fpIdx], id: result.user_message_id };
   } catch (err) {
     console.error('Failed to send message:', err);
+    watchdog?.clear();
+    unlisten?.();
     const msg = (err as any)?.message ?? 'Failed to send message. Is a provider configured?';
     toastError(msg);
     // Mark the user message as failed so UI shows a retry button
@@ -999,21 +1074,39 @@ export async function retryLastMessage(model?: string) {
     activeBuffer = createStreamBuffer();
     const buffer = activeBuffer;
 
+    const watchdog = createStreamWatchdog(() => {
+      console.error('[Janus] Stream watchdog fired — no event from backend for 105s');
+      buffer.reset();
+      toastError('AI response timed out — no reply from the backend. Please try again.');
+      const timeoutMsgId = crypto.randomUUID();
+      const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
+      messages.update(msgs => [...msgs, timeoutMsg]);
+      fullActivePath.push(timeoutMsg);
+      currentRenderCount++;
+      lastStreamError.set({ conversationId: err.conversationId, lastUserContent: err.lastUserContent, userMessageId: err.userMessageId });
+      isStreaming.set(false);
+      unlisten();
+    });
+
     // Set up stream listener
     const unlisten = await ipc.onChatStream((event) => {
       if (get(activeConversationId) !== err.conversationId) {
         if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten();
         return;
       }
+      watchdog.reset();
 
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
+      } else if (event.event_type === 'reasoning') {
+        buffer.pushReasoning(event.message_id, event.content);
       } else if (event.event_type === 'cancelled') {
         buffer.finalize();
         messages.update(msgs => msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
         for (let i = 0; i < fullActivePath.length; i++) {
           if (fullActivePath[i].isStreaming) fullActivePath[i] = { ...fullActivePath[i], isStreaming: false };
         }
+        watchdog.clear();
         isStreaming.set(false);
         unlisten();
       } else if (event.event_type === 'done') {
@@ -1022,11 +1115,12 @@ export async function retryLastMessage(model?: string) {
         messages.update(msgs =>
           msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
         );
+        watchdog.clear();
         isStreaming.set(false);
         unlisten();
       } else if (event.event_type === 'error') {
         buffer.reset();
-        toastError(`AI response failed: ${event.content}`);
+        toastError(`AI response failed: ${humanizeProviderError(event.content)}`);
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
@@ -1044,10 +1138,12 @@ export async function retryLastMessage(model?: string) {
         else { fullActivePath.push(assistantMsg); currentRenderCount++; }
 
         lastStreamError.set({ conversationId: err.conversationId, lastUserContent: err.lastUserContent, userMessageId: err.userMessageId });
+        watchdog.clear();
         isStreaming.set(false);
         unlisten();
       }
     });
+    watchdog.reset();
 
     try {
       const currentSettings = get(settings);
@@ -1059,6 +1155,8 @@ export async function retryLastMessage(model?: string) {
       );
     } catch (retryErr) {
       console.error('Retry failed:', retryErr);
+      watchdog.clear();
+      unlisten();
       toastError('Retry failed — please try again');
       isStreaming.set(false);
     }
@@ -1079,30 +1177,66 @@ export async function regenerateMessage(conversationId: string, messageId: strin
   const ipc = await import('$lib/services/ipc');
   isStreaming.set(true);
 
+  // Declared outside the try (see the matching comment in `sendMessage`) so
+  // the catch block can still tear the listener down if `ipc.regenerateMessage`
+  // throws after the listener was already registered.
+  let unlisten: (() => void) | undefined;
+  let watchdog: ReturnType<typeof createStreamWatchdog> | undefined;
   try {
     // Create a fresh PresentationBuffer for this regeneration stream
     activeBuffer = createStreamBuffer();
     const buffer = activeBuffer;
 
+    // Same ancestor-walk the 'error' branch below uses, so a watchdog
+    // timeout surfaces the Retry banner on the right user message too.
+    function findAncestorUserMessageId(): string | undefined {
+      let ancestor = fullActivePath.find(m => m.id === messageId);
+      while (ancestor && ancestor.role !== 'user') {
+        ancestor = ancestor.parent_id ? fullActivePath.find(m => m.id === ancestor!.parent_id) : undefined;
+      }
+      return ancestor?.id;
+    }
+
+    watchdog = createStreamWatchdog(() => {
+      console.error('[Janus] Stream watchdog fired — no event from backend for 105s');
+      buffer.reset();
+      toastError('Regeneration timed out — no reply from the backend. Please try again.');
+      const timeoutMsgId = crypto.randomUUID();
+      const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
+      messages.update(msgs => [...msgs, timeoutMsg]);
+      fullActivePath.push(timeoutMsg);
+      currentRenderCount++;
+      const ancestorId = findAncestorUserMessageId();
+      if (ancestorId) {
+        lastStreamError.set({ conversationId, lastUserContent: '', userMessageId: ancestorId });
+      }
+      isStreaming.set(false);
+      unlisten?.();
+    });
+
     // Set up stream listener BEFORE triggering regeneration
-    const unlisten = await ipc.onChatStream((event) => {
+    unlisten = await ipc.onChatStream((event) => {
+      watchdog?.reset();
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
+      } else if (event.event_type === 'reasoning') {
+        buffer.pushReasoning(event.message_id, event.content);
       } else if (event.event_type === 'done' || event.event_type === 'cancelled') {
         buffer.finalize();
         // Buffer handles all message creation/content — just clear streaming state
         messages.update(msgs =>
           msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
         );
+        watchdog?.clear();
         isStreaming.set(false);
-        unlisten();
+        unlisten?.();
         // Reload messages to get sibling info (also re-syncs fullActivePath
         // from the DB, which already has the cancelled partial content saved)
         loadMessages(conversationId);
       } else if (event.event_type === 'error') {
         buffer.reset();
         console.error('Regeneration stream error:', event.content);
-        toastError(`Regeneration failed: ${event.content}`);
+        toastError(`Regeneration failed: ${humanizeProviderError(event.content)}`);
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
@@ -1127,18 +1261,17 @@ export async function regenerateMessage(conversationId: string, messageId: strin
         // regenerated message to the user message that prompted it (its
         // direct parent in single-character chats; possibly further up
         // through sibling assistant segments in multi-character turns).
-        let ancestor = fullActivePath.find(m => m.id === messageId);
-        while (ancestor && ancestor.role !== 'user') {
-          ancestor = ancestor.parent_id ? fullActivePath.find(m => m.id === ancestor!.parent_id) : undefined;
-        }
-        if (ancestor) {
-          lastStreamError.set({ conversationId, lastUserContent: '', userMessageId: ancestor.id });
+        const ancestorId = findAncestorUserMessageId();
+        if (ancestorId) {
+          lastStreamError.set({ conversationId, lastUserContent: '', userMessageId: ancestorId });
         }
 
+        watchdog?.clear();
         isStreaming.set(false);
-        unlisten();
+        unlisten?.();
       }
     });
+    watchdog?.reset();
 
     const currentSettings = get(settings);
     await ipc.regenerateMessage(
@@ -1149,6 +1282,8 @@ export async function regenerateMessage(conversationId: string, messageId: strin
     );
   } catch (err) {
     console.error('Failed to regenerate:', err);
+    watchdog?.clear();
+    unlisten?.();
     const msg = (err as any)?.message ?? 'Failed to regenerate response';
     toastError(msg);
     isStreaming.set(false);
@@ -1156,12 +1291,12 @@ export async function regenerateMessage(conversationId: string, messageId: strin
 }
 
 /** Creates a new conversation for a character and navigates to it. */
-export async function createConversation(characterId: string, title?: string) {
+export async function createConversation(characterId: string, title?: string, personaId?: string) {
   if (!isTauri) return;
 
   const ipc = await import('$lib/services/ipc');
   try {
-    const conv = await ipc.createConversation(characterId, title);
+    const conv = await ipc.createConversation(characterId, title, personaId);
     activeConversationId.set(conv.id);
     messages.set([]);
     resetPaginationState();
@@ -1171,7 +1306,16 @@ export async function createConversation(characterId: string, title?: string) {
       try {
         const char = await ipc.getCharacter(characterId);
         const data = parseCharacterData(char.data);
-        const greeting = data.first_mes?.trim();
+        let greeting = data.first_mes?.trim();
+        if (greeting) {
+          try {
+            const personaName = personaId ? (await ipc.getPersona(personaId)).name : null;
+            const { substituteUserMacro } = await import('$lib/utils/personaMacros');
+            greeting = substituteUserMacro(greeting, personaName);
+          } catch (err) {
+            console.warn('Could not resolve persona for greeting substitution:', err);
+          }
+        }
         if (greeting) {
           // Create the greeting as an assistant message
           const greetingMsg = await ipc.createMessage(conv.id, 'assistant', greeting);
@@ -1184,6 +1328,12 @@ export async function createConversation(characterId: string, title?: string) {
           messages.set([greetingMessage]);
           fullActivePath = [greetingMessage];
           currentRenderCount = 1;
+
+          // The greeting never goes through send_message's streaming path,
+          // so it'd otherwise never get scene-extracted — fire this off
+          // without awaiting, it just needs to happen eventually.
+          ipc.extractInitialScene(conv.id, greeting).catch(err =>
+            console.warn('Could not extract initial scene:', err));
         }
       } catch (err) {
         console.warn('Could not send greeting:', err);
@@ -1197,35 +1347,24 @@ export async function createConversation(characterId: string, title?: string) {
   }
 }
 
-/** Deletes a conversation and refreshes the list. */
-export async function deleteConversation(id: string) {
+/**
+ * Moves a conversation to Trash immediately — a real, durable backend
+ * soft-delete, not a client-side timer. The Undo toast's action calls
+ * `restoreConversation`, which is just as immediate; there's no window
+ * during which the delete could be silently lost if the app reloads or
+ * crashes (unlike the old deferred-commit design this replaces). Permanent
+ * removal only happens from the Trash page.
+ */
+export async function deleteConversationWithUndo(id: string, label: string) {
   if (!isTauri) return;
 
   const ipc = await import('$lib/services/ipc');
   try {
-    await ipc.deleteConversation(id);
-
-    // If we deleted the active conversation, clear it
-    if (get(activeConversationId) === id) {
-      activeConversationId.set('');
-      messages.set([]);
-      resetPaginationState();
-    }
-
-    await loadConversations();
+    await ipc.trashConversation(id);
   } catch (err) {
-    console.error('Failed to delete conversation:', err);
+    toastError(`Failed to delete "${label}"`);
+    return;
   }
-}
-
-/**
- * Deletes a conversation with a ~5.5s Undo window: the conversation is
- * optimistically hidden from the list immediately, but the actual backend
- * delete doesn't run until the window elapses without Undo being clicked —
- * so nothing is actually lost until then.
- */
-export function deleteConversationWithUndo(id: string, label: string) {
-  if (!isTauri) return;
 
   conversations.update(list => list.filter(c => c.id !== id));
   const wasActive = get(activeConversationId) === id;
@@ -1235,17 +1374,22 @@ export function deleteConversationWithUndo(id: string, label: string) {
     resetPaginationState();
   }
 
-  undoableDelete(
-    `Deleted "${label}"`,
-    () => deleteConversation(id),
-    () => {
-      loadConversations();
-      if (wasActive) {
-        activeConversationId.set(id);
-        loadMessages(id);
+  addToast(`Moved "${label}" to Trash`, 'info', 5500, {
+    label: 'Undo',
+    onClick: async () => {
+      try {
+        const ipc = await import('$lib/services/ipc');
+        await ipc.restoreConversation(id);
+        await loadConversations();
+        if (wasActive) {
+          activeConversationId.set(id);
+          loadMessages(id);
+        }
+      } catch {
+        toastError('Failed to restore conversation');
       }
     },
-  );
+  });
 }
 
 /** Switches to a sibling message at the same branch point.

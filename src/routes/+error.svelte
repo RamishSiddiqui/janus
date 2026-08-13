@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-  <title>Error — Mythic</title>
+  <title>Error — Janus</title>
 </svelte:head>
 
 <div class="error-page">

@@ -15,7 +15,7 @@ pub struct LorebookEntry {
     pub id: Thing,
 
     /// The character this entry belongs to (None = global lorebook)
-    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
     #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
 

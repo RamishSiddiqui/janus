@@ -14,7 +14,7 @@ fn specta_registry_exports_valid_typescript() {
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let out_path = dir.join("bindings.ts");
 
-    mythic_lib::specta_builder()
+    janus_lib::specta_builder()
         .export(specta_typescript::Typescript::default(), &out_path)
         .expect("specta export should succeed");
 

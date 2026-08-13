@@ -15,12 +15,12 @@
 //! vector-similarity half requires a live embedding provider and is
 //! exercised indirectly through those code paths already.
 
-use mythic_lib::db::characters::CharacterRepo;
-use mythic_lib::db::conversations::ConversationRepo;
-use mythic_lib::db::embeddings::EmbeddingRepo;
-use mythic_lib::db::memories::MemoryRepo;
-use mythic_lib::db::messages::MessageRepo;
-use mythic_lib::db::init_database;
+use janus_lib::db::characters::CharacterRepo;
+use janus_lib::db::conversations::ConversationRepo;
+use janus_lib::db::embeddings::EmbeddingRepo;
+use janus_lib::db::memories::MemoryRepo;
+use janus_lib::db::messages::MessageRepo;
+use janus_lib::db::init_database;
 
 async fn test_db() -> (surrealdb::Surreal<surrealdb::engine::local::Db>, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
@@ -40,10 +40,10 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
         .await
         .expect("create character");
 
-    let conv_a = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv A"))
+    let conv_a = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv A"), None)
         .await
         .expect("create conversation A");
-    let conv_b = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv B"))
+    let conv_b = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv B"), None)
         .await
         .expect("create conversation B");
 
@@ -102,7 +102,7 @@ async fn search_messages_finds_exact_term() {
     let character = CharacterRepo::create(&db, "Elara", serde_json::json!({"name": "Elara"}))
         .await
         .expect("create character");
-    let conv = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv"))
+    let conv = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv"), None)
         .await
         .expect("create conversation");
 
@@ -138,13 +138,13 @@ async fn keyword_search_memories_finds_exact_term() {
         .await
         .expect("create memory 2");
 
-    let hits = EmbeddingRepo::keyword_search_memories(&db, &char_id, "thunderstorms", 10)
+    let hits = EmbeddingRepo::keyword_search_memories(&db, &char_id, "thunderstorms", 10, None)
         .await
         .expect("keyword memory search should not error");
     assert_eq!(hits.len(), 1);
     assert!(hits[0].content.contains("thunderstorms"));
 
-    let no_hits = EmbeddingRepo::keyword_search_memories(&db, &char_id, "spaceship", 10)
+    let no_hits = EmbeddingRepo::keyword_search_memories(&db, &char_id, "spaceship", 10, None)
         .await
         .expect("keyword memory search for absent term should not error");
     assert_eq!(no_hits.len(), 0);

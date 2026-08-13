@@ -30,6 +30,11 @@ pub enum ProviderAdapter {
     HuggingFace,
     /// Local ComfyUI instance for image/video generation
     ComfyUi,
+    /// AI Horde (formerly Stable Horde) — free, crowdsourced, asynchronous
+    /// image generation cluster. Works anonymously (no signup) via the
+    /// well-known "0000000000" API key, though registered keys get queue
+    /// priority through the kudos system.
+    AiHorde,
     /// Anthropic API (Claude models)
     Anthropic,
     /// Google Gemini API
@@ -76,7 +81,11 @@ pub struct ProviderConfig {
     /// For Ollama: `{ "base_url": "http://localhost:11434" }`
     /// For OpenRouter: `{ "api_key": "sk-...", "model": "meta-llama/llama-4-maverick" }`
     /// For OpenAI-compat: `{ "base_url": "...", "api_key": "...", "model": "..." }`
-    /// For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }`
+    /// For ComfyUI: `{ "base_url": "http://localhost:8188", "workflow": "..." }` — `workflow`
+    /// is the user's own exported (API-format) workflow JSON, stored as a raw string and
+    /// parsed at generation time. It may contain `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`,
+    /// `{{SEED}}`, `{{WIDTH}}`, `{{HEIGHT}}`, and `{{CHARACTER_IMAGE_1..N}}` placeholder tokens —
+    /// see `providers::comfyui::substitute_placeholders`.
     #[specta(type = crate::models::JsonValue)]
     pub config: serde_json::Value,
 
@@ -128,6 +137,16 @@ pub struct ImageGenParams {
 
     /// Random seed (None = random)
     pub seed: Option<u64>,
+
+    /// AI Horde's `nsfw` request flag — NOT "make this explicit," but "don't
+    /// route to/enforce the safety filter that blindly censors anything a
+    /// worker's classifier flags as NSFW-ish." With this false, ordinary
+    /// non-explicit character descriptions (e.g. a card's own physical
+    /// description) can trip an overzealous classifier and come back as a
+    /// black "CENSORED" placeholder instead of the actual image. Sourced
+    /// from the user's own comfort-level setting, not hardcoded.
+    #[serde(default)]
+    pub allow_nsfw: bool,
 }
 
 impl Default for ImageGenParams {
@@ -140,8 +159,22 @@ impl Default for ImageGenParams {
             steps: default_steps(),
             guidance_scale: default_guidance(),
             seed: None,
+            allow_nsfw: false,
         }
     }
+}
+
+/// A single cast member's portrait, handed to a ComfyUI generation so it can
+/// be uploaded and substituted into whichever `{{CHARACTER_IMAGE_n}}` token(s)
+/// the user's workflow references — see `providers::comfyui`. `relative_path`
+/// is relative to `app_data_dir` (e.g. a character's own `avatar_path`), the
+/// same convention avatars/portraits already use everywhere else.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterImageRef {
+    pub character_id: String,
+    pub character_name: String,
+    pub relative_path: String,
 }
 
 fn default_image_width() -> u32 {

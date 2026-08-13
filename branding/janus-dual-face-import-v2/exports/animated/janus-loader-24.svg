@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-70 -92 140 184" width="24" height="32"><defs><linearGradient id="jsplit" gradientUnits="userSpaceOnUse" x1="0" y1="-80" x2="0" y2="80">
+<stop offset="0" stop-color="#CDA15F"></stop><stop offset="0.485" stop-color="#CDA15F"></stop>
+<stop offset="0.515" stop-color="#9075F2"></stop><stop offset="1" stop-color="#9075F2"></stop>
+</linearGradient></defs><g transform="scale(0.92)"><g fill="none" stroke-width="26" stroke-linecap="round">
+<path stroke="url(#jsplit)" opacity="0.22" d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
+<path class="s" stroke="url(#jsplit)" pathLength="100" stroke-dasharray="62 200" d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
+</g></g></svg>

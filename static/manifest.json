@@ -1,11 +1,11 @@
 {
-  "name": "Mythic",
-  "short_name": "Mythic",
+  "name": "Janus",
+  "short_name": "Janus",
   "description": "Open source AI roleplay platform with multimodal generation",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0A0A0A",
-  "theme_color": "#0A0A0A",
+  "background_color": "#0A0A13",
+  "theme_color": "#0A0A13",
   "orientation": "any",
   "categories": ["entertainment", "utilities"],
   "icons": [

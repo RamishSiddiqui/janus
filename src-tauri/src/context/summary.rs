@@ -88,7 +88,7 @@ pub async fn generate_rolling_summary(
         ..Default::default()
     };
 
-    match provider.generate(model_id, &messages, &gen_params).await {
+    match provider.generate(model_id, &messages, &[], &gen_params).await {
         Ok(summary_text) => {
             let token_count = count_tokens(&summary_text) as u32;
             let covered_count = evicted_messages.len() as u32;

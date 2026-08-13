@@ -564,7 +564,7 @@
     z-index: 910;
     display: flex;
     flex-direction: column;
-    font-family: var(--font-body, 'Inter', -apple-system, sans-serif);
+    font-family: var(--font-body, 'Raleway', -apple-system, sans-serif);
     animation: panelSlideIn 380ms cubic-bezier(0.32, 0.72, 0, 1) both;
   }
 
@@ -713,7 +713,7 @@
     border-radius: 8px;
     cursor: pointer;
     transition: all 180ms ease-out;
-    font-family: var(--font-body, 'Inter', -apple-system, sans-serif);
+    font-family: var(--font-body, 'Raleway', -apple-system, sans-serif);
   }
 
   .group-picker-trigger:hover {
@@ -782,7 +782,7 @@
     background: none;
     cursor: pointer;
     transition: all 150ms;
-    font-family: var(--font-body, 'Inter', -apple-system, sans-serif);
+    font-family: var(--font-body, 'Raleway', -apple-system, sans-serif);
     text-align: left;
   }
 
@@ -1053,7 +1053,7 @@
     border-radius: 10px;
     cursor: pointer;
     transition: all 200ms;
-    font-family: var(--font-body, 'Inter', sans-serif);
+    font-family: var(--font-body, 'Raleway', sans-serif);
     text-align: left;
   }
 
@@ -1128,7 +1128,7 @@
     border-radius: 8px;
     cursor: pointer;
     transition: all 150ms;
-    font-family: var(--font-body, 'Inter', sans-serif);
+    font-family: var(--font-body, 'Raleway', sans-serif);
     text-align: left;
   }
 
@@ -1202,7 +1202,7 @@
     border-radius: 8px;
     cursor: pointer;
     transition: all 200ms ease-out;
-    font-family: var(--font-body, 'Inter', sans-serif);
+    font-family: var(--font-body, 'Raleway', sans-serif);
     position: relative;
   }
 
@@ -1246,7 +1246,7 @@
     color: #fff;
     font-size: 13px;
     font-weight: 600;
-    font-family: var(--font-body, 'Inter', sans-serif);
+    font-family: var(--font-body, 'Raleway', sans-serif);
     cursor: pointer;
     transition: all 200ms;
     box-shadow: 0 4px 16px rgba(139, 92, 246, 0.25);
@@ -1289,7 +1289,7 @@
     color: #6b6b8a;
     font-size: 12px;
     font-weight: 600;
-    font-family: var(--font-body, 'Inter', sans-serif);
+    font-family: var(--font-body, 'Raleway', sans-serif);
     cursor: pointer;
     transition: all 200ms;
   }

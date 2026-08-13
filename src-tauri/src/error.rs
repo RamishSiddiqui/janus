@@ -40,6 +40,39 @@ pub enum MythicError {
     Cancelled,
 }
 
+/// Retries a fallible SurrealDB operation when it reports a retryable
+/// read/write transaction conflict — SurrealDB's RocksDB engine throws
+/// "Failed to commit transaction due to a read or write conflict. This
+/// transaction can be retried" when two transactions touch overlapping
+/// keys concurrently. Observed on cascade-heavy deletes (a conversation
+/// delete's cascade event touches many tables) when the user deletes
+/// several rows in quick succession — without this, the second delete
+/// silently failed with no retry and no user-visible error beyond a log
+/// line, leaving the row (and everything it referenced) still in place.
+/// Retries up to 2 extra times with a short backoff; any other error, or
+/// exhausting the retries, returns immediately.
+pub async fn retry_on_conflict<T, F, Fut>(mut op: F) -> Result<T, surrealdb::Error>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, surrealdb::Error>>,
+{
+    let mut attempt = 0u32;
+    loop {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                let retryable = e.to_string().contains("can be retried");
+                if retryable && attempt < 2 {
+                    attempt += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(120 * attempt as u64)).await;
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+}
+
 /// Validates that a string field doesn't exceed the maximum allowed length.
 /// Returns `Ok(())` if valid, or `Err(MythicError::Validation(...))` if too long.
 pub fn validate_string_length(field: &str, value: &str, max_len: usize) -> Result<(), MythicError> {
@@ -95,6 +128,39 @@ pub fn resolve_within(base: &std::path::Path, relative: &str) -> Result<std::pat
     }
 
     Ok(joined)
+}
+
+/// Truncates `s` to at most `max_bytes` bytes, backing off to the nearest
+/// preceding UTF-8 character boundary rather than potentially landing
+/// mid-character. Plain byte-index slicing (`&s[..max_bytes]`) panics the
+/// instant `max_bytes` falls inside a multi-byte character — routine in
+/// roleplay prose full of em dashes, curly quotes, accented names, and
+/// emoji — and with this crate's release profile set to `panic = "abort"`,
+/// that panic takes down the whole process, not just the calling task.
+pub fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Same as [`truncate_at_char_boundary`] but keeps the *last* `max_bytes`
+/// bytes instead of the first — for "most recent N characters of context"
+/// truncation, where landing mid-character at the start of the slice would
+/// panic just as readily as at the end.
+pub fn truncate_tail_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut start = s.len() - max_bytes;
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
 }
 
 /// Make MythicError serializable for Tauri IPC.

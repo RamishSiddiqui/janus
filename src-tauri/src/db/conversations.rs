@@ -8,57 +8,67 @@ use crate::models::conversation::{Conversation, Message, SearchResult, MessageRo
 pub struct ConversationRepo;
 
 impl ConversationRepo {
-    /// Creates a new conversation, optionally linked to a character.
+    /// Creates a new conversation, optionally linked to a character and/or a
+    /// persona (the user's own stand-in for this conversation).
     pub async fn create(
         db: &Surreal<Db>,
         character_id: Option<&str>,
         title: Option<&str>,
+        persona_id: Option<&str>,
     ) -> Result<Conversation, MythicError> {
         let id = uuid::Uuid::new_v4().to_string();
         let title = title.unwrap_or("New Chat");
 
-        let query = if let Some(char_id) = character_id {
-            let mut result = db
-                .query("CREATE type::thing('conversations', $id) CONTENT {
-                    title: $title,
-                    character_id: type::thing('characters', $char_id),
-                }")
-                .bind(("id", id.clone()))
-                .bind(("title", title.to_string()))
-                .bind(("char_id", char_id.to_string()))
-                .await?;
-            let conv: Option<Conversation> = result.take(0)?;
-            conv
-        } else {
-            let mut result = db
-                .query("CREATE type::thing('conversations', $id) CONTENT {
-                    title: $title,
-                }")
-                .bind(("id", id.clone()))
-                .bind(("title", title.to_string()))
-                .await?;
-            let conv: Option<Conversation> = result.take(0)?;
-            conv
-        };
+        let mut fields = vec!["title: $title".to_string()];
+        if character_id.is_some() {
+            fields.push("character_id: type::thing('characters', $char_id)".to_string());
+        }
+        if persona_id.is_some() {
+            fields.push("persona_id: type::thing('personas', $persona_id)".to_string());
+        }
+        let query_str = format!(
+            "CREATE type::thing('conversations', $id) CONTENT {{ {} }}",
+            fields.join(", ")
+        );
 
-        query.ok_or_else(|| MythicError::DatabaseOp("Failed to create conversation".into()))
+        let mut q = db.query(query_str).bind(("id", id.clone())).bind(("title", title.to_string()));
+        if let Some(char_id) = character_id {
+            q = q.bind(("char_id", char_id.to_string()));
+        }
+        if let Some(pid) = persona_id {
+            q = q.bind(("persona_id", pid.to_string()));
+        }
+        let mut result = q.await?;
+        let conv: Option<Conversation> = result.take(0)?;
+
+        conv.ok_or_else(|| MythicError::DatabaseOp("Failed to create conversation".into()))
     }
 
-    /// Gets a single conversation by ID.
+    /// Gets a single (non-trashed) conversation by ID. Trash/restore operate
+    /// on the row directly via UPDATE and never call this, so excluding
+    /// trashed conversations here doesn't affect them — everything else
+    /// (chat generation, the get_conversation command, the NPC pipeline)
+    /// should treat a trashed conversation as gone, the same as list()/
+    /// count() already do, not silently keep it fully usable.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<Conversation, MythicError> {
         let conversation: Option<Conversation> = db.select(("conversations", id)).await?;
-        conversation
-            .ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))
+        let conversation = conversation
+            .ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))?;
+        if conversation.deleted_at.is_some() {
+            return Err(MythicError::NotFound(format!("Conversation not found: {}", id)));
+        }
+        Ok(conversation)
     }
 
     /// Lists conversations with pagination, ordered by most recently updated.
+    /// Excludes trashed conversations — see `list_trashed` for those.
     pub async fn list(
         db: &Surreal<Db>,
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Conversation>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM conversations ORDER BY updated_at DESC LIMIT $limit START $offset")
+            .query("SELECT * FROM conversations WHERE deleted_at IS NONE ORDER BY updated_at DESC LIMIT $limit START $offset")
             .bind(("limit", limit))
             .bind(("offset", offset))
             .await?;
@@ -66,10 +76,10 @@ impl ConversationRepo {
         Ok(conversations)
     }
 
-    /// Returns the total number of conversations (for pagination).
+    /// Returns the total number of non-trashed conversations (for pagination).
     pub async fn count(db: &Surreal<Db>) -> Result<u32, MythicError> {
         let mut result = db
-            .query("SELECT count() FROM conversations GROUP ALL")
+            .query("SELECT count() FROM conversations WHERE deleted_at IS NONE GROUP ALL")
             .await?;
         // SurrealDB returns [{ count: N }] from GROUP ALL
         let count_row: Option<serde_json::Value> = result.take(0)?;
@@ -79,9 +89,16 @@ impl ConversationRepo {
         Ok(count as u32)
     }
 
-    /// Deletes a conversation by ID. Cascade is handled by SurrealDB events.
+    /// Permanently deletes a conversation by ID. Cascade is handled by
+    /// SurrealDB events. Only ever called from the Trash view — normal
+    /// "Delete" from the chat list should call `trash` instead.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        let result: Option<Conversation> = db.delete(("conversations", id)).await?;
+        // Cascade event touches many tables (messages, memories, scenes,
+        // cast rows, ...) — retried on a transaction conflict rather than
+        // failing silently when the user deletes several conversations in
+        // quick succession. See `retry_on_conflict`.
+        let result: Option<Conversation> =
+            crate::error::retry_on_conflict(|| async { db.delete(("conversations", id)).await }).await?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -89,6 +106,39 @@ impl ConversationRepo {
             )));
         }
         Ok(())
+    }
+
+    /// Soft-deletes a conversation — moves it to Trash. The row (and every
+    /// cascade-linked row) stays fully intact; only `deleted_at` changes, so
+    /// this is instant and durable the moment it returns, unlike the old
+    /// client-side "undo window" that lost the delete entirely if the app
+    /// reloaded before the timer fired.
+    pub async fn trash(db: &Surreal<Db>, id: &str) -> Result<Conversation, MythicError> {
+        let mut result = db
+            .query("UPDATE type::thing('conversations', $id) SET deleted_at = time::now()")
+            .bind(("id", id.to_string()))
+            .await?;
+        let updated: Option<Conversation> = result.take(0)?;
+        updated.ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))
+    }
+
+    /// Restores a trashed conversation.
+    pub async fn restore(db: &Surreal<Db>, id: &str) -> Result<Conversation, MythicError> {
+        let mut result = db
+            .query("UPDATE type::thing('conversations', $id) SET deleted_at = NONE")
+            .bind(("id", id.to_string()))
+            .await?;
+        let updated: Option<Conversation> = result.take(0)?;
+        updated.ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))
+    }
+
+    /// Lists trashed conversations, most recently trashed first.
+    pub async fn list_trashed(db: &Surreal<Db>) -> Result<Vec<Conversation>, MythicError> {
+        let mut result = db
+            .query("SELECT * FROM conversations WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC")
+            .await?;
+        let conversations: Vec<Conversation> = result.take(0)?;
+        Ok(conversations)
     }
 
     /// Retrieves all messages in a conversation, ordered chronologically.
@@ -175,6 +225,62 @@ impl ConversationRepo {
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("msg_id", message_id.to_string()))
             .await?;
+        let updated: Option<Conversation> = result.take(0)?;
+        if updated.is_none() {
+            return Err(MythicError::NotFound(format!(
+                "Conversation not found: {}",
+                conversation_id
+            )));
+        }
+        Ok(())
+    }
+
+    /// Sets (or clears, if `preset_id` is `None`) this conversation's chosen
+    /// image-generation preset.
+    pub async fn set_image_preset(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+        preset_id: Option<&str>,
+    ) -> Result<(), MythicError> {
+        let mut result = match preset_id {
+            Some(pid) => db
+                .query("UPDATE type::thing('conversations', $conv_id) SET image_preset_id = type::thing('image_presets', $preset_id), updated_at = time::now()")
+                .bind(("conv_id", conversation_id.to_string()))
+                .bind(("preset_id", pid.to_string()))
+                .await?,
+            None => db
+                .query("UPDATE type::thing('conversations', $conv_id) SET image_preset_id = NONE, updated_at = time::now()")
+                .bind(("conv_id", conversation_id.to_string()))
+                .await?,
+        };
+        let updated: Option<Conversation> = result.take(0)?;
+        if updated.is_none() {
+            return Err(MythicError::NotFound(format!(
+                "Conversation not found: {}",
+                conversation_id
+            )));
+        }
+        Ok(())
+    }
+
+    /// Sets (or clears, if `persona_id` is `None`) this conversation's
+    /// chosen persona.
+    pub async fn set_persona(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+        persona_id: Option<&str>,
+    ) -> Result<(), MythicError> {
+        let mut result = match persona_id {
+            Some(pid) => db
+                .query("UPDATE type::thing('conversations', $conv_id) SET persona_id = type::thing('personas', $persona_id), updated_at = time::now()")
+                .bind(("conv_id", conversation_id.to_string()))
+                .bind(("persona_id", pid.to_string()))
+                .await?,
+            None => db
+                .query("UPDATE type::thing('conversations', $conv_id) SET persona_id = NONE, updated_at = time::now()")
+                .bind(("conv_id", conversation_id.to_string()))
+                .await?,
+        };
         let updated: Option<Conversation> = result.take(0)?;
         if updated.is_none() {
             return Err(MythicError::NotFound(format!(
@@ -459,6 +565,7 @@ impl ConversationRepo {
                     search::score(4) AS relevance
                 FROM messages
                 WHERE content @4@ $query
+                    AND conversation_id.deleted_at IS NONE
                 ORDER BY relevance DESC
                 LIMIT $limit")
             .bind(("query", query.to_string()))

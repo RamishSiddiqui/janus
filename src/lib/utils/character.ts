@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Character Data Parser
+//   Janus — Character Data Parser
 //   Safely extracts CharacterData whether it comes as a
 //   JSON string or a native object from SurrealDB/Tauri IPC.
 // ============================================================

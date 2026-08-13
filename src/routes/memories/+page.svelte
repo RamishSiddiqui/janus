@@ -4,7 +4,9 @@
   import { onMount } from 'svelte';
   import MemoryGraph from '$lib/components/MemoryGraph.svelte';
   import MemoryTimeline from '$lib/components/MemoryTimeline.svelte';
+  import TimelineFilter from '$lib/components/TimelineFilter.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import SplitHeading from '$lib/components/SplitHeading.svelte';
   import { success, error as toastError } from '$lib/stores/toast';
   import { parseCharacterData } from '$lib/utils/character';
   import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
@@ -29,6 +31,32 @@
   let canonCount = $derived(graphData?.memories?.filter(m => m.is_canon).length ?? 0);
   let linkCount = $derived(graphData?.links?.length ?? 0);
   let convCount = $derived(graphData?.conversations?.length ?? 0);
+
+  // ── Timeline/graph visibility filter — shared between both views so
+  // switching Graph <-> Timeline doesn't lose the current selection. ──
+  let allConvOptions = $derived((graphData?.conversations ?? []).map(c => ({ id: c.id, title: c.title })));
+  let selectedConvIds = $state<Set<string>>(new Set());
+  let knownConvIdsKey = $state('');
+
+  $effect(() => {
+    const key = allConvOptions.map(c => c.id).sort().join('|');
+    if (key !== knownConvIdsKey) {
+      knownConvIdsKey = key;
+      selectedConvIds = new Set(allConvOptions.map(c => c.id));
+    }
+  });
+
+  function toggleConvFilter(id: string): void {
+    const next = new Set(selectedConvIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    selectedConvIds = next;
+  }
+
+  function toggleConvFilterAll(): void {
+    selectedConvIds = selectedConvIds.size === allConvOptions.length
+      ? new Set()
+      : new Set(allConvOptions.map(c => c.id));
+  }
 
   // Selected characters info
   let selectedChars = $derived(characters.filter(c => selectedCharIds.includes(c.id)));
@@ -154,18 +182,15 @@
 <svelte:window on:mousedown={handleClickOutside} />
 
 <svelte:head>
-  <title>Memory Management — Mythic</title>
+  <title>Memory Management — Janus</title>
 </svelte:head>
 
 <div class="page">
   <!-- === Top Bar === -->
   <header class="topbar">
     <div class="topbar-left">
-      <div class="page-icon">
-        <Icon name="brain" size={18} />
-      </div>
       <div class="page-title-group">
-        <h1>Memory Multiverse</h1>
+        <h1><SplitHeading text="Memory Multiverse" /></h1>
         <p class="subtitle">Character memories across conversation timelines</p>
       </div>
     </div>
@@ -290,6 +315,12 @@
         <span class="stat-value link-glow">{linkCount}</span>
         <span class="stat-label">Links</span>
       </div>
+      <TimelineFilter
+        conversations={allConvOptions}
+        selected={selectedConvIds}
+        onToggle={toggleConvFilter}
+        onToggleAll={toggleConvFilterAll}
+      />
     </div>
   {/if}
 
@@ -322,9 +353,9 @@
         <p>Chat with {selectedChars.map(c => c.name).join(' & ') || 'these characters'} to start building their memory multiverse</p>
       </div>
     {:else if graphData && activeView === 'graph'}
-      <MemoryGraph data={graphData} avatars={Object.fromEntries(selectedChars.map(c => [c.id, c.avatarPath]))} onRefresh={handleRefresh} />
+      <MemoryGraph data={graphData} avatars={Object.fromEntries(selectedChars.map(c => [c.id, c.avatarPath]))} onRefresh={handleRefresh} visibleConvIds={selectedConvIds} />
     {:else if graphData && activeView === 'timeline'}
-      <MemoryTimeline data={graphData} onRefresh={handleRefresh} />
+      <MemoryTimeline data={graphData} onRefresh={handleRefresh} visibleConvIds={selectedConvIds} />
     {/if}
   </div>
 </div>
@@ -343,6 +374,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
     padding: 12px 20px;
     background: rgba(10, 10, 26, 0.85);
     backdrop-filter: blur(12px);
@@ -355,30 +388,19 @@
     display: flex;
     align-items: center;
     gap: 12px;
-  }
-
-  .page-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(191, 64, 255, 0.08));
-    border: 1px solid rgba(139, 92, 246, 0.12);
-    color: #c4a1ff;
+    flex-shrink: 0;
   }
 
   .page-title-group h1 {
-    font-size: 15px;
-    font-weight: 700;
-    color: #e8e0ff;
+    font-size: var(--text-2xl);
+    font-weight: 600;
     margin: 0;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.5px;
+    white-space: nowrap;
   }
 
   .subtitle {
-    font-size: 11px;
+    font-size: var(--text-md);
     color: #5a5a7a;
     margin: 2px 0 0;
   }

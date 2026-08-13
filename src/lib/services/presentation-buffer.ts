@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Presentation Buffer
+//   Janus — Presentation Buffer
 //
 //   Unified streaming buffer that sits between the backend LLM
 //   stream and the frontend message store. Replaces StreamBuffer
@@ -45,6 +45,11 @@ export interface PresentationCallbacks {
   createMessage(msg: Message): void;
   /** Append content to an existing message bubble. */
   appendContent(messageId: string, text: string): void;
+  /** Append to a message's reasoning/thinking trace, distinct from its
+   *  visible content — rendered as a separate collapsible section. */
+  appendReasoning(messageId: string, text: string): void;
+  /** Flips `isThinking` off once real reply content starts arriving. */
+  markThinkingDone(messageId: string): void;
   /** Finalize a message (set isStreaming = false). */
   finalizeMessage(messageId: string): void;
 }
@@ -117,6 +122,40 @@ export class PresentationBuffer {
   }
 
   /**
+   * Push a reasoning/thinking delta — arrives BEFORE the real reply in
+   * genuine chain-of-thought models (Nemotron, DeepSeek R1, etc.), while the
+   * message bubble doesn't exist yet since `push()` normally creates it.
+   * Creates the bubble immediately here instead, so the user sees a live
+   * "Thinking…" indicator rather than dead air, then keeps appending as more
+   * reasoning streams in. Multi-character conversations skip this (reasoning
+   * precedes any [CharName]: marker, so there's no character to attribute the
+   * bubble to yet) — reasoning is silently dropped there rather than shown.
+   */
+  pushReasoning(parentMessageId: string, text: string): void {
+    if (this.isMultiCharConversation) return;
+
+    if (!this.activeMsgId) {
+      this.parentMsgId = parentMessageId;
+      this.activeChar = this.primaryChar;
+      this.activeMsgId = parentMessageId;
+      this.callbacks.createMessage({
+        id: parentMessageId,
+        role: 'assistant',
+        content: '',
+        reasoning: text,
+        isStreaming: true,
+        isThinking: true,
+        thinkingStartedAt: Date.now(),
+        character_name: this.primaryChar.name,
+        character_id: this.primaryChar.id,
+        character_avatar_url: this.primaryChar.avatarUrl,
+      });
+      return;
+    }
+    this.callbacks.appendReasoning(this.activeMsgId, text);
+  }
+
+  /**
    * Push a new delta token from the stream.
    * Detects character markers and routes content to the correct bubble.
    */
@@ -126,19 +165,26 @@ export class PresentationBuffer {
       this.isFirstDelta = false;
 
       if (!this.isMultiCharConversation) {
-        // ── Single-char: create the bubble immediately with metadata ──
-        this.activeChar = this.primaryChar;
-        this.activeMsgId = parentMessageId;
-        this.callbacks.createMessage({
-          id: parentMessageId,
-          role: 'assistant',
-          content: text,
-          isStreaming: true,
-          character_name: this.primaryChar.name,
-          character_id: this.primaryChar.id,
-          character_avatar_url: this.primaryChar.avatarUrl,
-        });
-        return;
+        if (this.activeMsgId === parentMessageId) {
+          // Bubble already exists from the reasoning phase — mark thinking
+          // done now that real content has started, then fall through to
+          // the normal append path below instead of creating a duplicate.
+          this.callbacks.markThinkingDone(this.activeMsgId);
+        } else {
+          // ── Single-char: create the bubble immediately with metadata ──
+          this.activeChar = this.primaryChar;
+          this.activeMsgId = parentMessageId;
+          this.callbacks.createMessage({
+            id: parentMessageId,
+            role: 'assistant',
+            content: text,
+            isStreaming: true,
+            character_name: this.primaryChar.name,
+            character_id: this.primaryChar.id,
+            character_avatar_url: this.primaryChar.avatarUrl,
+          });
+          return;
+        }
       }
     }
 
@@ -356,6 +402,14 @@ export class PresentationBuffer {
 
     // Flush pending rAF text
     this.flushPending();
+
+    // Edge case: a model that emits ONLY reasoning blocks, never real Text —
+    // the bubble is still marked isThinking from pushReasoning() since push()
+    // (which normally clears it) never ran. Clear it now so the UI doesn't
+    // show a permanently-pulsing "Thinking…" indicator on a finished message.
+    if (this.activeMsgId) {
+      this.callbacks.markThinkingDone(this.activeMsgId);
+    }
 
     // Finalize the active bubble
     if (this.activeMsgId) {

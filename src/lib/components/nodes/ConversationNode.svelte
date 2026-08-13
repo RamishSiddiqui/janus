@@ -31,6 +31,14 @@
   {#if data.isShared}
     <div class="shared-badge" title="Shared conversation">⇌</div>
   {/if}
+  {#if data.hiddenLinkTitles && data.hiddenLinkTitles.length > 0}
+    <div
+      class="hidden-link-pill"
+      title="This conversation shared memories with {data.hiddenLinkTitles.join(', ')} — hidden by the timeline filter"
+    >
+      <Icon name="link" size={9} />
+    </div>
+  {/if}
 </div>
 
 <Handle type="source" position={Position.Bottom} id="bottom" />
@@ -49,7 +57,7 @@
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
-    font-family: 'Inter', -apple-system, sans-serif;
+    font-family: 'Raleway', -apple-system, sans-serif;
     transition: opacity 300ms ease, border-color 300ms ease;
   }
 
@@ -134,6 +142,34 @@
     color: var(--accent);
     opacity: 0.6;
     flex-shrink: 0;
+  }
+
+  /* ── Hidden-link indicator — this conversation shares memories with
+     another conversation currently hidden by the timeline filter ── */
+  .hidden-link-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: rgba(255, 159, 67, 0.16);
+    border: 1px solid rgba(255, 159, 67, 0.4);
+    color: #ff9f43;
+    cursor: help;
+    animation: hiddenLinkPulse 2.2s ease-in-out infinite;
+  }
+
+  @keyframes hiddenLinkPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 159, 67, 0.45); }
+    50% { box-shadow: 0 0 0 5px rgba(255, 159, 67, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hidden-link-pill { animation: none; }
   }
 
   /* ── Light theme ── */

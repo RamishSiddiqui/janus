@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import SplitHeading from '$lib/components/SplitHeading.svelte';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import Icon from '$lib/components/Icon.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { activeConversationId, loadConversations } from '$lib/stores/chat';
-  import { success, error as toastError, undoableDelete } from '$lib/stores/toast';
+  import { success, error as toastError, addToast } from '$lib/stores/toast';
   import { parseCharacterData } from '$lib/utils/character';
+  import { selectedPersonaId } from '$lib/stores/personas';
+  import { get } from 'svelte/store';
   import type { Character } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -55,12 +58,8 @@
   async function resolveAvatarUrl(avatarPath: string | null): Promise<string | null> {
     if (!avatarPath || !isTauri) return null;
     try {
-      const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-      const bytes = await readFile(avatarPath, { baseDir: BaseDirectory.AppData });
-      const ext = avatarPath.split('.').pop()?.toLowerCase() || 'jpeg';
-      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-      const blob = new Blob([bytes], { type: mime });
-      return URL.createObjectURL(blob);
+      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      return await loadFileAsBlobUrl(avatarPath);
     } catch (e) {
       console.warn('Failed to resolve avatar:', avatarPath, e);
       return null;
@@ -172,7 +171,8 @@
 
     try {
       const { createConversation } = await import('$lib/stores/chat');
-      await createConversation(charId, characters.find(c => c.id === charId)?.name);
+      const personaId = get(selectedPersonaId) ?? undefined;
+      await createConversation(charId, characters.find(c => c.id === charId)?.name, personaId);
       goto('/');
     } catch (err) {
       console.error('Failed to start chat:', err);
@@ -290,43 +290,50 @@
   }
 
   /**
-   * Deleting a character cascades to its conversations/messages/lorebook, so
-   * this defers the actual backend delete behind a ~5.5s Undo window rather
-   * than firing immediately — the character is hidden from the gallery right
-   * away, but nothing is actually destroyed until the window elapses.
+   * Moves a character to Trash immediately — a real, durable backend
+   * soft-delete. The Undo toast's action calls restoreCharacter, which is
+   * just as immediate, so there's no window where the delete could be
+   * silently lost. Permanent removal only happens from the Trash page.
    */
-  function handleDeleteCharacter(charId: string) {
+  async function handleDeleteCharacter(charId: string) {
     if (!isTauri) return;
     const removed = characters.find(c => c.id === charId);
     const name = removed?.name ?? 'Character';
+
+    try {
+      const ipc = await import('$lib/services/ipc');
+      await ipc.trashCharacter(charId);
+    } catch (err) {
+      toastError(`Failed to delete ${name}`);
+      return;
+    }
+
     characters = characters.filter(c => c.id !== charId);
 
-    undoableDelete(
-      `Deleted ${name}`,
-      async () => {
+    addToast(`Moved ${name} to Trash`, 'info', 5500, {
+      label: 'Undo',
+      onClick: async () => {
         try {
           const ipc = await import('$lib/services/ipc');
-          await ipc.deleteCharacter(charId);
-        } catch (err) {
-          toastError('Failed to delete character');
+          await ipc.restoreCharacter(charId);
+          if (removed) characters = [...characters, removed].sort((a, b) => a.name.localeCompare(b.name));
+        } catch {
+          toastError('Failed to restore character');
         }
       },
-      () => {
-        if (removed) characters = [...characters, removed].sort((a, b) => a.name.localeCompare(b.name));
-      },
-    );
+    });
   }
 </script>
 
 <svelte:head>
-  <title>Character Gallery — Mythic</title>
+  <title>Character Gallery — Janus</title>
 </svelte:head>
 
 <div class="gallery-page">
   <!-- Header -->
   <header class="gallery-header">
     <div class="gallery-header-left">
-      <h1 class="gallery-title">Character Gallery</h1>
+      <h1 class="gallery-title"><SplitHeading text="Character Gallery" /></h1>
       <span class="gallery-subtitle">{characters.length} characters • {favoriteCount} favorites</span>
     </div>
     <div class="gallery-header-right">
@@ -507,13 +514,11 @@
   }
   .gallery-header-left { display: flex; flex-direction: column; gap: 3px; }
   .gallery-title {
-    font-size: var(--text-2xl); font-weight: 800; color: #e8e0ff;
+    font-size: var(--text-2xl); font-weight: 600;
     letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   .gallery-subtitle {
-    font-size: var(--text-sm); color: #5a5a7a; font-family: var(--font-mono);
+    font-size: var(--text-md); color: #5a5a7a; font-family: var(--font-mono);
     letter-spacing: 0.5px;
   }
 

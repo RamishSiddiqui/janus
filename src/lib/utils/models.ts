@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Model Table Display Utilities
+//   Janus — Model Table Display Utilities
 //   Shared by the LLM Models and Embedding Models pages, which
 //   render the same ModelEntry data in the same table layout.
 // ============================================================

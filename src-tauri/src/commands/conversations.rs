@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -15,12 +15,14 @@ pub async fn create_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: Option<String>,
     title: Option<String>,
+    persona_id: Option<String>,
 ) -> Result<Conversation, MythicError> {
     let state = state.read().await;
     let conversation = ConversationRepo::create(
         &state.db,
         character_id.as_deref(),
         title.as_deref(),
+        persona_id.as_deref(),
     )
     .await?;
     info!("Created conversation: {} ({:?})", conversation.title, conversation.id);
@@ -82,17 +84,54 @@ pub async fn count_conversations(
     }
 }
 
-/// Deletes a conversation and all its messages (cascade).
+/// Permanently deletes a conversation and all its messages (cascade). Only
+/// the Trash view should call this — normal deletion from the chat list
+/// should call `trash_conversation` instead.
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_conversation(
+    app: tauri::AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
     let state = state.read().await;
     ConversationRepo::delete(&state.db, &id).await?;
     info!("Deleted conversation: {}", id);
+    // The cascade event wipes this conversation's message_embeddings along
+    // with everything else, but nothing tells the Settings page's Memory
+    // panel that happened — reuse the same event the live embed path emits
+    // so its index counts refresh instead of showing a stale total.
+    let _ = app.emit("embedding_updated", ());
     Ok(())
+}
+
+/// Moves a conversation to Trash (soft delete) — reversible via
+/// `restore_conversation`. Instant and durable the moment it returns, unlike
+/// the old client-side undo-window that silently lost the delete if the app
+/// reloaded before its timer fired.
+#[tauri::command]
+#[specta::specta]
+pub async fn trash_conversation(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    id: String,
+) -> Result<Conversation, MythicError> {
+    let state = state.read().await;
+    let conv = ConversationRepo::trash(&state.db, &id).await?;
+    info!("Trashed conversation: {}", id);
+    Ok(conv)
+}
+
+/// Restores a trashed conversation.
+#[tauri::command]
+#[specta::specta]
+pub async fn restore_conversation(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    id: String,
+) -> Result<Conversation, MythicError> {
+    let state = state.read().await;
+    let conv = ConversationRepo::restore(&state.db, &id).await?;
+    info!("Restored conversation: {}", id);
+    Ok(conv)
 }
 
 /// Retrieves all messages in a conversation, ordered chronologically.
@@ -117,6 +156,31 @@ pub async fn set_active_message(
 ) -> Result<(), MythicError> {
     let state = state.read().await;
     ConversationRepo::set_active_message(&state.db, &conversation_id, &message_id).await
+}
+
+/// Sets (or clears, passing `null`) this conversation's chosen
+/// image-generation preset.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_conversation_image_preset(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+    preset_id: Option<String>,
+) -> Result<(), MythicError> {
+    let state = state.read().await;
+    ConversationRepo::set_image_preset(&state.db, &conversation_id, preset_id.as_deref()).await
+}
+
+/// Sets (or clears, passing `null`) this conversation's chosen persona.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_conversation_persona(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+    persona_id: Option<String>,
+) -> Result<(), MythicError> {
+    let state = state.read().await;
+    ConversationRepo::set_persona(&state.db, &conversation_id, persona_id.as_deref()).await
 }
 
 /// Updates a conversation's title.

@@ -46,6 +46,7 @@ pub async fn upsert_scene_state(
         ambient_details,
         scene_mood,
         scene_changed: false,
+        notable_character_event: false,
     };
     let g = state.read().await;
     SceneStateRepo::upsert(&g.db, &conversation_id, &update).await

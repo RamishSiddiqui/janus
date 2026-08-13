@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 207 80" width="207" height="80">
+<g transform="translate(31,40) scale(0.43)"><g fill="none" stroke-width="18" stroke-linecap="round">
+<path stroke="#CDA15F" d="M 0,2 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
+<path stroke="#9075F2" d="M 0,-2 L 0,46 Q 0,74 -30,74 Q -52,74 -52,52"></path>
+</g></g>
+<text x="86" y="41" fill="#F7F5F0" font-family="Inter, system-ui, -apple-system, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-weight="500" font-size="30" letter-spacing="9.6" dominant-baseline="central">JANUS</text></svg>

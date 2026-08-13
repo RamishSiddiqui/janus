@@ -40,14 +40,17 @@ impl EmbeddingRepo {
             Some(conv_id) => {
                 let mut result = db.query(
                     "SELECT dimension FROM message_embeddings \
-                     WHERE conversation_id = type::thing('conversations', $conv_id) LIMIT 1"
+                     WHERE conversation_id = type::thing('conversations', $conv_id) \
+                        AND entry_type = 'message' LIMIT 1"
                 )
                 .bind(("conv_id", conv_id.to_string()))
                 .await?;
                 result.take(0)?
             }
             None => {
-                let mut result = db.query("SELECT dimension FROM message_embeddings LIMIT 1").await?;
+                let mut result = db.query(
+                    "SELECT dimension FROM message_embeddings WHERE entry_type = 'message' LIMIT 1"
+                ).await?;
                 result.take(0)?
             }
         };
@@ -403,15 +406,30 @@ impl EmbeddingRepo {
     // ── Query: Memories ──────────────────────────────────────────────────
 
     /// Query top-K semantically similar memories for a character.
-    /// Returns memory content and similarity scores.
+    ///
+    /// `conversation_id`: when `Some`, restricts results to memories that
+    /// either belong to this specific conversation or are canon (settled,
+    /// visible everywhere) — mirrors `memory_scope = "conversation"`'s
+    /// isolation guarantee, which this query used to ignore entirely
+    /// (always searching the character's memories across every conversation
+    /// regardless of scope). `None` preserves the original character-wide
+    /// search, used for `memory_scope = "character"`.
+    ///
+    /// Filtering happens in Rust after an over-fetch (`top_k * 2` from the
+    /// vector query) rather than in the SurrealQL itself, since memory
+    /// embeddings don't carry their own conversation_id (only their owning
+    /// memory record does) — same over-fetch-then-filter shape already used
+    /// for RRF fusion elsewhere in this module.
     pub async fn query_memory_similar(
         db: &Surreal<Db>,
         character_id: &str,
         query_embedding: &[f64],
         top_k: usize,
         min_similarity: f64,
+        conversation_id: Option<&str>,
     ) -> Result<Vec<RetrievedMemoryContext>, MythicError> {
         let query_f32: Vec<f32> = query_embedding.iter().map(|&v| v as f32).collect();
+        let fetch_k = if conversation_id.is_some() { top_k * 2 } else { top_k };
 
         let mut result = db
             .query(
@@ -428,7 +446,7 @@ impl EmbeddingRepo {
             .bind(("char_id", character_id.to_string()))
             .bind(("query_vec", query_f32))
             .bind(("min_sim", min_similarity as f32))
-            .bind(("top_k", top_k as i64))
+            .bind(("top_k", fetch_k as i64))
             .await?;
 
         #[derive(serde::Deserialize, Debug)]
@@ -443,7 +461,7 @@ impl EmbeddingRepo {
         let mut results = Vec::with_capacity(hits.len());
         for hit in hits {
             let mut mem_result = db
-                .query("SELECT content, is_canon, importance, last_accessed FROM type::thing('memories', $id)")
+                .query("SELECT content, is_canon, importance, last_accessed, conversation_id FROM type::thing('memories', $id)")
                 .bind(("id", hit.source_id.clone()))
                 .await?;
 
@@ -455,9 +473,18 @@ impl EmbeddingRepo {
                 importance: i32,
                 #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
                 last_accessed: Option<String>,
+                conversation_id: Option<surrealdb::sql::Thing>,
             }
 
             if let Ok(Some(mem)) = mem_result.take::<Option<MemContent>>(0) {
+                if let Some(scope_conv_id) = conversation_id {
+                    let belongs_here = mem.conversation_id.as_ref()
+                        .map(|t| t.id.to_raw() == scope_conv_id)
+                        .unwrap_or(false);
+                    if !mem.is_canon && !belongs_here {
+                        continue;
+                    }
+                }
                 results.push(RetrievedMemoryContext {
                     memory_id: hit.source_id,
                     content: mem.content,
@@ -466,6 +493,9 @@ impl EmbeddingRepo {
                     importance: mem.importance,
                     last_accessed: mem.last_accessed,
                 });
+                if results.len() >= top_k {
+                    break;
+                }
             }
         }
 
@@ -478,13 +508,16 @@ impl EmbeddingRepo {
     }
 
     /// Keyword search over memory content using the BM25 full-text index on
-    /// `memories`. Scoped identically to `query_memory_similar` so the two
-    /// result sets can be fused by a caller. Only rank is used by callers.
+    /// `memories`. Scoped identically to `query_memory_similar` (including
+    /// the same `conversation_id` isolation for `memory_scope =
+    /// "conversation"`) so the two result sets can be fused by a caller.
+    /// Only rank is used by callers.
     pub async fn keyword_search_memories(
         db: &Surreal<Db>,
         character_id: &str,
         query_text: &str,
         top_k: usize,
+        conversation_id: Option<&str>,
     ) -> Result<Vec<RetrievedMemoryContext>, MythicError> {
         if query_text.trim().is_empty() {
             return Ok(vec![]);
@@ -497,7 +530,7 @@ impl EmbeddingRepo {
 
         let mut result = db
             .query(
-                "SELECT id AS memory_id, content, is_canon, importance, last_accessed, character_id, \
+                "SELECT id AS memory_id, content, is_canon, importance, last_accessed, character_id, conversation_id, \
                         search::score(1) AS relevance \
                  FROM memories \
                  WHERE content @1@ $query \
@@ -518,6 +551,7 @@ impl EmbeddingRepo {
             #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
             last_accessed: Option<String>,
             character_id: Option<surrealdb::sql::Thing>,
+            conversation_id: Option<surrealdb::sql::Thing>,
         }
 
         let hits: Vec<KeywordMemHit> = result.take(0)?;
@@ -525,6 +559,12 @@ impl EmbeddingRepo {
         // `similarity` has no BM25 meaning here — overwritten once fused.
         let filtered: Vec<RetrievedMemoryContext> = hits.into_iter()
             .filter(|h| h.character_id.as_ref().map(|c| c.id.to_raw()).as_deref() == Some(character_id))
+            .filter(|h| match conversation_id {
+                Some(scope_conv_id) => {
+                    h.is_canon || h.conversation_id.as_ref().map(|t| t.id.to_raw() == scope_conv_id).unwrap_or(false)
+                }
+                None => true,
+            })
             .take(top_k)
             .map(|h| RetrievedMemoryContext {
                 memory_id: h.memory_id.id.to_raw(),

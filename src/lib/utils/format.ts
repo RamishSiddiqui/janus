@@ -1,5 +1,5 @@
 // ============================================================
-//   Mythic — Text Formatting Utilities
+//   Janus — Text Formatting Utilities
 // ============================================================
 
 import { sanitizeHtml } from './sanitize';

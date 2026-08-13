@@ -22,7 +22,7 @@
 
 <nav class="sb-nav" aria-label="Main navigation">
   <!-- Flat (ungrouped) items first -->
-  {#each navItems.filter(i => i.path !== '/settings' && !i.group) as item (item.path)}
+  {#each navItems.filter(i => i.path !== '/settings' && i.path !== '/trash' && !i.group) as item (item.path)}
     {@const isActive = currentPath === item.path}
     <button class="sb-nav-item" class:active={isActive} class:collapsed onclick={() => onNavigate(item.path)}
       title={collapsed ? item.label : undefined} aria-current={isActive ? 'page' : undefined}>
