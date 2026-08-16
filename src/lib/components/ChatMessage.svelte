@@ -811,10 +811,17 @@
     font-size: 13.5px;
     letter-spacing: 0.02em;
   }
-  /* Block-level action paragraphs (set by formatter for full-line actions) */
+  /* Block-level action paragraphs (set by formatter for full-line and
+     longer inline actions — see rp-action-block in format.ts) */
   .msg-text :global(.rp-action-block) {
     display: block;
     margin: 6px 0;
+  }
+
+  /* Bold emphasis (**text**) within a message */
+  .msg-text :global(strong) {
+    color: rgba(255, 255, 255, 0.98);
+    font-weight: 700;
   }
   .user-text {
     color: rgba(255, 255, 255, 0.96);
