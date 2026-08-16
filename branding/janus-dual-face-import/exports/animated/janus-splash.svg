@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" width="390" height="844">
-<defs><radialGradient id="s" cx="0.5" cy="0.3" r="0.9"><stop offset="0" stop-color="#1B1438"></stop><stop offset="1" stop-color="#0A0A13"></stop></radialGradient></defs>
-<rect width="390" height="844" fill="url(#s)"></rect>
-<g transform="translate(195,392) scale(0.49)"><g fill="none" stroke-width="18" stroke-linecap="round">
-<path class="a" stroke="#CDA15F" pathLength="100" stroke-dasharray="100" d="M 0,2 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
-<path class="b" stroke="#9075F2" pathLength="100" stroke-dasharray="100" d="M 0,-2 L 0,46 Q 0,74 -30,74 Q -52,74 -52,52"></path>
-</g></g>
-<text x="195" y="500" text-anchor="middle" fill="#8a8a9c" font-family="Inter, system-ui, -apple-system, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-weight="500" font-size="14" letter-spacing="4.2" dominant-baseline="central">JANUS</text></svg>

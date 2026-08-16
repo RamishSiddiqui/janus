@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-110 -110 220 220" width="256" height="256">
-<circle cx="0" cy="0" r="100" fill="#191233"></circle>
-<g transform="scale(0.8)"><g fill="none" stroke-width="18" stroke-linecap="round">
-<path class="a" stroke="#CDA15F" pathLength="100" stroke-dasharray="100" d="M 0,2 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
-<path class="b" stroke="#9075F2" pathLength="100" stroke-dasharray="100" d="M 0,-2 L 0,46 Q 0,74 -30,74 Q -52,74 -52,52"></path>
-</g></g></svg>

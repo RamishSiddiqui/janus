@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 140" role="img" aria-label="Janus">
+  <!-- Same layout as logo-full-light.svg (icon + wordmark), but the icon is
+       the real JanusLoader animation (src/lib/components/JanusLoader.svelte)
+       ported to a standalone file instead of the static two-stroke mark. -->
+  <g transform="translate(78,70) scale(0.72)">
+    <defs>
+      <linearGradient id="janus-split-hero" gradientUnits="userSpaceOnUse" x1="0" y1="-80" x2="0" y2="80">
+        <stop offset="0" stop-color="#CDA15F" />
+        <stop offset="0.485" stop-color="#CDA15F" />
+        <stop offset="0.515" stop-color="#9075F2" />
+        <stop offset="1" stop-color="#9075F2" />
+      </linearGradient>
+    </defs>
+    <g fill="none" stroke-width="18" stroke-linecap="round">
+      <path stroke="url(#janus-split-hero)" opacity="0.22"
+        d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52" />
+      <path class="run" stroke="url(#janus-split-hero)" pathLength="100" stroke-dasharray="62 200"
+        d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52" />
+    </g>
+  </g>
+  <text x="168" y="87" font-family="Inter, -apple-system, sans-serif" font-size="58" font-weight="600" letter-spacing="10">
+    <tspan fill="#9075F2">JA</tspan><tspan fill="#CDA15F">NUS</tspan>
+  </text>
+  <style>
+    .run {
+      animation: janus-run 2.6s linear infinite, janus-fade 2.6s linear infinite;
+    }
+    @keyframes janus-run  { from { stroke-dashoffset: 62; } to { stroke-dashoffset: -100; } }
+    @keyframes janus-fade { 0%, 100% { opacity: 0; } 11%, 89% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .run { animation: none; stroke-dasharray: none; opacity: 1; }
+    }
+  </style>
+</svg>

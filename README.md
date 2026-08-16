@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="branding/janus-kit/logo-full-light.svg" width="360" alt="Janus" />
+<img src="branding/janus-kit/logo-full-animated.svg" width="360" alt="Janus" />
 
 **Your character remembers. Every detail, every session, forever — and it's yours, not a subscription.**
 
@@ -19,17 +19,21 @@ Every other AI roleplay app hits the same wall: your character forgets who they 
 It's a native desktop app, not a browser tab pointed at someone else's server. No account, no subscription, nothing phoning home. Your conversations live in a database on your own disk. Bring your own API key — or use a free provider that needs zero signup — and you're writing in under a minute.
 
 <div align="center">
-<img src="design/xhE3Y.png" width="720" alt="Janus memory graph — a character node linked to timeline conversations and typed, canon-flagged memory entries" />
+<img src="branding/screenshots/chat.png" width="720" alt="Janus chat view — a roleplay conversation mid-scene, with formatted action text and dialogue" />
+<br/>
+<sub>Streaming chat with a character — action text and dialogue render distinctly, no manual formatting.</sub>
+<br/><br/>
+<img src="branding/screenshots/character-profile.png" width="720" alt="Janus character profile page — description, personality, scenario, and first message on a two-tone branded layout" />
+<br/>
+<sub>A character's profile — full card detail, at a glance.</sub>
+<br/><br/>
+<img src="branding/screenshots/memory-graph.png" width="720" alt="Janus memory graph — a character node linked to timeline conversations and typed, canon-flagged memory entries" />
 <br/>
 <sub>The memory graph — every fact, relationship, and event Janus has extracted from your story, browsable and editable.</sub>
 </div>
 
-<!--
-TODO(screenshots): this section needs 2-3 more real screenshots from a running
-build — chat view mid-conversation, a character profile page, and the Scene
-Gallery are the strongest candidates. The memory graph above is the only one
-that exists today.
--->
+<!-- TODO(screenshots): a Scene Gallery shot would round this out (generated
+image + the glassmorphic gallery backdrop) — optional, not blocking. -->
 
 ## Why Janus
 
