@@ -137,10 +137,7 @@ export const commands = {
 	 *  Used for branch navigation — shows alternates at the same conversation point.
 	 */
 	getMessageSiblings: (messageId: string) => typedError<Message_Serialize[], MythicError>(__TAURI_INVOKE("get_message_siblings", { messageId })),
-	/**
-	 *  Creates a new provider configuration.
-	 *  Creates a new provider configuration.
-	 */
+	/**  Creates a new provider configuration. */
 	createProvider: (name: string, providerType: string, adapter: string, config: JsonValue, isDefault: boolean | null) => typedError<ProviderConfig_Serialize, MythicError>(__TAURI_INVOKE("create_provider", { name, providerType, adapter, config, isDefault })),
 	/**  Retrieves a single provider by ID. */
 	getProvider: (id: string) => typedError<ProviderConfig_Serialize, MythicError>(__TAURI_INVOKE("get_provider", { id })),

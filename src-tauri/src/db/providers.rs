@@ -191,7 +191,7 @@ impl ProviderRepo {
         let composite_id = format!(
             "{}_{}",
             provider_id,
-            model_id.replace('/', "_").replace(':', "_").replace('.', "_")
+            model_id.replace(['/', ':', '.'], "_")
         );
 
         // MERGE (not CONTENT) is required here: CONTENT replaces the whole

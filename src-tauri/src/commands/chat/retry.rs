@@ -286,7 +286,7 @@ pub async fn retry_failed_message(
     }
 
     Ok(SendMessageResult {
-        user_message_id: user_message_id,
+        user_message_id,
         assistant_message_id: assistant_msg_id,
     })
 }

@@ -1,3 +1,7 @@
+# Workflow
+
+**Issue-driven work**: before starting any non-trivial fix or feature, raise a GitHub issue on `RamishSiddiqui/janus` describing it (bug report or feature request) — `gh issue create --title "..." --body "..."`. Do the work referencing that issue, and reference the issue number in the commit message (e.g. `Fixes #N` / `Refs #N`) when pushing. Skip this for trivial one-line fixes or when the user explicitly says not to bother.
+
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands
 

@@ -113,8 +113,6 @@ async fn refresh_ai_horde_model_info(
 }
 
 /// Creates a new provider configuration.
-
-/// Creates a new provider configuration.
 #[tauri::command]
 #[specta::specta]
 pub async fn create_provider(

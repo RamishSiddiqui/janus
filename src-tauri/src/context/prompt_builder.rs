@@ -126,6 +126,12 @@ fn substitute_user_macro(text: &str, persona_name: Option<&str>) -> String {
 
 /// Builds the full prompt by combining system prompt, character data,
 /// and conversation history. Now token-budgeted via sliding window.
+// The early `return` inside the multi-char branch below is a real early
+// exit (skips the `else` branch entirely) — converting it to a bare tail
+// expression would only make the enclosing statement-position block's
+// value silently discarded, not actually return from the function.
+// Verified (and previously broken by exactly this) — left as `return`.
+#[allow(clippy::needless_return)]
 pub(crate) async fn build_prompt(
     db: &Surreal<Db>,
     conversation_id: &str,
@@ -968,7 +974,7 @@ pub(crate) async fn build_prompt(
                             }
                             // Return whatever tokens we actually used
                             prompt.last()
-                                .map(|m| count_message_tokens(m))
+                                .map(count_message_tokens)
                                 .unwrap_or(0)
                         }
                     } else { 0 }

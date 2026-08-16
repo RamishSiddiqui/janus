@@ -1,3 +1,11 @@
+// Tauri commands routinely need one param per meaningful argument (they're
+// the IPC surface, not internal helpers free to take a params struct), and
+// `MythicError` being a moderately large enum is an accepted tradeoff across
+// the whole codebase, not a hot-path perf concern for a desktop app. Neither
+// represents a real bug — allowed crate-wide rather than peppering ~20 call
+// sites with per-function allows.
+#![allow(clippy::too_many_arguments, clippy::result_large_err, clippy::type_complexity)]
+
 pub mod commands;
 pub mod context;
 pub mod db;

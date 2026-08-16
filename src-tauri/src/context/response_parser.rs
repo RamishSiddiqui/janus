@@ -54,7 +54,7 @@ pub fn parse_multi_character_response(
         }
     }
     // Sort by length descending so "Aria Silverleaf" is tried before "Aria"
-    name_variants.sort_by(|a, b| b.len().cmp(&a.len()));
+    name_variants.sort_by_key(|a| std::cmp::Reverse(a.len()));
     name_variants.dedup();
 
     // Matches: [CharName]: at the start of a line (possibly after newlines).
@@ -101,7 +101,7 @@ pub fn parse_multi_character_response(
         // (e.g., "Finn holds Aria's gaze..." → attribute to Finn)
         let trimmed = response.trim();
         // Strip leading RP formatting (* for actions, " for speech)
-        let stripped = trimmed.trim_start_matches(|c: char| c == '*' || c == '"' || c == '\u{201C}' || c == '_');
+        let stripped = trimmed.trim_start_matches(['*', '"', '\u{201C}', '_']);
         let first_word = stripped.split(|c: char| c.is_whitespace() || c == '\'' || c == '\u{2019}' || c == '*').next().unwrap_or("");
         let first_word_lower = first_word.to_lowercase();
 

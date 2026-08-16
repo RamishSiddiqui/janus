@@ -1,7 +1,6 @@
 /// Standalone test of rig-core with OpenRouter owl-alpha.
-/// 
+///
 /// Usage: cargo run --bin test_owl -- <YOUR_OPENROUTER_API_KEY>
-
 use futures::StreamExt;
 use rig_core::providers::openrouter;
 use rig_core::client::CompletionClient;
@@ -35,33 +34,32 @@ async fn main() {
         .temperature(0.8)
         .build();
 
-    match agent2.stream_chat("Tell me a short joke.", Vec::<rig_core::completion::Message>::new()).await {
-        mut stream => {
-            let mut full_text = String::new();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(MultiTurnStreamItem::StreamAssistantItem(
-                        StreamedAssistantContent::Text(text)
-                    )) => {
-                        print!("{}", text.text);
-                        full_text.push_str(&text.text);
-                    }
-                    Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-                        println!("\n✅ Final: {}", fin.response());
-                        break;
-                    }
-                    Ok(other) => {
-                        println!("[other item: {other:?}]");
-                    }
-                    Err(e) => {
-                        println!("\n❌ Stream error: {e}");
-                        break;
-                    }
+    let mut stream = agent2.stream_chat("Tell me a short joke.", Vec::<rig_core::completion::Message>::new()).await;
+    {
+        let mut full_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::Text(text)
+                )) => {
+                    print!("{}", text.text);
+                    full_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
+                    println!("\n✅ Final: {}", fin.response());
+                    break;
+                }
+                Ok(other) => {
+                    println!("[other item: {other:?}]");
+                }
+                Err(e) => {
+                    println!("\n❌ Stream error: {e}");
+                    break;
                 }
             }
-            if full_text.is_empty() {
-                println!("⚠️  No text received from stream");
-            }
+        }
+        if full_text.is_empty() {
+            println!("⚠️  No text received from stream");
         }
     }
 
@@ -83,31 +81,30 @@ async fn main() {
         .temperature(0.8)
         .build();
 
-    match agent3.stream_chat("*walks into the hall* Hello there.", Vec::<rig_core::completion::Message>::new()).await {
-        mut stream => {
-            let mut full_text = String::new();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(MultiTurnStreamItem::StreamAssistantItem(
-                        StreamedAssistantContent::Text(text)
-                    )) => {
-                        print!("{}", text.text);
-                        full_text.push_str(&text.text);
-                    }
-                    Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-                        println!("\n✅ Final response received ({} chars)", fin.response().len());
-                        break;
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("\n❌ Stream error: {e}");
-                        break;
-                    }
+    let mut stream = agent3.stream_chat("*walks into the hall* Hello there.", Vec::<rig_core::completion::Message>::new()).await;
+    {
+        let mut full_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::Text(text)
+                )) => {
+                    print!("{}", text.text);
+                    full_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
+                    println!("\n✅ Final response received ({} chars)", fin.response().len());
+                    break;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    println!("\n❌ Stream error: {e}");
+                    break;
                 }
             }
-            if full_text.is_empty() {
-                println!("⚠️  No text received from stream");
-            }
+        }
+        if full_text.is_empty() {
+            println!("⚠️  No text received from stream");
         }
     }
 
