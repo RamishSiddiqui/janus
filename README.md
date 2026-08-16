@@ -4,7 +4,7 @@
 
 **Your character remembers. Every detail, every session, forever — and it's yours, not a subscription.**
 
-[![Latest release](https://img.shields.io/github/v/release/janus-app/janus?label=download&color=9075F2)](../../releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/RamishSiddiqui/janus?label=download&color=9075F2)](../../releases/latest)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-9075F2.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
