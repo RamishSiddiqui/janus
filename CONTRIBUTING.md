@@ -50,6 +50,17 @@ These patterns are consistent throughout the codebase — matching them makes a 
 - **Design language** — the app uses a "Light Carousel" chip pattern for tabs/filters/mode switches: individual floating pills (not an enclosed segmented-control capsule), full opacity at rest, the active one pops forward with a solid accent fill, `scale(1.05)`, and a colored glow. Look at `.carousel-chip` in `src/routes/settings/+page.svelte` or `.toggle-btn` in `src/lib/components/SceneDisplay.svelte` for the canonical CSS. Don't introduce a different tab/toggle visual style without a reason.
 - **Blob URLs, not `asset://`**, for loading local files (images, avatars, generated scenes) into `<img>`/`<video>` — the app's CSP doesn't allow `asset://`. Use `loadFileAsBlobUrl` from `src/lib/utils/blobUrl.ts`, and revoke the URL on unmount/replacement to avoid leaking blob memory.
 
+## Cutting a release
+
+Releases are fully automated — pushing a `v*` tag (e.g. `v0.2.0`) to `master` is the only manual step:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+That triggers `.github/workflows/release.yml`, which builds installers for macOS (Apple Silicon + Intel), Windows, and Linux, generates the changelog from commit messages since the last tag (via [git-cliff](https://git-cliff.org/), reading `cliff.toml`), commits the updated `CHANGELOG.md` back to `master`, creates the GitHub Release with every installer attached, and publishes it — no draft to manually approve. Commit message prefixes (`feat:`, `fix:`, `docs:`, etc.) control which changelog section an entry lands in, so keeping to that convention (see below) matters more once this is wired up.
+
 ## Commit messages
 
 Look at `git log` for the house style: `type: short description` (`feat`, `fix`, `refactor`, `docs`, `build`), body explaining the *why* when it's not obvious from the diff, not a restatement of the code change.
