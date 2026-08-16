@@ -11,6 +11,7 @@
 // ============================================================
 
 import { writable } from 'svelte/store';
+import { info as infoToast } from '$lib/stores/toast';
 
 export interface AiHordeProgress {
   phase: 'queued' | 'waiting' | 'processing' | 'finalizing';
@@ -146,6 +147,18 @@ function describeWanGpProgress(progress: WanGpProgress): string {
   return parts.length > 0 ? parts.join(' — ') : 'Generating...';
 }
 
+/** Shows a one-time-per-generation heads-up when a provider had to guess a
+ *  model because nothing was pinned as the default (AI Horde's live-roster
+ *  auto-pick — see `pick_default_model` in scenes.rs) — otherwise this is
+ *  invisible in the UI and only shows up as a backend log line, which is
+ *  exactly what made "is X actually set as default or not?" so confusing. */
+function warnIfModelWasAutoSelected(metadata: unknown): void {
+  const meta = metadata as { model_was_auto_selected?: boolean; model?: string } | null;
+  if (!meta?.model_was_auto_selected) return;
+  const model = meta.model ? `"${meta.model}"` : 'a model';
+  infoToast(`No default model set — auto-selected ${model} for this generation. Set one in Settings → Providers.`);
+}
+
 /** Runs a scene generation for `conversationId`, tracking its live status in
  *  `sceneGenerations`. Any mounted component can read that conversation's
  *  state regardless of which component (or component instance) actually
@@ -174,6 +187,7 @@ export async function runSceneGeneration(
     const ipc = await import('$lib/services/ipc');
     const scene = await ipc.generateScene(conversationId, prompt, options);
     patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });
+    warnIfModelWasAutoSelected(scene.metadata);
     return scene;
   } catch (err) {
     patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });

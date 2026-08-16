@@ -198,16 +198,25 @@
     }
   });
 
-  // Reactively derived from the map store — picks the emotion state for THIS message's character.
-  // Falls back to the primary character state for messages without a character_id (single-char mode).
+  // Picks the emotion state for THIS message's character (its own character_id
+  // when set — multi-char segment or an auto-detected background/NPC speaker
+  // — falling back to the primary character for single-char-mode messages).
+  // Prefers the frozen snapshot recorded when the message was created, so a
+  // later change to the character's live state doesn't repaint every past
+  // message's pill — falls back to the live map only for messages saved
+  // before snapshots existed.
   let emotionState = $derived(
     (() => {
-      const map = $characterEmotionStates;
       const msgCharId = message.character_id;
-      if (msgCharId) return map.get(msgCharId) ?? null;
-      // Single-char mode: use primary character
       const primaryId = $activeCharacterId;
-      return primaryId ? (map.get(primaryId) ?? null) : null;
+      const key = msgCharId ?? primaryId;
+      if (!key) return null;
+
+      const snapshot = message.emotionSnapshot?.[key];
+      if (snapshot) return snapshot;
+
+      const map = $characterEmotionStates;
+      return map.get(key) ?? null;
     })()
   );
 

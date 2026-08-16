@@ -492,7 +492,7 @@ impl RigProvider {
 /// Filters out system messages (those become the agent's preamble).
 ///
 /// `images` (raw bytes + MIME type, resolved from a message's stored
-/// attachments — see `commands::chat::load_message_images`) are attached
+/// attachments — see `commands::chat::attachments::load_message_images`) are attached
 /// to the LAST user-role message only, i.e. the current turn's prompt.
 /// This works generically across every rig-backed adapter (OpenAI,
 /// Anthropic, OpenRouter, Gemini, Ollama, etc.) with no per-provider code —

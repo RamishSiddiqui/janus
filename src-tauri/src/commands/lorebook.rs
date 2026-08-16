@@ -4,12 +4,12 @@ use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::commands::chat::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::commands::npc::gather_character_dialogue;
 use crate::context::npc::profile_generator;
 use crate::db::characters::CharacterRepo;
 use crate::db::lorebook::LorebookRepo;
 use crate::db::memories::MemoryRepo;
+use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::error::MythicError;
 use crate::models::character::CharacterData;
 use crate::models::lorebook::LorebookEntry;

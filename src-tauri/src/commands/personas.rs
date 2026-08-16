@@ -10,7 +10,8 @@ use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::commands::scenes::{generate_via_ai_horde, generate_via_generic_provider};
+use crate::commands::scenes::generate_via_generic_provider;
+use crate::providers::ai_horde::generate_via_ai_horde;
 use crate::db::image_presets::ImagePresetRepo;
 use crate::db::personas::PersonaRepo;
 use crate::db::providers::ProviderRepo;

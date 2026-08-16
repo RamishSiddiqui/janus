@@ -10,10 +10,11 @@ use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::commands::chat::{create_rig_provider, get_default_llm_provider, resolve_model_id};
-use crate::commands::scenes::{generate_via_ai_horde, generate_via_generic_provider};
+use crate::commands::scenes::generate_via_generic_provider;
+use crate::providers::ai_horde::generate_via_ai_horde;
 use crate::context::npc::pipeline::run_npc_detection;
 use crate::context::npc::profile_generator;
+use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::db::characters::CharacterRepo;
 use crate::db::conversation_characters::ConversationCharacterRepo;
 use crate::db::conversations::ConversationRepo;

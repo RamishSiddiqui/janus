@@ -12,7 +12,7 @@ use crate::db::embeddings::EmbeddingRepo;
 use crate::db::memories::MemoryRepo;
 use crate::error::MythicError;
 use crate::models::memory::{Memory, MemoryGraph, MemoryLink};
-use crate::commands::chat::spawn_embed_memory;
+use crate::commands::chat::pipeline::spawn_embed_memory;
 use crate::AppState;
 
 /// Lists memories for a character and/or conversation.

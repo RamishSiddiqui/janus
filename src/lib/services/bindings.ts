@@ -58,6 +58,18 @@ export const commands = {
 	 *  All integer axes are clamped to [0, 100].
 	 */
 	upsertCharacterState: (characterId: string, conversationId: string, mood: number, trust: number, arousal: number, dominantEmotion: string, stateSummary: string) => typedError<CharacterState_Serialize, MythicError>(__TAURI_INVOKE("upsert_character_state", { characterId, conversationId, mood, trust, arousal, dominantEmotion, stateSummary })),
+	/**
+	 *  Freezes an emotional-state snapshot (one entry per character, keyed by
+	 *  character id) onto a specific message's metadata, so its EmotionHUD pill
+	 *  keeps showing what each character felt *at that point in the story*
+	 *  instead of whatever `character_states` holds right now. `states` is
+	 *  passed through as raw JSON rather than a typed map — the backend never
+	 *  reads its shape, only stores and returns it verbatim to the frontend.
+	 *  Uses `DynamicJson`, not a bare `serde_json::Value` param — see its doc
+	 *  comment in `models::mod` for why (the same infinite-recursion crash
+	 *  `JsonValue` was built to avoid).
+	 */
+	setMessageEmotionalSnapshot: (messageId: string, states: JsonValue) => typedError<null, MythicError>(__TAURI_INVOKE("set_message_emotional_snapshot", { messageId, states })),
 	/**  Creates a new conversation for a character. */
 	createConversation: (characterId: string | null, title: string | null, personaId: string | null) => typedError<Conversation_Serialize, MythicError>(__TAURI_INVOKE("create_conversation", { characterId, title, personaId })),
 	/**  Retrieves a single conversation by ID. */

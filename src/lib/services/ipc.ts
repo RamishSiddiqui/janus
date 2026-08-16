@@ -396,6 +396,20 @@ export async function upsertCharacterState(
   });
 }
 
+/** Freezes an emotional-state snapshot (keyed by character id) onto a
+ *  specific message's metadata, so its EmotionHUD pill keeps showing what
+ *  each character felt at that point in the story instead of whichever
+ *  state is currently live in `character_states`. */
+export async function setMessageEmotionalSnapshot(
+  messageId: string,
+  states: Record<string, CharacterState>,
+): Promise<void> {
+  return safeInvoke<void>('set_message_emotional_snapshot', {
+    messageId,
+    states,
+  });
+}
+
 // --- Messages ---
 
 export async function createMessage(

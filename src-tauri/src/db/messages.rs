@@ -122,6 +122,30 @@ impl MessageRepo {
         Ok(())
     }
 
+    /// Merges `patch`'s top-level keys into a message's `metadata` object,
+    /// creating it if the message has none yet. Used for data attached after
+    /// the message already exists (e.g. the emotional-state snapshot, which
+    /// isn't known until a follow-up LLM call completes post-stream) — unlike
+    /// `content`/`reasoning`, this can't be set at creation time.
+    pub async fn merge_metadata(
+        db: &Surreal<Db>,
+        id: &str,
+        patch: serde_json::Value,
+    ) -> Result<(), MythicError> {
+        let existing = Self::get(db, id).await?;
+        let mut merged = existing.metadata.unwrap_or_else(|| serde_json::json!({}));
+        if let (Some(merged_obj), Some(patch_obj)) = (merged.as_object_mut(), patch.as_object()) {
+            for (k, v) in patch_obj {
+                merged_obj.insert(k.clone(), v.clone());
+            }
+        }
+        db.query("UPDATE type::thing('messages', $id) SET metadata = $metadata")
+            .bind(("id", id.to_string()))
+            .bind(("metadata", merged))
+            .await?;
+        Ok(())
+    }
+
     /// Deletes a message.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         let result: Option<Message> = db.delete(("messages", id)).await?;

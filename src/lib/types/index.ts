@@ -38,6 +38,12 @@ export interface Message {
    *  optimistic local message when just sent, and reloaded from the
    *  backend's `metadata.attachments` on history load. */
   attachments?: { relativePath: string; mimeType: string }[];
+  /** Frozen emotional-state snapshot (keyed by character id) taken right
+   *  after this message was generated — what each character felt *then*,
+   *  not whatever their live state is now. Falls back to the live
+   *  `characterEmotionStates` map when absent (messages sent before this
+   *  existed). Reloaded from the backend's `metadata.emotional_states`. */
+  emotionSnapshot?: Record<string, import('$lib/services/ipc').CharacterState>;
 }
 
 /** A character card used across Gallery and Chat. */

@@ -3,7 +3,7 @@
 //! generation -> character + cast row creation -> frontend notification.
 //!
 //! Every step after the initial cadence check returns a `Result`, but the
-//! caller (a background `tokio::spawn`, see `commands::chat::spawn_npc_detection`
+//! caller (a background `tokio::spawn`, see `commands::chat::pipeline::spawn_npc_detection`
 //! in Phase B) is expected to log-and-swallow any error — this pipeline must
 //! never block or fail a chat turn.
 
@@ -13,7 +13,6 @@ use surrealdb::engine::local::Db;
 use tauri::Emitter;
 use tracing::{debug, info};
 
-use crate::commands::chat::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::commands::npc::perform_profile_refresh;
 use crate::context::npc::{detector, profile_generator};
 use crate::context::response_parser::resolve_character_id;
@@ -24,6 +23,7 @@ use crate::db::npc_candidates::NpcCandidateRepo;
 use crate::db::scene_states::SceneStateRepo;
 use crate::error::MythicError;
 use crate::models::character::Character;
+use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 
 /// Number of message-completion events between periodic (non-forced)
 /// detection passes, when scene_extractor's `notable_character_event` flag

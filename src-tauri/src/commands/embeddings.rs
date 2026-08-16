@@ -14,9 +14,8 @@ use surrealdb::Surreal;
 use crate::db::embeddings::EmbeddingRepo;
 use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
+use crate::providers::resolve::create_rig_provider;
 use crate::AppState;
-
-use super::chat::create_rig_provider;
 
 /// Embedding index status for the frontend Memory settings.
 #[derive(Clone, Debug, serde::Serialize, specta::Type)]

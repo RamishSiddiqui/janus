@@ -74,14 +74,16 @@
   ]);
   let adapterNeedsBaseUrl = $derived(!cloudAdapters.has(newAdapter));
 
-  // Pre-fill excellent defaults on switching to AI Horde — the anonymous key
-  // works with zero registration, "Deliberate" is the most-served model on
-  // the Horde (fastest turnaround) — but never clobber something the user
-  // already typed.
+  // Pre-fill an excellent default on switching to AI Horde — the anonymous
+  // key works with zero registration — but never clobber something the user
+  // already typed. Default Model is deliberately left untouched here: it
+  // only shows "Deliberate" (the most-served model, fastest turnaround) as a
+  // *placeholder suggestion*, not a real committed value — auto-filling it
+  // for real made an unset field indistinguishable from a chosen one, so a
+  // model that was never actually saved as default looked like it was.
   $effect(() => {
     if (newAdapter === 'ai_horde') {
       if (!newApiKey) newApiKey = '0000000000';
-      if (!newModel) newModel = 'Deliberate';
       newType = 'image';
     } else if (newAdapter === 'comfy_ui') {
       if (!newBaseUrl) newBaseUrl = 'http://localhost:8188';
@@ -382,6 +384,15 @@
               <label class="flabel" for="pf-model">Default Model</label>
               <input id="pf-model" class="finput mono" bind:value={newModel}
                 placeholder={newAdapter === 'ai_horde' ? 'Deliberate' : newAdapter === 'wan_gp' ? 'qwen_image_20B' : 'model-name'} />
+              <span class="field-hint">
+                {#if newModel}
+                  Will use <strong>{newModel}</strong> for every generation.
+                {:else if newAdapter === 'ai_horde'}
+                  Left blank — a live model will be auto-selected each generation instead (may vary).
+                {:else}
+                  Leave blank to use the provider's own default.
+                {/if}
+              </span>
             </div>
           {/if}
         </div>
@@ -538,6 +549,9 @@
                         <input class="pfinput mono field-empty-input" placeholder="Enter model ID…"
                           onblur={(e) => { const v = e.currentTarget.value.trim(); if (v) { p.config.model = v; providers = [...providers]; saveField(p, 'model', v); } }} />
                       </div>
+                      {#if p.adapter === 'ai_horde'}
+                        <span class="field-hint">Every generation will auto-select a live model instead — set one above for consistent results.</span>
+                      {/if}
                     {/if}
                   </div>
                 {/if}
@@ -742,6 +756,10 @@
     transition: border-color 180ms;
   }
   .finput:focus { border-color: rgba(139,92,246,0.4); }
+  .field-hint {
+    font-size: 11px; line-height: 1.5; color: #6b6b8a;
+  }
+  .field-hint strong { color: #c4a1ff; font-weight: 600; }
   .finput.mono { font-family: var(--font-mono); }
   .fselect { appearance: none; cursor: pointer;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b6b8a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");

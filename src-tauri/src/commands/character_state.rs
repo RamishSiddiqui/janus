@@ -8,7 +8,9 @@ use tauri::State;
 use tokio::sync::RwLock;
 
 use crate::db::character_state::CharacterStateRepo;
+use crate::db::messages::MessageRepo;
 use crate::error::MythicError;
+use crate::models::DynamicJson;
 use crate::AppState;
 
 /// The persisted emotional state of a character within one conversation.
@@ -79,4 +81,24 @@ pub async fn upsert_character_state(
         &state_summary,
     )
     .await
+}
+
+/// Freezes an emotional-state snapshot (one entry per character, keyed by
+/// character id) onto a specific message's metadata, so its EmotionHUD pill
+/// keeps showing what each character felt *at that point in the story*
+/// instead of whatever `character_states` holds right now. `states` is
+/// passed through as raw JSON rather than a typed map — the backend never
+/// reads its shape, only stores and returns it verbatim to the frontend.
+/// Uses `DynamicJson`, not a bare `serde_json::Value` param — see its doc
+/// comment in `models::mod` for why (the same infinite-recursion crash
+/// `JsonValue` was built to avoid).
+#[tauri::command]
+#[specta::specta]
+pub async fn set_message_emotional_snapshot(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    message_id: String,
+    states: DynamicJson,
+) -> Result<(), MythicError> {
+    let g = state.read().await;
+    MessageRepo::merge_metadata(&g.db, &message_id, serde_json::json!({ "emotional_states": states.0 })).await
 }
