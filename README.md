@@ -6,7 +6,7 @@
 
 **A local-first AI roleplay chat app that actually remembers your story.**
 
-[![License: Elastic License 2.0](https://img.shields.io/badge/license-Elastic--2.0-9075F2.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-9075F2.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Rust](https://img.shields.io/badge/Rust-2021-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -117,4 +117,4 @@ Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) 
 
 ## License
 
-[Elastic License 2.0](LICENSE) — source-available, not OSI-approved "open source." You can freely use, self-host, modify, and build on Janus for any purpose, including internally at a company. The one thing it doesn't allow is offering Janus itself (or a modified version) to others as a hosted/managed service that competes with it. See the LICENSE file for the full terms.
+[GNU AGPL v3](LICENSE) — free and open source, including for commercial use. If you run a modified version of Janus as a network service, the AGPL's one distinguishing requirement (vs. plain GPL) kicks in: you must make that modified source available to the service's own users. See the LICENSE file for the full terms.
