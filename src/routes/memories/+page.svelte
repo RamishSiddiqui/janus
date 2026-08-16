@@ -268,22 +268,21 @@
       <!-- View switch -->
       <div class="view-switch">
         <button
-          class="switch-btn"
+          class="view-chip"
           class:active={activeView === 'graph'}
           onclick={() => activeView = 'graph'}
         >
-          <Icon name="network" size={14} />
+          <Icon name="network" size={14} color={activeView === 'graph' ? '#0a0812' : 'var(--fg-muted)'} />
           <span>Graph</span>
         </button>
         <button
-          class="switch-btn"
+          class="view-chip"
           class:active={activeView === 'timeline'}
           onclick={() => activeView = 'timeline'}
         >
-          <Icon name="clock" size={14} />
+          <Icon name="clock" size={14} color={activeView === 'timeline' ? '#0a0812' : 'var(--fg-muted)'} />
           <span>Timeline</span>
         </button>
-        <div class="switch-indicator" class:right={activeView === 'timeline'}></div>
       </div>
 
       <!-- Refresh -->
@@ -421,8 +420,9 @@
     align-items: center;
     gap: 8px;
     padding: 4px 10px 4px 4px;
-    background: rgba(14, 14, 30, 0.6);
-    border: 1px solid rgba(139, 92, 246, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 10px;
     cursor: pointer;
     transition: all 200ms;
@@ -431,8 +431,8 @@
 
   .picker-trigger:hover,
   .picker-trigger:focus {
-    border-color: rgba(139, 92, 246, 0.25);
-    background: rgba(14, 14, 30, 0.8);
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.07);
   }
 
   .picker-trigger:disabled {
@@ -497,19 +497,19 @@
     min-width: 220px;
     max-height: 320px;
     overflow-y: auto;
-    background: rgba(12, 12, 28, 0.96);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(139, 92, 246, 0.12);
+    background: rgba(16, 14, 34, 0.88);
+    backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 4px;
     z-index: 100;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.06);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
     animation: dropIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .picker-dropdown::-webkit-scrollbar { width: 3px; }
   .picker-dropdown::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.15);
+    background: rgba(144, 117, 242, 0.2);
     border-radius: 3px;
   }
 
@@ -537,20 +537,20 @@
   }
 
   .picker-option:hover {
-    background: rgba(139, 92, 246, 0.08);
-    color: #e8e0ff;
+    background: rgba(144, 117, 242, 0.1);
+    color: #e8e5f5;
   }
 
   .picker-option.selected {
-    background: rgba(139, 92, 246, 0.12);
-    color: #c4a1ff;
+    background: rgba(144, 117, 242, 0.14);
+    color: #c9b8fb;
   }
 
   .option-check {
     width: 16px;
     height: 16px;
     border-radius: 4px;
-    border: 1.5px solid rgba(139, 92, 246, 0.2);
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -560,9 +560,9 @@
   }
 
   .option-check.checked {
-    background: #8B5CF6;
-    border-color: #8B5CF6;
-    color: #fff;
+    background: #9075f2;
+    border-color: #9075f2;
+    color: #0a0812;
   }
 
   .option-avatar {
@@ -581,52 +581,44 @@
     color: #8b8ba7;
   }
 
-  /* ── View Switch (segmented control) ── */
+  /* ── View Switch (light carousel chips) ── */
   .view-switch {
     display: flex;
-    position: relative;
-    background: rgba(14, 14, 30, 0.5);
-    border: 1px solid rgba(139, 92, 246, 0.08);
-    border-radius: 10px;
-    padding: 3px;
+    gap: 8px;
   }
 
-  .switch-btn {
+  .view-chip {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 14px;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
     font-size: 12px;
     font-weight: 600;
-    color: #5a5a7a;
-    background: none;
-    border: none;
+    color: #a8a3c0;
     cursor: pointer;
-    position: relative;
-    z-index: 1;
-    transition: color 250ms;
     font-family: var(--font-body);
+    transition: all 220ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .switch-btn.active { color: #e8e0ff; }
-
-  .switch-btn span { white-space: nowrap; }
-
-  .switch-indicator {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: calc(50% - 3px);
-    height: calc(100% - 6px);
-    background: rgba(139, 92, 246, 0.12);
-    border-radius: 8px;
-    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid rgba(139, 92, 246, 0.15);
+  .view-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #e8e5f5;
   }
 
-  .switch-indicator.right {
-    transform: translateX(100%);
+  .view-chip.active {
+    transform: scale(1.05);
+    background: #9075f2;
+    border-color: #9075f2;
+    color: #0a0812;
+    font-weight: 700;
+    box-shadow: 0 6px 18px -6px #9075f2;
   }
+
+  .view-chip span { white-space: nowrap; }
 
   /* ── Icon Button ── */
   .icon-btn {
