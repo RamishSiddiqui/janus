@@ -20,9 +20,21 @@ export interface AiHordeProgress {
   kudos?: number | null;
 }
 
+/** Shape of the `wangp_progress` Tauri event — a numeric step/percentage
+ *  progress model, unlike AI Horde's queue-position-based one. Distinguished
+ *  from `AiHordeProgress` at the type level by `current_step` (present here,
+ *  absent there) — see `describeProgress`'s branch on it. */
+export interface WanGpProgress {
+  phase?: string | null;
+  status?: string | null;
+  progress?: number | null;
+  current_step?: number | null;
+  total_steps?: number | null;
+}
+
 export interface SceneGenerationState {
   isLoading: boolean;
-  progress: AiHordeProgress | null;
+  progress: AiHordeProgress | WanGpProgress | null;
   /** Timestamp of the most recent completion (success or failure) for this
    *  conversation — consumers watch for this changing rather than diffing
    *  isLoading, so they can react even if they weren't mounted when it flipped. */
@@ -78,6 +90,10 @@ function ensureProgressListener(): Promise<void> {
         const { conversation_id, ...progress } = event.payload;
         patchState(conversation_id, { isLoading: true, progress });
       });
+      listen<{ conversation_id: string } & WanGpProgress>('wangp_progress', (event) => {
+        const { conversation_id, ...progress } = event.payload;
+        patchState(conversation_id, { isLoading: true, progress });
+      });
     });
   }
   return listenerReady;
@@ -94,8 +110,10 @@ export function formatWait(seconds: number): string {
 /** Human-readable label for the current phase of an in-flight generation —
  *  shared between the Scene panel and the scene gallery placeholder so both
  *  describe the same state identically. */
-export function describeProgress(progress: AiHordeProgress | null): string {
-  if (!progress) return 'Generating...';
+export function describeProgress(progressIn: AiHordeProgress | WanGpProgress | null): string {
+  if (!progressIn) return 'Generating...';
+  if ('current_step' in progressIn) return describeWanGpProgress(progressIn);
+  const progress = progressIn as AiHordeProgress;
   switch (progress.phase) {
     case 'queued':
       return 'Submitted to AI Horde — queuing…';
@@ -114,6 +132,18 @@ export function describeProgress(progress: AiHordeProgress | null): string {
     default:
       return 'Generating...';
   }
+}
+
+/** WanGp's own progress shape is step/percentage-based rather than
+ *  queue-position-based — formats e.g. "Step 4/8 — Denoising (54%)". */
+function describeWanGpProgress(progress: WanGpProgress): string {
+  const parts: string[] = [];
+  if (progress.current_step != null && progress.total_steps != null) {
+    parts.push(`Step ${progress.current_step}/${progress.total_steps}`);
+  }
+  if (progress.status) parts.push(progress.status);
+  if (progress.progress != null) parts.push(`${Math.round(progress.progress)}%`);
+  return parts.length > 0 ? parts.join(' — ') : 'Generating...';
 }
 
 /** Runs a scene generation for `conversationId`, tracking its live status in
@@ -143,6 +173,32 @@ export async function runSceneGeneration(
   try {
     const ipc = await import('$lib/services/ipc');
     const scene = await ipc.generateScene(conversationId, prompt, options);
+    patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });
+    return scene;
+  } catch (err) {
+    patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });
+    throw err;
+  }
+}
+
+/** Same tracking as `runSceneGeneration`, for video scenes — see
+ *  `generateVideoScene`. WanGP is currently the only adapter that can
+ *  actually produce a video scene, but this stays adapter-agnostic like the
+ *  image path. */
+export async function runVideoSceneGeneration(
+  conversationId: string,
+  prompt: string,
+  options?: {
+    messageId?: string; negativePrompt?: string; width?: number; height?: number;
+    durationSeconds?: number; fps?: number; modelOverride?: string; allowNsfw?: boolean;
+    characterImages?: { characterId: string; characterName: string; relativePath: string }[];
+  }
+) {
+  patchState(conversationId, { isLoading: true, progress: null });
+  await ensureProgressListener();
+  try {
+    const ipc = await import('$lib/services/ipc');
+    const scene = await ipc.generateVideoScene(conversationId, prompt, options);
     patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });
     return scene;
   } catch (err) {

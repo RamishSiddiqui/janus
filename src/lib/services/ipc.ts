@@ -691,6 +691,45 @@ export async function generateScene(
   });
 }
 
+export async function generateVideoScene(
+  conversationId: string,
+  prompt: string,
+  options?: {
+    messageId?: string;
+    negativePrompt?: string;
+    width?: number;
+    height?: number;
+    /** Clip length in seconds — converted to whatever frame-count unit the
+     *  adapter needs internally. */
+    durationSeconds?: number;
+    fps?: number;
+    /** Overrides the model that would otherwise come from the provider's
+     *  own default, for this generation only. */
+    modelOverride?: string;
+    /** Mirrors the user's "Allow Mature Content" setting — see `generateScene`. */
+    allowNsfw?: boolean;
+    /** Cast portraits for multi-character reference — see `generateScene`.
+     *  WanGP is currently the only adapter that acts on this for video. */
+    characterImages?: { characterId: string; characterName: string; relativePath: string }[];
+  }
+): Promise<Scene> {
+  return safeInvoke<Scene>('generate_video_scene', {
+    conversationId,
+    messageId: options?.messageId ?? null,
+    prompt,
+    options: {
+      negativePrompt: options?.negativePrompt ?? null,
+      width: options?.width ?? null,
+      height: options?.height ?? null,
+      durationSeconds: options?.durationSeconds ?? null,
+      fps: options?.fps ?? null,
+      modelOverride: options?.modelOverride ?? null,
+      allowNsfw: options?.allowNsfw ?? null,
+      characterImages: options?.characterImages ?? null,
+    },
+  });
+}
+
 /** Everyone available as a portrait-reference source for this conversation's
  *  scene generation — the primary character plus its full cast roster (any
  *  role, including still-"Unconfirmed" transients). Used to populate the

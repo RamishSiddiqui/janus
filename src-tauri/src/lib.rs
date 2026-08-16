@@ -120,6 +120,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::memories::unlink_memory,
             commands::memories::get_memory_graph,
             commands::scenes::generate_scene,
+            commands::scenes::generate_video_scene,
             commands::scenes::list_scene_cast_members,
             commands::scenes::cancel_scene_generation,
             commands::scenes::list_scenes,
@@ -417,6 +418,7 @@ pub fn run() {
             commands::import::get_avatar_path,
             // Scenes
             commands::scenes::generate_scene,
+            commands::scenes::generate_video_scene,
             commands::scenes::list_scene_cast_members,
             commands::scenes::cancel_scene_generation,
             commands::scenes::list_scenes,

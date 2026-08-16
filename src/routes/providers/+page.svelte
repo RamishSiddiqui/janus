@@ -86,6 +86,11 @@
     } else if (newAdapter === 'comfy_ui') {
       if (!newBaseUrl) newBaseUrl = 'http://localhost:8188';
       newType = 'image';
+    } else if (newAdapter === 'wan_gp') {
+      // Serves both image and video off the same MCP server — leave Type
+      // as whatever the user picked, since they'll add two provider rows
+      // (one per type) pointing at this same base URL.
+      if (!newBaseUrl) newBaseUrl = 'http://127.0.0.1:7866';
     } else if (newAdapter === 'puter') {
       // Puter (puter.com) speaks the OpenAI-compatible wire format, so it
       // rides the existing open_ai_compatible adapter with zero backend
@@ -239,7 +244,7 @@
       cohere: 'Cohere', deepseek: 'DeepSeek', groq: 'Groq',
       perplexity: 'Perplexity', xai: 'xAI', hugging_face: 'HuggingFace',
       hyperbolic: 'Hyperbolic', moonshot: 'Moonshot', together: 'Together',
-      ai_horde: 'AI Horde', comfy_ui: 'ComfyUI',
+      ai_horde: 'AI Horde', comfy_ui: 'ComfyUI', wan_gp: 'WanGP',
     };
     return map[a] ?? a;
   }
@@ -321,6 +326,10 @@
                 <option value="silicon_flow">SiliconFlow</option>
                 <option value="ai_horde">AI Horde (free)</option>
                 <option value="comfy_ui">ComfyUI</option>
+                <option value="wan_gp">WanGP</option>
+              </optgroup>
+              <optgroup label="Video">
+                <option value="wan_gp">WanGP</option>
               </optgroup>
             </select>
           </div>
@@ -372,7 +381,7 @@
             <div class="form-field">
               <label class="flabel" for="pf-model">Default Model</label>
               <input id="pf-model" class="finput mono" bind:value={newModel}
-                placeholder={newAdapter === 'ai_horde' ? 'Deliberate' : 'model-name'} />
+                placeholder={newAdapter === 'ai_horde' ? 'Deliberate' : newAdapter === 'wan_gp' ? 'qwen_image_20B' : 'model-name'} />
             </div>
           {/if}
         </div>

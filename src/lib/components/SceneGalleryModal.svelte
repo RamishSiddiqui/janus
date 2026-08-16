@@ -77,7 +77,7 @@
       const urls: Record<string, string> = {};
       for (const s of scenes) {
         try {
-          urls[s.id] = await loadFileAsBlobUrl(s.file_path, 'image/png');
+          urls[s.id] = await loadFileAsBlobUrl(s.file_path, s.media_type === 'video' ? 'video/mp4' : 'image/png');
         } catch (err) {
           console.error(`Failed to load thumbnail for scene ${s.id}:`, err);
         }
@@ -143,7 +143,12 @@
         </button>
         <div class="gallery-enlarged-body">
           {#if thumbUrls[enlarged.id]}
-            <img src={thumbUrls[enlarged.id]} alt={enlarged.caption ?? enlarged.prompt} class="gallery-enlarged-img" />
+            {#if enlarged.media_type === 'video'}
+              <!-- svelte-ignore a11y_media_has_caption -->
+              <video src={thumbUrls[enlarged.id]} controls class="gallery-enlarged-img"></video>
+            {:else}
+              <img src={thumbUrls[enlarged.id]} alt={enlarged.caption ?? enlarged.prompt} class="gallery-enlarged-img" />
+            {/if}
           {/if}
 
           <div class="gallery-details">
@@ -239,7 +244,12 @@
             onkeydown={(e) => e.key === 'Enter' && (enlargedId = s.id)}
           >
             {#if thumbUrls[s.id]}
-              <img src={thumbUrls[s.id]} alt={s.caption ?? s.prompt} />
+              {#if s.media_type === 'video'}
+                <!-- svelte-ignore a11y_media_has_caption -->
+                <video src={thumbUrls[s.id]} muted></video>
+              {:else}
+                <img src={thumbUrls[s.id]} alt={s.caption ?? s.prompt} />
+              {/if}
             {/if}
             <button class="gallery-thumb-delete" onclick={(e) => handleDelete(s, e)} aria-label="Delete scene">
               <Icon name="trash-2" size={12} color="#F43F5E" />
@@ -338,7 +348,7 @@
      preset or hires-fix can produce a different aspect ratio), and cover
      would silently crop part of the composition to force-fill the tile.
      Square generations (the common case) look identical either way. */
-  .gallery-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .gallery-thumb img, .gallery-thumb video { width: 100%; height: 100%; object-fit: contain; display: block; }
 
   .gallery-thumb-delete {
     position: absolute; top: 5px; right: 5px; width: 22px; height: 22px;

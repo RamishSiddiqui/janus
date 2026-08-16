@@ -2673,6 +2673,9 @@ pub(crate) fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider
         ProviderAdapter::AiHorde => return Err(MythicError::Config(
             "AI Horde is an image provider, not an LLM provider".to_string()
         )),
+        ProviderAdapter::WanGp => return Err(MythicError::Config(
+            "WanGP is an image/video provider, not an LLM provider".to_string()
+        )),
     };
 
     let api_key = config.config.get("api_key").and_then(|v| v.as_str());

@@ -329,6 +329,17 @@ pub async fn test_provider_connection(
         };
     }
 
+    // WanGP is MCP-only — there's no REST route a plain GET can hit to
+    // signal liveness the way ComfyUI's /system_stats or Ollama's /api/tags
+    // do, so this does a real (bare) MCP connect instead of building a
+    // health_url below.
+    if provider.adapter == ProviderAdapter::WanGp {
+        return match crate::providers::wangp::test_connection(base_url).await {
+            Ok(()) => Ok(ok_result()),
+            Err(e) => Ok(fail_result(e.to_string())),
+        };
+    }
+
     // Local providers — check if the base URL is reachable. Also covers any
     // generic OpenAI-compatible endpoint with a configured base_url (e.g. a
     // cloud provider like NVIDIA's NIM API, not just genuinely local
@@ -1138,6 +1149,7 @@ fn parse_adapter(s: &str) -> Result<ProviderAdapter, MythicError> {
         "hugging_face" => Ok(ProviderAdapter::HuggingFace),
         "comfy_ui" => Ok(ProviderAdapter::ComfyUi),
         "ai_horde" => Ok(ProviderAdapter::AiHorde),
+        "wan_gp" => Ok(ProviderAdapter::WanGp),
         "anthropic" => Ok(ProviderAdapter::Anthropic),
         "gemini" => Ok(ProviderAdapter::Gemini),
         "cohere" => Ok(ProviderAdapter::Cohere),

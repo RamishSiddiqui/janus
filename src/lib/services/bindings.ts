@@ -248,6 +248,15 @@ export const commands = {
 	 */
 	generateScene: (conversationId: string, messageId: string | null, prompt: string, options: GenerateSceneOptions) => typedError<Scene_Serialize, MythicError>(__TAURI_INVOKE("generate_scene", { conversationId, messageId, prompt, options })),
 	/**
+	 *  Generates a scene video from a prompt and saves it to the database +
+	 *  filesystem — same shape as `generate_scene`, but for the video pipeline.
+	 *  Unlike image generation, there's no generic/placeholder fallback: video
+	 *  generation currently only exists via WanGP, so anything else (including
+	 *  no video provider configured at all) is a clear, immediate error rather
+	 *  than a silent placeholder (a placeholder *video* doesn't make sense).
+	 */
+	generateVideoScene: (conversationId: string, messageId: string | null, prompt: string, options: GenerateVideoOptions) => typedError<Scene_Serialize, MythicError>(__TAURI_INVOKE("generate_video_scene", { conversationId, messageId, prompt, options })),
+	/**
 	 *  Lists everyone available as a portrait-reference source for this
 	 *  conversation's scene generation — the single source of truth the
 	 *  frontend's cast-portrait picker uses, instead of re-deriving it from
@@ -601,11 +610,14 @@ export type AppInfo = {
 export type Character = Character_Serialize | Character_Deserialize;
 
 /**
- *  A single cast member's portrait, handed to a ComfyUI generation so it can
- *  be uploaded and substituted into whichever `{{CHARACTER_IMAGE_n}}` token(s)
- *  the user's workflow references — see `providers::comfyui`. `relative_path`
- *  is relative to `app_data_dir` (e.g. a character's own `avatar_path`), the
- *  same convention avatars/portraits already use everywhere else.
+ *  A single cast member's portrait, handed to a ComfyUI or WanGP generation
+ *  so it can be attached as a reference image. ComfyUI substitutes these into
+ *  whichever `{{CHARACTER_IMAGE_n}}` token(s) the user's workflow references
+ *  (`providers::comfyui`); WanGP attaches them under whatever field its own
+ *  model schema reports for reference images (`providers::wangp`).
+ *  `relative_path` is relative to `app_data_dir` (e.g. a character's own
+ *  `avatar_path`), the same convention avatars/portraits already use
+ *  everywhere else.
  */
 export type CharacterImageRef = {
 	characterId: string,
@@ -961,6 +973,27 @@ export type GenerateSceneOptions = {
 	 *  (AI Horde's single img2img anchor), this supports any number of
 	 *  characters, limited only by how many `{{CHARACTER_IMAGE_n}}` tokens
 	 *  the user's own workflow references.
+	 */
+	characterImages?: CharacterImageRef[] | null,
+};
+
+/**
+ *  Optional knobs for `generate_video_scene` — same shape/intent as
+ *  `GenerateSceneOptions`, minus the image-only fields (`reference_image_path`/
+ *  `denoising_strength` are AI Horde's img2img mechanism, which has no video
+ *  equivalent here) and plus video-specific ones (`duration_seconds`, `fps`).
+ */
+export type GenerateVideoOptions = {
+	negativePrompt: string | null,
+	width: number | null,
+	height: number | null,
+	durationSeconds: number | null,
+	fps: number | null,
+	modelOverride: string | null,
+	allowNsfw: boolean | null,
+	/**
+	 *  Cast portraits for multi-character reference — see `GenerateSceneOptions::character_images`.
+	 *  WanGP is currently the only adapter that acts on this for video.
 	 */
 	characterImages?: CharacterImageRef[] | null,
 };
@@ -1633,6 +1666,12 @@ export type ProviderAdapter =
 /**  Local ComfyUI instance for image/video generation */
 "comfy_ui" | 
 /**
+ *  Local WanGP (Wan2GP) instance for image/video generation, reached over
+ *  its MCP server (streamable-http transport) — see `providers::wangp`.
+ *  Built for weaker hardware than ComfyUI typically needs.
+ */
+"wan_gp" | 
+/**
  *  AI Horde (formerly Stable Horde) — free, crowdsourced, asynchronous
  *  image generation cluster. Works anonymously (no signup) via the
  *  well-known "0000000000" API key, though registered keys get queue
@@ -1693,6 +1732,13 @@ export type ProviderConfig_Deserialize = {
 	 *  parsed at generation time. It may contain `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`,
 	 *  `{{SEED}}`, `{{WIDTH}}`, `{{HEIGHT}}`, and `{{CHARACTER_IMAGE_1..N}}` placeholder tokens —
 	 *  see `providers::comfyui::substitute_placeholders`.
+	 *  For WanGP: `{ "base_url": "http://127.0.0.1:7866", "model": "qwen_image_20B" }` —
+	 *  `base_url` points at the WanGP MCP server (`/mcp` is appended at connect time). `model`
+	 *  is the same generic "Default Model" field every non-LLM adapter uses; WanGP treats
+	 *  whatever's in it as one of its own model identifiers (e.g. `qwen_image_20B` for images,
+	 *  `ltx2_22B_distilled` for video). A single WanGP instance serving both image and video
+	 *  needs two separate `ProviderConfig` rows (one per `provider_type`) at the same
+	 *  `base_url` — see `providers::wangp`.
 	 */
 	config: JsonValue,
 	/**  Whether this is the default provider for its type */
@@ -1724,6 +1770,13 @@ export type ProviderConfig_Serialize = {
 	 *  parsed at generation time. It may contain `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`,
 	 *  `{{SEED}}`, `{{WIDTH}}`, `{{HEIGHT}}`, and `{{CHARACTER_IMAGE_1..N}}` placeholder tokens —
 	 *  see `providers::comfyui::substitute_placeholders`.
+	 *  For WanGP: `{ "base_url": "http://127.0.0.1:7866", "model": "qwen_image_20B" }` —
+	 *  `base_url` points at the WanGP MCP server (`/mcp` is appended at connect time). `model`
+	 *  is the same generic "Default Model" field every non-LLM adapter uses; WanGP treats
+	 *  whatever's in it as one of its own model identifiers (e.g. `qwen_image_20B` for images,
+	 *  `ltx2_22B_distilled` for video). A single WanGP instance serving both image and video
+	 *  needs two separate `ProviderConfig` rows (one per `provider_type`) at the same
+	 *  `base_url` — see `providers::wangp`.
 	 */
 	config: JsonValue,
 	/**  Whether this is the default provider for its type */

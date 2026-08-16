@@ -7,7 +7,7 @@
   import { get } from 'svelte/store';
   import type { SceneState } from '$lib/services/ipc';
   import {
-    sceneGenerations, getSceneGenerationState, runSceneGeneration, describeProgress,
+    sceneGenerations, getSceneGenerationState, runSceneGeneration, runVideoSceneGeneration, describeProgress,
   } from '$lib/stores/sceneGeneration';
 
   let {
@@ -89,16 +89,32 @@
   // contributes a likeness/style cue rather than dictating the framing.
   let denoisingStrength = $state(0.75);
 
-  // ComfyUI multi-character portrait conditioning — only relevant when the
-  // resolved default image provider's adapter is 'comfy_ui', since that's
-  // the only adapter with a generic multi-image mechanism (the
-  // {{CHARACTER_IMAGE_n}} placeholder tokens in the user's own workflow —
-  // see providers::comfyui on the backend). Every other adapter keeps the
-  // existing single "use avatar as reference" toggle above, unchanged.
+  // Multi-character portrait conditioning — relevant when the resolved
+  // default provider's adapter is 'comfy_ui' (the {{CHARACTER_IMAGE_n}}
+  // placeholder tokens in the user's own workflow — see providers::comfyui
+  // on the backend) or 'wan_gp' (WanGP attaches them as reference images —
+  // see providers::wangp). Every other adapter keeps the existing single
+  // "use avatar as reference" toggle above, unchanged.
   let providerAdapter: string | null = $state(null);
   let sceneCast: { characterId: string; name: string; avatarPath: string | null; role: string }[] = $state([]);
   let selectedCastIds = $state<Set<string>>(new Set());
   let castThumbUrls: Record<string, string> = $state({});
+
+  // Video generation — same shape as the image path above, but sourced from
+  // whichever provider is default for provider_type "video" (currently only
+  // ever WanGP; there's no video-capable ComfyUI/AI Horde path today).
+  let videoProviderAdapter: string | null = $state(null);
+  let sceneVideoUrl: string | null = $state(null);
+  let currentVideoSceneId: string | null = $state(null);
+  let videoCaption = $state('No video generated yet');
+  let videoDuration = $state(4);
+  let videoFps = $state(24);
+
+  /** Whichever adapter is relevant to the currently-active tab — drives the
+   *  shared Cast Portraits picker below, since both ComfyUI (image) and
+   *  WanGP (image or video) use it, just interpreting the images
+   *  differently on the backend. */
+  let currentTabAdapter = $derived(activeTab === 'image' ? providerAdapter : videoProviderAdapter);
 
   // "Unconfirmed" cast members (role 'transient') are excluded — same
   // semantics as the "Unconfirmed" badge elsewhere in this app (see
@@ -115,6 +131,18 @@
     } catch (err) {
       console.error('Failed to load image provider adapter:', err);
       providerAdapter = null;
+    }
+  }
+
+  async function loadVideoProviderAdapter() {
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const providers = await ipc.listProviders('video');
+      const def = providers.find(p => p.is_default) ?? providers[0];
+      videoProviderAdapter = def?.adapter ?? null;
+    } catch (err) {
+      console.error('Failed to load video provider adapter:', err);
+      videoProviderAdapter = null;
     }
   }
 
@@ -242,6 +270,9 @@
       sceneImageUrl = null;
       sceneCaption = 'No scene generated yet';
       currentSceneId = null;
+      sceneVideoUrl = null;
+      videoCaption = 'No video generated yet';
+      currentVideoSceneId = null;
       selectedPresetId = null;
       sceneCast = [];
     }
@@ -257,6 +288,7 @@
       }));
     }).catch(err => console.error('Failed to load image presets/models:', err));
     loadProviderAdapter();
+    loadVideoProviderAdapter();
   });
 
   async function loadPresetSelection(convId: string) {
@@ -306,7 +338,7 @@
         if (!get(settings).autoGenerateImages) return;
         const convId = get(activeConversationId);
         if (!convId || isLoading) return;
-        if (providerAdapter === 'comfy_ui') autoSelectCastFromScene(event.payload);
+        if (providerAdapter === 'comfy_ui' || providerAdapter === 'wan_gp') autoSelectCastFromScene(event.payload);
         handleAutoGenerate(convId, buildAutoPrompt(event.payload));
       }).then(fn => { unlisten = fn; });
     });
@@ -318,8 +350,10 @@
   // on unmount, since the context panel remounts this component on every
   // conversation switch (see the {#key} wrapper in +page.svelte).
   let currentImageBlobUrl: string | null = null;
+  let currentVideoBlobUrl: string | null = null;
   onDestroy(() => {
     if (currentImageBlobUrl) URL.revokeObjectURL(currentImageBlobUrl);
+    if (currentVideoBlobUrl) URL.revokeObjectURL(currentVideoBlobUrl);
     for (const url of Object.values(castThumbUrls)) URL.revokeObjectURL(url);
   });
 
@@ -337,6 +371,22 @@
       return currentImageBlobUrl;
     } catch (err) {
       console.error('Failed to load scene image:', err);
+      return null;
+    }
+  }
+
+  /** Same as `loadSceneImageBlob`, for video — needs `media-src 'self' blob:
+   *  data:` in the CSP (see tauri.conf.json) for `<video src="blob:...">`
+   *  to actually play instead of being silently blocked. */
+  async function loadSceneVideoBlob(fileRelative: string): Promise<string | null> {
+    try {
+      const { loadFileAsBlobUrl, revokeIfSet } = await import('$lib/utils/blobUrl');
+      const url = await loadFileAsBlobUrl(fileRelative, 'video/mp4');
+      revokeIfSet(currentVideoBlobUrl);
+      currentVideoBlobUrl = url;
+      return currentVideoBlobUrl;
+    } catch (err) {
+      console.error('Failed to load scene video:', err);
       return null;
     }
   }
@@ -381,13 +431,33 @@
       allowNsfw: get(settings).allowMatureContent,
     };
     if (modelOverride) opts.modelOverride = modelOverride;
-    if (providerAdapter === 'comfy_ui' && selectedCastIds.size > 0) {
+    if ((providerAdapter === 'comfy_ui' || providerAdapter === 'wan_gp') && selectedCastIds.size > 0) {
       opts.characterImages = comfyEligibleCast
         .filter(m => selectedCastIds.has(m.characterId))
         .map(m => ({ characterId: m.characterId, characterName: m.name, relativePath: m.avatarPath! }));
     } else if (useAvatarReference && avatarPath && modelSupportsImg2Img) {
       opts.referenceImagePath = avatarPath;
       opts.denoisingStrength = denoisingStrength;
+    }
+    return opts;
+  }
+
+  /** Video counterpart to `buildGenOptions` — WanGP is currently the only
+   *  video-capable adapter, and it's the only one whose Cast Portraits
+   *  picker can appear while the Video tab is active (see `currentTabAdapter`). */
+  function buildVideoGenOptions() {
+    const opts: {
+      width: number; height: number; durationSeconds: number; fps: number;
+      allowNsfw?: boolean;
+      characterImages?: { characterId: string; characterName: string; relativePath: string }[];
+    } = {
+      width: 1280, height: 720, durationSeconds: videoDuration, fps: videoFps,
+      allowNsfw: get(settings).allowMatureContent,
+    };
+    if (videoProviderAdapter === 'wan_gp' && selectedCastIds.size > 0) {
+      opts.characterImages = comfyEligibleCast
+        .filter(m => selectedCastIds.has(m.characterId))
+        .map(m => ({ characterId: m.characterId, characterName: m.name, relativePath: m.avatarPath! }));
     }
     return opts;
   }
@@ -406,17 +476,28 @@
   async function loadLatestScene(convId: string) {
     try {
       const ipc = await import('$lib/services/ipc');
-      const scenes = await ipc.listScenes(convId);
-      if (scenes.length > 0) {
-        const latest = scenes[0]; // Already sorted DESC by created_at
-        currentSceneId = latest.id;
-        sceneCaption = latest.caption || latest.prompt;
-        promptText = latest.prompt;
-        sceneImageUrl = await loadSceneImageBlob(latest.file_path);
+      const scenes = await ipc.listScenes(convId); // sorted DESC by created_at, mixed media types
+      const latestImage = scenes.find(s => s.media_type !== 'video');
+      if (latestImage) {
+        currentSceneId = latestImage.id;
+        sceneCaption = latestImage.caption || latestImage.prompt;
+        promptText = latestImage.prompt;
+        sceneImageUrl = await loadSceneImageBlob(latestImage.file_path);
       } else {
         sceneImageUrl = null;
         sceneCaption = 'No scene generated yet';
         currentSceneId = null;
+      }
+
+      const latestVideo = scenes.find(s => s.media_type === 'video');
+      if (latestVideo) {
+        currentVideoSceneId = latestVideo.id;
+        videoCaption = latestVideo.caption || latestVideo.prompt;
+        sceneVideoUrl = await loadSceneVideoBlob(latestVideo.file_path);
+      } else {
+        sceneVideoUrl = null;
+        videoCaption = 'No video generated yet';
+        currentVideoSceneId = null;
       }
     } catch (err) {
       console.error('Failed to load scenes:', err);
@@ -489,8 +570,34 @@
     return msg.toLowerCase().includes('cancelled');
   }
 
+  /** Video counterpart to `handleGenerate`. */
+  async function handleGenerateVideo() {
+    const convId = $activeConversationId;
+    if (!convId || get(sceneGenerations)[convId]?.isLoading || !videoProviderAdapter) return;
+
+    isEditingPrompt = false;
+    const prompt = promptText.trim() || await resolveDefaultPrompt(convId);
+
+    if (!isTauri) {
+      videoCaption = `${prompt} — generated (mock)`;
+      return;
+    }
+
+    try {
+      await runVideoSceneGeneration(convId, prompt, buildVideoGenOptions());
+    } catch (err) {
+      if (isCancellationError(err)) {
+        videoCaption = 'Generation stopped';
+      } else {
+        console.error('Failed to generate video scene:', err);
+        videoCaption = 'Generation failed — check your video provider settings';
+      }
+    }
+  }
+
   async function handleRegenerate() {
-    await handleGenerate();
+    if (activeTab === 'video') await handleGenerateVideo();
+    else await handleGenerate();
   }
 
   let isCancelling = $state(false);
@@ -509,21 +616,22 @@
   }
 
   async function handleSave() {
-    if (!sceneImageUrl) return;
-    // Open the image in a new window / save dialog
-    if (isTauri && currentSceneId) {
+    const isVideo = activeTab === 'video';
+    const sceneId = isVideo ? currentVideoSceneId : currentSceneId;
+    if (isVideo ? !sceneVideoUrl : !sceneImageUrl) return;
+    // Open the image/video in a save dialog
+    if (isTauri && sceneId) {
       try {
         const { save } = await import('@tauri-apps/plugin-dialog');
         const ipc = await import('$lib/services/ipc');
         const scenes = await ipc.listScenes($activeConversationId);
-        const scene = scenes.find(s => s.id === currentSceneId);
+        const scene = scenes.find(s => s.id === sceneId);
         if (scene) {
           const absPath = await ipc.getScenePath(scene.file_path);
           // Copy to user-selected path
-          const dest = await save({
-            defaultPath: `scene-${currentSceneId}.png`,
-            filters: [{ name: 'PNG Image', extensions: ['png'] }],
-          });
+          const dest = isVideo
+            ? await save({ defaultPath: `scene-${sceneId}.mp4`, filters: [{ name: 'MP4 Video', extensions: ['mp4'] }] })
+            : await save({ defaultPath: `scene-${sceneId}.png`, filters: [{ name: 'PNG Image', extensions: ['png'] }] });
           if (dest) {
             const { copyFile } = await import('@tauri-apps/plugin-fs');
             await copyFile(absPath, dest);
@@ -556,17 +664,19 @@
         <Icon name="image" size={12} color={activeTab === 'image' ? '#FFFFFF' : 'var(--fg-muted)'} />
         <span>Image</span>
       </button>
-      <button 
-        class="toggle-btn" 
-        class:active={activeTab === 'video'}
-        onclick={() => activeTab = 'video'}
-        role="tab"
-        aria-selected={activeTab === 'video'}
-        aria-controls="scene-panel"
-      >
-        <Icon name="video" size={12} color={activeTab === 'video' ? '#FFFFFF' : 'var(--fg-muted)'} />
-        <span>Video</span>
-      </button>
+      {#if videoProviderAdapter}
+        <button
+          class="toggle-btn"
+          class:active={activeTab === 'video'}
+          onclick={() => activeTab = 'video'}
+          role="tab"
+          aria-selected={activeTab === 'video'}
+          aria-controls="scene-panel"
+        >
+          <Icon name="video" size={12} color={activeTab === 'video' ? '#FFFFFF' : 'var(--fg-muted)'} />
+          <span>Video</span>
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -574,9 +684,9 @@
   <div class="scene-frame" class:loading={isLoading} id="scene-panel" role="tabpanel">
     {#if isLoading}
       <div class="scene-loading animate-shimmer">
-        <Icon name="image" size={24} color="var(--fg-muted)" />
+        <Icon name={activeTab === 'video' ? 'video' : 'image'} size={24} color="var(--fg-muted)" />
         <span class="loading-text">{progressLabel}</span>
-        {#if genState.progress?.is_possible === false}
+        {#if genState.progress && 'is_possible' in genState.progress && genState.progress.is_possible === false}
           <span class="loading-subtext">No matching worker online right now — still waiting</span>
         {/if}
         <button class="stop-gen-btn" onclick={handleStopGeneration} disabled={isCancelling}>
@@ -599,14 +709,23 @@
       </div>
     {:else}
       <div class="scene-video">
-        <div class="video-placeholder">
-          <Icon name="video" size={32} color="var(--fg-muted)" />
-          <span class="video-text">Video generation ready</span>
-          <button class="generate-video-btn">
-            <Icon name="sparkles" size={14} color="#FFFFFF" />
-            Generate Scene Video
-          </button>
-        </div>
+        {#if sceneVideoUrl}
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video src={sceneVideoUrl} controls class="generated-video"></video>
+        {:else if videoProviderAdapter}
+          <div class="scene-placeholder" onclick={handleGenerateVideo} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && handleGenerateVideo()}>
+            <div class="scene-overlay">
+              <Icon name="sparkles" size={20} color="rgba(255,255,255,0.6)" />
+              <span class="gen-hint">Click to generate</span>
+            </div>
+          </div>
+        {:else}
+          <div class="video-placeholder">
+            <Icon name="video" size={32} color="var(--fg-muted)" />
+            <span class="video-text">No video provider configured</span>
+            <a href="/providers" class="generate-video-btn">Add one in Settings →</a>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -620,7 +739,7 @@
         placeholder="Describe the scene to generate..."
         rows="2"
       ></textarea>
-      <button class="prompt-go-btn" onclick={handleGenerate} disabled={isLoading}>
+      <button class="prompt-go-btn" onclick={activeTab === 'video' ? handleGenerateVideo : handleGenerate} disabled={isLoading}>
         <Icon name="sparkles" size={12} color="#FFFFFF" />
         Generate
       </button>
@@ -629,51 +748,79 @@
 
   <!-- Caption -->
   <div class="scene-caption">
-    <span class="caption-text">{sceneCaption}</span>
+    <span class="caption-text">{activeTab === 'video' ? videoCaption : sceneCaption}</span>
   </div>
 
-  <!-- Preset Picker -->
-  <div class="preset-picker">
-    <span class="preset-picker-label">Style Preset</span>
-    {#if presets.length > 0}
+  {#if activeTab === 'image'}
+    <!-- Preset Picker -->
+    <div class="preset-picker">
+      <span class="preset-picker-label">Style Preset</span>
+      {#if presets.length > 0}
+        <select
+          class="preset-picker-select"
+          value={selectedPresetId ?? ''}
+          onchange={(e) => handlePresetChange(e.currentTarget.value)}
+          aria-label="Image generation preset for this chat"
+        >
+          <option value="">Use Default</option>
+          {#each presets as p (p.id)}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+      {:else}
+        <a href="/settings" class="preset-picker-link">Add one in Settings →</a>
+      {/if}
+    </div>
+
+    <!-- Model Override -->
+    <div class="preset-picker">
+      <span class="preset-picker-label">Model</span>
+      {#if enabledImageModels.length > 0}
+        <select
+          class="preset-picker-select"
+          value={modelOverride ?? ''}
+          onchange={(e) => modelOverride = e.currentTarget.value || null}
+          aria-label="Model for this generation"
+        >
+          <option value="">Use Default</option>
+          {#each sortedImageModels as m}
+            <option value={m.model_id}>{isRecommendedModel(m.model_id) ? `★ ${m.model_id}` : m.model_id}</option>
+          {/each}
+        </select>
+      {:else}
+        <a href="/models" class="preset-picker-link">Enable models →</a>
+      {/if}
+    </div>
+  {:else}
+    <!-- Duration / FPS — video-only, mirrors the image tab's minimal
+         generation-options footprint (no resolution controls there either). -->
+    <div class="preset-picker">
+      <span class="preset-picker-label">Duration</span>
+      <input
+        class="ref-strength-input"
+        type="range" min="1" max="10" step="0.5"
+        bind:value={videoDuration}
+        aria-label="Clip length in seconds"
+      />
+      <span class="ref-strength-value">{videoDuration.toFixed(1)}s</span>
+    </div>
+    <div class="preset-picker">
+      <span class="preset-picker-label">FPS</span>
       <select
         class="preset-picker-select"
-        value={selectedPresetId ?? ''}
-        onchange={(e) => handlePresetChange(e.currentTarget.value)}
-        aria-label="Image generation preset for this chat"
+        value={videoFps}
+        onchange={(e) => videoFps = Number(e.currentTarget.value)}
+        aria-label="Frames per second"
       >
-        <option value="">Use Default</option>
-        {#each presets as p (p.id)}
-          <option value={p.id}>{p.name}</option>
-        {/each}
+        <option value={16}>16</option>
+        <option value={24}>24</option>
+        <option value={30}>30</option>
       </select>
-    {:else}
-      <a href="/settings" class="preset-picker-link">Add one in Settings →</a>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
-  <!-- Model Override -->
-  <div class="preset-picker">
-    <span class="preset-picker-label">Model</span>
-    {#if enabledImageModels.length > 0}
-      <select
-        class="preset-picker-select"
-        value={modelOverride ?? ''}
-        onchange={(e) => modelOverride = e.currentTarget.value || null}
-        aria-label="Model for this generation"
-      >
-        <option value="">Use Default</option>
-        {#each sortedImageModels as m}
-          <option value={m.model_id}>{isRecommendedModel(m.model_id) ? `★ ${m.model_id}` : m.model_id}</option>
-        {/each}
-      </select>
-    {:else}
-      <a href="/models" class="preset-picker-link">Enable models →</a>
-    {/if}
-  </div>
-
-  <!-- Multi-character portrait conditioning (ComfyUI only) -->
-  {#if providerAdapter === 'comfy_ui'}
+  <!-- Multi-character portrait conditioning (ComfyUI image, or WanGP image/video) -->
+  {#if currentTabAdapter === 'comfy_ui' || currentTabAdapter === 'wan_gp'}
     <div class="preset-picker">
       <span class="preset-picker-label">Cast Portraits</span>
       {#if comfyEligibleCast.length === 0}
@@ -693,9 +840,13 @@
           </label>
         {/each}
       </div>
-      <span class="preset-picker-hint">Sent to your workflow's {'{{CHARACTER_IMAGE_n}}'} tokens, in the order selected here</span>
+      <span class="preset-picker-hint">
+        {currentTabAdapter === 'comfy_ui'
+          ? "Sent to your workflow's {{CHARACTER_IMAGE_n}} tokens, in the order selected here"
+          : 'Sent to WanGP as reference images for this scene'}
+      </span>
     {/if}
-  {:else if avatarPath}
+  {:else if activeTab === 'image' && avatarPath}
     <!-- img2img Reference -->
     <div class="preset-picker">
       <span class="preset-picker-label">Avatar Reference</span>
@@ -729,7 +880,7 @@
       <Icon name="refresh-cw" size={10} color="var(--fg-muted)" />
       <span>Regenerate</span>
     </button>
-    <button class="scene-action-btn" onclick={handleSave} aria-label="Save scene" disabled={!sceneImageUrl}>
+    <button class="scene-action-btn" onclick={handleSave} aria-label="Save scene" disabled={activeTab === 'video' ? !sceneVideoUrl : !sceneImageUrl}>
       <Icon name="download" size={10} color="var(--fg-muted)" />
       <span>Save</span>
     </button>
@@ -761,12 +912,12 @@
     letter-spacing: 1px;
   }
 
-  /* Toggle */
+  /* Toggle — Light Carousel chips: independent floating pills, not an
+     enclosed segmented-control capsule (dimming/enclosing the inactive one
+     reads as disabled). Active chip pops forward with a solid fill + glow. */
   .scene-toggle {
     display: flex;
-    border-radius: var(--rounded-md);
-    border: 1px solid var(--border-subtle);
-    overflow: hidden;
+    gap: 6px;
   }
 
   .toggle-btn {
@@ -774,26 +925,29 @@
     align-items: center;
     gap: 4px;
     padding: clamp(5px, 1.2cqi, 8px) clamp(10px, 2.5cqi, 16px);
-    background: transparent;
-    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
     color: var(--fg-muted);
     font-size: clamp(10px, 2.6cqi, 13px);
     font-family: var(--font-body);
-    transition: all var(--duration-fast) var(--ease-out);
+    cursor: pointer;
+    transition: all 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--fg-secondary);
   }
 
   .toggle-btn.active {
+    transform: scale(1.05);
     background: var(--accent-primary);
+    border-color: var(--accent-primary);
     color: #FFFFFF;
     font-weight: 600;
-  }
-
-  .toggle-btn:first-child {
-    border-radius: 7px 0 0 7px;
-  }
-
-  .toggle-btn:last-child {
-    border-radius: 0 7px 7px 0;
+    box-shadow: 0 6px 16px -6px var(--accent-primary);
   }
 
   /* Scene Frame — square aspect-ratio (generated images are 512x512) instead
@@ -818,6 +972,13 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .generated-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
   }
 
   .scene-placeholder {
@@ -934,6 +1095,8 @@
     font-size: clamp(11px, 2.8cqi, 15px);
     font-weight: 600;
     font-family: var(--font-body);
+    text-decoration: none;
+    cursor: pointer;
     margin-top: 4px;
     transition: all var(--duration-fast) var(--ease-out);
   }

@@ -20,9 +20,10 @@ use crate::db::providers::ProviderRepo;
 use crate::db::scenes::SceneRepo;
 use crate::error::MythicError;
 use crate::models::image_preset::ImagePreset;
-use crate::models::provider::{CharacterImageRef, ImageGenParams, ProviderAdapter, ProviderConfig};
+use crate::models::provider::{CharacterImageRef, ImageGenParams, ProviderAdapter, ProviderConfig, VideoGenParams};
 use crate::models::scene::Scene;
 use crate::providers::comfyui::generate_via_comfyui;
+use crate::providers::wangp;
 use crate::AppState;
 
 const AI_HORDE_BASE_URL: &str = "https://aihorde.net/api/v2";
@@ -125,6 +126,26 @@ pub struct GenerateSceneOptions {
     /// (AI Horde's single img2img anchor), this supports any number of
     /// characters, limited only by how many `{{CHARACTER_IMAGE_n}}` tokens
     /// the user's own workflow references.
+    #[serde(default)]
+    pub character_images: Option<Vec<CharacterImageRef>>,
+}
+
+/// Optional knobs for `generate_video_scene` — same shape/intent as
+/// `GenerateSceneOptions`, minus the image-only fields (`reference_image_path`/
+/// `denoising_strength` are AI Horde's img2img mechanism, which has no video
+/// equivalent here) and plus video-specific ones (`duration_seconds`, `fps`).
+#[derive(Debug, Default, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateVideoOptions {
+    pub negative_prompt: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub duration_seconds: Option<f32>,
+    pub fps: Option<u32>,
+    pub model_override: Option<String>,
+    pub allow_nsfw: Option<bool>,
+    /// Cast portraits for multi-character reference — see `GenerateSceneOptions::character_images`.
+    /// WanGP is currently the only adapter that acts on this for video.
     #[serde(default)]
     pub character_images: Option<Vec<CharacterImageRef>>,
 }
@@ -320,6 +341,31 @@ pub async fn generate_scene(
             let caption = format!("{} — generated via {}", prompt, p.name);
             (caption, meta)
         }
+        Some(p) if p.adapter == ProviderAdapter::WanGp => {
+            // Same single-flight guard + cancel_flag plumbing as ComfyUI/AiHorde above.
+            let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let mut active = state_guard.active_scene_generations.lock().await;
+                if active.contains_key(&conversation_id) {
+                    return Err(MythicError::Provider(
+                        "A generation is already in progress for this conversation".to_string(),
+                    ));
+                }
+                active.insert(conversation_id.clone(), cancel_flag.clone());
+            }
+
+            let result = wangp::generate_image_via_wangp(
+                &app, &conversation_id, p, &params, model_override.as_deref(),
+                &character_images, &app_data_dir, &cancel_flag,
+            ).await;
+
+            state_guard.active_scene_generations.lock().await.remove(&conversation_id);
+
+            let (image_bytes, meta) = result?;
+            tokio::fs::write(&file_path, &image_bytes).await?;
+            let caption = format!("{} — generated via {}", prompt, p.name);
+            (caption, meta)
+        }
         Some(provider) => {
             let (image_bytes, metadata) =
                 generate_via_generic_provider(&state_guard.http_client, provider, &params).await?;
@@ -359,6 +405,101 @@ pub async fn generate_scene(
     .await?;
 
     info!("Scene generated: {} saved to {}", scene_id, relative_path);
+
+    Ok(scene)
+}
+
+/// Generates a scene video from a prompt and saves it to the database +
+/// filesystem — same shape as `generate_scene`, but for the video pipeline.
+/// Unlike image generation, there's no generic/placeholder fallback: video
+/// generation currently only exists via WanGP, so anything else (including
+/// no video provider configured at all) is a clear, immediate error rather
+/// than a silent placeholder (a placeholder *video* doesn't make sense).
+#[tauri::command]
+#[specta::specta]
+pub async fn generate_video_scene(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    conversation_id: String,
+    message_id: Option<String>,
+    prompt: String,
+    options: GenerateVideoOptions,
+) -> Result<Scene, MythicError> {
+    info!("Generating video scene for conversation {}: {}", conversation_id, prompt);
+
+    let GenerateVideoOptions {
+        negative_prompt, width, height, duration_seconds, fps, model_override, allow_nsfw, character_images,
+    } = options;
+    let character_images = character_images.unwrap_or_default();
+
+    let params = VideoGenParams {
+        prompt: prompt.clone(),
+        negative_prompt: negative_prompt.unwrap_or_default(),
+        width: width.unwrap_or(1280),
+        height: height.unwrap_or(720),
+        duration_seconds: duration_seconds.unwrap_or(4.0),
+        fps: fps.unwrap_or(24),
+        seed: None,
+        allow_nsfw: allow_nsfw.unwrap_or(false),
+    };
+
+    let scene_id = Uuid::new_v4().to_string();
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
+    let scenes_dir = app_data_dir.join("scenes");
+    tokio::fs::create_dir_all(&scenes_dir).await?;
+
+    let state_guard = state.read().await;
+    let provider = ProviderRepo::get_default(&state_guard.db, "video").await?;
+
+    let Some(p) = provider.filter(|p| p.adapter == ProviderAdapter::WanGp) else {
+        return Err(MythicError::Validation(
+            "No video provider configured. Add a WanGP provider (Video type) in Settings → Providers.".to_string(),
+        ));
+    };
+
+    let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut active = state_guard.active_scene_generations.lock().await;
+        if active.contains_key(&conversation_id) {
+            return Err(MythicError::Provider(
+                "A generation is already in progress for this conversation".to_string(),
+            ));
+        }
+        active.insert(conversation_id.clone(), cancel_flag.clone());
+    }
+
+    let result = wangp::generate_video_via_wangp(
+        &app, &conversation_id, &p, &params, model_override.as_deref(),
+        &character_images, &app_data_dir, &cancel_flag,
+    ).await;
+
+    state_guard.active_scene_generations.lock().await.remove(&conversation_id);
+
+    let (video_bytes, metadata) = result?;
+
+    let filename = format!("{}.mp4", scene_id);
+    let file_path = scenes_dir.join(&filename);
+    let relative_path = format!("scenes/{}", filename);
+    tokio::fs::write(&file_path, &video_bytes).await?;
+
+    let caption = format!("{} — generated via {}", prompt, p.name);
+    let scene = SceneRepo::create(
+        &state_guard.db,
+        &scene_id,
+        &conversation_id,
+        message_id.as_deref(),
+        "video",
+        &prompt,
+        &relative_path,
+        Some(&caption),
+        Some(metadata),
+    )
+    .await?;
+
+    info!("Video scene generated: {} saved to {}", scene_id, relative_path);
 
     Ok(scene)
 }

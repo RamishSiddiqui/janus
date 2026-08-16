@@ -30,6 +30,10 @@ pub enum ProviderAdapter {
     HuggingFace,
     /// Local ComfyUI instance for image/video generation
     ComfyUi,
+    /// Local WanGP (Wan2GP) instance for image/video generation, reached over
+    /// its MCP server (streamable-http transport) — see `providers::wangp`.
+    /// Built for weaker hardware than ComfyUI typically needs.
+    WanGp,
     /// AI Horde (formerly Stable Horde) — free, crowdsourced, asynchronous
     /// image generation cluster. Works anonymously (no signup) via the
     /// well-known "0000000000" API key, though registered keys get queue
@@ -86,6 +90,13 @@ pub struct ProviderConfig {
     /// parsed at generation time. It may contain `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`,
     /// `{{SEED}}`, `{{WIDTH}}`, `{{HEIGHT}}`, and `{{CHARACTER_IMAGE_1..N}}` placeholder tokens —
     /// see `providers::comfyui::substitute_placeholders`.
+    /// For WanGP: `{ "base_url": "http://127.0.0.1:7866", "model": "qwen_image_20B" }` —
+    /// `base_url` points at the WanGP MCP server (`/mcp` is appended at connect time). `model`
+    /// is the same generic "Default Model" field every non-LLM adapter uses; WanGP treats
+    /// whatever's in it as one of its own model identifiers (e.g. `qwen_image_20B` for images,
+    /// `ltx2_22B_distilled` for video). A single WanGP instance serving both image and video
+    /// needs two separate `ProviderConfig` rows (one per `provider_type`) at the same
+    /// `base_url` — see `providers::wangp`.
     #[specta(type = crate::models::JsonValue)]
     pub config: serde_json::Value,
 
@@ -164,11 +175,72 @@ impl Default for ImageGenParams {
     }
 }
 
-/// A single cast member's portrait, handed to a ComfyUI generation so it can
-/// be uploaded and substituted into whichever `{{CHARACTER_IMAGE_n}}` token(s)
-/// the user's workflow references — see `providers::comfyui`. `relative_path`
-/// is relative to `app_data_dir` (e.g. a character's own `avatar_path`), the
-/// same convention avatars/portraits already use everywhere else.
+/// Parameters for video generation — same shape/intent as `ImageGenParams`,
+/// kept as its own struct (rather than reusing `ImageGenParams` with optional
+/// video fields bolted on) since the two media types don't share `steps`/
+/// `guidance_scale` vs `duration_seconds`/`fps` in any meaningful way.
+/// Provider-agnostic even though WanGP is the only implementor today.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoGenParams {
+    pub prompt: String,
+    #[serde(default)]
+    pub negative_prompt: String,
+    #[serde(default = "default_video_width")]
+    pub width: u32,
+    #[serde(default = "default_video_height")]
+    pub height: u32,
+    /// Clip length in seconds. Converted to whatever frame-count unit a
+    /// given adapter needs (WanGP's `video_length` is frames) internally.
+    #[serde(default = "default_duration_seconds")]
+    pub duration_seconds: f32,
+    #[serde(default = "default_fps")]
+    pub fps: u32,
+    pub seed: Option<u64>,
+    /// See `ImageGenParams::allow_nsfw` — same meaning, same source (the
+    /// user's own comfort-level setting).
+    #[serde(default)]
+    pub allow_nsfw: bool,
+}
+
+impl Default for VideoGenParams {
+    fn default() -> Self {
+        Self {
+            prompt: String::new(),
+            negative_prompt: String::new(),
+            width: default_video_width(),
+            height: default_video_height(),
+            duration_seconds: default_duration_seconds(),
+            fps: default_fps(),
+            seed: None,
+            allow_nsfw: false,
+        }
+    }
+}
+
+fn default_video_width() -> u32 {
+    1280
+}
+
+fn default_video_height() -> u32 {
+    720
+}
+
+fn default_duration_seconds() -> f32 {
+    4.0
+}
+
+fn default_fps() -> u32 {
+    24
+}
+
+/// A single cast member's portrait, handed to a ComfyUI or WanGP generation
+/// so it can be attached as a reference image. ComfyUI substitutes these into
+/// whichever `{{CHARACTER_IMAGE_n}}` token(s) the user's workflow references
+/// (`providers::comfyui`); WanGP attaches them under whatever field its own
+/// model schema reports for reference images (`providers::wangp`).
+/// `relative_path` is relative to `app_data_dir` (e.g. a character's own
+/// `avatar_path`), the same convention avatars/portraits already use
+/// everywhere else.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CharacterImageRef {
