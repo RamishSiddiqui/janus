@@ -13,6 +13,7 @@ vite.config.ts.timestamp-*
 .rtk/
 tauri_dev_*.log
 *.tmp.*
+svelte-check-output.txt
 
 # Raw design source uploads (extracted copies live under branding/)
 /Janus Dual-Face Logo.zip
