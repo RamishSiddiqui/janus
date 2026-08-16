@@ -3,6 +3,7 @@ name = "janus"
 version = "0.1.0"
 description = "Open-source LLM-powered role-playing desktop app with image and video generation"
 authors = ["Janus Contributors"]
+license = "Elastic-2.0"
 edition = "2021"
 default-run = "janus"
 

@@ -11,7 +11,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri"
   },
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
     "@tauri-apps/api": "^2",

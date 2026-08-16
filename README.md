@@ -6,7 +6,7 @@
 
 **A local-first AI roleplay chat app that actually remembers your story.**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-9075F2.svg)](LICENSE)
+[![License: Elastic License 2.0](https://img.shields.io/badge/license-Elastic--2.0-9075F2.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Rust](https://img.shields.io/badge/Rust-2021-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -113,8 +113,8 @@ src/                 SvelteKit frontend
 
 ## Contributing
 
-Issues and pull requests are welcome. If you're proposing a larger change, open an issue first so we can talk through the approach — the codebase leans on a few consistent patterns (repository-per-table on the backend, IPC wrappers in `lib/services/ipc.ts` on the frontend) that are worth keeping intact.
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow and the codebase's conventions. If you're proposing a larger change, open an issue first so we can talk through the approach.
 
 ## License
 
-[MIT](LICENSE) — see the LICENSE file for details.
+[Elastic License 2.0](LICENSE) — source-available, not OSI-approved "open source." You can freely use, self-host, modify, and build on Janus for any purpose, including internally at a company. The one thing it doesn't allow is offering Janus itself (or a modified version) to others as a hosted/managed service that competes with it. See the LICENSE file for the full terms.
