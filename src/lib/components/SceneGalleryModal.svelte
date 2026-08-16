@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
+  import SplitHeading from './SplitHeading.svelte';
   import type { Scene } from '$lib/services/ipc';
   import { sceneGenerations, getSceneGenerationState, describeProgress } from '$lib/stores/sceneGeneration';
 
@@ -126,7 +127,7 @@
 >
   <div class="gallery-modal" role="dialog" aria-modal="true" aria-label="Scene gallery">
     <div class="gallery-hdr">
-      <span class="gallery-title">Scene Gallery</span>
+      <span class="gallery-title"><SplitHeading text="Scene Gallery" /></span>
       <button class="gallery-close" onclick={onClose} aria-label="Close gallery">
         <Icon name="x" size={16} color="#8b8ba7" />
       </button>
@@ -253,20 +254,54 @@
 <style>
   .gallery-overlay {
     position: fixed; inset: 0; z-index: 200;
-    background: rgba(6,6,15,0.7); backdrop-filter: blur(4px);
+    background: rgba(6,6,15,0.45);
+    backdrop-filter: blur(28px) saturate(140%);
+    -webkit-backdrop-filter: blur(28px) saturate(140%);
     display: flex; align-items: center; justify-content: center;
     animation: overlayIn 180ms ease;
   }
   @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 
   .gallery-modal {
+    position: relative;
+    overflow: hidden;
     width: min(720px, 92vw); max-height: 82vh;
     display: flex; flex-direction: column; gap: 14px;
     padding: 20px 22px; border-radius: 16px;
-    background: linear-gradient(175deg, #0e0e22, #0a0a18);
-    border: 1px solid rgba(139,92,246,0.15);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    background: rgba(16,14,34,0.55);
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    border: 1px solid rgba(139,92,246,0.18);
+    box-shadow:
+      0 20px 60px rgba(0,0,0,0.5),
+      inset 0 1px 0 rgba(255,255,255,0.05);
     animation: modalIn 220ms cubic-bezier(0.34,1.56,0.64,1);
+  }
+  /* Soft ambient glow "through the glass" — clipped to the modal's rounded
+     rect by the overflow:hidden above, sitting behind the real content
+     (z-index: 0 vs. the header/grid which paint in normal flow above it). */
+  .gallery-modal::before,
+  .gallery-modal::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    border-radius: 50%;
+    filter: blur(70px);
+    pointer-events: none;
+  }
+  .gallery-modal::before {
+    top: -80px; left: -60px;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(139,92,246,0.35), transparent 70%);
+  }
+  .gallery-modal::after {
+    bottom: -100px; right: -80px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(0,242,255,0.16), transparent 70%);
+  }
+  .gallery-hdr, .gallery-empty, .gallery-grid, .gallery-enlarged {
+    position: relative;
+    z-index: 1;
   }
   @keyframes modalIn {
     from { opacity: 0; transform: translateY(12px) scale(0.97); }
@@ -276,8 +311,6 @@
   .gallery-hdr { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   .gallery-title {
     font-size: 16px; font-weight: 700; letter-spacing: -0.2px;
-    background: linear-gradient(135deg, #e8e0ff, #c4a1ff);
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   .gallery-close {
     width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(139,92,246,0.1);
