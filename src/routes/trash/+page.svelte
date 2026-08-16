@@ -311,18 +311,19 @@
   .trash-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .trash-filters {
-    display: flex; gap: 8px; padding: 14px 28px 4px; flex-shrink: 0; flex-wrap: wrap;
+    display: flex; gap: 8px; padding: 18px 28px 14px; flex-shrink: 0; flex-wrap: wrap;
   }
   .filter-chip {
     display: flex; align-items: center; gap: 6px;
     padding: 6px 12px; border-radius: 99px;
-    background: rgba(14,14,30,0.6); border: 1px solid rgba(139,92,246,0.08);
-    color: #6b6b8a; font-size: 12px; font-weight: 600; font-family: var(--font-body);
-    cursor: pointer; transition: all 150ms;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    color: #a8a3c0; font-size: 12px; font-weight: 600; font-family: var(--font-body);
+    cursor: pointer; transition: all 220ms cubic-bezier(0.16,1,0.3,1);
   }
-  .filter-chip:hover { border-color: rgba(139,92,246,0.2); color: #a0a0c0; }
+  .filter-chip:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.16); color: #e8e5f5; }
   .filter-chip.active {
-    background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.3); color: #e0e0f0;
+    transform: scale(1.05); background: #9075f2; border-color: #9075f2; color: #0a0812; font-weight: 700;
+    box-shadow: 0 6px 18px -6px #9075f2;
   }
   .filter-count {
     font-family: var(--font-mono); font-size: 10px; opacity: 0.7;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import Icon from '$lib/components/Icon.svelte';
   import SplitHeading from '$lib/components/SplitHeading.svelte';
   import SelectCombobox from '$lib/components/SelectCombobox.svelte';
@@ -20,15 +20,19 @@
   // scales to any number of sections without the page just getting taller.
   type SettingsSection = 'appearance' | 'chat' | 'context' | 'privacy' | 'image' | 'prompts' | 'logging';
   let activeSection = $state<SettingsSection>('appearance');
-  const NAV_ITEMS: { id: SettingsSection; label: string; icon: string }[] = [
-    { id: 'appearance', label: 'Appearance', icon: 'palette' },
-    { id: 'chat', label: 'Chat Behavior', icon: 'message-circle' },
-    { id: 'context', label: 'Context & Memory', icon: 'network' },
-    { id: 'image', label: 'Image Generation', icon: 'image' },
-    { id: 'prompts', label: 'Prompts', icon: 'file-text' },
-    { id: 'privacy', label: 'Data & Privacy', icon: 'shield' },
-    { id: 'logging', label: 'Logging', icon: 'terminal' },
+  const NAV_ITEMS: { id: SettingsSection; label: string; icon: string; accent: string }[] = [
+    { id: 'appearance', label: 'Appearance', icon: 'palette', accent: '#9075f2' },
+    { id: 'chat', label: 'Chat Behavior', icon: 'message-circle', accent: '#22d3ee' },
+    { id: 'context', label: 'Context & Memory', icon: 'network', accent: '#e879f9' },
+    { id: 'image', label: 'Image Generation', icon: 'image', accent: '#fbbf24' },
+    { id: 'prompts', label: 'Prompts', icon: 'file-text', accent: '#34d399' },
+    { id: 'privacy', label: 'Data & Privacy', icon: 'shield', accent: '#fb7185' },
+    { id: 'logging', label: 'Logging', icon: 'terminal', accent: '#94a3b8' },
   ];
+  // Each section carries its own accent — driven into the panel below as a
+  // CSS custom property, so every glass card/button/progress-bar re-tints
+  // to match without hand-coding a per-section colour on each one.
+  let sectionAccent = $derived(NAV_ITEMS.find(i => i.id === activeSection)?.accent ?? '#9075f2');
 
   // Bind to store values
   let theme = $state($settings.theme);
@@ -427,36 +431,92 @@
   }
 
   // ── Logging ──
+  // Backend lines are paged in from the log file (newest page first, older
+  // pages prepended as the user scrolls up) instead of reading the whole
+  // file at once — a long-running session's log can grow large, and there's
+  // no reason to hold all of it in memory just to show the tail.
+  const BACKEND_LOG_PAGE_SIZE = 150;
+
   let logSubTab = $state<'backend' | 'frontend'>('backend');
-  let backendLogText = $state('');
+  let backendLogLines = $state<string[]>([]);
+  let backendLogCursor = $state<number | null>(null);
   let backendLogPath = $state('');
   let isLoadingBackendLogs = $state(false);
+  let isLoadingMoreBackendLogs = $state(false);
   let isExportingLogs = $state(false);
   let logSearch = $state('');
+  let logViewerEl = $state<HTMLDivElement | undefined>(undefined);
+
+  async function scrollLogViewerToBottom() {
+    await tick();
+    if (logViewerEl) logViewerEl.scrollTop = logViewerEl.scrollHeight;
+  }
 
   async function loadBackendLogs() {
     if (!isTauri) return;
     isLoadingBackendLogs = true;
     try {
       const ipc = await import('$lib/services/ipc');
-      backendLogText = await ipc.getBackendLogs(2000);
+      const page = await ipc.getBackendLogsPage(undefined, BACKEND_LOG_PAGE_SIZE);
+      backendLogLines = page.lines;
+      backendLogCursor = page.nextCursor;
       if (!backendLogPath) backendLogPath = await ipc.getBackendLogPath();
     } catch {
       toastError('Failed to load backend logs');
     }
     isLoadingBackendLogs = false;
+    scrollLogViewerToBottom();
   }
 
-  // Load once when the Logging tab is first opened, not on every render.
+  async function loadOlderBackendLogs() {
+    if (!isTauri || backendLogCursor == null || isLoadingMoreBackendLogs) return;
+    isLoadingMoreBackendLogs = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const page = await ipc.getBackendLogsPage(backendLogCursor, BACKEND_LOG_PAGE_SIZE);
+      const el = logViewerEl;
+      const prevScrollHeight = el?.scrollHeight ?? 0;
+      const prevScrollTop = el?.scrollTop ?? 0;
+      backendLogLines = [...page.lines, ...backendLogLines];
+      backendLogCursor = page.nextCursor;
+      await tick();
+      // Loading older lines prepends above the current view — restore the
+      // reader's position relative to the content they were looking at,
+      // instead of letting the prepend silently scroll them to the top.
+      if (el) el.scrollTop = prevScrollTop + (el.scrollHeight - prevScrollHeight);
+    } catch {
+      toastError('Failed to load more logs');
+    }
+    isLoadingMoreBackendLogs = false;
+  }
+
+  function handleLogViewerScroll() {
+    if (logSubTab !== 'backend' || !logViewerEl) return;
+    if (logViewerEl.scrollTop < 100 && backendLogCursor != null && !isLoadingMoreBackendLogs) {
+      loadOlderBackendLogs();
+    }
+  }
+
+  function selectLogSubTab(tab: 'backend' | 'frontend') {
+    logSubTab = tab;
+    scrollLogViewerToBottom();
+  }
+
+  // Load once when the Logging tab is first opened, not on every render —
+  // but re-scroll to bottom every time it's revisited, since the panel is
+  // torn down and remounted when the user navigates away and back.
   let hasLoadedBackendLogs = false;
   $effect(() => {
-    if (activeSection === 'logging' && isTauri && !hasLoadedBackendLogs) {
-      hasLoadedBackendLogs = true;
-      loadBackendLogs();
+    if (activeSection === 'logging') {
+      if (isTauri && !hasLoadedBackendLogs) {
+        hasLoadedBackendLogs = true;
+        loadBackendLogs();
+      } else {
+        scrollLogViewerToBottom();
+      }
     }
   });
 
-  let backendLogLines = $derived(backendLogText ? backendLogText.split('\n') : []);
   let filteredBackendLines = $derived(
     logSearch.trim()
       ? backendLogLines.filter(l => l.toLowerCase().includes(logSearch.trim().toLowerCase()))
@@ -478,13 +538,15 @@
   async function handleExportLogs() {
     isExportingLogs = true;
     try {
+      const ipc = await import('$lib/services/ipc');
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      const fullBackendLog = await ipc.getBackendLogs(5000);
       const combined = [
         `Janus log export — ${new Date().toISOString()}`,
         '',
         '===== BACKEND LOG =====',
-        backendLogText || '(empty)',
+        fullBackendLog || '(empty)',
         '',
         '===== FRONTEND LOG =====',
         formatFrontendLogsAsText($frontendLogs) || '(empty)',
@@ -868,7 +930,7 @@
   <title>Settings — Janus</title>
 </svelte:head>
 
-<div class="settings-page">
+<div class="settings-page" style="--accent: {sectionAccent}">
   <!-- Header -->
   <header class="settings-header">
     <div class="settings-header-left">
@@ -888,19 +950,22 @@
     </div>
   </header>
 
-  <!-- Section tabs — a second full-height sidebar here would just duplicate
-       the app's own nav rail right next to it; a horizontal tab strip keeps
-       navigation to one rail and lets each panel use the full page width. -->
-  <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+  <!-- Section nav — a floating carousel of chips instead of a second
+       sidebar (the app's own nav rail is already the one persistent rail).
+       Each chip carries its own accent; the active one steps forward and
+       lights up while the rest recede, and that same accent drives the
+       glass panel below via --accent. -->
+  <div class="settings-carousel" role="tablist" aria-label="Settings sections">
     {#each NAV_ITEMS as item (item.id)}
       <button
-        class="settings-tab"
+        class="carousel-chip"
         class:active={activeSection === item.id}
+        style="--chip-accent: {item.accent}"
         onclick={() => activeSection = item.id}
         role="tab"
         aria-selected={activeSection === item.id}
       >
-        <Icon name={item.icon} size={15} color={activeSection === item.id ? '#fff' : 'var(--fg-muted)'} />
+        <Icon name={item.icon} size={13} color={activeSection === item.id ? '#0a0812' : 'var(--fg-muted)'} />
         <span>{item.label}</span>
       </button>
     {/each}
@@ -909,6 +974,7 @@
   <div class="settings-body">
     {#key activeSection}
     <div class="settings-panel">
+    <div class="panel-glow" aria-hidden="true"></div>
     {#if activeSection === 'appearance'}
       <div class="panel-heading animate-fade-in-up stagger-1">
         <span class="panel-heading-title">Appearance</span>
@@ -1787,10 +1853,10 @@
 
         <div class="log-toolbar">
           <div class="log-subtabs">
-            <button class="log-subtab" class:active={logSubTab === 'backend'} onclick={() => logSubTab = 'backend'}>
+            <button class="log-subtab" class:active={logSubTab === 'backend'} onclick={() => selectLogSubTab('backend')}>
               Backend
             </button>
-            <button class="log-subtab" class:active={logSubTab === 'frontend'} onclick={() => logSubTab = 'frontend'}>
+            <button class="log-subtab" class:active={logSubTab === 'frontend'} onclick={() => selectLogSubTab('frontend')}>
               Frontend <span class="log-subtab-count">{$frontendLogs.length}</span>
             </button>
           </div>
@@ -1801,9 +1867,12 @@
           {#if backendLogPath}
             <span class="prompt-hint log-path" title={backendLogPath}>{backendLogPath}</span>
           {/if}
-          <div class="log-viewer">
+          <div class="log-viewer" bind:this={logViewerEl} onscroll={handleLogViewerScroll}>
+            {#if isLoadingMoreBackendLogs}
+              <div class="log-loading-more">Loading older lines…</div>
+            {/if}
             {#if filteredBackendLines.length === 0}
-              <div class="log-empty">{backendLogText ? 'No lines match your search.' : 'No backend logs yet.'}</div>
+              <div class="log-empty">{backendLogLines.length ? 'No lines match your search.' : (isLoadingBackendLogs ? 'Loading…' : 'No backend logs yet.')}</div>
             {:else}
               {#each filteredBackendLines as line, i (i)}
                 <div class="log-line {backendLogLineClass(line)}">{line}</div>
@@ -1811,7 +1880,7 @@
             {/if}
           </div>
         {:else}
-          <div class="log-viewer">
+          <div class="log-viewer" bind:this={logViewerEl}>
             {#if filteredFrontendEntries.length === 0}
               <div class="log-empty">{$frontendLogs.length ? 'No lines match your search.' : 'No frontend activity captured yet.'}</div>
             {:else}
@@ -1875,34 +1944,49 @@
   .settings-header-about .about-dot { color: #3a3a52; }
   .settings-header-about .about-desc { font-size: 11px; color: #4a4a6a; font-family: var(--font-mono); letter-spacing: 0.3px; }
 
-  /* ── Section tabs (one nav rail total — the app's own sidebar is the other) ── */
-  .settings-tabs {
-    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-    padding: 14px 36px; flex-shrink: 0;
-    border-bottom: 1px solid rgba(139,92,246,0.06);
+  /* ── Section nav: floating carousel, not a second sidebar ── */
+  .settings-carousel {
+    display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
+    padding: 18px 36px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
   }
-  .settings-tab {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 16px; border-radius: 10px;
-    background: none; border: none; cursor: pointer;
-    font-size: var(--text-sm); font-weight: 600; color: var(--fg-muted);
-    transition: background 150ms ease, color 150ms ease;
+  .carousel-chip {
+    display: flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 999px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    color: #a8a3c0; font-size: 12.5px; font-weight: 600;
+    font-family: var(--font-body); cursor: pointer;
+    transition: all 220ms cubic-bezier(0.16,1,0.3,1);
   }
-  .settings-tab:hover { background: rgba(139,92,246,0.06); color: #c8c8e0; }
-  .settings-tab.active {
-    background: linear-gradient(135deg, #8B5CF6, #7c3aed);
-    color: #fff;
-    box-shadow: 0 2px 12px rgba(139,92,246,0.3);
+  .carousel-chip:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.16); color: #e8e5f5; }
+  .carousel-chip.active {
+    transform: scale(1.06); color: #0a0812; font-weight: 700;
+    background: var(--chip-accent);
+    border-color: var(--chip-accent);
+    box-shadow: 0 8px 26px -8px var(--chip-accent);
   }
 
   .settings-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
   .settings-panel {
+    position: relative;
     flex: 1; overflow-y: auto; min-width: 0;
     padding: 32px 36px 48px; display: flex; flex-direction: column; gap: 22px;
   }
   .settings-panel::-webkit-scrollbar { width: 4px; }
   .settings-panel::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 4px; }
+
+  /* Ambient light wash behind the panel content, tinted to the active
+     section's accent — the "light through a prism" effect from the
+     approved concept, applied for real instead of a flat backdrop. */
+  .panel-glow {
+    position: absolute; top: -60px; left: 50%; transform: translateX(-50%);
+    width: 520px; height: 360px; border-radius: 50%;
+    background: radial-gradient(circle, var(--accent), transparent 70%);
+    filter: blur(120px); opacity: 0.16; pointer-events: none; z-index: 0;
+    transition: background 400ms ease;
+  }
+  .settings-panel > :not(.panel-glow) { position: relative; z-index: 1; }
 
   /* ── Panel heading (replaces the old per-card section-header as the page-level title) ── */
   .panel-heading { display: flex; flex-direction: column; gap: 4px; }
@@ -1921,13 +2005,14 @@
   .settings-card {
     display: flex; flex-direction: column; gap: 10px;
     padding: 22px; border-radius: 16px;
-    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
-    transition: border-color 200ms, box-shadow 250ms;
+    background: rgba(255,255,255,0.04); backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: border-color 200ms, box-shadow 250ms, background 200ms;
   }
-  .settings-card:hover { border-color: rgba(139,92,246,0.14); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .settings-card:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 4px 24px -6px var(--accent); }
   .settings-card-icon {
     width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
-    background: rgba(139,92,246,0.1);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
   }
   .settings-card-name { font-size: var(--text-md); font-weight: 700; color: #e8e0ff; }
   .settings-card-desc { font-size: var(--text-sm); color: #5a5a7a; margin-top: -6px; }
@@ -1942,22 +2027,23 @@
   .toggle-card {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
     padding: 18px 20px; border-radius: 14px;
-    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.06);
-    transition: border-color 200ms, box-shadow 250ms;
+    background: rgba(255,255,255,0.04); backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: border-color 200ms, box-shadow 250ms, background 200ms;
   }
-  .toggle-card:hover { border-color: rgba(139,92,246,0.14); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .toggle-card:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 4px 24px -6px var(--accent); }
 
   /* ── Section Card ── */
   .settings-section {
     padding: 20px; border-radius: 16px;
-    background: rgba(14,14,30,0.5);
-    border: 1px solid rgba(139,92,246,0.06);
+    background: rgba(255,255,255,0.04); backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.08);
     display: flex; flex-direction: column; gap: 16px;
-    transition: border-color 200ms, box-shadow 250ms;
+    transition: border-color 200ms, box-shadow 250ms, background 200ms;
   }
   .settings-section:hover {
-    border-color: rgba(139,92,246,0.1);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    box-shadow: 0 4px 24px -6px var(--accent);
   }
 
   .section-header { display: flex; align-items: center; gap: 10px; }
@@ -1991,9 +2077,9 @@
   }
   .theme-btn:hover { color: #8b8ba7; }
   .theme-btn.active {
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(139,92,246,0.35);
+    background: var(--accent);
+    color: #0a0812;
+    box-shadow: 0 2px 12px -2px var(--accent);
   }
 
   /* ── Font Dropdown ── */
@@ -2020,7 +2106,7 @@
     transition: all 120ms;
   }
   .dropdown-item:hover { background: rgba(139,92,246,0.06); color: #e0e0f0; }
-  .dropdown-item.active { color: #bf40ff; font-weight: 700; }
+  .dropdown-item.active { color: var(--accent); font-weight: 700; }
 
   /* ── Clear Confirm ── */
   .clear-confirm {
@@ -2038,9 +2124,9 @@
     transition: background 250ms ease; flex-shrink: 0;
   }
   .toggle-switch.on {
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff);
+    background: var(--accent);
     justify-content: flex-end;
-    box-shadow: 0 0 10px rgba(139,92,246,0.3);
+    box-shadow: 0 0 12px -2px var(--accent);
   }
   .toggle-knob {
     width: 18px; height: 18px; border-radius: 50%; background: #fff;
@@ -2072,10 +2158,10 @@
   }
   .settings-btn.danger:hover { background: rgba(244,63,94,0.12); }
   .settings-btn.primary {
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff); color: #fff;
-    box-shadow: 0 2px 12px rgba(139,92,246,0.3); flex: 1;
+    background: var(--accent); color: #0a0812;
+    box-shadow: 0 2px 12px -2px var(--accent); flex: 1;
   }
-  .settings-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(139,92,246,0.45); }
+  .settings-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px -4px var(--accent); }
   .settings-btn.primary:disabled { opacity: 0.5; pointer-events: none; }
   .settings-btn.sm { padding: 6px 12px; font-size: var(--text-xs); flex: none; }
 
@@ -2136,7 +2222,7 @@
   .prompt-hint { font-size: 10px; color: #4a4a6a; font-family: var(--font-mono); }
   .reset-btn {
     background: none; border: none; cursor: pointer;
-    color: #bf40ff; font-size: var(--text-sm); font-weight: 600;
+    color: var(--accent); font-size: var(--text-sm); font-weight: 600;
     font-family: var(--font-body); transition: opacity 150ms;
   }
   .reset-btn:hover { opacity: 0.7; }
@@ -2157,7 +2243,7 @@
     font-family: var(--font-body); cursor: pointer; transition: all 150ms;
   }
   .log-subtab:hover { color: #c8c8e0; }
-  .log-subtab.active { background: rgba(139,92,246,0.14); color: #c4a1ff; }
+  .log-subtab.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
   .log-subtab-count {
     font-size: 10px; font-family: var(--font-mono); color: inherit; opacity: 0.7;
   }
@@ -2177,6 +2263,10 @@
     max-height: 420px; overflow-y: auto; padding: 10px 12px; border-radius: 10px;
     background: rgba(7,7,18,0.7); border: 1px solid rgba(139,92,246,0.08);
     font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+  }
+  .log-loading-more {
+    text-align: center; padding: 6px 0 10px; color: #6a6a86; font-size: 10.5px;
+    font-family: var(--font-mono); letter-spacing: 0.02em;
   }
   .log-line {
     white-space: pre-wrap; word-break: break-word; color: #7d7d99;
@@ -2202,8 +2292,8 @@
   @media (max-width: 768px) {
     .settings-header { flex-direction: column; align-items: flex-start; }
     .settings-header-about { padding-bottom: 0; }
-    .settings-tabs { padding: 10px 16px; overflow-x: auto; flex-wrap: nowrap; }
-    .settings-tab span { display: none; }
+    .settings-carousel { padding: 10px 16px; overflow-x: auto; flex-wrap: nowrap; justify-content: flex-start; }
+    .carousel-chip span { display: none; }
     .settings-panel { padding: 20px 16px 40px; }
   }
 
@@ -2258,10 +2348,10 @@
   }
   .setting-value-readonly.mono { font-family: var(--font-mono); }
   .settings-link {
-    color: #8B5CF6; text-decoration: none; font-weight: 600;
-    transition: color 150ms;
+    color: var(--accent); text-decoration: none; font-weight: 600;
+    transition: color 150ms, opacity 150ms;
   }
-  .settings-link:hover { color: #c4a1ff; text-decoration: underline; }
+  .settings-link:hover { opacity: 0.8; text-decoration: underline; }
 
   .retrieval-row {
     display: flex; gap: 12px;
@@ -2324,7 +2414,7 @@
   }
   .index-progress-fill {
     height: 100%; border-radius: 99px;
-    background: linear-gradient(90deg, #8B5CF6, #bf40ff);
+    background: var(--accent);
     transition: width 500ms cubic-bezier(0.34,1.56,0.64,1);
   }
 

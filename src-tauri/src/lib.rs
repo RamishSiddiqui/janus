@@ -178,6 +178,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::trash::list_trash,
             commands::trash::empty_trash,
             commands::logs::get_backend_logs,
+            commands::logs::get_backend_logs_page,
             commands::logs::get_backend_log_path,
         ])
 }
@@ -491,6 +492,7 @@ pub fn run() {
             commands::trash::list_trash,
             commands::trash::empty_trash,
             commands::logs::get_backend_logs,
+            commands::logs::get_backend_logs_page,
             commands::logs::get_backend_log_path,
         ])
         .run(tauri::generate_context!())

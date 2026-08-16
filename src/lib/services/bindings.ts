@@ -570,6 +570,15 @@ export const commands = {
 	 */
 	getBackendLogs: (lines: number | null) => typedError<string, MythicError>(__TAURI_INVOKE("get_backend_logs", { lines })),
 	/**
+	 *  Returns one page of backend log lines read backward from `cursor` (a byte
+	 *  offset into the log file; omit to start at the end — the newest lines).
+	 *  Used by the Logging tab's viewer to load the file incrementally as the
+	 *  user scrolls up, rather than reading it in full up front: only a bounded
+	 *  window at the tail is read per call, growing just enough to cover the
+	 *  requested `limit` lines.
+	 */
+	getBackendLogsPage: (cursor: number | null, limit: number | null) => typedError<LogPage, MythicError>(__TAURI_INVOKE("get_backend_logs_page", { cursor, limit })),
+	/**
 	 *  Absolute path to the backend log file — shown in the Logging tab so the
 	 *  user can locate it directly (e.g. to attach to a bug report) without
 	 *  going through Export.
@@ -1078,6 +1087,23 @@ export type ImagePreset_Serialize = {
  *  parsing to read.
  */
 export type JsonValue = "Null" | boolean | number | null | string | JsonValue[] | { [key in string]: JsonValue };
+
+export type LogPage = {
+	/**
+	 *  Lines within this page, oldest first — same ordering as
+	 *  [`get_backend_logs`].
+	 */
+	lines: string[],
+	/**
+	 *  Byte offset to pass back as `cursor` to fetch the page immediately
+	 *  before this one (older lines). `None` once the start of the file has
+	 *  been reached — there is nothing older to load. `u32` (not `u64`,
+	 *  which specta's TypeScript export forbids as a bigint-precision risk)
+	 *  caps a single log file at ~4GB, far beyond anything this feature
+	 *  needs to handle.
+	 */
+	nextCursor: number | null,
+};
 
 /**
  *  A standalone lorebook entry stored in the database.

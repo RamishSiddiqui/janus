@@ -174,8 +174,8 @@
       <div class="chip-divider"></div>
 
       <div class="chip-group" role="group" aria-label="Filter by status">
-        {#each [['all','All'],['enabled','Enabled'],['disabled','Disabled']] as [val, label]}
-          <button class="chip" class:chip-active={filterStatus === val} onclick={() => filterStatus = val}>
+        {#each [['all','All',''],['enabled','Enabled','status-enabled'],['disabled','Disabled','status-disabled']] as [val, label, cls]}
+          <button class="chip {cls}" class:chip-active={filterStatus === val} onclick={() => filterStatus = val}>
             {label}
           </button>
         {/each}
@@ -437,12 +437,12 @@
 
   /* ── Filter Bar ── */
   .filter-bar {
-    display: flex; flex-direction: column; gap: 8px;
-    padding: 14px 28px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 20px 28px; flex-shrink: 0;
     border-bottom: 1px solid rgba(139,92,246,0.06);
     background: rgba(8,8,20,0.5); backdrop-filter: blur(12px);
   }
-  .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
   .search-wrap { position: relative; display: flex; align-items: center; flex: 1 1 240px; max-width: 320px; }
   .search-icon { position: absolute; left: 11px; width: 14px; height: 14px; color: #4a4a6a; pointer-events: none; }
@@ -470,17 +470,31 @@
   }
   .filter-select:focus { border-color: rgba(139,92,246,0.4); }
 
-  .chip-group { display: flex; gap: 4px; }
-  .chip-divider { width: 1px; height: 20px; background: rgba(139,92,246,0.1); margin: 0 4px; }
+  .chip-group { display: flex; gap: 6px; }
+  .chip-divider { width: 1px; height: 20px; background: rgba(139,92,246,0.1); margin: 0 6px; }
   .chip {
-    padding: 5px 11px; border-radius: 99px; font-size: 11px; font-weight: 600;
-    border: 1px solid rgba(139,92,246,0.1); background: transparent;
-    color: #5a5a7a; cursor: pointer; font-family: var(--font-body);
-    transition: all 160ms; white-space: nowrap;
+    padding: 6px 13px; border-radius: 99px; font-size: 11px; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.04);
+    color: #a8a3c0; cursor: pointer; font-family: var(--font-body);
+    transition: all 220ms cubic-bezier(0.16,1,0.3,1); white-space: nowrap;
   }
-  .chip:hover { background: rgba(139,92,246,0.06); color: #9d7af5; }
-  .chip-active { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.25); color: #c4a1ff; }
-  .cap-chip.chip-active { background: rgba(6,182,212,0.12); border-color: rgba(6,182,212,0.25); color: #06B6D4; }
+  .chip:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.16); color: #e8e5f5; }
+  .chip-active {
+    transform: scale(1.05); background: #9075f2; border-color: #9075f2; color: #0a0812; font-weight: 700;
+    box-shadow: 0 6px 18px -6px #9075f2;
+  }
+  .cap-chip.chip-active {
+    background: #06B6D4; border-color: #06B6D4; color: #0a0812;
+    box-shadow: 0 6px 18px -6px #06B6D4;
+  }
+  .status-enabled.chip-active {
+    background: #10B981; border-color: #10B981;
+    box-shadow: 0 6px 18px -6px #10B981;
+  }
+  .status-disabled.chip-active {
+    background: #F43F5E; border-color: #F43F5E;
+    box-shadow: 0 6px 18px -6px #F43F5E;
+  }
 
   /* ── Table ── */
   .table-wrap { flex: 1; overflow-y: auto; padding: 0 28px 28px; }

@@ -243,6 +243,11 @@ export async function getBackendLogs(lines?: number): Promise<string> {
   return safeInvoke<string>('get_backend_logs', { lines: lines ?? null });
 }
 
+/** One page of backend log lines read backward from `cursor` (a byte offset; omit for the newest lines). Used to load the Logging tab's viewer incrementally as the user scrolls up, instead of reading the whole file at once. */
+export async function getBackendLogsPage(cursor?: number, limit?: number): Promise<{ lines: string[]; nextCursor: number | null }> {
+  return safeInvoke('get_backend_logs_page', { cursor: cursor ?? null, limit: limit ?? null });
+}
+
 /** Absolute path to the backend log file, for display/troubleshooting. */
 export async function getBackendLogPath(): Promise<string> {
   return safeInvoke<string>('get_backend_log_path');
