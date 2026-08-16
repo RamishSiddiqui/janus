@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import Sidebar from '$lib/components/Sidebar.svelte';
+  import TitleBar from '$lib/components/TitleBar.svelte';
   import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
   import ToastContainer from '$lib/components/ToastContainer.svelte';
   import { settings } from '$lib/stores/settings';
@@ -110,27 +111,39 @@
 <!-- Skip navigation for keyboard/screen reader users -->
 <a href="#main-content" class="sr-only">Skip to content</a>
 
-<div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
-  <Sidebar 
-    {navItems} 
-    {currentPath} 
-    collapsed={sidebarCollapsed}
-    onNavigate={(path) => goto(path)}
-    onToggleCollapse={() => sidebarCollapsed = !sidebarCollapsed}
-  />
-  <main id="main-content" class="app-content">
-    <ErrorBoundary fallbackTitle="This page encountered an error">
-      {@render children()}
-    </ErrorBoundary>
-  </main>
+<div class="app-frame">
+  <TitleBar onToggleSidebar={() => sidebarCollapsed = !sidebarCollapsed} />
+  <div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
+    <Sidebar
+      {navItems}
+      {currentPath}
+      collapsed={sidebarCollapsed}
+      onNavigate={(path) => goto(path)}
+      onToggleCollapse={() => sidebarCollapsed = !sidebarCollapsed}
+    />
+    <main id="main-content" class="app-content">
+      <ErrorBoundary fallbackTitle="This page encountered an error">
+        {@render children()}
+      </ErrorBoundary>
+    </main>
+  </div>
 </div>
 
 <ToastContainer />
 
 <style>
+  .app-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
   .app-shell {
     display: flex;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
     width: 100vw;
     overflow: hidden;
     background: var(--surface-inverse);
