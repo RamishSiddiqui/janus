@@ -7,6 +7,8 @@
   import { parseCharacterData } from "$lib/utils/character";
   import MemoryGraph from "$lib/components/MemoryGraph.svelte";
   import PersonaPicker from "$lib/components/PersonaPicker.svelte";
+  import SplitHeading from "$lib/components/SplitHeading.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import { selectedPersonaId } from "$lib/stores/personas";
   import { get } from "svelte/store";
   import type { MemoryGraph as MemoryGraphData } from "$lib/services/ipc";
@@ -264,6 +266,14 @@
       .toUpperCase() || "?",
   );
   const TABS: Tab[] = ["profile", "memories", "lore", "stats", "edit"];
+  const TAB_ICONS: Record<Tab, string> = {
+    profile: "user",
+    memories: "brain",
+    lore: "book-open",
+    stats: "bar-chart-3",
+    edit: "pencil",
+  };
+  const TAG_COLORS = ["#9075f2", "#22d3ee", "#e879f9", "#fbbf24", "#34d399", "#fb7185"];
 </script>
 
 <svelte:head><title>{charName || "Character"} — Janus</title></svelte:head>
@@ -284,18 +294,27 @@
 
       <div class="hero-av-wrap">
         <div
-          class="hero-av"
-          style="background:linear-gradient(135deg,{accentColor}99,{accentColor})"
+          class="hero-av-glow"
+          style="background:radial-gradient(circle,{accentColor}55,transparent 70%)"
+        ></div>
+        <div
+          class="hero-av-ring"
+          style="background:conic-gradient(from 200deg,{accentColor},#CDA15F,{accentColor})"
         >
-          {#if avatarUrl}
-            <img src={avatarUrl} alt={charName} class="hero-av-img" />
-          {:else}
-            <span class="hero-initials">{initials}</span>
-          {/if}
+          <div
+            class="hero-av"
+            style="background:linear-gradient(135deg,{accentColor}99,{accentColor})"
+          >
+            {#if avatarUrl}
+              <img src={avatarUrl} alt={charName} class="hero-av-img" />
+            {:else}
+              <span class="hero-initials">{initials}</span>
+            {/if}
+          </div>
         </div>
       </div>
 
-      <h1 class="hero-name">{charName}</h1>
+      <h1 class="hero-name"><SplitHeading text={charName} violetColor={accentColor} /></h1>
       {#if charData?.scenario}
         <p class="hero-tagline">
           {charData.scenario.slice(0, 90)}{charData.scenario.length > 90
@@ -306,8 +325,11 @@
 
       {#if charData?.tags?.length}
         <div class="hero-tags">
-          {#each charData.tags.slice(0, 4) as tag}
-            <span class="hero-tag">{tag}</span>
+          {#each charData.tags.slice(0, 4) as tag, i}
+            <span class="hero-tag">
+              <span class="hero-tag-dot" style="background:{TAG_COLORS[i % TAG_COLORS.length]}"></span>
+              {tag}
+            </span>
           {/each}
         </div>
       {/if}
@@ -333,8 +355,11 @@
               class="conv-item"
               onclick={() => resumeConversation(conv.id)}
             >
-              <span class="conv-title">{conv.title || "Untitled"}</span>
-              <span class="conv-meta">{relativeTime(conv.updated_at)}</span>
+              <span class="conv-dot" style="background:{accentColor}"></span>
+              <span class="conv-item-body">
+                <span class="conv-title">{conv.title || "Untitled"}</span>
+                <span class="conv-meta">{relativeTime(conv.updated_at)}</span>
+              </span>
             </button>
           {/each}
         </div>
@@ -348,9 +373,11 @@
           <button
             class="tab"
             class:active={activeTab === tab}
+            style={activeTab === tab ? `background:${accentColor};border-color:${accentColor};box-shadow:0 8px 22px -8px ${accentColor}` : ''}
             onclick={() => (activeTab = tab)}
             id="tab-{tab}"
           >
+            <Icon name={TAB_ICONS[tab]} size={14} color={activeTab === tab ? '#0a0812' : 'var(--fg-muted)'} />
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         {/each}
@@ -361,25 +388,25 @@
         {#if activeTab === "profile"}
           <div class="field-grid">
             {#if charData?.description}
-              <div class="field-card full">
+              <div class="field-card full accent-violet">
                 <p class="field-label">Description</p>
                 <p class="field-text">{charData.description}</p>
               </div>
             {/if}
             {#if charData?.personality}
-              <div class="field-card">
+              <div class="field-card accent-fuchsia">
                 <p class="field-label">Personality</p>
                 <p class="field-text">{charData.personality}</p>
               </div>
             {/if}
             {#if charData?.scenario}
-              <div class="field-card">
+              <div class="field-card accent-amber">
                 <p class="field-label">Scenario</p>
                 <p class="field-text">{charData.scenario}</p>
               </div>
             {/if}
             {#if charData?.first_mes}
-              <div class="field-card full">
+              <div class="field-card full accent-cyan quote-card">
                 <p class="field-label">First Message</p>
                 <p class="field-text" style="font-style:italic">
                   {charData.first_mes}
@@ -599,33 +626,41 @@
   }
   .back-btn:hover { color:var(--fg-secondary); }
   .hero-av-wrap { display:flex; justify-content:center; padding:22px 0 16px; position:relative; z-index:1; }
+  .hero-av-glow {
+    position:absolute; top:8px; left:50%; transform:translateX(-50%);
+    width:120px; height:120px; border-radius:50%; filter:blur(18px); pointer-events:none; opacity:0.85;
+  }
+  .hero-av-ring {
+    position:relative; width:98px; height:98px; border-radius:50%; padding:3px;
+    transition:transform var(--duration-slow);
+  }
+  .hero-av-ring:hover { transform:scale(1.03); }
   .hero-av {
     width:92px; height:92px; border-radius:50%;
     display:flex; align-items:center; justify-content:center; overflow:hidden;
-    box-shadow:0 0 0 2px rgba(139,92,246,0.3),0 0 0 6px rgba(139,92,246,0.06),0 8px 40px rgba(0,0,0,0.5);
-    transition:box-shadow var(--duration-slow); position:relative;
+    box-shadow:0 8px 40px rgba(0,0,0,0.5);
+    position:relative; background-clip:padding-box;
   }
   .hero-av::after {
     content:''; position:absolute; inset:0; border-radius:50%;
-    background:linear-gradient(135deg,rgba(139,92,246,0.15),transparent); pointer-events:none;
+    background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent); pointer-events:none;
   }
-  .hero-av:hover { box-shadow:0 0 0 2px rgba(139,92,246,0.5),0 0 0 8px rgba(139,92,246,0.1),0 12px 50px rgba(139,92,246,0.2); }
   .hero-av-img { width:100%; height:100%; object-fit:cover; }
   .hero-initials { font-size:28px; font-weight:700; color:var(--accent-primary); letter-spacing:-0.02em; user-select:none; }
 
   .hero-name {
-    font-size:16px; font-weight:700; text-align:center; letter-spacing:-0.3px;
-    padding:0 18px; margin:0 0 5px;
-    background:linear-gradient(135deg,#e8e0ff,#c4a1ff);
-    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    font-size:19px; font-weight:800; text-align:center; letter-spacing:-0.3px;
+    padding:0 18px; margin:0 0 5px; text-wrap:balance;
   }
   .hero-tagline { text-align:center; font-size:11.5px; font-style:italic; color:var(--fg-muted); padding:0 20px; line-height:1.55; margin:0 0 14px; }
   .hero-tags { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; padding:0 14px; margin-bottom:18px; }
   .hero-tag {
-    font-size:9.5px; font-weight:600; letter-spacing:0.06em; padding:3px 9px;
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:9.5px; font-weight:600; letter-spacing:0.06em; padding:3px 10px 3px 8px;
     border-radius:var(--rounded-full); text-transform:uppercase;
-    background:rgba(139,92,246,0.1); border:1px solid rgba(139,92,246,0.2); color:rgba(196,161,255,0.7);
+    background:rgba(255,255,255,0.04); border:1px solid var(--border-subtle); color:var(--fg-muted);
   }
+  .hero-tag-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
   .hero-actions { padding:0 14px; display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
   .btn-primary {
     height:38px; width:100%; border:none; border-radius:var(--rounded-md); cursor:pointer;
@@ -655,29 +690,28 @@
   .conv-list::-webkit-scrollbar-thumb { background:rgba(139,92,246,0.12); border-radius:2px; }
   .conv-item {
     width:100%; background:none; border:none; border-radius:var(--rounded-sm);
-    padding:8px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; gap:3px;
-    border-left:2px solid transparent; transition:background var(--duration-fast),border-color var(--duration-fast);
+    padding:8px 10px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:8px;
+    border-left:2px solid transparent; transition:background var(--duration-fast),border-color var(--duration-fast),transform var(--duration-fast);
   }
-  .conv-item:hover { background:var(--surface-hover); border-left-color:rgba(139,92,246,0.35); }
+  .conv-item:hover { background:var(--surface-hover); border-left-color:rgba(139,92,246,0.35); transform:translateX(1px); }
+  .conv-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; opacity:0.75; }
+  .conv-item-body { min-width:0; flex:1; display:flex; flex-direction:column; gap:3px; }
   .conv-title { font-size:12px; color:var(--fg-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-style:italic; }
   .conv-meta { font-size:9.5px; color:var(--fg-muted); font-family:var(--font-mono); }
 
   /* ── Main ── */
   .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
-  .tabs { display:flex; border-bottom:1px solid var(--border-subtle); padding:0 24px; flex-shrink:0; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; padding:20px 28px 4px; flex-shrink:0; }
   .tab {
-    height:44px; background:none; border:none; border-bottom:2px solid transparent; padding:0 16px;
-    font-size:11.5px; font-weight:500; letter-spacing:0.04em; color:var(--fg-muted); cursor:pointer;
-    text-transform:uppercase; transition:color var(--duration-fast),border-color var(--duration-fast);
+    display:flex; align-items:center; gap:7px;
+    height:36px; padding:0 16px; border-radius:999px;
+    background:rgba(255,255,255,0.04); border:1px solid var(--border-subtle);
+    font-size:12.5px; font-weight:600; letter-spacing:0.02em; color:var(--fg-muted); cursor:pointer;
+    transition:all 220ms cubic-bezier(0.16,1,0.3,1);
     white-space:nowrap; font-family:var(--font-body); position:relative;
   }
-  .tab.active { color:var(--accent-primary); border-bottom-color:var(--accent-primary); }
-  .tab.active::after {
-    content:''; position:absolute; bottom:-1px; left:50%; transform:translateX(-50%);
-    width:4px; height:4px; border-radius:50%; background:var(--accent-primary);
-    box-shadow:0 0 8px var(--accent-primary);
-  }
-  .tab:hover:not(.active) { color:var(--fg-secondary); }
+  .tab.active { color:#0a0812; font-weight:700; transform:scale(1.05); }
+  .tab:hover:not(.active) { color:var(--fg-secondary); background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.16); }
   .tab-body { flex:1; overflow-y:auto; padding:24px 28px; animation:fadeUp 280ms var(--ease-out) both; }
   @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   .tab-body::-webkit-scrollbar { width:3px; }
@@ -691,15 +725,27 @@
     transition:border-color var(--duration-slow),transform var(--duration-normal);
   }
   .field-card::before {
-    content:''; position:absolute; top:0; left:0; width:2px; height:100%;
-    background:linear-gradient(180deg,transparent,var(--accent-primary),transparent);
-    opacity:0; transition:opacity var(--duration-slow);
+    content:''; position:absolute; top:0; left:0; width:3px; height:100%;
+    background:var(--field-accent, var(--accent-primary)); opacity:0.75;
   }
   .field-card:hover { border-color:var(--border-active); transform:translateY(-1px); }
-  .field-card:hover::before { opacity:0.7; }
   .field-card.full { grid-column:1/-1; }
-  .field-label { font-size:9px; font-weight:700; letter-spacing:0.12em; color:rgba(139,92,246,0.45); text-transform:uppercase; margin:0 0 9px; font-family:var(--font-mono); }
+  .field-card.accent-violet { --field-accent:#9075f2; }
+  .field-card.accent-fuchsia { --field-accent:#e879f9; }
+  .field-card.accent-amber { --field-accent:#fbbf24; }
+  .field-card.accent-cyan { --field-accent:#22d3ee; }
+  .field-label {
+    font-size:9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--field-accent, rgba(139,92,246,0.45)); margin:0 0 9px; font-family:var(--font-mono);
+  }
   .field-text { font-size:13px; color:var(--fg-secondary); line-height:1.68; margin:0; }
+  .quote-card { padding-top:22px; }
+  .quote-card::after {
+    content:'“'; position:absolute; top:-14px; right:18px;
+    font-size:80px; font-family:Georgia,serif; color:var(--field-accent);
+    opacity:0.1; line-height:1; pointer-events:none;
+  }
+  .quote-card .field-text { position:relative; z-index:1; }
 
   /* ── Memories Tab ── */
   .memories-tab { display:flex; flex-direction:column; height:100%; gap:12px; }
