@@ -30,6 +30,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri
+          # RUSTSEC-2026-0235 (rkyv <0.8 archive validation): pulled in
+          # transitively via surrealdb-core -> rust_decimal's optional rkyv
+          # feature, pinned to the 0.7 line. No patched 0.7.x release exists —
+          # the fix is rkyv 0.8, a breaking migration upstream hasn't made
+          # yet. Revisit and drop this once surrealdb-core updates.
+          ignore: RUSTSEC-2026-0235
 
   npm-audit:
     runs-on: ubuntu-latest
