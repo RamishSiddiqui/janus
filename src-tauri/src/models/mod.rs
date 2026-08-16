@@ -50,24 +50,29 @@ where
     Option::<Thing>::deserialize(deserializer)
 }
 
-/// Deserializes a SurrealDB Datetime into a String
+/// Deserializes a SurrealDB Datetime into a plain RFC3339 String — `.to_raw()`,
+/// not `.to_string()`/`Display`, which wraps the value in SurrealQL literal
+/// syntax (`d'2024-01-01T00:00:00Z'`, quotes and `d` prefix included) that
+/// JS's `new Date(...)` can't parse and silently turns into "NaNd ago"
+/// throughout the frontend.
 pub fn deserialize_datetime<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
     let dt = surrealdb::sql::Datetime::deserialize(deserializer)?;
-    Ok(dt.to_string())
+    Ok(dt.to_raw())
 }
 
 /// Deserializes an optional SurrealDB Datetime into an Option<String> — for
 /// fields like `last_accessed` that are absent until first set, including on
-/// rows created before the field existed.
+/// rows created before the field existed. See [`deserialize_datetime`] for
+/// why `.to_raw()` and not `.to_string()`.
 pub fn deserialize_option_datetime<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let dt = Option::<surrealdb::sql::Datetime>::deserialize(deserializer)?;
-    Ok(dt.map(|d| d.to_string()))
+    Ok(dt.map(|d| d.to_raw()))
 }
 
 /// A minimal recursive JSON type used purely as a `#[specta(type = JsonValue)]`

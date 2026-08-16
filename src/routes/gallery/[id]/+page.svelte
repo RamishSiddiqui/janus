@@ -245,7 +245,9 @@
   }
 
   function relativeTime(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "";
+    const diff = Date.now() - date.getTime();
     const h = Math.floor(diff / 3600000);
     if (h < 1) return "Just now";
     if (h < 24) return `${h}h ago`;
