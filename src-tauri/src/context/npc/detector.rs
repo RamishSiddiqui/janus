@@ -81,7 +81,9 @@ pub async fn detect_candidates(
         ..Default::default()
     };
 
-    let raw_output = provider.generate(model_id, &messages, &[], &gen_params).await?;
+    let raw_output = provider
+        .generate(model_id, &messages, &[], &gen_params)
+        .await?;
 
     let cleaned = raw_output
         .trim()

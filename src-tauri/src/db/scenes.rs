@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::scene::Scene;

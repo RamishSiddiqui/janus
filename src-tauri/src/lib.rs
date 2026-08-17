@@ -4,7 +4,11 @@
 // the whole codebase, not a hot-path perf concern for a desktop app. Neither
 // represents a real bug — allowed crate-wide rather than peppering ~20 call
 // sites with per-function allows.
-#![allow(clippy::too_many_arguments, clippy::result_large_err, clippy::type_complexity)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::result_large_err,
+    clippy::type_complexity
+)]
 
 pub mod commands;
 pub mod context;
@@ -13,11 +17,12 @@ pub mod error;
 pub mod models;
 pub mod providers;
 
-use surrealdb::Surreal;
-use surrealdb::engine::local::Db;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
+
+use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tauri::Manager;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use tracing::info;
@@ -58,7 +63,8 @@ pub struct AppState {
     /// cancellation is a flag the loop checks each tick instead, letting it
     /// still issue a best-effort DELETE to free the worker slot before
     /// returning a "cancelled" error.
-    pub active_scene_generations: Arc<AsyncMutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
+    pub active_scene_generations:
+        Arc<AsyncMutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -68,129 +74,128 @@ pub struct AppState {
 /// Tauri invoke handler, so a command registered here doesn't need a
 /// separate `tauri::generate_handler!` entry.
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::<tauri::Wry>::new()
-        .commands(tauri_specta::collect_commands![
-            get_app_info,
-            commands::characters::create_character,
-            commands::characters::get_character,
-            commands::characters::list_characters,
-            commands::characters::update_character,
-            commands::characters::delete_character,
-            commands::characters::trash_character,
-            commands::characters::restore_character,
-            commands::characters::upload_character_avatar,
-            commands::character_state::get_character_state,
-            commands::character_state::upsert_character_state,
-            commands::character_state::set_message_emotional_snapshot,
-            commands::conversations::create_conversation,
-            commands::conversations::get_conversation,
-            commands::conversations::list_conversations,
-            commands::conversations::count_conversations,
-            commands::conversations::delete_conversation,
-            commands::conversations::trash_conversation,
-            commands::conversations::restore_conversation,
-            commands::conversations::get_conversation_messages,
-            commands::conversations::set_active_message,
-            commands::conversations::update_conversation,
-            commands::conversations::set_memory_scope,
-            commands::conversations::branch_conversation,
-            commands::conversations::search_messages,
-            commands::messages::create_message,
-            commands::messages::update_message,
-            commands::messages::delete_message,
-            commands::messages::get_message_branch,
-            commands::messages::get_message_siblings,
-            commands::providers::create_provider,
-            commands::providers::get_provider,
-            commands::providers::list_providers,
-            commands::providers::update_provider,
-            commands::providers::delete_provider,
-            commands::providers::set_default_provider,
-            commands::providers::test_provider_connection,
-            commands::providers::list_provider_models,
-            commands::providers::list_all_models,
-            commands::providers::list_embedding_models,
-            commands::providers::toggle_model_enabled,
-            commands::providers::list_enabled_models,
-            commands::lorebook::list_lorebook_entries,
-            commands::lorebook::create_lorebook_entry,
-            commands::lorebook::toggle_lorebook_entry,
-            commands::lorebook::delete_lorebook_entry,
-            commands::lorebook::update_lorebook_entry,
-            commands::lorebook::import_character_book_entries,
-            commands::lorebook::generate_character_lorebook,
-            commands::memories::list_memories,
-            commands::memories::create_memory,
-            commands::memories::update_memory,
-            commands::memories::set_memory_importance,
-            commands::memories::delete_memory,
-            commands::memories::promote_to_canon,
-            commands::memories::share_memory,
-            commands::memories::unlink_memory,
-            commands::memories::get_memory_graph,
-            commands::scenes::generate_scene,
-            commands::scenes::generate_video_scene,
-            commands::scenes::list_scene_cast_members,
-            commands::scenes::cancel_scene_generation,
-            commands::scenes::list_scenes,
-            commands::scenes::delete_scene,
-            commands::scenes::get_scene_path,
-            commands::scene_states::get_scene_state,
-            commands::scene_states::upsert_scene_state,
-            commands::scene_states::delete_scene_state,
-            commands::image_presets::list_image_presets,
-            commands::image_presets::create_image_preset,
-            commands::image_presets::update_image_preset,
-            commands::image_presets::delete_image_preset,
-            commands::image_presets::set_default_image_preset,
-            commands::conversations::set_conversation_image_preset,
-            commands::conversation_characters::list_conversation_characters,
-            commands::conversation_characters::add_conversation_character,
-            commands::conversation_characters::remove_conversation_character,
-            commands::conversation_characters::update_character_talkativeness,
-            commands::conversation_characters::toggle_character_active,
-            commands::embeddings::get_embedding_index_status,
-            commands::embeddings::rebuild_embedding_index,
-            commands::embeddings::backfill_missing_embeddings,
-            commands::import::import_character_card,
-            commands::import::get_avatar_path,
-            commands::chat::send::send_message,
-            commands::chat::attachments::upload_message_attachment,
-            commands::chat::attachments::upload_message_attachment_bytes,
-            commands::chat::retry::retry_failed_message,
-            commands::chat::retry::regenerate_message,
-            commands::chat::pipeline::generate_raw,
-            commands::chat::pipeline::get_context_stats,
-            commands::chat::retry::cancel_generation,
-            commands::chat::pipeline::extract_initial_scene,
-            commands::npc::list_conversation_npcs,
-            commands::npc::promote_npc_to_gallery,
-            commands::npc::confirm_npc,
-            commands::npc::mark_npc_reviewed,
-            commands::npc::refresh_character_profile,
-            commands::npc::debug_run_npc_detection,
-            commands::npc::generate_npc_portrait,
-            commands::npc::approve_npc_portrait,
-            commands::npc::reject_npc_portrait,
-            commands::npc::get_cast_memory_graph,
-            // Personas
-            commands::personas::create_persona,
-            commands::personas::get_persona,
-            commands::personas::list_personas,
-            commands::personas::update_persona,
-            commands::personas::delete_persona,
-            commands::personas::trash_persona,
-            commands::personas::restore_persona,
-            commands::personas::generate_persona_portrait,
-            commands::import::import_persona_card,
-            commands::conversations::set_conversation_persona,
-            // Trash
-            commands::trash::list_trash,
-            commands::trash::empty_trash,
-            commands::logs::get_backend_logs,
-            commands::logs::get_backend_logs_page,
-            commands::logs::get_backend_log_path,
-        ])
+    tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
+        get_app_info,
+        commands::characters::create_character,
+        commands::characters::get_character,
+        commands::characters::list_characters,
+        commands::characters::update_character,
+        commands::characters::delete_character,
+        commands::characters::trash_character,
+        commands::characters::restore_character,
+        commands::characters::upload_character_avatar,
+        commands::character_state::get_character_state,
+        commands::character_state::upsert_character_state,
+        commands::character_state::set_message_emotional_snapshot,
+        commands::conversations::create_conversation,
+        commands::conversations::get_conversation,
+        commands::conversations::list_conversations,
+        commands::conversations::count_conversations,
+        commands::conversations::delete_conversation,
+        commands::conversations::trash_conversation,
+        commands::conversations::restore_conversation,
+        commands::conversations::get_conversation_messages,
+        commands::conversations::set_active_message,
+        commands::conversations::update_conversation,
+        commands::conversations::set_memory_scope,
+        commands::conversations::branch_conversation,
+        commands::conversations::search_messages,
+        commands::messages::create_message,
+        commands::messages::update_message,
+        commands::messages::delete_message,
+        commands::messages::get_message_branch,
+        commands::messages::get_message_siblings,
+        commands::providers::create_provider,
+        commands::providers::get_provider,
+        commands::providers::list_providers,
+        commands::providers::update_provider,
+        commands::providers::delete_provider,
+        commands::providers::set_default_provider,
+        commands::providers::test_provider_connection,
+        commands::providers::list_provider_models,
+        commands::providers::list_all_models,
+        commands::providers::list_embedding_models,
+        commands::providers::toggle_model_enabled,
+        commands::providers::list_enabled_models,
+        commands::lorebook::list_lorebook_entries,
+        commands::lorebook::create_lorebook_entry,
+        commands::lorebook::toggle_lorebook_entry,
+        commands::lorebook::delete_lorebook_entry,
+        commands::lorebook::update_lorebook_entry,
+        commands::lorebook::import_character_book_entries,
+        commands::lorebook::generate_character_lorebook,
+        commands::memories::list_memories,
+        commands::memories::create_memory,
+        commands::memories::update_memory,
+        commands::memories::set_memory_importance,
+        commands::memories::delete_memory,
+        commands::memories::promote_to_canon,
+        commands::memories::share_memory,
+        commands::memories::unlink_memory,
+        commands::memories::get_memory_graph,
+        commands::scenes::generate_scene,
+        commands::scenes::generate_video_scene,
+        commands::scenes::list_scene_cast_members,
+        commands::scenes::cancel_scene_generation,
+        commands::scenes::list_scenes,
+        commands::scenes::delete_scene,
+        commands::scenes::get_scene_path,
+        commands::scene_states::get_scene_state,
+        commands::scene_states::upsert_scene_state,
+        commands::scene_states::delete_scene_state,
+        commands::image_presets::list_image_presets,
+        commands::image_presets::create_image_preset,
+        commands::image_presets::update_image_preset,
+        commands::image_presets::delete_image_preset,
+        commands::image_presets::set_default_image_preset,
+        commands::conversations::set_conversation_image_preset,
+        commands::conversation_characters::list_conversation_characters,
+        commands::conversation_characters::add_conversation_character,
+        commands::conversation_characters::remove_conversation_character,
+        commands::conversation_characters::update_character_talkativeness,
+        commands::conversation_characters::toggle_character_active,
+        commands::embeddings::get_embedding_index_status,
+        commands::embeddings::rebuild_embedding_index,
+        commands::embeddings::backfill_missing_embeddings,
+        commands::import::import_character_card,
+        commands::import::get_avatar_path,
+        commands::chat::send::send_message,
+        commands::chat::attachments::upload_message_attachment,
+        commands::chat::attachments::upload_message_attachment_bytes,
+        commands::chat::retry::retry_failed_message,
+        commands::chat::retry::regenerate_message,
+        commands::chat::pipeline::generate_raw,
+        commands::chat::pipeline::get_context_stats,
+        commands::chat::retry::cancel_generation,
+        commands::chat::pipeline::extract_initial_scene,
+        commands::npc::list_conversation_npcs,
+        commands::npc::promote_npc_to_gallery,
+        commands::npc::confirm_npc,
+        commands::npc::mark_npc_reviewed,
+        commands::npc::refresh_character_profile,
+        commands::npc::debug_run_npc_detection,
+        commands::npc::generate_npc_portrait,
+        commands::npc::approve_npc_portrait,
+        commands::npc::reject_npc_portrait,
+        commands::npc::get_cast_memory_graph,
+        // Personas
+        commands::personas::create_persona,
+        commands::personas::get_persona,
+        commands::personas::list_personas,
+        commands::personas::update_persona,
+        commands::personas::delete_persona,
+        commands::personas::trash_persona,
+        commands::personas::restore_persona,
+        commands::personas::generate_persona_portrait,
+        commands::import::import_persona_card,
+        commands::conversations::set_conversation_persona,
+        // Trash
+        commands::trash::list_trash,
+        commands::trash::empty_trash,
+        commands::logs::get_backend_logs,
+        commands::logs::get_backend_logs_page,
+        commands::logs::get_backend_log_path,
+    ])
 }
 
 /// Recursively copies a directory tree. Fallback for the identifier-rename
@@ -275,7 +280,8 @@ pub fn run() {
             // Must happen before `db::init_database` — that's the first thing
             // that actually logs anything.
             fn build_log_filter() -> EnvFilter {
-                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("janus_lib=debug,info"))
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new("janus_lib=debug,info"))
             }
             let logs_dir = app_data_dir.join("logs");
             std::fs::create_dir_all(&logs_dir).expect("Failed to create logs directory");
@@ -307,9 +313,9 @@ pub fn run() {
             // SurrealDB spawns internal async tasks on the current runtime — if that
             // runtime is dropped (as a temporary one would be at end of setup()),
             // those tasks die and the Surreal<Db> handle becomes a dead channel.
-            let db = tauri::async_runtime::block_on(async {
-                db::init_database(&app_data_dir).await
-            }).expect("Failed to initialize database");
+            let db =
+                tauri::async_runtime::block_on(async { db::init_database(&app_data_dir).await })
+                    .expect("Failed to initialize database");
 
             // Copy bundled seed avatars to app data dir if not already present
             let avatars_dest = app_data_dir.join("avatars");
@@ -336,7 +342,11 @@ pub fn run() {
                         let dest_file = avatars_dest.join(entry.file_name());
                         if !dest_file.exists() {
                             if let Err(e) = std::fs::copy(entry.path(), &dest_file) {
-                                tracing::warn!("Failed to copy seed avatar {:?}: {}", entry.file_name(), e);
+                                tracing::warn!(
+                                    "Failed to copy seed avatar {:?}: {}",
+                                    entry.file_name(),
+                                    e
+                                );
                             } else {
                                 info!("Copied seed avatar: {:?}", entry.file_name());
                             }

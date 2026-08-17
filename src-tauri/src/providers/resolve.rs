@@ -3,8 +3,8 @@
 //! NPC detection, lorebook, and memory-extraction call sites, not specific
 //! to any one of them (hence living here rather than in `commands::chat`).
 
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
@@ -18,7 +18,7 @@ pub(crate) async fn get_default_llm_provider(
     match ProviderRepo::get_default(db, "llm").await? {
         Some(config) => Ok(config),
         None => Err(MythicError::Config(
-            "No LLM provider configured. Add one in Settings → Models.".to_string()
+            "No LLM provider configured. Add one in Settings → Models.".to_string(),
         )),
     }
 }
@@ -32,7 +32,8 @@ pub(crate) async fn resolve_model_id(
     match model {
         Some(m) if !m.is_empty() && m != "unknown" => Ok(m),
         _ => {
-            let stored = provider_config.config
+            let stored = provider_config
+                .config
                 .get("model")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
@@ -73,15 +74,21 @@ pub(crate) fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider
         ProviderAdapter::Hyperbolic => "hyperbolic",
         ProviderAdapter::Moonshot => "moonshot",
         ProviderAdapter::Together => "together",
-        ProviderAdapter::ComfyUi => return Err(MythicError::Config(
-            "ComfyUI is an image provider, not an LLM provider".to_string()
-        )),
-        ProviderAdapter::AiHorde => return Err(MythicError::Config(
-            "AI Horde is an image provider, not an LLM provider".to_string()
-        )),
-        ProviderAdapter::WanGp => return Err(MythicError::Config(
-            "WanGP is an image/video provider, not an LLM provider".to_string()
-        )),
+        ProviderAdapter::ComfyUi => {
+            return Err(MythicError::Config(
+                "ComfyUI is an image provider, not an LLM provider".to_string(),
+            ))
+        }
+        ProviderAdapter::AiHorde => {
+            return Err(MythicError::Config(
+                "AI Horde is an image provider, not an LLM provider".to_string(),
+            ))
+        }
+        ProviderAdapter::WanGp => {
+            return Err(MythicError::Config(
+                "WanGP is an image/video provider, not an LLM provider".to_string(),
+            ))
+        }
     };
 
     let api_key = config.config.get("api_key").and_then(|v| v.as_str());

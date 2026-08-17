@@ -20,10 +20,16 @@ pub enum MessageRole {
 /// conversation branching (forking from any point in history).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Message {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub conversation_id: Thing,
     pub role: MessageRole,
@@ -31,7 +37,11 @@ pub struct Message {
 
     /// Parent message ID — enables conversation branching.
     /// If None, this is a root message.
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub parent_id: Option<Thing>,
 
@@ -41,7 +51,11 @@ pub struct Message {
 
     /// Character who sent this message (for multi-character conversations).
     /// None for user messages and single-character conversations.
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
     /// Denormalized character name for display (avoids extra lookups).
@@ -81,18 +95,28 @@ pub struct SearchResult {
 /// A conversation session between the user and a character.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Conversation {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
     pub title: String,
 
     /// The character associated with this conversation
-    #[serde(serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
 
     /// ID of the active (latest) message in the current branch
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub active_message_id: Option<Thing>,
 
@@ -107,26 +131,42 @@ pub struct Conversation {
     pub shared_character_ids: Option<String>,
 
     /// If this conversation was forked from another, this points to the parent conversation.
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub parent_conversation_id: Option<Thing>,
 
     /// The exact message in the parent conversation where the fork happened.
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub branch_point_message_id: Option<Thing>,
 
     /// This conversation's chosen image-generation preset. When unset, scene
     /// generation falls back to the global default preset (if any), then to
     /// the image provider's own config.
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub image_preset_id: Option<Thing>,
 
     /// This conversation's chosen persona (the user's stand-in). When unset,
     /// prompt-building is a complete no-op with respect to persona features
     /// — no {{user}} substitution, no "About the User" context block.
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub persona_id: Option<Thing>,
 
@@ -138,7 +178,10 @@ pub struct Conversation {
     pub updated_at: String,
 
     /// Set when the conversation is in the Trash; None means it's live.
-    #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+    #[serde(
+        default,
+        deserialize_with = "crate::models::deserialize_option_datetime"
+    )]
     #[specta(type = Option<String>)]
     pub deleted_at: Option<String>,
 }

@@ -17,7 +17,7 @@ impl SummaryRepo {
             .query(
                 "SELECT * FROM conversation_summaries \
                  WHERE conversation_id = type::thing('conversations', $conv_id) \
-                 LIMIT 1"
+                 LIMIT 1",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
@@ -37,8 +37,8 @@ impl SummaryRepo {
         token_count: u32,
         window_start_message_id: Option<&str>,
     ) -> Result<(), MythicError> {
-        let window_start_thing = window_start_message_id
-            .map(|id| surrealdb::sql::Thing::from(("messages", id)));
+        let window_start_thing =
+            window_start_message_id.map(|id| surrealdb::sql::Thing::from(("messages", id)));
 
         db.query(
             "UPSERT conversation_summaries SET \
@@ -48,27 +48,24 @@ impl SummaryRepo {
                 token_count = $tokens, \
                 window_start_message_id = $window_start, \
                 updated_at = time::now() \
-             WHERE conversation_id = type::thing('conversations', $conv_id)"
+             WHERE conversation_id = type::thing('conversations', $conv_id)",
         )
-            .bind(("conv_id", conversation_id.to_string()))
-            .bind(("text", summary_text.to_string()))
-            .bind(("count", covered_message_count as i64))
-            .bind(("tokens", token_count as i64))
-            .bind(("window_start", window_start_thing))
-            .await?;
+        .bind(("conv_id", conversation_id.to_string()))
+        .bind(("text", summary_text.to_string()))
+        .bind(("count", covered_message_count as i64))
+        .bind(("tokens", token_count as i64))
+        .bind(("window_start", window_start_thing))
+        .await?;
 
         Ok(())
     }
 
     /// Deletes the summary for a conversation.
     /// Called when a conversation is reset or deleted.
-    pub async fn delete(
-        db: &Surreal<Db>,
-        conversation_id: &str,
-    ) -> Result<(), MythicError> {
+    pub async fn delete(db: &Surreal<Db>, conversation_id: &str) -> Result<(), MythicError> {
         db.query(
             "DELETE FROM conversation_summaries \
-             WHERE conversation_id = type::thing('conversations', $conv_id)"
+             WHERE conversation_id = type::thing('conversations', $conv_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .await?;

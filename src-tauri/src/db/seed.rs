@@ -13,11 +13,14 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
     seed_default_image_preset(db).await?;
 
     // Check if already seeded
-    let mut result = db.query("SELECT count() FROM provider_configs GROUP ALL").await?;
+    let mut result = db
+        .query("SELECT count() FROM provider_configs GROUP ALL")
+        .await?;
     let count: Option<serde_json::Value> = result.take(0)?;
     let already_seeded = count
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
-        .unwrap_or(0) > 0;
+        .unwrap_or(0)
+        > 0;
     if already_seeded {
         return Ok(());
     }
@@ -53,32 +56,38 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
 /// Idempotent — skips if any image preset already exists (including if the
 /// user has since deleted or edited the seeded one).
 async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> {
-    let mut result = db.query("SELECT count() FROM image_presets GROUP ALL").await?;
+    let mut result = db
+        .query("SELECT count() FROM image_presets GROUP ALL")
+        .await?;
     let count: Option<serde_json::Value> = result.take(0)?;
     let already_seeded = count
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
-        .unwrap_or(0) > 0;
+        .unwrap_or(0)
+        > 0;
     if already_seeded {
         return Ok(());
     }
 
     db.query("CREATE type::thing('image_presets', $id) CONTENT $data")
         .bind(("id", "default-high-quality"))
-        .bind(("data", json!({
-            "name": "High Quality (Default)",
-            "model": null,
-            "sampler_name": "k_dpmpp_2m",
-            "cfg_scale": 6.5,
-            "steps": 30,
-            "karras": true,
-            "style": null,
-            "negative_prompt": null,
-            "clip_skip": null,
-            "post_processing": ["GFPGAN", "RealESRGAN_x4plus"],
-            "hires_fix": false,
-            "hires_fix_denoising_strength": null,
-            "is_default": true,
-        })))
+        .bind((
+            "data",
+            json!({
+                "name": "High Quality (Default)",
+                "model": null,
+                "sampler_name": "k_dpmpp_2m",
+                "cfg_scale": 6.5,
+                "steps": 30,
+                "karras": true,
+                "style": null,
+                "negative_prompt": null,
+                "clip_skip": null,
+                "post_processing": ["GFPGAN", "RealESRGAN_x4plus"],
+                "hires_fix": false,
+                "hires_fix_denoising_strength": null,
+                "is_default": true,
+            }),
+        ))
         .await?;
 
     tracing::info!("Seeded default image preset");
@@ -90,49 +99,58 @@ async fn seed_providers(db: &Surreal<Db>) -> Result<(), MythicError> {
     // Use raw queries to avoid deserialization issues with Thing enum
     db.query("CREATE type::thing('provider_configs', $id) CONTENT $data")
         .bind(("id", "default-openrouter"))
-        .bind(("data", json!({
-            "name": "OpenRouter",
-            "provider_type": "llm",
-            "adapter": "open_router",
-            "config": {
-                "base_url": "https://openrouter.ai/api/v1",
-                "model": "meta-llama/llama-4-maverick",
-                "api_key": "",
-                "temperature": "0.80",
-                "max_tokens": "2048"
-            },
-            "is_default": true
-        })))
+        .bind((
+            "data",
+            json!({
+                "name": "OpenRouter",
+                "provider_type": "llm",
+                "adapter": "open_router",
+                "config": {
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "model": "meta-llama/llama-4-maverick",
+                    "api_key": "",
+                    "temperature": "0.80",
+                    "max_tokens": "2048"
+                },
+                "is_default": true
+            }),
+        ))
         .await?;
 
     db.query("CREATE type::thing('provider_configs', $id) CONTENT $data")
         .bind(("id", "default-siliconflow-img"))
-        .bind(("data", json!({
-            "name": "SiliconFlow",
-            "provider_type": "image",
-            "adapter": "silicon_flow",
-            "config": {
-                "base_url": "https://api.siliconflow.cn/v1",
-                "model": "FLUX.1-schnell",
-                "api_key": ""
-            },
-            "is_default": true
-        })))
+        .bind((
+            "data",
+            json!({
+                "name": "SiliconFlow",
+                "provider_type": "image",
+                "adapter": "silicon_flow",
+                "config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "model": "FLUX.1-schnell",
+                    "api_key": ""
+                },
+                "is_default": true
+            }),
+        ))
         .await?;
 
     db.query("CREATE type::thing('provider_configs', $id) CONTENT $data")
         .bind(("id", "default-siliconflow-vid"))
-        .bind(("data", json!({
-            "name": "SiliconFlow",
-            "provider_type": "video",
-            "adapter": "silicon_flow",
-            "config": {
-                "base_url": "https://api.siliconflow.cn/v1",
-                "model": "Wan2.1-T2V-14B",
-                "api_key": ""
-            },
-            "is_default": true
-        })))
+        .bind((
+            "data",
+            json!({
+                "name": "SiliconFlow",
+                "provider_type": "video",
+                "adapter": "silicon_flow",
+                "config": {
+                    "base_url": "https://api.siliconflow.cn/v1",
+                    "model": "Wan2.1-T2V-14B",
+                    "api_key": ""
+                },
+                "is_default": true
+            }),
+        ))
         .await?;
 
     Ok(())
@@ -404,21 +422,81 @@ async fn seed_characters(db: &Surreal<Db>) -> Result<(), MythicError> {
 async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
     // ── Conversations ──
     let conversations = vec![
-        ("conv-aria-main",     "Aria — College Arrival",       "char-aria-silverleaf"),
-        ("conv-aria-branch1",  "Aria — Dark Forest Encounter", "char-aria-silverleaf"),
-        ("conv-aria-branch2",  "Aria — Tournament Arc",        "char-aria-silverleaf"),
-        ("conv-aria-branch3",  "Aria — Crystal Caverns",       "char-aria-silverleaf"),
-        ("conv-roran-main",    "Roran — Forge Apprenticeship", "char-roran-ironfist"),
-        ("conv-roran-branch",  "Roran — Dragon Slayer Route",  "char-roran-ironfist"),
-        ("conv-roran-branch2", "Roran — Runic Mastery",        "char-roran-ironfist"),
-        ("conv-finn-main",     "Finn — Shadow Academy",        "char-finn-shadowcloak"),
-        ("conv-finn-branch",   "Finn — The Heist",             "char-finn-shadowcloak"),
-        ("conv-saff-main",     "Saffron — Library of Echoes",  "char-saffron-emberheart"),
-        ("conv-saff-b1",       "Saffron — Desert Expedition",  "char-saffron-emberheart"),
-        ("conv-saff-b2",       "Saffron — Astral Projection",  "char-saffron-emberheart"),
-        ("conv-saff-b3",       "Saffron — The Lost Archive",   "char-saffron-emberheart"),
-        ("conv-shared-forge",  "The Forge Alliance",           "char-aria-silverleaf"),
-        ("conv-shared-heist",  "Midnight Heist",               "char-aria-silverleaf"),
+        (
+            "conv-aria-main",
+            "Aria — College Arrival",
+            "char-aria-silverleaf",
+        ),
+        (
+            "conv-aria-branch1",
+            "Aria — Dark Forest Encounter",
+            "char-aria-silverleaf",
+        ),
+        (
+            "conv-aria-branch2",
+            "Aria — Tournament Arc",
+            "char-aria-silverleaf",
+        ),
+        (
+            "conv-aria-branch3",
+            "Aria — Crystal Caverns",
+            "char-aria-silverleaf",
+        ),
+        (
+            "conv-roran-main",
+            "Roran — Forge Apprenticeship",
+            "char-roran-ironfist",
+        ),
+        (
+            "conv-roran-branch",
+            "Roran — Dragon Slayer Route",
+            "char-roran-ironfist",
+        ),
+        (
+            "conv-roran-branch2",
+            "Roran — Runic Mastery",
+            "char-roran-ironfist",
+        ),
+        (
+            "conv-finn-main",
+            "Finn — Shadow Academy",
+            "char-finn-shadowcloak",
+        ),
+        (
+            "conv-finn-branch",
+            "Finn — The Heist",
+            "char-finn-shadowcloak",
+        ),
+        (
+            "conv-saff-main",
+            "Saffron — Library of Echoes",
+            "char-saffron-emberheart",
+        ),
+        (
+            "conv-saff-b1",
+            "Saffron — Desert Expedition",
+            "char-saffron-emberheart",
+        ),
+        (
+            "conv-saff-b2",
+            "Saffron — Astral Projection",
+            "char-saffron-emberheart",
+        ),
+        (
+            "conv-saff-b3",
+            "Saffron — The Lost Archive",
+            "char-saffron-emberheart",
+        ),
+        (
+            "conv-shared-forge",
+            "The Forge Alliance",
+            "char-aria-silverleaf",
+        ),
+        (
+            "conv-shared-heist",
+            "Midnight Heist",
+            "char-aria-silverleaf",
+        ),
     ];
     for (id, title, char_id) in &conversations {
         db.query("CREATE type::thing('conversations', $id) CONTENT { title: $title, character_id: type::thing('characters', $char_id), updated_at: time::now() }")
@@ -437,20 +515,50 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
     // ── Seed conversation_characters join table for multi-char conversations ──
     // The Forge Alliance: Aria (primary) + Roran (supporting)
     let mc_chars = vec![
-        ("cc_conv-shared-forge_char-aria-silverleaf",  "conv-shared-forge",  "char-aria-silverleaf",  "Aria Silverleaf",  "primary",    80),
-        ("cc_conv-shared-forge_char-roran-ironfist",   "conv-shared-forge",  "char-roran-ironfist",   "Roran Ironfist",   "supporting", 50),
-        ("cc_conv-shared-heist_char-aria-silverleaf",  "conv-shared-heist",  "char-aria-silverleaf",  "Aria Silverleaf",  "primary",    80),
-        ("cc_conv-shared-heist_char-finn-shadowcloak", "conv-shared-heist",  "char-finn-shadowcloak", "Finn Shadowcloak", "supporting", 70),
+        (
+            "cc_conv-shared-forge_char-aria-silverleaf",
+            "conv-shared-forge",
+            "char-aria-silverleaf",
+            "Aria Silverleaf",
+            "primary",
+            80,
+        ),
+        (
+            "cc_conv-shared-forge_char-roran-ironfist",
+            "conv-shared-forge",
+            "char-roran-ironfist",
+            "Roran Ironfist",
+            "supporting",
+            50,
+        ),
+        (
+            "cc_conv-shared-heist_char-aria-silverleaf",
+            "conv-shared-heist",
+            "char-aria-silverleaf",
+            "Aria Silverleaf",
+            "primary",
+            80,
+        ),
+        (
+            "cc_conv-shared-heist_char-finn-shadowcloak",
+            "conv-shared-heist",
+            "char-finn-shadowcloak",
+            "Finn Shadowcloak",
+            "supporting",
+            70,
+        ),
     ];
     for (id, conv_id, char_id, char_name, role, talk) in &mc_chars {
-        db.query("CREATE type::thing('conversation_characters', $id) CONTENT {
+        db.query(
+            "CREATE type::thing('conversation_characters', $id) CONTENT {
             conversation_id: type::thing('conversations', $conv_id),
             character_id: type::thing('characters', $char_id),
             character_name: $char_name,
             role: $role,
             talkativeness: $talk,
             is_active: true,
-        }")
+        }",
+        )
         .bind(("id", id.to_string()))
         .bind(("conv_id", conv_id.to_string()))
         .bind(("char_id", char_id.to_string()))
@@ -548,18 +656,102 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // ── Memory links (RELATE edges) ──
     let links: Vec<(&str, &str, &str, &str, &str, Option<&str>)> = vec![
-        ("mem-aria-c1","conv-aria-branch1","copy","one_way","manual",Some("mem-aria-b1-1")),
-        ("mem-aria-c2","conv-aria-branch2","copy","one_way","manual",Some("mem-aria-b2-1")),
-        ("mem-aria-m2","conv-aria-branch2","sync","one_way","auto",None),
-        ("mem-aria-b1-4","conv-aria-branch3","sync","two_way","auto",Some("mem-aria-b3-2")),
-        ("mem-roran-m2","conv-roran-branch","sync","two_way","auto",None),
-        ("mem-roran-m2","conv-roran-branch2","copy","one_way","manual",Some("mem-roran-b2-1")),
-        ("mem-saff-m2","conv-saff-b1","sync","one_way","auto",None),
-        ("mem-saff-d1","conv-saff-b3","copy","one_way","manual",Some("mem-saff-l1")),
-        ("mem-saff-m2","conv-saff-b2","sync","two_way","auto",Some("mem-saff-a1")),
-        ("mem-aria-m2","conv-shared-forge","sync","two_way","auto",Some("mem-roran-forge2")),
-        ("mem-finn-h2","conv-shared-heist","copy","one_way","manual",Some("mem-finn-heist1")),
-        ("mem-finn-m3","conv-finn-branch","sync","one_way","auto",None),
+        (
+            "mem-aria-c1",
+            "conv-aria-branch1",
+            "copy",
+            "one_way",
+            "manual",
+            Some("mem-aria-b1-1"),
+        ),
+        (
+            "mem-aria-c2",
+            "conv-aria-branch2",
+            "copy",
+            "one_way",
+            "manual",
+            Some("mem-aria-b2-1"),
+        ),
+        (
+            "mem-aria-m2",
+            "conv-aria-branch2",
+            "sync",
+            "one_way",
+            "auto",
+            None,
+        ),
+        (
+            "mem-aria-b1-4",
+            "conv-aria-branch3",
+            "sync",
+            "two_way",
+            "auto",
+            Some("mem-aria-b3-2"),
+        ),
+        (
+            "mem-roran-m2",
+            "conv-roran-branch",
+            "sync",
+            "two_way",
+            "auto",
+            None,
+        ),
+        (
+            "mem-roran-m2",
+            "conv-roran-branch2",
+            "copy",
+            "one_way",
+            "manual",
+            Some("mem-roran-b2-1"),
+        ),
+        (
+            "mem-saff-m2",
+            "conv-saff-b1",
+            "sync",
+            "one_way",
+            "auto",
+            None,
+        ),
+        (
+            "mem-saff-d1",
+            "conv-saff-b3",
+            "copy",
+            "one_way",
+            "manual",
+            Some("mem-saff-l1"),
+        ),
+        (
+            "mem-saff-m2",
+            "conv-saff-b2",
+            "sync",
+            "two_way",
+            "auto",
+            Some("mem-saff-a1"),
+        ),
+        (
+            "mem-aria-m2",
+            "conv-shared-forge",
+            "sync",
+            "two_way",
+            "auto",
+            Some("mem-roran-forge2"),
+        ),
+        (
+            "mem-finn-h2",
+            "conv-shared-heist",
+            "copy",
+            "one_way",
+            "manual",
+            Some("mem-finn-heist1"),
+        ),
+        (
+            "mem-finn-m3",
+            "conv-finn-branch",
+            "sync",
+            "one_way",
+            "auto",
+            None,
+        ),
     ];
     for (src, tgt, lt, dir, sm, lm) in &links {
         let src_thing = surrealdb::sql::Thing::from(("memories", src.to_owned()));
@@ -578,8 +770,13 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
         }
     }
 
-    tracing::info!("Seeded {} conversations, {} canon + {} conversation memories, {} memory links",
-        conversations.len(), canon.len(), mems.len(), links.len());
+    tracing::info!(
+        "Seeded {} conversations, {} canon + {} conversation memories, {} memory links",
+        conversations.len(),
+        canon.len(),
+        mems.len(),
+        links.len()
+    );
     Ok(())
 }
 
@@ -596,14 +793,16 @@ async fn create_seed_message(
 ) -> Result<(), MythicError> {
     if let (Some(pid), Some(cid), Some(cname)) = (parent_id, character_id, character_name) {
         // Message with parent + character attribution (multi-char segments)
-        db.query("CREATE type::thing('messages', $id) CONTENT {
+        db.query(
+            "CREATE type::thing('messages', $id) CONTENT {
             conversation_id: type::thing('conversations', $conv_id),
             role: $role,
             content: $content,
             parent_id: type::thing('messages', $parent_id),
             character_id: type::thing('characters', $char_id),
             character_name: $char_name,
-        }")
+        }",
+        )
         .bind(("id", id.to_string()))
         .bind(("conv_id", conv_id.to_string()))
         .bind(("role", role.to_string()))
@@ -614,12 +813,14 @@ async fn create_seed_message(
         .await?;
     } else if let Some(pid) = parent_id {
         // Message with parent, no character
-        db.query("CREATE type::thing('messages', $id) CONTENT {
+        db.query(
+            "CREATE type::thing('messages', $id) CONTENT {
             conversation_id: type::thing('conversations', $conv_id),
             role: $role,
             content: $content,
             parent_id: type::thing('messages', $parent_id),
-        }")
+        }",
+        )
         .bind(("id", id.to_string()))
         .bind(("conv_id", conv_id.to_string()))
         .bind(("role", role.to_string()))
@@ -628,11 +829,13 @@ async fn create_seed_message(
         .await?;
     } else {
         // Root message (greeting, no parent)
-        db.query("CREATE type::thing('messages', $id) CONTENT {
+        db.query(
+            "CREATE type::thing('messages', $id) CONTENT {
             conversation_id: type::thing('conversations', $conv_id),
             role: $role,
             content: $content,
-        }")
+        }",
+        )
         .bind(("id", id.to_string()))
         .bind(("conv_id", conv_id.to_string()))
         .bind(("role", role.to_string()))
@@ -690,11 +893,17 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
         None, None, None,
     ).await?;
 
-    create_seed_message(db,
-        "msg-roran-main-2", "conv-roran-main", "user",
+    create_seed_message(
+        db,
+        "msg-roran-main-2",
+        "conv-roran-main",
+        "user",
         "A sword that never breaks? That sounds impossible. How would you even do that?",
-        Some("msg-roran-main-1"), None, None,
-    ).await?;
+        Some("msg-roran-main-1"),
+        None,
+        None,
+    )
+    .await?;
 
     create_seed_message(db,
         "msg-roran-main-3", "conv-roran-main", "assistant",
@@ -715,11 +924,17 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
         None, None, None,
     ).await?;
 
-    create_seed_message(db,
-        "msg-finn-main-2", "conv-finn-main", "user",
+    create_seed_message(
+        db,
+        "msg-finn-main-2",
+        "conv-finn-main",
+        "user",
         "Locked doors? Now you have my attention. What's up there?",
-        Some("msg-finn-main-1"), None, None,
-    ).await?;
+        Some("msg-finn-main-1"),
+        None,
+        None,
+    )
+    .await?;
 
     create_seed_message(db,
         "msg-finn-main-3", "conv-finn-main", "assistant",
@@ -769,11 +984,17 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // User message
-    create_seed_message(db,
-        "msg-forge-2", "conv-shared-forge", "user",
+    create_seed_message(
+        db,
+        "msg-forge-2",
+        "conv-shared-forge",
+        "user",
         "This forge is incredible. So you two are working together on this amplifier project?",
-        Some("msg-forge-1"), None, None,
-    ).await?;
+        Some("msg-forge-1"),
+        None,
+        None,
+    )
+    .await?;
 
     // Aria's response segment (multi-char: parent = user msg)
     create_seed_message(db,
@@ -808,11 +1029,17 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // User message
-    create_seed_message(db,
-        "msg-heist-2", "conv-shared-heist", "user",
+    create_seed_message(
+        db,
+        "msg-heist-2",
+        "conv-shared-heist",
+        "user",
         "Wait \u{2014} I'm not the thief! I followed someone in here. Look, there in the shadows!",
-        Some("msg-heist-1"), None, None,
-    ).await?;
+        Some("msg-heist-1"),
+        None,
+        None,
+    )
+    .await?;
 
     // Aria's response segment
     create_seed_message(db,
@@ -858,6 +1085,9 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
         .await?;
 
     let msg_count = 5 + 3 + 3 + 3 + 5 + 8; // aria, roran, finn, saff, forge, heist
-    tracing::info!("Seeded {} conversation messages across 6 conversations", msg_count);
+    tracing::info!(
+        "Seeded {} conversation messages across 6 conversations",
+        msg_count
+    );
     Ok(())
 }

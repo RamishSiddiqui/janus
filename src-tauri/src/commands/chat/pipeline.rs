@@ -4,12 +4,12 @@
 //! either the send or retry flow.
 
 use std::sync::Arc;
+
+use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-
-use surrealdb::Surreal;
-use surrealdb::engine::local::Db;
 
 use crate::context::budget::ContextBudget;
 use crate::context::prompt_builder::{build_prompt, ContextStats};
@@ -38,13 +38,19 @@ use crate::AppState;
 /// "missing" counts on the Memory page kept growing — live embedding calls
 /// were failing quietly against a provider that doesn't serve the fallback
 /// model, while manual rebuilds (which used the right provider) worked.
-async fn resolve_embedding_provider(db: &Surreal<Db>) -> Result<(RigProvider, String), MythicError> {
+async fn resolve_embedding_provider(
+    db: &Surreal<Db>,
+) -> Result<(RigProvider, String), MythicError> {
     let enabled = ProviderRepo::list_enabled_models(db, None).await?;
-    let embedding_entry = enabled.iter()
+    let embedding_entry = enabled
+        .iter()
         .find(|m| m.model_type == "embedding")
-        .ok_or_else(|| MythicError::Config(
-            "No embedding model enabled. Go to AI Studio → Embedding Models and enable one.".to_string()
-        ))?;
+        .ok_or_else(|| {
+            MythicError::Config(
+                "No embedding model enabled. Go to AI Studio → Embedding Models and enable one."
+                    .to_string(),
+            )
+        })?;
     let provider_config = ProviderRepo::get(db, &embedding_entry.provider_id).await?;
     let provider = create_rig_provider(&provider_config)?;
     Ok((provider, embedding_entry.model_id.clone()))
@@ -78,12 +84,18 @@ pub(crate) fn spawn_scene_extraction(
 
         let provider_config_result = get_default_llm_provider(&db).await;
         if let Err(ref e) = provider_config_result {
-            debug!("[scene_flow] No LLM provider configured, skipping extraction (non-fatal): {}", e);
+            debug!(
+                "[scene_flow] No LLM provider configured, skipping extraction (non-fatal): {}",
+                e
+            );
         }
         if let Ok(provider_config) = provider_config_result {
             let provider_result = create_rig_provider(&provider_config);
             if let Err(ref e) = provider_result {
-                debug!("[scene_flow] Failed to build provider for extraction (non-fatal): {}", e);
+                debug!(
+                    "[scene_flow] Failed to build provider for extraction (non-fatal): {}",
+                    e
+                );
             }
             if let Ok(provider) = provider_result {
                 // Resolves the model the same way real chat completions do
@@ -102,7 +114,14 @@ pub(crate) fn spawn_scene_extraction(
                             _ => None,
                         };
 
-                        match extract_scene_state(&provider, &model, &ai_response, current_json.as_deref()).await {
+                        match extract_scene_state(
+                            &provider,
+                            &model,
+                            &ai_response,
+                            current_json.as_deref(),
+                        )
+                        .await
+                        {
                             Ok(update) => {
                                 let changed = update.scene_changed;
                                 notable = update.notable_character_event;
@@ -114,8 +133,11 @@ pub(crate) fn spawn_scene_extraction(
                                         info!("[scene_flow] Updated scene: {} (changed={}, present={:?})",
                                             new_state.location_name, changed, new_state.characters_present);
                                         if changed {
-                                            let _ = app.emit("scene_state_changed",
-                                                serde_json::to_value(&new_state).unwrap_or_default());
+                                            let _ = app.emit(
+                                                "scene_state_changed",
+                                                serde_json::to_value(&new_state)
+                                                    .unwrap_or_default(),
+                                            );
                                         }
                                     }
                                     Err(e) => {
@@ -155,8 +177,15 @@ pub(crate) fn spawn_npc_detection(
 ) {
     tokio::spawn(async move {
         if let Err(e) = crate::context::npc::pipeline::run_npc_detection(
-            &db, &app, &conversation_id, &message_id, &ai_response, forced,
-        ).await {
+            &db,
+            &app,
+            &conversation_id,
+            &message_id,
+            &ai_response,
+            forced,
+        )
+        .await
+        {
             debug!("[npc_flow] Detection failed (non-fatal): {}", e);
         }
     });
@@ -196,15 +225,26 @@ pub(crate) fn spawn_embed_message(
         match resolve_embedding_provider(&db).await {
             Ok((provider, embedding_model)) => {
                 match embed_and_store(
-                    &db, &provider, &embedding_model,
-                    &message_id, &conversation_id, &content,
+                    &db,
+                    &provider,
+                    &embedding_model,
+                    &message_id,
+                    &conversation_id,
+                    &content,
                     character_id.as_deref(),
-                ).await {
-                    Ok(_) => { let _ = app.emit("embedding_updated", ()); }
+                )
+                .await
+                {
+                    Ok(_) => {
+                        let _ = app.emit("embedding_updated", ());
+                    }
                     Err(e) => warn!("[embed] Failed to embed message {}: {}", message_id, e),
                 }
             }
-            Err(e) => warn!("[embed] No embedding provider available for message {}: {}", message_id, e),
+            Err(e) => warn!(
+                "[embed] No embedding provider available for message {}: {}",
+                message_id, e
+            ),
         }
     });
 }
@@ -223,12 +263,22 @@ pub(crate) fn spawn_embed_memory(
         match resolve_embedding_provider(&db).await {
             Ok((provider, embedding_model)) => {
                 if let Err(e) = crate::context::rag::embed_memory(
-                    &db, &provider, &embedding_model, &memory_id, &character_id, &content,
-                ).await {
+                    &db,
+                    &provider,
+                    &embedding_model,
+                    &memory_id,
+                    &character_id,
+                    &content,
+                )
+                .await
+                {
                     warn!("[embed] Failed to re-embed memory {}: {}", memory_id, e);
                 }
             }
-            Err(e) => warn!("[embed] No embedding provider available for memory {}: {}", memory_id, e),
+            Err(e) => warn!(
+                "[embed] No embedding provider available for memory {}: {}",
+                memory_id, e
+            ),
         }
     });
 }
@@ -272,7 +322,9 @@ pub async fn generate_raw(
     ];
 
     let provider = create_rig_provider(&provider_config)?;
-    let result = provider.generate(&model_id, &messages, &[], &gen_params).await?;
+    let result = provider
+        .generate(&model_id, &messages, &[], &gen_params)
+        .await?;
 
     Ok(result)
 }
@@ -293,12 +345,14 @@ pub async fn get_context_stats(
     drop(state_guard);
 
     let provider_config = get_default_llm_provider(&db).await?;
-    let max_context = provider_config.config
+    let max_context = provider_config
+        .config
         .get("context_length")
         .and_then(|v| v.as_u64())
         .unwrap_or(16384) as usize;
 
-    let max_tokens = provider_config.config
+    let max_tokens = provider_config
+        .config
         .get("max_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(2048) as usize;
@@ -316,7 +370,8 @@ pub async fn get_context_stats(
         system_prompt.as_deref(),
         post_history_instructions.as_deref(),
         &context_budget,
-    ).await?;
+    )
+    .await?;
 
     Ok(stats)
 }

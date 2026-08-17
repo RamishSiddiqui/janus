@@ -18,7 +18,9 @@ use crate::db::image_presets::ImagePresetRepo;
 use crate::db::providers::ProviderRepo;
 use crate::db::scenes::SceneRepo;
 use crate::error::MythicError;
-use crate::models::provider::{CharacterImageRef, ImageGenParams, ProviderAdapter, ProviderConfig, VideoGenParams};
+use crate::models::provider::{
+    CharacterImageRef, ImageGenParams, ProviderAdapter, ProviderConfig, VideoGenParams,
+};
 use crate::models::scene::Scene;
 use crate::providers::ai_horde::generate_via_ai_horde;
 use crate::providers::comfyui::generate_via_comfyui;
@@ -121,7 +123,9 @@ pub async fn list_scene_cast_members(
         }
     }
 
-    let cast = ConversationCharacterRepo::list(&state.db, &conversation_id).await.unwrap_or_default();
+    let cast = ConversationCharacterRepo::list(&state.db, &conversation_id)
+        .await
+        .unwrap_or_default();
     for member in cast {
         let char_id = member.character_id.id.to_raw();
         if let Ok(character) = CharacterRepo::get(&state.db, &char_id).await {
@@ -154,11 +158,20 @@ pub async fn generate_scene(
     prompt: String,
     options: GenerateSceneOptions,
 ) -> Result<Scene, MythicError> {
-    info!("Generating scene for conversation {}: {}", conversation_id, prompt);
+    info!(
+        "Generating scene for conversation {}: {}",
+        conversation_id, prompt
+    );
 
     let GenerateSceneOptions {
-        negative_prompt, width, height, model_override, reference_image_path, denoising_strength,
-        allow_nsfw, character_images,
+        negative_prompt,
+        width,
+        height,
+        model_override,
+        reference_image_path,
+        denoising_strength,
+        allow_nsfw,
+        character_images,
     } = options;
     let character_images = character_images.unwrap_or_default();
 
@@ -200,11 +213,20 @@ pub async fn generate_scene(
             Ok(img) => {
                 let mut buf = std::io::Cursor::new(Vec::new());
                 match img.write_to(&mut buf, image::ImageFormat::Png) {
-                    Ok(()) => Some(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, buf.into_inner())),
-                    Err(e) => { warn!("Failed to re-encode reference image: {}", e); None }
+                    Ok(()) => Some(base64::Engine::encode(
+                        &base64::engine::general_purpose::STANDARD,
+                        buf.into_inner(),
+                    )),
+                    Err(e) => {
+                        warn!("Failed to re-encode reference image: {}", e);
+                        None
+                    }
                 }
             }
-            Err(e) => { warn!("Failed to load reference image {}: {}", rel_path, e); None }
+            Err(e) => {
+                warn!("Failed to load reference image {}: {}", rel_path, e);
+                None
+            }
         },
         None => None,
     };
@@ -217,7 +239,8 @@ pub async fn generate_scene(
     // This conversation's chosen preset, falling back to the global default —
     // `None` means "no presets configured at all", so the AI Horde path
     // falls further back to the provider's own raw config fields.
-    let preset = ImagePresetRepo::resolve_for_conversation(&state_guard.db, &conversation_id).await?;
+    let preset =
+        ImagePresetRepo::resolve_for_conversation(&state_guard.db, &conversation_id).await?;
 
     let (caption, metadata) = match &provider {
         Some(p) if p.adapter == ProviderAdapter::AiHorde => {
@@ -233,13 +256,24 @@ pub async fn generate_scene(
             }
 
             let result = generate_via_ai_horde(
-                &app, &conversation_id, &state_guard.http_client, p, &params,
-                preset.as_ref(), model_override.as_deref(),
-                reference_image_b64.as_deref(), denoising_strength,
+                &app,
+                &conversation_id,
+                &state_guard.http_client,
+                p,
+                &params,
+                preset.as_ref(),
+                model_override.as_deref(),
+                reference_image_b64.as_deref(),
+                denoising_strength,
                 &cancel_flag,
-            ).await;
+            )
+            .await;
 
-            state_guard.active_scene_generations.lock().await.remove(&conversation_id);
+            state_guard
+                .active_scene_generations
+                .lock()
+                .await
+                .remove(&conversation_id);
 
             let (image_bytes, meta) = result?;
             tokio::fs::write(&file_path, &image_bytes).await?;
@@ -261,10 +295,20 @@ pub async fn generate_scene(
             }
 
             let result = generate_via_comfyui(
-                &state_guard.http_client, p, &params, &character_images, &app_data_dir, &cancel_flag,
-            ).await;
+                &state_guard.http_client,
+                p,
+                &params,
+                &character_images,
+                &app_data_dir,
+                &cancel_flag,
+            )
+            .await;
 
-            state_guard.active_scene_generations.lock().await.remove(&conversation_id);
+            state_guard
+                .active_scene_generations
+                .lock()
+                .await
+                .remove(&conversation_id);
 
             let (image_bytes, meta) = result?;
             tokio::fs::write(&file_path, &image_bytes).await?;
@@ -285,11 +329,22 @@ pub async fn generate_scene(
             }
 
             let result = wangp::generate_image_via_wangp(
-                &app, &conversation_id, p, &params, model_override.as_deref(),
-                &character_images, &app_data_dir, &cancel_flag,
-            ).await;
+                &app,
+                &conversation_id,
+                p,
+                &params,
+                model_override.as_deref(),
+                &character_images,
+                &app_data_dir,
+                &cancel_flag,
+            )
+            .await;
 
-            state_guard.active_scene_generations.lock().await.remove(&conversation_id);
+            state_guard
+                .active_scene_generations
+                .lock()
+                .await
+                .remove(&conversation_id);
 
             let (image_bytes, meta) = result?;
             tokio::fs::write(&file_path, &image_bytes).await?;
@@ -355,10 +410,20 @@ pub async fn generate_video_scene(
     prompt: String,
     options: GenerateVideoOptions,
 ) -> Result<Scene, MythicError> {
-    info!("Generating video scene for conversation {}: {}", conversation_id, prompt);
+    info!(
+        "Generating video scene for conversation {}: {}",
+        conversation_id, prompt
+    );
 
     let GenerateVideoOptions {
-        negative_prompt, width, height, duration_seconds, fps, model_override, allow_nsfw, character_images,
+        negative_prompt,
+        width,
+        height,
+        duration_seconds,
+        fps,
+        model_override,
+        allow_nsfw,
+        character_images,
     } = options;
     let character_images = character_images.unwrap_or_default();
 
@@ -402,11 +467,22 @@ pub async fn generate_video_scene(
     }
 
     let result = wangp::generate_video_via_wangp(
-        &app, &conversation_id, &p, &params, model_override.as_deref(),
-        &character_images, &app_data_dir, &cancel_flag,
-    ).await;
+        &app,
+        &conversation_id,
+        &p,
+        &params,
+        model_override.as_deref(),
+        &character_images,
+        &app_data_dir,
+        &cancel_flag,
+    )
+    .await;
 
-    state_guard.active_scene_generations.lock().await.remove(&conversation_id);
+    state_guard
+        .active_scene_generations
+        .lock()
+        .await
+        .remove(&conversation_id);
 
     let (video_bytes, metadata) = result?;
 
@@ -429,7 +505,10 @@ pub async fn generate_video_scene(
     )
     .await?;
 
-    info!("Video scene generated: {} saved to {}", scene_id, relative_path);
+    info!(
+        "Video scene generated: {} saved to {}",
+        scene_id, relative_path
+    );
 
     Ok(scene)
 }
@@ -445,7 +524,12 @@ pub async fn cancel_scene_generation(
     conversation_id: String,
 ) -> Result<(), MythicError> {
     let state_guard = state.read().await;
-    if let Some(flag) = state_guard.active_scene_generations.lock().await.get(&conversation_id) {
+    if let Some(flag) = state_guard
+        .active_scene_generations
+        .lock()
+        .await
+        .get(&conversation_id)
+    {
         flag.store(true, std::sync::atomic::Ordering::Relaxed);
     }
     Ok(())
@@ -497,10 +581,7 @@ pub async fn delete_scene(
 /// Returns the absolute file path for a scene's media file.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_scene_path(
-    app: AppHandle,
-    file_relative: String,
-) -> Result<String, MythicError> {
+pub async fn get_scene_path(app: AppHandle, file_relative: String) -> Result<String, MythicError> {
     let app_data_dir = app
         .path()
         .app_data_dir()
@@ -508,14 +589,16 @@ pub async fn get_scene_path(
 
     let full_path = crate::error::resolve_within(&app_data_dir, &file_relative)?;
     if !full_path.exists() {
-        return Err(MythicError::NotFound(format!("Scene file not found: {}", file_relative)));
+        return Err(MythicError::NotFound(format!(
+            "Scene file not found: {}",
+            file_relative
+        )));
     }
 
     Ok(full_path.to_string_lossy().to_string())
 }
 
 // --- Internal helpers ---
-
 
 /// Generates via a generic OpenAI-images-compatible provider (SiliconFlow,
 /// self-hosted, etc.). Returns raw image bytes + metadata — the caller
@@ -527,7 +610,9 @@ pub(crate) async fn generate_via_generic_provider(
     params: &ImageGenParams,
 ) -> Result<(Vec<u8>, serde_json::Value), MythicError> {
     // With SurrealDB, provider.config is already serde_json::Value — no parsing needed.
-    let base_url = provider.config["base_url"].as_str().unwrap_or("http://localhost:8188");
+    let base_url = provider.config["base_url"]
+        .as_str()
+        .unwrap_or("http://localhost:8188");
     let api_key = provider.config["api_key"].as_str().unwrap_or("");
     let model = provider.config["model"].as_str().unwrap_or("default");
 
@@ -557,7 +642,9 @@ pub(crate) async fn generate_via_generic_provider(
         )));
     }
 
-    let result: serde_json::Value = response.json().await
+    let result: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| MythicError::Provider(format!("Failed to parse image response: {}", e)))?;
 
     // Extract the base64 image data
@@ -565,11 +652,8 @@ pub(crate) async fn generate_via_generic_provider(
         .as_str()
         .ok_or_else(|| MythicError::Provider("No image data in response".into()))?;
 
-    let image_bytes = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        b64_data,
-    )
-    .map_err(|e| MythicError::Provider(format!("Failed to decode image data: {}", e)))?;
+    let image_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64_data)
+        .map_err(|e| MythicError::Provider(format!("Failed to decode image data: {}", e)))?;
 
     let metadata = serde_json::json!({
         "model": model,
@@ -582,7 +666,6 @@ pub(crate) async fn generate_via_generic_provider(
 
     Ok((image_bytes, metadata))
 }
-
 
 /// Generates a simple gradient placeholder PNG when no image provider is configured.
 fn generate_placeholder_png(width: u32, height: u32) -> Result<Vec<u8>, MythicError> {

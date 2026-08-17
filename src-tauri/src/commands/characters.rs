@@ -1,10 +1,11 @@
 use std::sync::Arc;
+
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::db::characters::CharacterRepo;
-use crate::error::{MythicError, validate_required_string};
+use crate::error::{validate_required_string, MythicError};
 use crate::models::character::Character;
 use crate::models::DynamicJson;
 use crate::AppState;
@@ -146,7 +147,10 @@ pub async fn upload_character_avatar(
     }
     let source = std::path::PathBuf::from(&file_path);
     if !source.exists() {
-        return Err(MythicError::NotFound(format!("File not found: {}", file_path)));
+        return Err(MythicError::NotFound(format!(
+            "File not found: {}",
+            file_path
+        )));
     }
     let image_bytes = tokio::fs::read(&source).await?;
 
@@ -162,7 +166,9 @@ pub async fn upload_character_avatar(
     let relative_path = format!("portraits/{}", filename);
 
     let state = state.read().await;
-    let updated = CharacterRepo::set_portrait(&state.db, &character_id, Some(&relative_path), "approved").await?;
+    let updated =
+        CharacterRepo::set_portrait(&state.db, &character_id, Some(&relative_path), "approved")
+            .await?;
     info!("Uploaded portrait for character: {}", character_id);
     Ok(updated)
 }

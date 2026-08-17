@@ -11,13 +11,12 @@
 //! OpenAI provider with a custom `base_url`.
 
 use futures::StreamExt;
-use rig_core::providers::{
-    anthropic, cohere, deepseek, gemini, groq, huggingface,
-    hyperbolic, moonshot, ollama, openai, openrouter, perplexity,
-    together, xai,
-};
 use rig_core::client::Nothing;
 use rig_core::completion::Message;
+use rig_core::providers::{
+    anthropic, cohere, deepseek, gemini, groq, huggingface, hyperbolic, moonshot, ollama, openai,
+    openrouter, perplexity, together, xai,
+};
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
 use tracing::{debug, error};
@@ -451,7 +450,9 @@ impl RigProvider {
     ) -> Result<Vec<Vec<f64>>, MythicError> {
         debug!(
             "[RigProvider::generate_embedding] provider={}, model={}, text_count={}",
-            self.name(), model_id, texts.len()
+            self.name(),
+            model_id,
+            texts.len()
         );
 
         macro_rules! embed_with {
@@ -459,7 +460,9 @@ impl RigProvider {
                 use rig_core::client::EmbeddingsClient;
                 use rig_core::embeddings::EmbeddingModel;
                 let model = $client.embedding_model(model_id);
-                let embeddings = model.embed_texts(texts).await
+                let embeddings = model
+                    .embed_texts(texts)
+                    .await
                     .map_err(|e| MythicError::Provider(format!("Embedding error: {e}")))?;
                 Ok(embeddings.iter().map(|e| e.vec.clone()).collect())
             }};
@@ -511,14 +514,13 @@ fn convert_messages(messages: &[ChatMessage], images: &[(Vec<u8>, String)]) -> V
         .filter(|(_, m)| m.role != MessageRole::System)
         .map(|(i, m)| match m.role {
             MessageRole::User if Some(i) == last_user_idx => {
-                let content = OneOrMany::many(
-                    std::iter::once(UserContent::text(&m.content)).chain(
+                let content =
+                    OneOrMany::many(std::iter::once(UserContent::text(&m.content)).chain(
                         images.iter().map(|(bytes, mime)| {
                             UserContent::image_raw(bytes.clone(), image_media_type(mime), None)
                         }),
-                    ),
-                )
-                .expect("non-empty: UserContent::text is always present");
+                    ))
+                    .expect("non-empty: UserContent::text is always present");
                 Message::User { content }
             }
             MessageRole::User => Message::user(&m.content),
@@ -576,18 +578,14 @@ fn split_prompt_and_history(messages: &[Message]) -> (String, Vec<Message>) {
 /// Extracts the plain text content from a rig `Message`.
 fn extract_text_from_message(msg: &Message) -> String {
     match msg {
-        Message::User { content } => {
-            match content.first() {
-                rig_core::message::UserContent::Text(t) => t.text.clone(),
-                _ => String::new(),
-            }
-        }
-        Message::Assistant { content, .. } => {
-            match content.first() {
-                rig_core::completion::AssistantContent::Text(t) => t.text.clone(),
-                _ => String::new(),
-            }
-        }
+        Message::User { content } => match content.first() {
+            rig_core::message::UserContent::Text(t) => t.text.clone(),
+            _ => String::new(),
+        },
+        Message::Assistant { content, .. } => match content.first() {
+            rig_core::completion::AssistantContent::Text(t) => t.text.clone(),
+            _ => String::new(),
+        },
         Message::System { content } => content.clone(),
     }
 }

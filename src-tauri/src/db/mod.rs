@@ -1,29 +1,30 @@
 use std::path::Path;
-use surrealdb::Surreal;
+
 use surrealdb::engine::local::{Db, RocksDb};
+use surrealdb::Surreal;
 use tracing::info;
 
 use crate::error::MythicError;
 
-pub mod migrations;
-pub mod schema;
-pub mod seed;
-pub mod characters;
-pub mod conversations;
-pub mod conversation_characters;
-pub mod messages;
-pub mod memories;
-pub mod providers;
-pub mod scenes;
-pub mod scene_states;
-pub mod image_presets;
 pub mod ai_horde_models;
-pub mod lorebook;
 pub mod character_state;
-pub mod summaries;
+pub mod characters;
+pub mod conversation_characters;
+pub mod conversations;
 pub mod embeddings;
+pub mod image_presets;
+pub mod lorebook;
+pub mod memories;
+pub mod messages;
+pub mod migrations;
 pub mod npc_candidates;
 pub mod personas;
+pub mod providers;
+pub mod scene_states;
+pub mod scenes;
+pub mod schema;
+pub mod seed;
+pub mod summaries;
 
 pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {
     let db_path = data_dir.join("mythic_surreal");

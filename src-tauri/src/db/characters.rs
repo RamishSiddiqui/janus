@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::character::Character;
@@ -72,7 +72,11 @@ impl CharacterRepo {
 
     /// Sets a character's `origin` — used to promote an NPC (`'npc'` →
     /// `'gallery'`) into a real standalone Gallery character.
-    pub async fn set_origin(db: &Surreal<Db>, id: &str, origin: &str) -> Result<Character, MythicError> {
+    pub async fn set_origin(
+        db: &Surreal<Db>,
+        id: &str,
+        origin: &str,
+    ) -> Result<Character, MythicError> {
         let mut result = db
             .query("UPDATE type::thing('characters', $id) SET origin = $origin, updated_at = time::now()")
             .bind(("id", id.to_string()))
@@ -177,7 +181,10 @@ impl CharacterRepo {
         }
 
         sets.push("updated_at = time::now()");
-        let query = format!("UPDATE type::thing('characters', $id) SET {}", sets.join(", "));
+        let query = format!(
+            "UPDATE type::thing('characters', $id) SET {}",
+            sets.join(", ")
+        );
         bindings_json.insert("id".into(), serde_json::Value::String(id.to_string()));
         let mut result = db
             .query(&query)
@@ -196,7 +203,8 @@ impl CharacterRepo {
         // conversations/memories/lorebook_entries, susceptible to the same
         // transaction-conflict failure as ConversationRepo::delete.
         let result: Option<Character> =
-            crate::error::retry_on_conflict(|| async { db.delete(("characters", id)).await }).await?;
+            crate::error::retry_on_conflict(|| async { db.delete(("characters", id)).await })
+                .await?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Character not found: {}",

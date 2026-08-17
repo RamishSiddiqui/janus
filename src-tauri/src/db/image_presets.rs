@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::image_preset::ImagePreset;
@@ -36,7 +36,8 @@ impl ImagePresetRepo {
         let id = uuid::Uuid::new_v4().to_string();
 
         if is_default {
-            db.query("UPDATE image_presets SET is_default = false").await?;
+            db.query("UPDATE image_presets SET is_default = false")
+                .await?;
         }
 
         let mut result = db
@@ -121,7 +122,11 @@ impl ImagePresetRepo {
         let mut bindings = serde_json::Map::new();
 
         fn optional_string(s: &str) -> serde_json::Value {
-            if s.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(s.to_string()) }
+            if s.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(s.to_string())
+            }
         }
 
         if let Some(name) = name {
@@ -134,7 +139,10 @@ impl ImagePresetRepo {
         }
         if let Some(sampler_name) = sampler_name {
             sets.push("sampler_name = $sampler_name");
-            bindings.insert("sampler_name".into(), serde_json::Value::String(sampler_name.to_string()));
+            bindings.insert(
+                "sampler_name".into(),
+                serde_json::Value::String(sampler_name.to_string()),
+            );
         }
         if let Some(cfg_scale) = cfg_scale {
             sets.push("cfg_scale = $cfg_scale");
@@ -158,7 +166,14 @@ impl ImagePresetRepo {
         }
         if let Some(clip_skip) = clip_skip {
             sets.push("clip_skip = $clip_skip");
-            bindings.insert("clip_skip".into(), if clip_skip == 0 { serde_json::Value::Null } else { serde_json::json!(clip_skip) });
+            bindings.insert(
+                "clip_skip".into(),
+                if clip_skip == 0 {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::json!(clip_skip)
+                },
+            );
         }
         if let Some(post_processing) = post_processing {
             sets.push("post_processing = $post_processing");
@@ -170,7 +185,10 @@ impl ImagePresetRepo {
         }
         if let Some(hires_fix_denoising_strength) = hires_fix_denoising_strength {
             sets.push("hires_fix_denoising_strength = $hires_fix_denoising_strength");
-            bindings.insert("hires_fix_denoising_strength".into(), serde_json::json!(hires_fix_denoising_strength));
+            bindings.insert(
+                "hires_fix_denoising_strength".into(),
+                serde_json::json!(hires_fix_denoising_strength),
+            );
         }
 
         if sets.is_empty() {
@@ -195,7 +213,10 @@ impl ImagePresetRepo {
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         let result: Option<ImagePreset> = db.delete(("image_presets", id)).await?;
         if result.is_none() {
-            return Err(MythicError::NotFound(format!("Image preset not found: {}", id)));
+            return Err(MythicError::NotFound(format!(
+                "Image preset not found: {}",
+                id
+            )));
         }
         Ok(())
     }
@@ -204,7 +225,8 @@ impl ImagePresetRepo {
     pub async fn set_default(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         Self::get(db, id).await?;
 
-        db.query("UPDATE image_presets SET is_default = false").await?;
+        db.query("UPDATE image_presets SET is_default = false")
+            .await?;
         db.query("UPDATE type::thing('image_presets', $id) SET is_default = true")
             .bind(("id", id.to_string()))
             .await?;

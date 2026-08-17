@@ -1,9 +1,11 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
-use crate::error::MythicError;
 use crate::db::conversation_characters::ConversationCharacterRepo;
-use crate::models::memory::{Memory, MemoryGraph, MemoryGraphCharacter, MemoryGraphConversation, MemoryLink};
+use crate::error::MythicError;
+use crate::models::memory::{
+    Memory, MemoryGraph, MemoryGraphCharacter, MemoryGraphConversation, MemoryLink,
+};
 
 pub struct MemoryRepo;
 
@@ -72,7 +74,7 @@ impl MemoryRepo {
                     OR \
                     (character_id = type::thing('characters', $char_id) \
                      AND is_canon = true) \
-                 ORDER BY is_canon DESC, created_at DESC"
+                 ORDER BY is_canon DESC, created_at DESC",
             )
             .bind(("char_id", character_id.to_string()))
             .bind(("conv_id", conversation_id.to_string()))
@@ -94,12 +96,14 @@ impl MemoryRepo {
         let created: Option<Memory> = match (character_id, conversation_id) {
             (Some(char_id), Some(conv_id)) => {
                 let mut result = db
-                    .query("CREATE type::thing('memories', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('memories', $id) CONTENT {
                         character_id: type::thing('characters', $char_id),
                         conversation_id: type::thing('conversations', $conv_id),
                         content: $content,
                         source: $source,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("char_id", char_id.to_string()))
                     .bind(("conv_id", conv_id.to_string()))
@@ -110,11 +114,13 @@ impl MemoryRepo {
             }
             (Some(char_id), None) => {
                 let mut result = db
-                    .query("CREATE type::thing('memories', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('memories', $id) CONTENT {
                         character_id: type::thing('characters', $char_id),
                         content: $content,
                         source: $source,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("char_id", char_id.to_string()))
                     .bind(("content", content.to_string()))
@@ -124,11 +130,13 @@ impl MemoryRepo {
             }
             (None, Some(conv_id)) => {
                 let mut result = db
-                    .query("CREATE type::thing('memories', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('memories', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         content: $content,
                         source: $source,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("conv_id", conv_id.to_string()))
                     .bind(("content", content.to_string()))
@@ -138,10 +146,12 @@ impl MemoryRepo {
             }
             (None, None) => {
                 let mut result = db
-                    .query("CREATE type::thing('memories', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('memories', $id) CONTENT {
                         content: $content,
                         source: $source,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("content", content.to_string()))
                     .bind(("source", source.to_string()))
@@ -156,7 +166,9 @@ impl MemoryRepo {
     /// Updates a memory's content and increments version.
     pub async fn update(db: &Surreal<Db>, id: &str, content: &str) -> Result<Memory, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('memories', $id) SET content = $content, version = version + 1")
+            .query(
+                "UPDATE type::thing('memories', $id) SET content = $content, version = version + 1",
+            )
             .bind(("id", id.to_string()))
             .bind(("content", content.to_string()))
             .await?;
@@ -176,7 +188,11 @@ impl MemoryRepo {
 
     /// Sets a memory's importance tier (clamped to 1-10). Used to weight
     /// retrieval ranking independently of semantic relevance.
-    pub async fn set_importance(db: &Surreal<Db>, id: &str, importance: i32) -> Result<Memory, MythicError> {
+    pub async fn set_importance(
+        db: &Surreal<Db>,
+        id: &str,
+        importance: i32,
+    ) -> Result<Memory, MythicError> {
         let clamped = importance.clamp(1, 10);
         let mut result = db
             .query("UPDATE type::thing('memories', $id) SET importance = $importance")
@@ -240,7 +256,8 @@ impl MemoryRepo {
 
             if let Some(ref char_thing) = source.character_id {
                 let char_id_raw = char_thing.id.to_raw();
-                db.query("CREATE type::thing('memories', $copy_id) CONTENT {
+                db.query(
+                    "CREATE type::thing('memories', $copy_id) CONTENT {
                         character_id: type::thing('characters', $char_id),
                         conversation_id: type::thing('conversations', $target_conv_id),
                         content: $content,
@@ -248,27 +265,30 @@ impl MemoryRepo {
                         parent_id: type::thing('memories', $source_mem_id),
                         version: 1,
                         is_canon: false,
-                    }")
-                    .bind(("copy_id", copy_id.clone()))
-                    .bind(("char_id", char_id_raw))
-                    .bind(("target_conv_id", target_conversation_id.to_string()))
-                    .bind(("content", source.content.clone()))
-                    .bind(("source_mem_id", source_memory_id.to_string()))
-                    .await?;
+                    }",
+                )
+                .bind(("copy_id", copy_id.clone()))
+                .bind(("char_id", char_id_raw))
+                .bind(("target_conv_id", target_conversation_id.to_string()))
+                .bind(("content", source.content.clone()))
+                .bind(("source_mem_id", source_memory_id.to_string()))
+                .await?;
             } else {
-                db.query("CREATE type::thing('memories', $copy_id) CONTENT {
+                db.query(
+                    "CREATE type::thing('memories', $copy_id) CONTENT {
                         conversation_id: type::thing('conversations', $target_conv_id),
                         content: $content,
                         source: 'auto',
                         parent_id: type::thing('memories', $source_mem_id),
                         version: 1,
                         is_canon: false,
-                    }")
-                    .bind(("copy_id", copy_id.clone()))
-                    .bind(("target_conv_id", target_conversation_id.to_string()))
-                    .bind(("content", source.content.clone()))
-                    .bind(("source_mem_id", source_memory_id.to_string()))
-                    .await?;
+                    }",
+                )
+                .bind(("copy_id", copy_id.clone()))
+                .bind(("target_conv_id", target_conversation_id.to_string()))
+                .bind(("content", source.content.clone()))
+                .bind(("source_mem_id", source_memory_id.to_string()))
+                .await?;
             }
 
             Some(copy_id)
@@ -283,11 +303,13 @@ impl MemoryRepo {
         let link: Option<MemoryLink> = if let Some(ref copy_id) = linked_memory_id {
             let copy_thing = surrealdb::sql::Thing::from(("memories", copy_id.as_str()));
             let mut result = db
-                .query("RELATE $src -> memory_link -> $tgt SET
+                .query(
+                    "RELATE $src -> memory_link -> $tgt SET
                     link_type = $link_type,
                     direction = $direction,
                     sync_mode = $sync_mode,
-                    linked_memory_id = $copy_thing")
+                    linked_memory_id = $copy_thing",
+                )
                 .bind(("src", src_thing))
                 .bind(("tgt", tgt_thing))
                 .bind(("link_type", link_type.to_string()))
@@ -298,10 +320,12 @@ impl MemoryRepo {
             result.take(0)?
         } else {
             let mut result = db
-                .query("RELATE $src -> memory_link -> $tgt SET
+                .query(
+                    "RELATE $src -> memory_link -> $tgt SET
                     link_type = $link_type,
                     direction = $direction,
-                    sync_mode = $sync_mode")
+                    sync_mode = $sync_mode",
+                )
                 .bind(("src", src_thing))
                 .bind(("tgt", tgt_thing))
                 .bind(("link_type", link_type.to_string()))
@@ -345,9 +369,9 @@ impl MemoryRepo {
             .bind(("char_id", character_id.to_string()))
             .await?;
         let char_row: Option<CharNameRow> = char_result.take(0)?;
-        let character_name = char_row
-            .map(|r| r.name)
-            .ok_or_else(|| MythicError::NotFound(format!("Character not found: {}", character_id)))?;
+        let character_name = char_row.map(|r| r.name).ok_or_else(|| {
+            MythicError::NotFound(format!("Character not found: {}", character_id))
+        })?;
 
         // 2. All memories for this character
         let mut mem_result = db
@@ -411,9 +435,7 @@ impl MemoryRepo {
                     title: row.title,
                     character_id: character_id.to_string(),
                     memory_count,
-                    parent_conversation_id: row
-                        .parent_conversation_id
-                        .map(|t| t.id.to_raw()),
+                    parent_conversation_id: row.parent_conversation_id.map(|t| t.id.to_raw()),
                 }
             })
             .collect();
@@ -439,10 +461,8 @@ impl MemoryRepo {
     ) -> Result<MemoryGraph, MythicError> {
         // 1. Cast members for this conversation
         let cast = ConversationCharacterRepo::list(db, conversation_id).await?;
-        let char_things: Vec<surrealdb::sql::Thing> = cast
-            .iter()
-            .map(|c| c.character_id.clone())
-            .collect();
+        let char_things: Vec<surrealdb::sql::Thing> =
+            cast.iter().map(|c| c.character_id.clone()).collect();
         let characters: Vec<MemoryGraphCharacter> = cast
             .iter()
             .map(|c| MemoryGraphCharacter {
@@ -545,9 +565,7 @@ impl MemoryRepo {
                     title: row.title,
                     character_id: primary.map(|p| p.id.clone()).unwrap_or_default(),
                     memory_count,
-                    parent_conversation_id: row
-                        .parent_conversation_id
-                        .map(|t| t.id.to_raw()),
+                    parent_conversation_id: row.parent_conversation_id.map(|t| t.id.to_raw()),
                 }
             })
             .collect();

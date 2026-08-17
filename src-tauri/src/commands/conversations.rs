@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::info;
@@ -25,7 +26,10 @@ pub async fn create_conversation(
         persona_id.as_deref(),
     )
     .await?;
-    info!("Created conversation: {} ({:?})", conversation.title, conversation.id);
+    info!(
+        "Created conversation: {} ({:?})",
+        conversation.title, conversation.id
+    );
     Ok(conversation)
 }
 
@@ -48,13 +52,19 @@ pub async fn list_conversations(
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<Vec<Conversation>, MythicError> {
-    info!("[CMD] list_conversations called (limit={:?}, offset={:?})", limit, offset);
+    info!(
+        "[CMD] list_conversations called (limit={:?}, offset={:?})",
+        limit, offset
+    );
     let state = state.read().await;
     let limit = limit.unwrap_or(50).min(200);
     let offset = offset.unwrap_or(0);
     match ConversationRepo::list(&state.db, limit, offset).await {
         Ok(convos) => {
-            info!("[CMD] list_conversations OK — returned {} conversations", convos.len());
+            info!(
+                "[CMD] list_conversations OK — returned {} conversations",
+                convos.len()
+            );
             Ok(convos)
         }
         Err(e) => {

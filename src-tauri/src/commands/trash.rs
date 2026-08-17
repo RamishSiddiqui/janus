@@ -5,6 +5,7 @@
 //! this module only covers the cross-entity list + bulk-empty operations.
 
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -80,9 +81,7 @@ pub async fn list_trash(
 /// than aborting the rest of the sweep.
 #[tauri::command]
 #[specta::specta]
-pub async fn empty_trash(
-    state: State<'_, Arc<RwLock<AppState>>>,
-) -> Result<(), MythicError> {
+pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), MythicError> {
     let state = state.read().await;
     let db = &state.db;
 
@@ -112,7 +111,9 @@ pub async fn empty_trash(
 
     info!(
         "Emptied trash: {} conversations, {} characters, {} personas",
-        conversations.len(), characters.len(), personas.len()
+        conversations.len(),
+        characters.len(),
+        personas.len()
     );
     Ok(())
 }

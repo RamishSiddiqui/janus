@@ -18,9 +18,16 @@ fn specta_registry_exports_valid_typescript() {
         .export(specta_typescript::Typescript::default(), &out_path)
         .expect("specta export should succeed");
 
-    let contents = std::fs::read_to_string(&out_path).expect("bindings.ts should have been written");
-    assert!(!contents.trim().is_empty(), "bindings.ts should not be empty");
-    assert!(contents.contains("get_app_info"), "bindings.ts should contain the get_app_info command");
+    let contents =
+        std::fs::read_to_string(&out_path).expect("bindings.ts should have been written");
+    assert!(
+        !contents.trim().is_empty(),
+        "bindings.ts should not be empty"
+    );
+    assert!(
+        contents.contains("get_app_info"),
+        "bindings.ts should contain the get_app_info command"
+    );
 
     let _ = std::fs::remove_dir_all(dir);
 }

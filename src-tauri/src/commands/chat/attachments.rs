@@ -29,7 +29,8 @@ async fn write_attachment(
 ) -> Result<crate::models::conversation::MessageAttachment, MythicError> {
     let mime_type = mime_type_for_extension(ext).ok_or_else(|| {
         MythicError::Validation(format!(
-            "Unsupported attachment type '.{}'. Supported: png, jpg, jpeg, webp, gif", ext
+            "Unsupported attachment type '.{}'. Supported: png, jpg, jpeg, webp, gif",
+            ext
         ))
     })?;
 
@@ -64,9 +65,13 @@ pub async fn upload_message_attachment(
 ) -> Result<crate::models::conversation::MessageAttachment, MythicError> {
     let source = std::path::PathBuf::from(&file_path);
     if !source.exists() {
-        return Err(MythicError::NotFound(format!("File not found: {}", file_path)));
+        return Err(MythicError::NotFound(format!(
+            "File not found: {}",
+            file_path
+        )));
     }
-    let ext = source.extension()
+    let ext = source
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
@@ -122,9 +127,15 @@ pub(crate) async fn load_message_images(
         match crate::error::resolve_within(app_data_dir, relative_path) {
             Ok(resolved) => match tokio::fs::read(&resolved).await {
                 Ok(bytes) => images.push((bytes, mime_type.to_string())),
-                Err(e) => warn!("[load_message_images] Failed to read attachment {}: {}", relative_path, e),
+                Err(e) => warn!(
+                    "[load_message_images] Failed to read attachment {}: {}",
+                    relative_path, e
+                ),
             },
-            Err(e) => warn!("[load_message_images] Failed to resolve attachment {}: {}", relative_path, e),
+            Err(e) => warn!(
+                "[load_message_images] Failed to resolve attachment {}: {}",
+                relative_path, e
+            ),
         }
     }
     images

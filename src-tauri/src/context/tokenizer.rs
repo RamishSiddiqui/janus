@@ -1,5 +1,6 @@
-use tiktoken_rs::cl100k_base;
 use std::sync::OnceLock;
+
+use tiktoken_rs::cl100k_base;
 
 use crate::models::conversation::ChatMessage;
 

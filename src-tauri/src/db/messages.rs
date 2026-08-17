@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::conversation::Message;
@@ -22,13 +22,15 @@ impl MessageRepo {
         let created: Option<Message> = if let Some(pid) = parent_id {
             if let Some(ref meta) = metadata {
                 let mut result = db
-                    .query("CREATE type::thing('messages', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('messages', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         role: $role,
                         content: $content,
                         parent_id: type::thing('messages', $parent_id),
                         metadata: $metadata,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("conv_id", conversation_id.to_string()))
                     .bind(("role", role.to_string()))
@@ -39,12 +41,14 @@ impl MessageRepo {
                 result.take(0)?
             } else {
                 let mut result = db
-                    .query("CREATE type::thing('messages', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('messages', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         role: $role,
                         content: $content,
                         parent_id: type::thing('messages', $parent_id),
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("conv_id", conversation_id.to_string()))
                     .bind(("role", role.to_string()))
@@ -56,12 +60,14 @@ impl MessageRepo {
         } else {
             if let Some(ref meta) = metadata {
                 let mut result = db
-                    .query("CREATE type::thing('messages', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('messages', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         role: $role,
                         content: $content,
                         metadata: $metadata,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("conv_id", conversation_id.to_string()))
                     .bind(("role", role.to_string()))
@@ -71,11 +77,13 @@ impl MessageRepo {
                 result.take(0)?
             } else {
                 let mut result = db
-                    .query("CREATE type::thing('messages', $id) CONTENT {
+                    .query(
+                        "CREATE type::thing('messages', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         role: $role,
                         content: $content,
-                    }")
+                    }",
+                    )
                     .bind(("id", id.clone()))
                     .bind(("conv_id", conversation_id.to_string()))
                     .bind(("role", role.to_string()))
@@ -114,7 +122,11 @@ impl MessageRepo {
     /// Stores the chain-of-thought/reasoning trace alongside a message,
     /// separate from `update()` since it's set once at stream completion
     /// rather than edited by the user like `content` is.
-    pub async fn set_reasoning(db: &Surreal<Db>, id: &str, reasoning: &str) -> Result<(), MythicError> {
+    pub async fn set_reasoning(
+        db: &Surreal<Db>,
+        id: &str,
+        reasoning: &str,
+    ) -> Result<(), MythicError> {
         db.query("UPDATE type::thing('messages', $id) SET reasoning = $reasoning")
             .bind(("id", id.to_string()))
             .bind(("reasoning", reasoning.to_string()))
@@ -157,7 +169,10 @@ impl MessageRepo {
 
     /// Walks the parent_id chain from the given message to root.
     /// Returns messages in chronological order (root -> leaf).
-    pub async fn get_branch(db: &Surreal<Db>, message_id: &str) -> Result<Vec<Message>, MythicError> {
+    pub async fn get_branch(
+        db: &Surreal<Db>,
+        message_id: &str,
+    ) -> Result<Vec<Message>, MythicError> {
         let mut chain = Vec::new();
         let mut current_id = Some(message_id.to_string());
 
@@ -177,7 +192,10 @@ impl MessageRepo {
     }
 
     /// Returns all sibling messages (same parent_id).
-    pub async fn get_siblings(db: &Surreal<Db>, message_id: &str) -> Result<Vec<Message>, MythicError> {
+    pub async fn get_siblings(
+        db: &Surreal<Db>,
+        message_id: &str,
+    ) -> Result<Vec<Message>, MythicError> {
         // Get the target message to find its parent_id
         let target = Self::get(db, message_id).await?;
 
@@ -217,14 +235,16 @@ impl MessageRepo {
 
         let created: Option<Message> = if let Some(pid) = parent_id {
             let mut result = db
-                .query("CREATE type::thing('messages', $id) CONTENT {
+                .query(
+                    "CREATE type::thing('messages', $id) CONTENT {
                     conversation_id: type::thing('conversations', $conv_id),
                     role: $role,
                     content: $content,
                     parent_id: type::thing('messages', $parent_id),
                     character_id: type::thing('characters', $char_id),
                     character_name: $char_name,
-                }")
+                }",
+                )
                 .bind(("id", id.clone()))
                 .bind(("conv_id", conversation_id.to_string()))
                 .bind(("role", role.to_string()))
@@ -236,13 +256,15 @@ impl MessageRepo {
             result.take(0)?
         } else {
             let mut result = db
-                .query("CREATE type::thing('messages', $id) CONTENT {
+                .query(
+                    "CREATE type::thing('messages', $id) CONTENT {
                     conversation_id: type::thing('conversations', $conv_id),
                     role: $role,
                     content: $content,
                     character_id: type::thing('characters', $char_id),
                     character_name: $char_name,
-                }")
+                }",
+                )
                 .bind(("id", id.clone()))
                 .bind(("conv_id", conversation_id.to_string()))
                 .bind(("role", role.to_string()))
@@ -262,4 +284,3 @@ impl MessageRepo {
         created.ok_or_else(|| MythicError::DatabaseOp("Failed to create character message".into()))
     }
 }
-

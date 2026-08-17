@@ -1,6 +1,7 @@
 //! Conversation character management — add, remove, list, configure characters in a conversation.
 
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 
@@ -35,8 +36,14 @@ pub async fn add_conversation_character(
     let talkativeness = talkativeness.unwrap_or(50);
     let g = state.read().await;
     ConversationCharacterRepo::add(
-        &g.db, &conversation_id, &character_id, &character_name, &role, talkativeness,
-    ).await
+        &g.db,
+        &conversation_id,
+        &character_id,
+        &character_name,
+        &role,
+        talkativeness,
+    )
+    .await
 }
 
 /// Removes a character from a conversation.
@@ -62,8 +69,12 @@ pub async fn update_character_talkativeness(
 ) -> Result<(), MythicError> {
     let g = state.read().await;
     ConversationCharacterRepo::update_talkativeness(
-        &g.db, &conversation_id, &character_id, talkativeness,
-    ).await
+        &g.db,
+        &conversation_id,
+        &character_id,
+        talkativeness,
+    )
+    .await
 }
 
 /// Toggles whether a character is active (unmuted) in a conversation.
@@ -76,7 +87,5 @@ pub async fn toggle_character_active(
     is_active: bool,
 ) -> Result<(), MythicError> {
     let g = state.read().await;
-    ConversationCharacterRepo::set_active(
-        &g.db, &conversation_id, &character_id, is_active,
-    ).await
+    ConversationCharacterRepo::set_active(&g.db, &conversation_id, &character_id, is_active).await
 }

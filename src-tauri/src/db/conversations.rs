@@ -1,9 +1,9 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tracing::info;
 
 use crate::error::MythicError;
-use crate::models::conversation::{Conversation, Message, SearchResult, MessageRole};
+use crate::models::conversation::{Conversation, Message, MessageRole, SearchResult};
 
 pub struct ConversationRepo;
 
@@ -31,7 +31,10 @@ impl ConversationRepo {
             fields.join(", ")
         );
 
-        let mut q = db.query(query_str).bind(("id", id.clone())).bind(("title", title.to_string()));
+        let mut q = db
+            .query(query_str)
+            .bind(("id", id.clone()))
+            .bind(("title", title.to_string()));
         if let Some(char_id) = character_id {
             q = q.bind(("char_id", char_id.to_string()));
         }
@@ -55,7 +58,10 @@ impl ConversationRepo {
         let conversation = conversation
             .ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))?;
         if conversation.deleted_at.is_some() {
-            return Err(MythicError::NotFound(format!("Conversation not found: {}", id)));
+            return Err(MythicError::NotFound(format!(
+                "Conversation not found: {}",
+                id
+            )));
         }
         Ok(conversation)
     }
@@ -98,7 +104,8 @@ impl ConversationRepo {
         // failing silently when the user deletes several conversations in
         // quick succession. See `retry_on_conflict`.
         let result: Option<Conversation> =
-            crate::error::retry_on_conflict(|| async { db.delete(("conversations", id)).await }).await?;
+            crate::error::retry_on_conflict(|| async { db.delete(("conversations", id)).await })
+                .await?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -135,7 +142,9 @@ impl ConversationRepo {
     /// Lists trashed conversations, most recently trashed first.
     pub async fn list_trashed(db: &Surreal<Db>) -> Result<Vec<Conversation>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM conversations WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC")
+            .query(
+                "SELECT * FROM conversations WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC",
+            )
             .await?;
         let conversations: Vec<Conversation> = result.take(0)?;
         Ok(conversations)
@@ -162,9 +171,8 @@ impl ConversationRepo {
         let conv = Self::get(db, conversation_id).await?;
         if let Some(ref active_msg_thing) = conv.active_message_id {
             let active_id = active_msg_thing.id.to_raw();
-            let known_ids: std::collections::HashSet<String> = messages.iter()
-                .map(|m| m.id.id.to_raw())
-                .collect();
+            let known_ids: std::collections::HashSet<String> =
+                messages.iter().map(|m| m.id.id.to_raw()).collect();
 
             // Walk backward from active_message_id following parent_id chain
             let mut current_id = Some(active_id);
@@ -203,7 +211,8 @@ impl ConversationRepo {
             if !missing.is_empty() {
                 info!(
                     "[get_messages] Recovered {} missing messages for conversation {}",
-                    missing.len(), conversation_id
+                    missing.len(),
+                    conversation_id
                 );
                 messages.extend(missing);
                 // Re-sort by created_at to maintain chronological order
@@ -357,10 +366,8 @@ impl ConversationRepo {
         let all_msgs: Vec<MsgRow> = msg_result.take(0)?;
 
         // Build lookup by raw ID string
-        let by_id: std::collections::HashMap<String, &MsgRow> = all_msgs
-            .iter()
-            .map(|m| (m.id.id.to_raw(), m))
-            .collect();
+        let by_id: std::collections::HashMap<String, &MsgRow> =
+            all_msgs.iter().map(|m| (m.id.id.to_raw(), m)).collect();
 
         // Walk backward from branch point to root
         let mut path_ids: Vec<String> = Vec::new();
@@ -372,10 +379,7 @@ impl ConversationRepo {
             }
             visited.insert(id.clone());
             path_ids.push(id.clone());
-            current = by_id[&id]
-                .parent_id
-                .as_ref()
-                .map(|t| t.id.to_raw());
+            current = by_id[&id].parent_id.as_ref().map(|t| t.id.to_raw());
         }
         path_ids.reverse(); // now root → branch_point
 
@@ -387,33 +391,37 @@ impl ConversationRepo {
         let char_id_str = parent.character_id.as_ref().map(|t| t.id.to_raw());
 
         if let Some(ref char_id) = char_id_str {
-            db.query("CREATE type::thing('conversations', $id) CONTENT {
+            db.query(
+                "CREATE type::thing('conversations', $id) CONTENT {
                     title: $title,
                     character_id: type::thing('characters', $char_id),
                     memory_scope: $scope,
                     parent_conversation_id: type::thing('conversations', $parent_id),
                     branch_point_message_id: type::thing('messages', $branch_msg_id),
-                }")
-                .bind(("id", new_conv_id.clone()))
-                .bind(("title", title.to_string()))
-                .bind(("char_id", char_id.clone()))
-                .bind(("scope", parent.memory_scope.clone()))
-                .bind(("parent_id", parent_id.to_string()))
-                .bind(("branch_msg_id", branch_point_msg_id.to_string()))
-                .await?;
+                }",
+            )
+            .bind(("id", new_conv_id.clone()))
+            .bind(("title", title.to_string()))
+            .bind(("char_id", char_id.clone()))
+            .bind(("scope", parent.memory_scope.clone()))
+            .bind(("parent_id", parent_id.to_string()))
+            .bind(("branch_msg_id", branch_point_msg_id.to_string()))
+            .await?;
         } else {
-            db.query("CREATE type::thing('conversations', $id) CONTENT {
+            db.query(
+                "CREATE type::thing('conversations', $id) CONTENT {
                     title: $title,
                     memory_scope: $scope,
                     parent_conversation_id: type::thing('conversations', $parent_id),
                     branch_point_message_id: type::thing('messages', $branch_msg_id),
-                }")
-                .bind(("id", new_conv_id.clone()))
-                .bind(("title", title.to_string()))
-                .bind(("scope", parent.memory_scope.clone()))
-                .bind(("parent_id", parent_id.to_string()))
-                .bind(("branch_msg_id", branch_point_msg_id.to_string()))
-                .await?;
+                }",
+            )
+            .bind(("id", new_conv_id.clone()))
+            .bind(("title", title.to_string()))
+            .bind(("scope", parent.memory_scope.clone()))
+            .bind(("parent_id", parent_id.to_string()))
+            .bind(("branch_msg_id", branch_point_msg_id.to_string()))
+            .await?;
         }
 
         // 4. Copy messages with fresh IDs, remapping parent_id references
@@ -431,29 +439,33 @@ impl ConversationRepo {
                 .cloned();
 
             if let Some(ref new_pid) = new_parent_id {
-                db.query("CREATE type::thing('messages', $id) CONTENT {
+                db.query(
+                    "CREATE type::thing('messages', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         role: $role,
                         content: $content,
                         parent_id: type::thing('messages', $parent_id),
-                    }")
-                    .bind(("id", new_msg_id.clone()))
-                    .bind(("conv_id", new_conv_id.clone()))
-                    .bind(("role", msg.role.clone()))
-                    .bind(("content", msg.content.clone()))
-                    .bind(("parent_id", new_pid.clone()))
-                    .await?;
+                    }",
+                )
+                .bind(("id", new_msg_id.clone()))
+                .bind(("conv_id", new_conv_id.clone()))
+                .bind(("role", msg.role.clone()))
+                .bind(("content", msg.content.clone()))
+                .bind(("parent_id", new_pid.clone()))
+                .await?;
             } else {
-                db.query("CREATE type::thing('messages', $id) CONTENT {
+                db.query(
+                    "CREATE type::thing('messages', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         role: $role,
                         content: $content,
-                    }")
-                    .bind(("id", new_msg_id.clone()))
-                    .bind(("conv_id", new_conv_id.clone()))
-                    .bind(("role", msg.role.clone()))
-                    .bind(("content", msg.content.clone()))
-                    .await?;
+                    }",
+                )
+                .bind(("id", new_msg_id.clone()))
+                .bind(("conv_id", new_conv_id.clone()))
+                .bind(("role", msg.role.clone()))
+                .bind(("content", msg.content.clone()))
+                .await?;
             }
 
             old_to_new.insert(old_id.clone(), new_msg_id.clone());
@@ -489,7 +501,8 @@ impl ConversationRepo {
             // Create a copy of the memory in the new conversation
             if let Some(ref char_thing) = mem.character_id {
                 let char_id_raw = char_thing.id.to_raw();
-                db.query("CREATE type::thing('memories', $id) CONTENT {
+                db.query(
+                    "CREATE type::thing('memories', $id) CONTENT {
                         character_id: type::thing('characters', $char_id),
                         conversation_id: type::thing('conversations', $conv_id),
                         content: $content,
@@ -497,27 +510,30 @@ impl ConversationRepo {
                         parent_id: type::thing('memories', $parent_mem_id),
                         version: 1,
                         is_canon: false,
-                    }")
-                    .bind(("id", copy_id.clone()))
-                    .bind(("char_id", char_id_raw))
-                    .bind(("conv_id", new_conv_id.clone()))
-                    .bind(("content", mem.content.clone()))
-                    .bind(("parent_mem_id", source_mem_id.clone()))
-                    .await?;
+                    }",
+                )
+                .bind(("id", copy_id.clone()))
+                .bind(("char_id", char_id_raw))
+                .bind(("conv_id", new_conv_id.clone()))
+                .bind(("content", mem.content.clone()))
+                .bind(("parent_mem_id", source_mem_id.clone()))
+                .await?;
             } else {
-                db.query("CREATE type::thing('memories', $id) CONTENT {
+                db.query(
+                    "CREATE type::thing('memories', $id) CONTENT {
                         conversation_id: type::thing('conversations', $conv_id),
                         content: $content,
                         source: 'auto',
                         parent_id: type::thing('memories', $parent_mem_id),
                         version: 1,
                         is_canon: false,
-                    }")
-                    .bind(("id", copy_id.clone()))
-                    .bind(("conv_id", new_conv_id.clone()))
-                    .bind(("content", mem.content.clone()))
-                    .bind(("parent_mem_id", source_mem_id.clone()))
-                    .await?;
+                    }",
+                )
+                .bind(("id", copy_id.clone()))
+                .bind(("conv_id", new_conv_id.clone()))
+                .bind(("content", mem.content.clone()))
+                .bind(("parent_mem_id", source_mem_id.clone()))
+                .await?;
             }
 
             // Create the memory_link graph edge via RELATE
@@ -553,7 +569,8 @@ impl ConversationRepo {
         limit: u32,
     ) -> Result<Vec<SearchResult>, MythicError> {
         let mut result = db
-            .query("SELECT
+            .query(
+                "SELECT
                     id AS message_id,
                     conversation_id,
                     role,
@@ -567,7 +584,8 @@ impl ConversationRepo {
                 WHERE content @4@ $query
                     AND conversation_id.deleted_at IS NONE
                 ORDER BY relevance DESC
-                LIMIT $limit")
+                LIMIT $limit",
+            )
             .bind(("query", query.to_string()))
             .bind(("limit", limit))
             .await?;

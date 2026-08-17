@@ -10,20 +10,35 @@ use surrealdb::sql::Thing;
 /// - Sharing between conversations creates linked copies/syncs
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Memory {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub conversation_id: Option<Thing>,
     pub content: String,
     pub source: String, // "user" | "auto"
 
     /// Parent memory this was forked/inherited from (None = root)
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub parent_id: Option<Thing>,
     /// Version counter — increments on each edit
@@ -41,7 +56,10 @@ pub struct Memory {
     /// When this memory was last surfaced to the LLM via retrieval — `None`
     /// if it has never been retrieved (including all rows predating this
     /// field, which are absent from storage rather than defaulted).
-    #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+    #[serde(
+        default,
+        deserialize_with = "crate::models::deserialize_option_datetime"
+    )]
     #[specta(type = Option<String>)]
     pub last_accessed: Option<String>,
     /// How many times this memory has been surfaced via retrieval.
@@ -49,7 +67,9 @@ pub struct Memory {
     pub access_count: i32,
 }
 
-pub(crate) fn default_importance() -> i32 { 5 }
+pub(crate) fn default_importance() -> i32 {
+    5
+}
 
 /// A cross-conversation memory sharing link (SurrealDB graph edge).
 ///
@@ -60,19 +80,36 @@ pub(crate) fn default_importance() -> i32 { 5 }
 /// - `sync_mode`: auto (system-managed) vs manual (user-triggered)
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct MemoryLink {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(alias = "in", rename(serialize = "source_memory_id", deserialize = "in"), serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        alias = "in",
+        rename(serialize = "source_memory_id", deserialize = "in"),
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
-    pub source: Thing,  // in = source memory
-    #[serde(alias = "out", rename(serialize = "target_conversation_id", deserialize = "out"), serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    pub source: Thing, // in = source memory
+    #[serde(
+        alias = "out",
+        rename(serialize = "target_conversation_id", deserialize = "out"),
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
-    pub target: Thing,  // out = target conversation
-    pub link_type: String,       // "copy" | "sync"
-    pub direction: String,       // "one_way" | "two_way"
-    pub sync_mode: String,       // "auto" | "manual"
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    pub target: Thing, // out = target conversation
+    pub link_type: String, // "copy" | "sync"
+    pub direction: String, // "one_way" | "two_way"
+    pub sync_mode: String, // "auto" | "manual"
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub linked_memory_id: Option<Thing>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]

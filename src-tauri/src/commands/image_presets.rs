@@ -3,6 +3,7 @@
 //! applied globally via a default.
 
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;

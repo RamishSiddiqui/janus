@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::ai_horde_model::AiHordeModelInfo;
@@ -10,7 +10,13 @@ pub struct AiHordeModelRepo;
 /// record-id fragment.
 fn sanitize_id(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -18,7 +24,10 @@ impl AiHordeModelRepo {
     /// Upserts capability info for a batch of models in one go — called
     /// whenever the AI Horde model list is fetched, so the cache stays
     /// reasonably fresh without a dedicated refresh job.
-    pub async fn upsert_many(db: &Surreal<Db>, models: &[AiHordeModelInfo]) -> Result<(), MythicError> {
+    pub async fn upsert_many(
+        db: &Surreal<Db>,
+        models: &[AiHordeModelInfo],
+    ) -> Result<(), MythicError> {
         for m in models {
             db.query(
                 "UPSERT type::thing('ai_horde_model_info', $id) MERGE {
@@ -47,13 +56,20 @@ impl AiHordeModelRepo {
         Ok(())
     }
 
-    pub async fn get(db: &Surreal<Db>, name: &str) -> Result<Option<AiHordeModelInfo>, MythicError> {
-        let row: Option<AiHordeModelInfo> = db.select(("ai_horde_model_info", sanitize_id(name))).await?;
+    pub async fn get(
+        db: &Surreal<Db>,
+        name: &str,
+    ) -> Result<Option<AiHordeModelInfo>, MythicError> {
+        let row: Option<AiHordeModelInfo> = db
+            .select(("ai_horde_model_info", sanitize_id(name)))
+            .await?;
         Ok(row)
     }
 
     pub async fn list(db: &Surreal<Db>) -> Result<Vec<AiHordeModelInfo>, MythicError> {
-        let mut result = db.query("SELECT * FROM ai_horde_model_info ORDER BY name ASC").await?;
+        let mut result = db
+            .query("SELECT * FROM ai_horde_model_info ORDER BY name ASC")
+            .await?;
         let rows: Vec<AiHordeModelInfo> = result.take(0)?;
         Ok(rows)
     }

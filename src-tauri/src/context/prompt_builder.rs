@@ -6,16 +6,14 @@
 //! other `context::` modules, so it belongs here rather than alongside the
 //! Tauri command handlers that call it.
 
-use tracing::info;
-
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
+use tracing::info;
 
 use crate::context::budget::ContextBudget;
 use crate::context::rag::{query_relevant_context, query_relevant_memories};
 use crate::context::tokenizer::count_message_tokens;
 use crate::context::window::apply_sliding_window;
-
 use crate::db::character_state::CharacterStateRepo;
 use crate::db::characters::CharacterRepo;
 use crate::db::conversation_characters::ConversationCharacterRepo;
@@ -67,7 +65,11 @@ fn format_memory_block(header: &str, facts: &[String]) -> String {
     format!(
         "{}\n{}",
         header,
-        facts.iter().map(|f| format!("• {}", f)).collect::<Vec<_>>().join("\n"),
+        facts
+            .iter()
+            .map(|f| format!("• {}", f))
+            .collect::<Vec<_>>()
+            .join("\n"),
     )
 }
 
@@ -85,8 +87,16 @@ fn keyword_matches_at_word_boundary(corpus: &str, keyword: &str) -> bool {
     }
     for (start, matched) in corpus.match_indices(keyword) {
         let end = start + matched.len();
-        let before_ok = corpus[..start].chars().next_back().map(|c| !c.is_alphanumeric()).unwrap_or(true);
-        let after_ok = corpus[end..].chars().next().map(|c| !c.is_alphanumeric()).unwrap_or(true);
+        let before_ok = corpus[..start]
+            .chars()
+            .next_back()
+            .map(|c| !c.is_alphanumeric())
+            .unwrap_or(true);
+        let after_ok = corpus[end..]
+            .chars()
+            .next()
+            .map(|c| !c.is_alphanumeric())
+            .unwrap_or(true);
         if before_ok && after_ok {
             return true;
         }
@@ -187,7 +197,9 @@ pub(crate) async fn build_prompt(
     // The heavier Group Scene Directive only kicks in once the user has
     // actually decided this is a deliberate multi-character story, not just
     // "someone spoke once" or "the story flagged them as significant."
-    let conv_chars = ConversationCharacterRepo::list(db, conversation_id).await.unwrap_or_default();
+    let conv_chars = ConversationCharacterRepo::list(db, conversation_id)
+        .await
+        .unwrap_or_default();
     let active_conv_chars: Vec<_> = conv_chars.iter().filter(|c| c.is_active).collect();
     let mut is_multi_char = false;
     for c in &active_conv_chars {
@@ -210,7 +222,10 @@ pub(crate) async fn build_prompt(
 
     if is_multi_char {
         // ── Multi-character mode: inject all character cards ──
-        info!("[build_prompt] Multi-char mode: {} active characters", active_conv_chars.len());
+        info!(
+            "[build_prompt] Multi-char mode: {} active characters",
+            active_conv_chars.len()
+        );
 
         // The primary character may have no conversation_characters row at
         // all — that table is only ever populated by a manual Group Cast
@@ -219,7 +234,8 @@ pub(crate) async fn build_prompt(
         // primary migrated in on its own. Without this, "genuine multi-char"
         // mode (see above) could fire with a prompt that describes every
         // *other* cast member but never the primary character herself.
-        let primary_has_row = active_conv_chars.iter()
+        let primary_has_row = active_conv_chars
+            .iter()
             .any(|c| Some(c.character_id.id.to_raw().as_str()) == character_id.as_deref());
         if !primary_has_row {
             if let Some(ref char_id) = character_id {
@@ -229,19 +245,27 @@ pub(crate) async fn build_prompt(
                     parts.push(format!("[Primary Character — {}]", character.name));
                     if let Some(sys) = card.get("system_prompt").and_then(|v| v.as_str()) {
                         let sys = substitute_user_macro(sys, persona_name);
-                        if !sys.is_empty() { parts.push(sys); }
+                        if !sys.is_empty() {
+                            parts.push(sys);
+                        }
                     }
                     if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
                         let desc = substitute_user_macro(desc, persona_name);
-                        if !desc.is_empty() { parts.push(format!("Description: {}", desc)); }
+                        if !desc.is_empty() {
+                            parts.push(format!("Description: {}", desc));
+                        }
                     }
                     if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
                         let personality = substitute_user_macro(personality, persona_name);
-                        if !personality.is_empty() { parts.push(format!("Personality: {}", personality)); }
+                        if !personality.is_empty() {
+                            parts.push(format!("Personality: {}", personality));
+                        }
                     }
                     if let Some(scenario) = card.get("scenario").and_then(|v| v.as_str()) {
                         let scenario = substitute_user_macro(scenario, persona_name);
-                        if !scenario.is_empty() { parts.push(format!("Scenario: {}", scenario)); }
+                        if !scenario.is_empty() {
+                            parts.push(format!("Scenario: {}", scenario));
+                        }
                     }
                     prompt.push(ChatMessage {
                         role: MessageRole::System,
@@ -266,19 +290,28 @@ pub(crate) async fn build_prompt(
 
                         if let Some(sys) = card.get("system_prompt").and_then(|v| v.as_str()) {
                             let sys = substitute_user_macro(sys, persona_name);
-                            if !sys.is_empty() { parts.push(sys); }
+                            if !sys.is_empty() {
+                                parts.push(sys);
+                            }
                         }
                         if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
                             let desc = substitute_user_macro(desc, persona_name);
-                            if !desc.is_empty() { parts.push(format!("Description: {}", desc)); }
+                            if !desc.is_empty() {
+                                parts.push(format!("Description: {}", desc));
+                            }
                         }
-                        if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
+                        if let Some(personality) = card.get("personality").and_then(|v| v.as_str())
+                        {
                             let personality = substitute_user_macro(personality, persona_name);
-                            if !personality.is_empty() { parts.push(format!("Personality: {}", personality)); }
+                            if !personality.is_empty() {
+                                parts.push(format!("Personality: {}", personality));
+                            }
                         }
                         if let Some(scenario) = card.get("scenario").and_then(|v| v.as_str()) {
                             let scenario = substitute_user_macro(scenario, persona_name);
-                            if !scenario.is_empty() { parts.push(format!("Scenario: {}", scenario)); }
+                            if !scenario.is_empty() {
+                                parts.push(format!("Scenario: {}", scenario));
+                            }
                         }
 
                         prompt.push(ChatMessage {
@@ -293,11 +326,16 @@ pub(crate) async fn build_prompt(
 
                         if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
                             let desc = substitute_user_macro(desc, persona_name);
-                            if !desc.is_empty() { parts.push(format!("Description: {}", desc)); }
+                            if !desc.is_empty() {
+                                parts.push(format!("Description: {}", desc));
+                            }
                         }
-                        if let Some(personality) = card.get("personality").and_then(|v| v.as_str()) {
+                        if let Some(personality) = card.get("personality").and_then(|v| v.as_str())
+                        {
                             let personality = substitute_user_macro(personality, persona_name);
-                            if !personality.is_empty() { parts.push(format!("Personality: {}", personality)); }
+                            if !personality.is_empty() {
+                                parts.push(format!("Personality: {}", personality));
+                            }
                         }
                         parts.push(format!("(Talkativeness: {}/100)", conv_char.talkativeness));
 
@@ -313,9 +351,14 @@ pub(crate) async fn build_prompt(
 
                         if let Some(desc) = card.get("description").and_then(|v| v.as_str()) {
                             let desc = substitute_user_macro(desc, persona_name);
-                            if !desc.is_empty() { parts.push(desc); }
+                            if !desc.is_empty() {
+                                parts.push(desc);
+                            }
                         }
-                        parts.push("(Minor character — respond briefly when directly involved)".to_string());
+                        parts.push(
+                            "(Minor character — respond briefly when directly involved)"
+                                .to_string(),
+                        );
 
                         prompt.push(ChatMessage {
                             role: MessageRole::System,
@@ -327,7 +370,8 @@ pub(crate) async fn build_prompt(
         }
 
         // ── Group Scene Directive ──
-        let mut char_names: Vec<String> = active_conv_chars.iter()
+        let mut char_names: Vec<String> = active_conv_chars
+            .iter()
             .map(|c| c.character_name.clone())
             .collect();
         if !primary_has_row {
@@ -388,14 +432,18 @@ pub(crate) async fn build_prompt(
             // everyone (the user included) was already treating her as
             // present. A name already in the cast table doesn't need the
             // scene extractor's permission to exist.
-            let known_others: Vec<String> = active_conv_chars.iter()
+            let known_others: Vec<String> = active_conv_chars
+                .iter()
                 .filter(|c| character_id.as_deref() != Some(c.character_id.id.to_raw().as_str()))
                 .map(|c| c.character_name.clone())
                 .collect();
             let known_others_clause = if known_others.is_empty() {
                 String::new()
             } else {
-                format!(" Already part of this story's cast: {}.", known_others.join(", "))
+                format!(
+                    " Already part of this story's cast: {}.",
+                    known_others.join(", ")
+                )
             };
 
             // Baseline roleplay behavior contract — established first so it
@@ -474,8 +522,16 @@ pub(crate) async fn build_prompt(
     // who it's actually roleplaying with when the user has an active
     // persona selected. A complete no-op when no persona is selected.
     if let Some(ref p) = persona {
-        let desc = p.data.get("description").and_then(|v| v.as_str()).unwrap_or("");
-        let personality = p.data.get("personality").and_then(|v| v.as_str()).unwrap_or("");
+        let desc = p
+            .data
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let personality = p
+            .data
+            .get("personality")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let mut about = format!("[About the User]\nYou are speaking with {}.", p.name);
         if !desc.is_empty() {
             about.push_str(&format!(" {}", desc));
@@ -526,7 +582,9 @@ pub(crate) async fn build_prompt(
             // across the whole cast, not "all of character A's entries,
             // then all of character B's" regardless of relative priority.
             all_entries.sort_by(|a, b| {
-                b.priority.cmp(&a.priority).then(a.insertion_order.cmp(&b.insertion_order))
+                b.priority
+                    .cmp(&a.priority)
+                    .then(a.insertion_order.cmp(&b.insertion_order))
             });
         }
         {
@@ -556,19 +614,21 @@ pub(crate) async fn build_prompt(
 
             // Walk the message tree using get_branch (returns root→leaf order)
             let branch = MessageRepo::get_branch(db, up_to_message_id).await?;
-            let chain: Vec<ChatMessage> = branch.iter().map(|m| {
-                ChatMessage {
+            let chain: Vec<ChatMessage> = branch
+                .iter()
+                .map(|m| ChatMessage {
                     role: match m.role {
                         MessageRole::User => MessageRole::User,
                         MessageRole::Assistant => MessageRole::Assistant,
                         MessageRole::System => MessageRole::System,
                     },
                     content: m.content.clone(),
-                }
-            }).collect();
+                })
+                .collect();
 
             // Keyword-triggered lorebook entries: scan recent messages for matching keywords
-            let keyword_entries: Vec<&crate::models::lorebook::LorebookEntry> = all_entries.iter()
+            let keyword_entries: Vec<&crate::models::lorebook::LorebookEntry> = all_entries
+                .iter()
                 .filter(|e| e.enabled && !e.always_active && !e.keys.is_empty())
                 .collect();
 
@@ -586,7 +646,8 @@ pub(crate) async fn build_prompt(
                     // Word-boundary match, not a raw substring check — the
                     // latter let a short keyword like "cat" fire on
                     // "catastrophe", triggering unrelated lore constantly.
-                    let triggered = entry.keys
+                    let triggered = entry
+                        .keys
                         .iter()
                         .map(|k| k.to_lowercase())
                         .filter(|k| !k.is_empty())
@@ -620,7 +681,9 @@ pub(crate) async fn build_prompt(
             // Token-capped to context_budget.max_memory_tokens.
             if memory_scope != "none" {
                 // Get the last user message for semantic query
-                let last_user_content = chain.iter().rev()
+                let last_user_content = chain
+                    .iter()
+                    .rev()
                     .find(|m| m.role == MessageRole::User)
                     .map(|m| m.content.clone())
                     .unwrap_or_default();
@@ -631,11 +694,16 @@ pub(crate) async fn build_prompt(
                     for conv_char in &active_conv_chars {
                         let cc_char_id = conv_char.character_id.id.to_raw();
                         let char_memories = MemoryRepo::list_for_character_in_conv(
-                            db, &cc_char_id, conversation_id,
-                        ).await.unwrap_or_default();
+                            db,
+                            &cc_char_id,
+                            conversation_id,
+                        )
+                        .await
+                        .unwrap_or_default();
 
                         if !char_memories.is_empty() {
-                            let facts: Vec<String> = char_memories.iter()
+                            let facts: Vec<String> = char_memories
+                                .iter()
                                 .take(10) // cap per character
                                 .map(|m| m.content.clone())
                                 .collect();
@@ -658,7 +726,8 @@ pub(crate) async fn build_prompt(
                     if !last_user_content.is_empty() {
                         if let Ok(pc) = get_default_llm_provider(db).await {
                             if let Ok(provider) = create_rig_provider(&pc) {
-                                let embed_model = pc.config
+                                let embed_model = pc
+                                    .config
                                     .get("embedding_model")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("text-embedding-3-small");
@@ -673,17 +742,24 @@ pub(crate) async fn build_prompt(
                                     None
                                 };
                                 if let Ok(results) = query_relevant_memories(
-                                    db, &provider, embed_model,
-                                    char_id, &last_user_content,
-                                    10,   // top 10 relevant memories
-                                    0.4,  // lower threshold — facts are short
+                                    db,
+                                    &provider,
+                                    embed_model,
+                                    char_id,
+                                    &last_user_content,
+                                    10,  // top 10 relevant memories
+                                    0.4, // lower threshold — facts are short
                                     memory_scope_conv_id,
-                                ).await {
+                                )
+                                .await
+                                {
                                     if !results.is_empty() {
-                                        memory_facts = results.iter()
-                                            .map(|r| r.content.clone())
-                                            .collect();
-                                        info!("[build_prompt] Semantic memory retrieval: {} memories", memory_facts.len());
+                                        memory_facts =
+                                            results.iter().map(|r| r.content.clone()).collect();
+                                        info!(
+                                            "[build_prompt] Semantic memory retrieval: {} memories",
+                                            memory_facts.len()
+                                        );
                                     }
                                 }
                             }
@@ -693,20 +769,28 @@ pub(crate) async fn build_prompt(
                     // Fallback: recency-ordered list if semantic retrieval yielded nothing
                     if memory_facts.is_empty() {
                         let memory_list = if memory_scope == "character" {
-                            MemoryRepo::list(db, Some(char_id), None).await.unwrap_or_default()
+                            MemoryRepo::list(db, Some(char_id), None)
+                                .await
+                                .unwrap_or_default()
                         } else {
                             // Fix: conversation scope now includes canon memories
-                            MemoryRepo::list_with_canon(db, conversation_id, char_id).await.unwrap_or_default()
+                            MemoryRepo::list_with_canon(db, conversation_id, char_id)
+                                .await
+                                .unwrap_or_default()
                         };
 
-                        memory_facts = memory_list.into_iter()
+                        memory_facts = memory_list
+                            .into_iter()
                             .take(15)
                             .map(|m| m.content)
                             .collect();
 
                         if !memory_facts.is_empty() {
                             memory_facts.reverse(); // oldest first for natural reading
-                            info!("[build_prompt] Recency memory fallback: {} memories", memory_facts.len());
+                            info!(
+                                "[build_prompt] Recency memory fallback: {} memories",
+                                memory_facts.len()
+                            );
                         }
                     }
 
@@ -738,7 +822,9 @@ pub(crate) async fn build_prompt(
                                     role: MessageRole::System,
                                     content: truncated_block,
                                 };
-                                if count_message_tokens(&truncated_msg) <= context_budget.max_memory_tokens {
+                                if count_message_tokens(&truncated_msg)
+                                    <= context_budget.max_memory_tokens
+                                {
                                     prompt.push(truncated_msg);
                                     break;
                                 }
@@ -756,12 +842,16 @@ pub(crate) async fn build_prompt(
                 let mut state_parts: Vec<String> = Vec::new();
                 for conv_char in &active_conv_chars {
                     let cc_char_id = conv_char.character_id.id.to_raw();
-                    if let Ok(Some(state)) = CharacterStateRepo::get(db, &cc_char_id, conversation_id).await {
+                    if let Ok(Some(state)) =
+                        CharacterStateRepo::get(db, &cc_char_id, conversation_id).await
+                    {
                         state_parts.push(format!(
                             "  {} — {} (mood:{}/100 trust:{}/100 intensity:{}/100) — {}",
                             conv_char.character_name,
                             state.dominant_emotion,
-                            state.mood, state.trust, state.arousal,
+                            state.mood,
+                            state.trust,
+                            state.arousal,
                             state.state_summary,
                         ));
                     }
@@ -775,7 +865,9 @@ pub(crate) async fn build_prompt(
                         ),
                     });
                 }
-            } else if let Ok(Some(state)) = CharacterStateRepo::get(db, char_id, conversation_id).await {
+            } else if let Ok(Some(state)) =
+                CharacterStateRepo::get(db, char_id, conversation_id).await
+            {
                 let state_block = format!(
                     "[Current Emotional State]\n\
                      Dominant emotion: {emotion}\n\
@@ -805,7 +897,9 @@ pub(crate) async fn build_prompt(
                 let chars_list = if scene.characters_present.is_empty() {
                     "unspecified".to_string()
                 } else {
-                    scene.characters_present.iter()
+                    scene
+                        .characters_present
+                        .iter()
                         .map(|c| substitute_user_macro(c, persona_name))
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -892,7 +986,9 @@ pub(crate) async fn build_prompt(
             // - Budget: cap RAG injection to allocation.rag_budget tokens
             // - Cross-conv: when memory_scope = "character", search all conversations
             let rag_tokens = if window.evicted_count > 0 {
-                let last_user_content = chain.iter().rev()
+                let last_user_content = chain
+                    .iter()
+                    .rev()
                     .find(|m| m.role == MessageRole::User)
                     .map(|m| m.content.clone())
                     .unwrap_or_default();
@@ -908,7 +1004,8 @@ pub(crate) async fn build_prompt(
                     let rag_results = match get_default_llm_provider(db).await {
                         Ok(pc) => match create_rig_provider(&pc) {
                             Ok(provider) => {
-                                let embed_model = pc.config
+                                let embed_model = pc
+                                    .config
                                     .get("embedding_model")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("text-embedding-3-small");
@@ -921,11 +1018,18 @@ pub(crate) async fn build_prompt(
                                 };
 
                                 query_relevant_context(
-                                    db, &provider, embed_model,
-                                    conv_scope, char_scope,
+                                    db,
+                                    &provider,
+                                    embed_model,
+                                    conv_scope,
+                                    char_scope,
                                     &last_user_content,
-                                    5, 0.7, &window_msg_ids,
-                                ).await.unwrap_or_default()
+                                    5,
+                                    0.7,
+                                    &window_msg_ids,
+                                )
+                                .await
+                                .unwrap_or_default()
                             }
                             Err(_) => vec![],
                         },
@@ -933,8 +1037,16 @@ pub(crate) async fn build_prompt(
                     };
 
                     if !rag_results.is_empty() {
-                        let rag_text = rag_results.iter()
-                            .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
+                        let rag_text = rag_results
+                            .iter()
+                            .map(|r| {
+                                format!(
+                                    "[{:.0}% relevance] {}: {}",
+                                    r.similarity * 100.0,
+                                    r.role,
+                                    r.content
+                                )
+                            })
                             .collect::<Vec<_>>()
                             .join("\n\n");
                         let rag_message = ChatMessage {
@@ -955,8 +1067,16 @@ pub(crate) async fn build_prompt(
                             let mut truncated = rag_results.clone();
                             while truncated.len() > 1 {
                                 truncated.pop();
-                                let text = truncated.iter()
-                                    .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
+                                let text = truncated
+                                    .iter()
+                                    .map(|r| {
+                                        format!(
+                                            "[{:.0}% relevance] {}: {}",
+                                            r.similarity * 100.0,
+                                            r.role,
+                                            r.content
+                                        )
+                                    })
                                     .collect::<Vec<_>>()
                                     .join("\n\n");
                                 let msg = ChatMessage {
@@ -973,47 +1093,57 @@ pub(crate) async fn build_prompt(
                                 }
                             }
                             // Return whatever tokens we actually used
-                            prompt.last()
-                                .map(count_message_tokens)
-                                .unwrap_or(0)
+                            prompt.last().map(count_message_tokens).unwrap_or(0)
                         }
-                    } else { 0 }
-                } else { 0 }
-            } else { 0 };
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
 
             // PHI goes last — after history, maximum attention weight
             if let Some(phi) = phi_message {
                 prompt.push(phi);
             }
 
-            return Ok((prompt, ContextStats {
-                total_budget: context_budget.max_context_tokens,
-                fixed_tokens: allocation.fixed_layers_tokens,
-                history_tokens,
-                summary_tokens,
-                total_messages,
-                included_messages,
-                evicted_messages,
-                rag_tokens,
-            }));
+            return Ok((
+                prompt,
+                ContextStats {
+                    total_budget: context_budget.max_context_tokens,
+                    fixed_tokens: allocation.fixed_layers_tokens,
+                    history_tokens,
+                    summary_tokens,
+                    total_messages,
+                    included_messages,
+                    evicted_messages,
+                    rag_tokens,
+                },
+            ));
         }
     } else {
         // No character — just build the message chain
         let branch = MessageRepo::get_branch(db, up_to_message_id).await?;
-        let chain: Vec<ChatMessage> = branch.iter().map(|m| {
-            ChatMessage {
+        let chain: Vec<ChatMessage> = branch
+            .iter()
+            .map(|m| ChatMessage {
                 role: match m.role {
                     MessageRole::User => MessageRole::User,
                     MessageRole::Assistant => MessageRole::Assistant,
                     MessageRole::System => MessageRole::System,
                 },
                 content: m.content.clone(),
-            }
-        }).collect();
+            })
+            .collect();
 
         // Conversation-scoped memories even without a character
         if memory_scope != "none" {
-            let memory_list = MemoryRepo::list(db, None, Some(conversation_id)).await.unwrap_or_default();
+            let memory_list = MemoryRepo::list(db, None, Some(conversation_id))
+                .await
+                .unwrap_or_default();
             let memory_rows: Vec<_> = memory_list.into_iter().take(20).collect();
             if !memory_rows.is_empty() {
                 let mut facts: Vec<String> = memory_rows.into_iter().map(|m| m.content).collect();
@@ -1085,7 +1215,9 @@ pub(crate) async fn build_prompt(
 
         // Vector RAG: retrieve semantically relevant evicted messages (non-character path)
         let rag_tokens = if window.evicted_count > 0 {
-            let last_user_content = chain.iter().rev()
+            let last_user_content = chain
+                .iter()
+                .rev()
                 .find(|m| m.role == MessageRole::User)
                 .map(|m| m.content.clone())
                 .unwrap_or_default();
@@ -1095,16 +1227,24 @@ pub(crate) async fn build_prompt(
                 let rag_results = match get_default_llm_provider(db).await {
                     Ok(pc) => match create_rig_provider(&pc) {
                         Ok(provider) => {
-                            let embed_model = pc.config
+                            let embed_model = pc
+                                .config
                                 .get("embedding_model")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("text-embedding-3-small");
                             query_relevant_context(
-                                db, &provider, embed_model,
-                                Some(conversation_id), None,
+                                db,
+                                &provider,
+                                embed_model,
+                                Some(conversation_id),
+                                None,
                                 &last_user_content,
-                                5, 0.7, &exclude_ids,
-                            ).await.unwrap_or_default()
+                                5,
+                                0.7,
+                                &exclude_ids,
+                            )
+                            .await
+                            .unwrap_or_default()
                         }
                         Err(_) => vec![],
                     },
@@ -1112,8 +1252,16 @@ pub(crate) async fn build_prompt(
                 };
 
                 if !rag_results.is_empty() {
-                    let rag_text = rag_results.iter()
-                        .map(|r| format!("[{:.0}% relevance] {}: {}", r.similarity * 100.0, r.role, r.content))
+                    let rag_text = rag_results
+                        .iter()
+                        .map(|r| {
+                            format!(
+                                "[{:.0}% relevance] {}: {}",
+                                r.similarity * 100.0,
+                                r.role,
+                                r.content
+                            )
+                        })
                         .collect::<Vec<_>>()
                         .join("\n\n");
                     let rag_message = ChatMessage {
@@ -1127,24 +1275,35 @@ pub(crate) async fn build_prompt(
                     if tokens <= allocation.rag_budget {
                         prompt.push(rag_message);
                         tokens
-                    } else { 0 }
-                } else { 0 }
-            } else { 0 }
-        } else { 0 };
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        };
 
         if let Some(phi) = phi_message {
             prompt.push(phi);
         }
 
-        Ok((prompt, ContextStats {
-            total_budget: context_budget.max_context_tokens,
-            fixed_tokens: allocation.fixed_layers_tokens,
-            history_tokens,
-            summary_tokens,
-            total_messages,
-            included_messages,
-            evicted_messages,
-            rag_tokens,
-        }))
+        Ok((
+            prompt,
+            ContextStats {
+                total_budget: context_budget.max_context_tokens,
+                fixed_tokens: allocation.fixed_layers_tokens,
+                history_tokens,
+                summary_tokens,
+                total_messages,
+                included_messages,
+                evicted_messages,
+                rag_tokens,
+            },
+        ))
     }
 }

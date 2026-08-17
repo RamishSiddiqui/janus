@@ -85,7 +85,12 @@ pub async fn get_backend_logs_page(
     let path = log_file_path(&app)?;
     let mut file = match tokio::fs::File::open(&path).await {
         Ok(f) => f,
-        Err(_) => return Ok(LogPage { lines: vec![], next_cursor: None }),
+        Err(_) => {
+            return Ok(LogPage {
+                lines: vec![],
+                next_cursor: None,
+            })
+        }
     };
     let file_len = file
         .metadata()
@@ -95,7 +100,10 @@ pub async fn get_backend_logs_page(
 
     let end = cursor.map(|c| c as u64).unwrap_or(file_len).min(file_len);
     if end == 0 {
-        return Ok(LogPage { lines: vec![], next_cursor: None });
+        return Ok(LogPage {
+            lines: vec![],
+            next_cursor: None,
+        });
     }
 
     let limit = (limit.unwrap_or(200) as usize).clamp(1, 1000);
@@ -141,7 +149,11 @@ pub async fn get_backend_logs_page(
 
     let consumed_bytes: usize = parts[..take_from].iter().map(|s| s.len() + 1).sum();
     let next_start = start + prefix_bytes as u64 + consumed_bytes as u64;
-    let next_cursor = if next_start > 0 { u32::try_from(next_start).ok() } else { None };
+    let next_cursor = if next_start > 0 {
+        u32::try_from(next_start).ok()
+    } else {
+        None
+    };
 
     Ok(LogPage { lines, next_cursor })
 }

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -36,7 +37,10 @@ pub async fn create_message(
     )
     .await?;
 
-    info!("Created {} message in conversation {}", role_str, conversation_id);
+    info!(
+        "Created {} message in conversation {}",
+        role_str, conversation_id
+    );
     Ok(message)
 }
 

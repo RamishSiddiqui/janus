@@ -1,6 +1,7 @@
 //! Scene state commands — get, upsert, and delete per conversation.
 
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 

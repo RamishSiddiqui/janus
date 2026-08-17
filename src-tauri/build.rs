@@ -9,9 +9,8 @@ fn main() {
         // STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139). Embedding it ourselves via
         // plain cargo:rustc-link-arg applies to every binary target instead.
         // See: https://github.com/tauri-apps/tauri/issues/13419
-        attributes = attributes.windows_attributes(
-            tauri_build::WindowsAttributes::new_without_app_manifest(),
-        );
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
         add_manifest();
     }
     tauri_build::try_build(attributes).unwrap();

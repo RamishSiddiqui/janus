@@ -2,10 +2,16 @@
 //! in-flight generation.
 
 use std::sync::Arc;
+
 use tauri::{Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::{debug, error, warn};
 
+use super::attachments::load_message_images;
+use super::pipeline::spawn_scene_extraction;
+use super::send::send_message;
+use super::streaming::{run_stream_completion, StreamCompletionCtx, StreamEvent, StreamOrigin};
+use super::SendMessageResult;
 use crate::context::budget::ContextBudget;
 use crate::context::prompt_builder::build_prompt;
 use crate::db::characters::CharacterRepo;
@@ -17,12 +23,6 @@ use crate::models::conversation::{GenerationParams, MessageRole};
 use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::providers::traits::StreamChunk;
 use crate::AppState;
-
-use super::attachments::load_message_images;
-use super::pipeline::spawn_scene_extraction;
-use super::send::send_message;
-use super::streaming::{run_stream_completion, StreamCompletionCtx, StreamEvent, StreamOrigin};
-use super::SendMessageResult;
 
 /// Retries a failed message by reusing the existing user message already in the DB.
 /// Cleans up the empty/failed assistant placeholder from the previous attempt,
@@ -44,18 +44,20 @@ pub async fn retry_failed_message(
     let db = state_guard.db.clone();
     drop(state_guard);
 
-    debug!("[retry_failed_message] conversation={}, user_message={}", conversation_id, user_message_id);
+    debug!(
+        "[retry_failed_message] conversation={}, user_message={}",
+        conversation_id, user_message_id
+    );
 
     // Verify the user message exists and is a user message in this conversation
-    let user_msg = MessageRepo::get(&db, &user_message_id).await
-        .map_err(|_| MythicError::Validation(
-            "User message not found — cannot retry".to_string()
-        ))?;
+    let user_msg = MessageRepo::get(&db, &user_message_id).await.map_err(|_| {
+        MythicError::Validation("User message not found — cannot retry".to_string())
+    })?;
 
     let msg_conv_id = user_msg.conversation_id.id.to_raw();
     if msg_conv_id != conversation_id || user_msg.role != MessageRole::User {
         return Err(MythicError::Validation(
-            "User message not found — cannot retry".to_string()
+            "User message not found — cannot retry".to_string(),
         ));
     }
 
@@ -82,7 +84,8 @@ pub async fn retry_failed_message(
     // Needed later for the multi-char-response event's emotion-pipeline
     // context (mirrors `content` in `send_message`, which has it as a param
     // directly — a retry only has the message ID, so it's fetched here).
-    let user_message_content = MessageRepo::get(&db, &user_message_id).await
+    let user_message_content = MessageRepo::get(&db, &user_message_id)
+        .await
         .map(|m| m.content)
         .unwrap_or_default();
 
@@ -94,7 +97,9 @@ pub async fn retry_failed_message(
     // block in `send_message` for the full rationale.
     let conv = ConversationRepo::get(&db, &conversation_id).await?;
     let conv_character_id: Option<String> = conv.character_id.as_ref().map(|t| t.id.to_raw());
-    let conv_chars = ConversationCharacterRepo::list(&db, &conversation_id).await.unwrap_or_default();
+    let conv_chars = ConversationCharacterRepo::list(&db, &conversation_id)
+        .await
+        .unwrap_or_default();
     let mut multi_char_names: Vec<String> = Vec::new();
     let mut multi_char_pairs: Vec<(String, String)> = Vec::new();
     if let Some(char_id) = conv_character_id.clone() {
@@ -117,18 +122,21 @@ pub async fn retry_failed_message(
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     let gen_params = GenerationParams {
-        max_tokens: provider_config.config
+        max_tokens: provider_config
+            .config
             .get("max_tokens")
             .and_then(|v| v.as_u64())
             .unwrap_or(2048) as u32,
-        temperature: provider_config.config
+        temperature: provider_config
+            .config
             .get("temperature")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.8) as f32,
         ..Default::default()
     };
 
-    let max_context = provider_config.config
+    let max_context = provider_config
+        .config
         .get("context_length")
         .and_then(|v| v.as_u64())
         .unwrap_or(16384) as usize;
@@ -141,13 +149,18 @@ pub async fn retry_failed_message(
 
     // Build prompt from this user message
     let (messages, context_stats) = build_prompt(
-        &db, &conversation_id, &user_message_id,
-        system_prompt.as_deref(), post_history_instructions.as_deref(),
+        &db,
+        &conversation_id,
+        &user_message_id,
+        system_prompt.as_deref(),
+        post_history_instructions.as_deref(),
         &context_budget,
-    ).await?;
+    )
+    .await?;
     debug!(
         "[retry_failed_message] prompt built with {} messages, context stats: {:?}",
-        messages.len(), context_stats
+        messages.len(),
+        context_stats
     );
 
     // Create fresh assistant placeholder
@@ -159,7 +172,8 @@ pub async fn retry_failed_message(
         "",
         Some(&user_message_id),
         None,
-    ).await?;
+    )
+    .await?;
     let assistant_msg_id = assistant_msg.id.id.to_raw();
 
     // Stream or generate
@@ -186,22 +200,34 @@ pub async fn retry_failed_message(
         let retry_images = stream_images.clone();
 
         let gen_task = tokio::spawn(async move {
-            if let Err(e) = provider.generate_stream(
-                &model_id, &stream_messages, &stream_images, &gen_params, tx.clone(),
-            ).await {
+            if let Err(e) = provider
+                .generate_stream(
+                    &model_id,
+                    &stream_messages,
+                    &stream_images,
+                    &gen_params,
+                    tx.clone(),
+                )
+                .await
+            {
                 error!("Retry stream generation error: {}", e);
-                let _ = tx.send(StreamChunk::Error(format!("Retry stream failed: {}", e))).await;
+                let _ = tx
+                    .send(StreamChunk::Error(format!("Retry stream failed: {}", e)))
+                    .await;
             }
         });
 
         let partial = Arc::new(std::sync::Mutex::new(String::new()));
         let reasoning_acc = Arc::new(std::sync::Mutex::new(String::new()));
         let active_gens = state.read().await.active_generations.clone();
-        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
-            abort: gen_task.abort_handle(),
-            partial: Some(partial.clone()),
-            assistant_message_id: assistant_msg_id.clone(),
-        });
+        active_gens.lock().await.insert(
+            conversation_id.clone(),
+            crate::GenerationHandle {
+                abort: gen_task.abort_handle(),
+                partial: Some(partial.clone()),
+                assistant_message_id: assistant_msg_id.clone(),
+            },
+        );
 
         // Forward stream chunks as Tauri events — shared with `send_message`
         // via `run_stream_completion` (see its doc comment for why this
@@ -236,14 +262,19 @@ pub async fn retry_failed_message(
         let messages_gen = messages.clone();
         let images_gen = images.clone();
         let gen_task = tokio::spawn(async move {
-            provider.generate(&model_id_gen, &messages_gen, &images_gen, &gen_params).await
+            provider
+                .generate(&model_id_gen, &messages_gen, &images_gen, &gen_params)
+                .await
         });
         let active_gens = state.read().await.active_generations.clone();
-        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
-            abort: gen_task.abort_handle(),
-            partial: None,
-            assistant_message_id: assistant_msg_id.clone(),
-        });
+        active_gens.lock().await.insert(
+            conversation_id.clone(),
+            crate::GenerationHandle {
+                abort: gen_task.abort_handle(),
+                partial: None,
+                assistant_message_id: assistant_msg_id.clone(),
+            },
+        );
         let result = gen_task.await;
         active_gens.lock().await.remove(&conversation_id);
 
@@ -254,21 +285,30 @@ pub async fn retry_failed_message(
                 // NPC detection internally) — see the matching comment on
                 // the streaming branch above.
                 spawn_scene_extraction(
-                    db.clone(), app.clone(), conversation_id.clone(), assistant_msg_id.clone(),
+                    db.clone(),
+                    app.clone(),
+                    conversation_id.clone(),
+                    assistant_msg_id.clone(),
                     full_text.clone(),
                 );
-                let _ = app.emit("chat-stream", StreamEvent {
-                    event_type: "done".to_string(),
-                    content: full_text,
-                    message_id: assistant_msg_id.clone(),
-                });
+                let _ = app.emit(
+                    "chat-stream",
+                    StreamEvent {
+                        event_type: "done".to_string(),
+                        content: full_text,
+                        message_id: assistant_msg_id.clone(),
+                    },
+                );
             }
             Ok(Err(e)) => {
-                let _ = app.emit("chat-stream", StreamEvent {
-                    event_type: "error".to_string(),
-                    content: e.to_string(),
-                    message_id: assistant_msg_id.clone(),
-                });
+                let _ = app.emit(
+                    "chat-stream",
+                    StreamEvent {
+                        event_type: "error".to_string(),
+                        content: e.to_string(),
+                        message_id: assistant_msg_id.clone(),
+                    },
+                );
             }
             Err(join_err) if join_err.is_cancelled() => {
                 // cancel_generation already aborted the task and emitted the
@@ -276,11 +316,14 @@ pub async fn retry_failed_message(
             }
             Err(join_err) => {
                 error!("Retry non-streaming generation task panicked: {}", join_err);
-                let _ = app.emit("chat-stream", StreamEvent {
-                    event_type: "error".to_string(),
-                    content: "Generation task failed unexpectedly".to_string(),
-                    message_id: assistant_msg_id.clone(),
-                });
+                let _ = app.emit(
+                    "chat-stream",
+                    StreamEvent {
+                        event_type: "error".to_string(),
+                        content: "Generation task failed unexpectedly".to_string(),
+                        message_id: assistant_msg_id.clone(),
+                    },
+                );
             }
         }
     }
@@ -361,7 +404,8 @@ pub async fn regenerate_message(
             .query("SELECT * FROM messages WHERE parent_id = type::thing('messages', $id)")
             .bind(("id", current_id))
             .await?;
-        let children: Vec<crate::models::conversation::Message> = result.take(0).unwrap_or_default();
+        let children: Vec<crate::models::conversation::Message> =
+            result.take(0).unwrap_or_default();
         for child in children {
             if child.role == MessageRole::Assistant {
                 let child_id = child.id.id.to_raw();
@@ -375,7 +419,10 @@ pub async fn regenerate_message(
     // Delete the whole turn (all collected segments) before regenerating.
     for id in &turn_ids {
         if let Err(e) = MessageRepo::delete(&db, id).await {
-            warn!("[regenerate_message] Failed to delete segment {} while regenerating: {}", id, e);
+            warn!(
+                "[regenerate_message] Failed to delete segment {} while regenerating: {}",
+                id, e
+            );
         }
     }
 
@@ -390,13 +437,34 @@ pub async fn regenerate_message(
             // message, create only a new assistant placeholder tied to it,
             // and stream a response — it also points active_message_id back
             // to this user message itself, so that doesn't need repeating.
-            retry_failed_message(app, state, conversation_id, pid, model, system_prompt, streaming, post_history_instructions).await
+            retry_failed_message(
+                app,
+                state,
+                conversation_id,
+                pid,
+                model,
+                system_prompt,
+                streaming,
+                post_history_instructions,
+            )
+            .await
         }
         None => {
             // No parent (e.g. regenerating a greeting that was never a
             // response to a user message) — preserve the old behavior of
             // re-sending empty content through the normal send flow.
-            send_message(app, state, conversation_id, String::new(), model, system_prompt, streaming, post_history_instructions, None).await
+            send_message(
+                app,
+                state,
+                conversation_id,
+                String::new(),
+                model,
+                system_prompt,
+                streaming,
+                post_history_instructions,
+                None,
+            )
+            .await
         }
     }
 }
@@ -434,22 +502,27 @@ pub async fn cancel_generation(
 
     handle.abort.abort();
 
-    let partial_text = handle.partial
+    let partial_text = handle
+        .partial
         .as_ref()
         .and_then(|p| p.lock().ok().map(|s| s.clone()))
         .unwrap_or_default();
 
     if !partial_text.is_empty() {
-        if let Err(e) = MessageRepo::update(&db, &handle.assistant_message_id, &partial_text).await {
+        if let Err(e) = MessageRepo::update(&db, &handle.assistant_message_id, &partial_text).await
+        {
             error!("Failed to save partial content on cancel: {}", e);
         }
     }
 
-    let _ = app.emit("chat-stream", StreamEvent {
-        event_type: "cancelled".to_string(),
-        content: partial_text,
-        message_id: handle.assistant_message_id,
-    });
+    let _ = app.emit(
+        "chat-stream",
+        StreamEvent {
+            event_type: "cancelled".to_string(),
+            content: partial_text,
+            message_id: handle.assistant_message_id,
+        },
+    );
 
     Ok(())
 }

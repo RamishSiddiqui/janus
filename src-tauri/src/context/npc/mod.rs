@@ -7,5 +7,5 @@
 //! an unwanted character; a bad call there just mislabels a location).
 
 pub mod detector;
-pub mod profile_generator;
 pub mod pipeline;
+pub mod profile_generator;

@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::persona::Persona;
@@ -72,7 +72,10 @@ impl PersonaRepo {
         }
 
         sets.push("updated_at = time::now()");
-        let query = format!("UPDATE type::thing('personas', $id) SET {}", sets.join(", "));
+        let query = format!(
+            "UPDATE type::thing('personas', $id) SET {}",
+            sets.join(", ")
+        );
         bindings_json.insert("id".into(), serde_json::Value::String(id.to_string()));
         let mut result = db
             .query(&query)

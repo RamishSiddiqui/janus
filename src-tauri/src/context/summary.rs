@@ -5,7 +5,7 @@ use tracing::{info, warn};
 use crate::context::tokenizer::count_tokens;
 use crate::db::summaries::SummaryRepo;
 use crate::error::MythicError;
-use crate::models::conversation::{ChatMessage, MessageRole, GenerationParams};
+use crate::models::conversation::{ChatMessage, GenerationParams, MessageRole};
 use crate::providers::unified::RigProvider;
 
 const SUMMARY_SYSTEM_PROMPT: &str = r#"You are a narrative summarizer for a roleplay conversation. Your job is to compress conversation history into a concise summary that preserves:
@@ -88,7 +88,10 @@ pub async fn generate_rolling_summary(
         ..Default::default()
     };
 
-    match provider.generate(model_id, &messages, &[], &gen_params).await {
+    match provider
+        .generate(model_id, &messages, &[], &gen_params)
+        .await
+    {
         Ok(summary_text) => {
             let token_count = count_tokens(&summary_text) as u32;
             let covered_count = evicted_messages.len() as u32;
@@ -100,7 +103,8 @@ pub async fn generate_rolling_summary(
                 covered_count,
                 token_count,
                 window_start_message_id,
-            ).await?;
+            )
+            .await?;
 
             info!(
                 "[summary] Summary generated: {} tokens, {} messages covered",
@@ -110,7 +114,10 @@ pub async fn generate_rolling_summary(
             Ok(())
         }
         Err(e) => {
-            warn!("[summary] Failed to generate summary: {}. Context will work without it.", e);
+            warn!(
+                "[summary] Failed to generate summary: {}. Context will work without it.",
+                e
+            );
             Ok(())
         }
     }

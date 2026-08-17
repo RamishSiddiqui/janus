@@ -70,7 +70,9 @@ impl ContextBudget {
         let summary_budget = history_budget / 5;
         // RAG gets up to 10% of the history budget.
         let rag_budget = history_budget / 10;
-        let messages_budget = history_budget.saturating_sub(summary_budget).saturating_sub(rag_budget);
+        let messages_budget = history_budget
+            .saturating_sub(summary_budget)
+            .saturating_sub(rag_budget);
 
         BudgetAllocation {
             total_usable,

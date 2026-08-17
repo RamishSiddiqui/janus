@@ -2,10 +2,15 @@
 //! builds the prompt, and streams (or generates) the AI response.
 
 use std::sync::Arc;
+
 use tauri::{Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
+use super::attachments::load_message_images;
+use super::pipeline::{spawn_embed_message, spawn_scene_extraction};
+use super::streaming::{run_stream_completion, StreamCompletionCtx, StreamEvent, StreamOrigin};
+use super::SendMessageResult;
 use crate::context::budget::ContextBudget;
 use crate::context::prompt_builder::build_prompt;
 use crate::db::characters::CharacterRepo;
@@ -17,11 +22,6 @@ use crate::models::conversation::GenerationParams;
 use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::providers::traits::StreamChunk;
 use crate::AppState;
-
-use super::attachments::load_message_images;
-use super::pipeline::{spawn_embed_message, spawn_scene_extraction};
-use super::streaming::{run_stream_completion, StreamCompletionCtx, StreamEvent, StreamOrigin};
-use super::SendMessageResult;
 
 /// Sends a user message and streams the AI response back.
 ///
@@ -48,7 +48,11 @@ pub async fn send_message(
     let _http = state_guard.http_client.clone(); // retained for image providers
     drop(state_guard);
 
-    debug!("[send_message] conversation={}, content_len={}", conversation_id, content.len());
+    debug!(
+        "[send_message] conversation={}, content_len={}",
+        conversation_id,
+        content.len()
+    );
 
     let app_data_dir = app
         .path()
@@ -74,7 +78,8 @@ pub async fn send_message(
         &content,
         parent_id.as_deref(),
         attachment_metadata,
-    ).await?;
+    )
+    .await?;
     let user_msg_id = user_msg.id.id.to_raw();
 
     // Resolved once, reused by every generation attempt below (initial +
@@ -92,7 +97,9 @@ pub async fn send_message(
     // elsewhere is unsafe. Segment-name resolution (below, and in the streaming
     // Done-handler) needs the primary present in this list unconditionally, since
     // parsing now always runs (see the "Other Characters Present" prompt addition).
-    let conv_chars = ConversationCharacterRepo::list(&db, &conversation_id).await.unwrap_or_default();
+    let conv_chars = ConversationCharacterRepo::list(&db, &conversation_id)
+        .await
+        .unwrap_or_default();
     let mut multi_char_names: Vec<String> = Vec::new();
     let mut multi_char_pairs: Vec<(String, String)> = Vec::new();
     if let Some(char_id) = conv_character_id.clone() {
@@ -119,24 +126,30 @@ pub async fn send_message(
 
     // Background: embed user message for vector RAG
     spawn_embed_message(
-        db.clone(), app.clone(),
-        user_msg_id.clone(), conversation_id.clone(), content.clone(),
+        db.clone(),
+        app.clone(),
+        user_msg_id.clone(),
+        conversation_id.clone(),
+        content.clone(),
         conv_character_id.clone(),
     );
 
     let gen_params = GenerationParams {
-        max_tokens: provider_config.config
+        max_tokens: provider_config
+            .config
             .get("max_tokens")
             .and_then(|v| v.as_u64())
             .unwrap_or(2048) as u32,
-        temperature: provider_config.config
+        temperature: provider_config
+            .config
             .get("temperature")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.8) as f32,
         ..Default::default()
     };
 
-    let max_context = provider_config.config
+    let max_context = provider_config
+        .config
         .get("context_length")
         .and_then(|v| v.as_u64())
         .unwrap_or(16384) as usize;
@@ -148,13 +161,18 @@ pub async fn send_message(
     };
 
     let (messages, context_stats) = build_prompt(
-        &db, &conversation_id, &user_msg_id,
-        system_prompt.as_deref(), post_history_instructions.as_deref(),
+        &db,
+        &conversation_id,
+        &user_msg_id,
+        system_prompt.as_deref(),
+        post_history_instructions.as_deref(),
         &context_budget,
-    ).await?;
+    )
+    .await?;
     debug!(
         "[send_message] prompt built with {} messages, context stats: {:?}",
-        messages.len(), context_stats
+        messages.len(),
+        context_stats
     );
 
     // 3. Provider + model already resolved above (needed for context budget)
@@ -168,12 +186,16 @@ pub async fn send_message(
         "",
         Some(&user_msg_id),
         None,
-    ).await?;
+    )
+    .await?;
     let assistant_msg_id = assistant_msg.id.id.to_raw();
 
     // 5. Stream or generate the response
     let use_streaming = streaming.unwrap_or(true);
-    debug!("[send_message] streaming={}, model={}", use_streaming, model_id);
+    debug!(
+        "[send_message] streaming={}, model={}",
+        use_streaming, model_id
+    );
 
     if use_streaming {
         // --- Streaming path ---
@@ -197,17 +219,22 @@ pub async fn send_message(
         let stream_images = images.clone();
         let retry_images = stream_images.clone();
         let gen_task = tokio::spawn(async move {
-            if let Err(e) = provider.generate_stream(
-                &model_id,
-                &stream_messages,
-                &stream_images,
-                &gen_params,
-                tx.clone(),
-            ).await {
+            if let Err(e) = provider
+                .generate_stream(
+                    &model_id,
+                    &stream_messages,
+                    &stream_images,
+                    &gen_params,
+                    tx.clone(),
+                )
+                .await
+            {
                 error!("Stream generation error: {}", e);
                 // Send error through channel so frontend gets notified
                 // instead of isStreaming hanging forever
-                let _ = tx.send(StreamChunk::Error(format!("Stream failed: {}", e))).await;
+                let _ = tx
+                    .send(StreamChunk::Error(format!("Stream failed: {}", e)))
+                    .await;
             }
         });
 
@@ -220,11 +247,14 @@ pub async fn send_message(
         // the stream completes normally.
         let reasoning_acc = Arc::new(std::sync::Mutex::new(String::new()));
         let active_gens = state.read().await.active_generations.clone();
-        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
-            abort: gen_task.abort_handle(),
-            partial: Some(partial.clone()),
-            assistant_message_id: assistant_msg_id.clone(),
-        });
+        active_gens.lock().await.insert(
+            conversation_id.clone(),
+            crate::GenerationHandle {
+                abort: gen_task.abort_handle(),
+                partial: Some(partial.clone()),
+                assistant_message_id: assistant_msg_id.clone(),
+            },
+        );
 
         // Forward stream chunks as Tauri events, saving the response, handling
         // multi-character attribution, etc. — shared with `retry_failed_message`
@@ -273,14 +303,19 @@ pub async fn send_message(
         let messages_gen = messages.clone();
         let images_gen = images.clone();
         let gen_task = tokio::spawn(async move {
-            provider.generate(&model_id_gen, &messages_gen, &images_gen, &gen_params).await
+            provider
+                .generate(&model_id_gen, &messages_gen, &images_gen, &gen_params)
+                .await
         });
         let active_gens = state.read().await.active_generations.clone();
-        active_gens.lock().await.insert(conversation_id.clone(), crate::GenerationHandle {
-            abort: gen_task.abort_handle(),
-            partial: None,
-            assistant_message_id: assist_id.clone(),
-        });
+        active_gens.lock().await.insert(
+            conversation_id.clone(),
+            crate::GenerationHandle {
+                abort: gen_task.abort_handle(),
+                partial: None,
+                assistant_message_id: assist_id.clone(),
+            },
+        );
 
         let result = gen_task.await;
         active_gens.lock().await.remove(&conversation_id);
@@ -292,8 +327,11 @@ pub async fn send_message(
 
                 // Background: embed assistant message for vector RAG
                 spawn_embed_message(
-                    db_for_save.clone(), app.clone(),
-                    assist_id.clone(), conv_id.clone(), full_text.clone(),
+                    db_for_save.clone(),
+                    app.clone(),
+                    assist_id.clone(),
+                    conv_id.clone(),
+                    full_text.clone(),
                     conv_character_id.clone(),
                 );
 
@@ -301,25 +339,37 @@ pub async fn send_message(
                 // NPC detection internally) — same as the streaming branch
                 // above, so non-streaming responses update the scene bar too.
                 spawn_scene_extraction(
-                    db_for_save.clone(), app.clone(), conv_id.clone(), assist_id.clone(),
+                    db_for_save.clone(),
+                    app.clone(),
+                    conv_id.clone(),
+                    assist_id.clone(),
                     full_text.clone(),
                 );
 
                 // Emit as a single 'done' event
-                let _ = app.emit("chat-stream", StreamEvent {
-                    event_type: "done".to_string(),
-                    content: full_text,
-                    message_id: assist_id,
-                });
+                let _ = app.emit(
+                    "chat-stream",
+                    StreamEvent {
+                        event_type: "done".to_string(),
+                        content: full_text,
+                        message_id: assist_id,
+                    },
+                );
 
-                info!("Non-streaming response completed for conversation {}", conv_id);
+                info!(
+                    "Non-streaming response completed for conversation {}",
+                    conv_id
+                );
             }
             Ok(Err(e)) => {
-                let _ = app.emit("chat-stream", StreamEvent {
-                    event_type: "error".to_string(),
-                    content: e.to_string(),
-                    message_id: assist_id,
-                });
+                let _ = app.emit(
+                    "chat-stream",
+                    StreamEvent {
+                        event_type: "error".to_string(),
+                        content: e.to_string(),
+                        message_id: assist_id,
+                    },
+                );
             }
             Err(join_err) if join_err.is_cancelled() => {
                 // cancel_generation already aborted the task and emitted the
@@ -327,11 +377,14 @@ pub async fn send_message(
             }
             Err(join_err) => {
                 error!("Non-streaming generation task panicked: {}", join_err);
-                let _ = app.emit("chat-stream", StreamEvent {
-                    event_type: "error".to_string(),
-                    content: "Generation task failed unexpectedly".to_string(),
-                    message_id: assist_id,
-                });
+                let _ = app.emit(
+                    "chat-stream",
+                    StreamEvent {
+                        event_type: "error".to_string(),
+                        content: "Generation task failed unexpectedly".to_string(),
+                        message_id: assist_id,
+                    },
+                );
             }
         }
 

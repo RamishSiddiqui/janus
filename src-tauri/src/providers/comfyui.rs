@@ -136,7 +136,11 @@ fn substitute_string(s: &str, ctx: &ComfyWorkflowContext) -> Option<serde_json::
                 result = result.replace(&token, filename);
             }
         }
-        return if result != s { Some(serde_json::Value::String(result)) } else { None };
+        return if result != s {
+            Some(serde_json::Value::String(result))
+        } else {
+            None
+        };
     }
 
     if s.contains("{{POSITIVE_PROMPT}}") || s.contains("{{NEGATIVE_PROMPT}}") {
@@ -172,7 +176,9 @@ async fn upload_image(
     let part = multipart::Part::bytes(bytes)
         .file_name(filename.clone())
         .mime_str("image/png")
-        .map_err(|e| MythicError::Provider(format!("Failed to prepare upload for {}: {}", filename, e)))?;
+        .map_err(|e| {
+            MythicError::Provider(format!("Failed to prepare upload for {}: {}", filename, e))
+        })?;
     let form = multipart::Form::new()
         .part("image", part)
         .text("type", "input")
@@ -188,17 +194,18 @@ async fn upload_image(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(MythicError::Provider(format!("ComfyUI rejected the image upload ({}): {}", status, body)));
+        return Err(MythicError::Provider(format!(
+            "ComfyUI rejected the image upload ({}): {}",
+            status, body
+        )));
     }
 
-    let json: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| MythicError::Provider(format!("Failed to parse ComfyUI upload response: {}", e)))?;
-    json["name"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| MythicError::Provider("ComfyUI's upload response had no filename".to_string()))
+    let json: serde_json::Value = resp.json().await.map_err(|e| {
+        MythicError::Provider(format!("Failed to parse ComfyUI upload response: {}", e))
+    })?;
+    json["name"].as_str().map(|s| s.to_string()).ok_or_else(|| {
+        MythicError::Provider("ComfyUI's upload response had no filename".to_string())
+    })
 }
 
 async fn queue_prompt(
@@ -217,17 +224,25 @@ async fn queue_prompt(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(MythicError::Provider(format!("ComfyUI rejected the workflow ({}): {}", status, body)));
+        return Err(MythicError::Provider(format!(
+            "ComfyUI rejected the workflow ({}): {}",
+            status, body
+        )));
     }
 
-    let json: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| MythicError::Provider(format!("Failed to parse ComfyUI queue response: {}", e)))?;
-    json["prompt_id"].as_str().map(|s| s.to_string()).ok_or_else(|| {
-        let node_errors = json.get("node_errors").cloned().unwrap_or_default();
-        MythicError::Provider(format!("ComfyUI did not return a prompt_id (node_errors: {})", node_errors))
-    })
+    let json: serde_json::Value = resp.json().await.map_err(|e| {
+        MythicError::Provider(format!("Failed to parse ComfyUI queue response: {}", e))
+    })?;
+    json["prompt_id"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            let node_errors = json.get("node_errors").cloned().unwrap_or_default();
+            MythicError::Provider(format!(
+                "ComfyUI did not return a prompt_id (node_errors: {})",
+                node_errors
+            ))
+        })
 }
 
 /// Polls `/history/{prompt_id}` until the job completes (successfully or
@@ -245,7 +260,9 @@ async fn poll_and_fetch(
             return Err(MythicError::Provider("Generation cancelled".to_string()));
         }
         if started.elapsed() > COMFYUI_MAX_WAIT {
-            return Err(MythicError::Provider("ComfyUI generation timed out".to_string()));
+            return Err(MythicError::Provider(
+                "ComfyUI generation timed out".to_string(),
+            ));
         }
 
         tokio::time::sleep(COMFYUI_POLL_INTERVAL).await;
@@ -259,25 +276,32 @@ async fn poll_and_fetch(
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            warn!("[comfyui] history check for {} returned {}: {} — retrying", prompt_id, status, body);
+            warn!(
+                "[comfyui] history check for {} returned {}: {} — retrying",
+                prompt_id, status, body
+            );
             continue;
         }
 
-        let history: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| MythicError::Provider(format!("Failed to parse ComfyUI history response: {}", e)))?;
+        let history: serde_json::Value = resp.json().await.map_err(|e| {
+            MythicError::Provider(format!("Failed to parse ComfyUI history response: {}", e))
+        })?;
 
         // Keyed by prompt_id; an empty `{}` (missing key) means still queued/running.
-        let Some(entry) = history.get(prompt_id) else { continue };
+        let Some(entry) = history.get(prompt_id) else {
+            continue;
+        };
 
         let image_ref = entry
             .get("outputs")
             .and_then(|o| o.as_object())
             .and_then(|outputs| {
-                outputs
-                    .values()
-                    .find_map(|node_output| node_output.get("images").and_then(|imgs| imgs.as_array()).and_then(|imgs| imgs.first()))
+                outputs.values().find_map(|node_output| {
+                    node_output
+                        .get("images")
+                        .and_then(|imgs| imgs.as_array())
+                        .and_then(|imgs| imgs.first())
+                })
             });
 
         let Some(image_ref) = image_ref else {
@@ -297,25 +321,37 @@ async fn poll_and_fetch(
             continue;
         };
 
-        let filename = image_ref["filename"].as_str().unwrap_or_default().to_string();
-        let subfolder = image_ref["subfolder"].as_str().unwrap_or_default().to_string();
+        let filename = image_ref["filename"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let subfolder = image_ref["subfolder"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         let img_type = image_ref["type"].as_str().unwrap_or("output").to_string();
 
         let view_resp = http_client
             .get(format!("{}/view", base_url))
-            .query(&[("filename", &filename), ("subfolder", &subfolder), ("type", &img_type)])
+            .query(&[
+                ("filename", &filename),
+                ("subfolder", &subfolder),
+                ("type", &img_type),
+            ])
             .send()
             .await
             .map_err(|e| MythicError::Provider(format!("ComfyUI image fetch failed: {}", e)))?;
 
         if !view_resp.status().is_success() {
-            return Err(MythicError::Provider(format!("ComfyUI image fetch failed ({})", view_resp.status())));
+            return Err(MythicError::Provider(format!(
+                "ComfyUI image fetch failed ({})",
+                view_resp.status()
+            )));
         }
 
-        let bytes = view_resp
-            .bytes()
-            .await
-            .map_err(|e| MythicError::Provider(format!("Failed to read the image ComfyUI returned: {}", e)))?;
+        let bytes = view_resp.bytes().await.map_err(|e| {
+            MythicError::Provider(format!("Failed to read the image ComfyUI returned: {}", e))
+        })?;
         return Ok(bytes.to_vec());
     }
 }
@@ -333,15 +369,21 @@ pub async fn generate_via_comfyui(
     app_data_dir: &Path,
     cancel_flag: &Arc<AtomicBool>,
 ) -> Result<(Vec<u8>, serde_json::Value), MythicError> {
-    let base_url = provider.config["base_url"].as_str().unwrap_or("http://localhost:8188");
+    let base_url = provider.config["base_url"]
+        .as_str()
+        .unwrap_or("http://localhost:8188");
     let workflow_str = provider.config["workflow"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| {
             MythicError::Validation("This ComfyUI provider has no workflow configured. Add one in Settings → Providers.".to_string())
         })?;
-    let mut workflow: serde_json::Value = serde_json::from_str(workflow_str)
-        .map_err(|e| MythicError::Validation(format!("This ComfyUI provider's workflow isn't valid JSON: {}", e)))?;
+    let mut workflow: serde_json::Value = serde_json::from_str(workflow_str).map_err(|e| {
+        MythicError::Validation(format!(
+            "This ComfyUI provider's workflow isn't valid JSON: {}",
+            e
+        ))
+    })?;
 
     let required = find_max_character_image_index(&workflow);
     if required as usize > character_images.len() {
@@ -350,17 +392,25 @@ pub async fn generate_via_comfyui(
             required,
             if required == 1 { "" } else { "s" },
             character_images.len(),
-            if character_images.len() == 1 { "was" } else { "were" },
+            if character_images.len() == 1 {
+                "was"
+            } else {
+                "were"
+            },
         )));
     }
 
     let mut character_image_filenames = Vec::with_capacity(character_images.len());
     for char_image in character_images {
         let abs_path = crate::error::resolve_within(app_data_dir, &char_image.relative_path)?;
-        let bytes = tokio::fs::read(&abs_path)
-            .await
-            .map_err(|e| MythicError::Provider(format!("Failed to read {}'s portrait: {}", char_image.character_name, e)))?;
-        let uploaded_name = upload_image(http_client, base_url, &char_image.character_id, bytes).await?;
+        let bytes = tokio::fs::read(&abs_path).await.map_err(|e| {
+            MythicError::Provider(format!(
+                "Failed to read {}'s portrait: {}",
+                char_image.character_name, e
+            ))
+        })?;
+        let uploaded_name =
+            upload_image(http_client, base_url, &char_image.character_id, bytes).await?;
         character_image_filenames.push(uploaded_name);
     }
 
@@ -422,7 +472,10 @@ mod tests {
 
     #[test]
     fn substitutes_character_images_by_index() {
-        let images = vec!["janus_char_a.png".to_string(), "janus_char_b.png".to_string()];
+        let images = vec![
+            "janus_char_a.png".to_string(),
+            "janus_char_b.png".to_string(),
+        ];
         let mut wf = serde_json::json!({
             "10": { "inputs": { "image": "{{CHARACTER_IMAGE_1}}" } },
             "11": { "inputs": { "image": "{{CHARACTER_IMAGE_2}}" } },

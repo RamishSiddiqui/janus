@@ -9,10 +9,10 @@ use crate::context::npc::profile_generator;
 use crate::db::characters::CharacterRepo;
 use crate::db::lorebook::LorebookRepo;
 use crate::db::memories::MemoryRepo;
-use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::error::MythicError;
 use crate::models::character::CharacterData;
 use crate::models::lorebook::LorebookEntry;
+use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::AppState;
 
 /// Lists all lorebook entries for a character (plus global entries).
@@ -89,8 +89,16 @@ pub async fn update_lorebook_entry(
 ) -> Result<LorebookEntry, MythicError> {
     let state_guard = state.read().await;
     LorebookRepo::update(
-        &state_guard.db, &id, &name, keys, &content, always_active, priority, insertion_order,
-    ).await
+        &state_guard.db,
+        &id,
+        &name,
+        keys,
+        &content,
+        always_active,
+        priority,
+        insertion_order,
+    )
+    .await
 }
 
 /// Imports a character's embedded Character Card V2 `character_book` (if
@@ -145,26 +153,53 @@ pub async fn generate_character_lorebook(
     let model_id = resolve_model_id(None, &provider_config, &db).await?;
 
     let character = CharacterRepo::get(&db, &character_id).await?;
-    let description = character.data.get("description").and_then(|v| v.as_str()).unwrap_or("");
-    let personality = character.data.get("personality").and_then(|v| v.as_str()).unwrap_or("");
-    let scenario = character.data.get("scenario").and_then(|v| v.as_str()).unwrap_or("");
+    let description = character
+        .data
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let personality = character
+        .data
+        .get("personality")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let scenario = character
+        .data
+        .get("scenario")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
-    let known_facts: Vec<String> = MemoryRepo::list_for_character_in_conv(&db, &character_id, &conversation_id)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|m| m.content)
-        .collect();
+    let known_facts: Vec<String> =
+        MemoryRepo::list_for_character_in_conv(&db, &character_id, &conversation_id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|m| m.content)
+            .collect();
 
     let recent_dialogue = gather_character_dialogue(&db, &conversation_id, &character.name).await;
 
-    let existing = LorebookRepo::list(&db, &character_id).await.unwrap_or_default();
-    let existing_names: Vec<String> = existing.iter().map(|e| e.name.clone().unwrap_or_default()).filter(|n| !n.is_empty()).collect();
+    let existing = LorebookRepo::list(&db, &character_id)
+        .await
+        .unwrap_or_default();
+    let existing_names: Vec<String> = existing
+        .iter()
+        .map(|e| e.name.clone().unwrap_or_default())
+        .filter(|n| !n.is_empty())
+        .collect();
 
     let generated = profile_generator::generate_lorebook_entries(
-        &provider, &model_id, &character.name, description, personality, scenario,
-        &known_facts, &recent_dialogue, &existing_names,
-    ).await?;
+        &provider,
+        &model_id,
+        &character.name,
+        description,
+        personality,
+        scenario,
+        &known_facts,
+        &recent_dialogue,
+        &existing_names,
+    )
+    .await?;
 
     let mut created = Vec::with_capacity(generated.len());
     for entry in generated {
@@ -172,15 +207,34 @@ pub async fn generate_character_lorebook(
             continue;
         }
         let new_entry = LorebookRepo::create(
-            &db, Some(&character_id), &entry.name, entry.keys.clone(), &entry.content, entry.always_active,
-        ).await?;
+            &db,
+            Some(&character_id),
+            &entry.name,
+            entry.keys.clone(),
+            &entry.content,
+            entry.always_active,
+        )
+        .await?;
         let updated = LorebookRepo::update(
-            &db, &new_entry.id.id.to_raw(), &entry.name, entry.keys, &entry.content,
-            entry.always_active, entry.priority, 100,
-        ).await?;
+            &db,
+            &new_entry.id.id.to_raw(),
+            &entry.name,
+            entry.keys,
+            &entry.content,
+            entry.always_active,
+            entry.priority,
+            100,
+        )
+        .await?;
         created.push(updated);
     }
 
-    info!("Generated {} lorebook entries for character '{}' ({}) from conversation {}", created.len(), character.name, character_id, conversation_id);
+    info!(
+        "Generated {} lorebook entries for character '{}' ({}) from conversation {}",
+        created.len(),
+        character.name,
+        character_id,
+        conversation_id
+    );
     Ok(created)
 }

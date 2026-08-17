@@ -4,17 +4,16 @@
 //! cast memory graph).
 
 use std::sync::Arc;
-use surrealdb::Surreal;
+
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::commands::scenes::generate_via_generic_provider;
-use crate::providers::ai_horde::generate_via_ai_horde;
 use crate::context::npc::pipeline::run_npc_detection;
 use crate::context::npc::profile_generator;
-use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::db::characters::CharacterRepo;
 use crate::db::conversation_characters::ConversationCharacterRepo;
 use crate::db::conversations::ConversationRepo;
@@ -26,6 +25,8 @@ use crate::error::{truncate_at_char_boundary, MythicError};
 use crate::models::character::Character;
 use crate::models::memory::MemoryGraph;
 use crate::models::provider::{ImageGenParams, ProviderAdapter};
+use crate::providers::ai_horde::generate_via_ai_horde;
+use crate::providers::resolve::{create_rig_provider, get_default_llm_provider, resolve_model_id};
 use crate::providers::unified::RigProvider;
 use crate::AppState;
 
@@ -75,7 +76,10 @@ pub async fn promote_npc_to_gallery(
 ) -> Result<Character, MythicError> {
     let state = state.read().await;
     let character = CharacterRepo::set_origin(&state.db, &character_id, "gallery").await?;
-    info!("Promoted NPC to gallery: {} ({})", character.name, character_id);
+    info!(
+        "Promoted NPC to gallery: {} ({})",
+        character.name, character_id
+    );
     Ok(character)
 }
 
@@ -99,10 +103,20 @@ pub async fn confirm_npc(
     // Best-effort: resolve any still-pending candidate row too, so a later
     // periodic detection pass doesn't redundantly regenerate her profile if
     // pass_count happens to independently reach the threshold anyway.
-    if let Err(e) = NpcCandidateRepo::mark_created_by_character(&state.db, &conversation_id, &character_id).await {
-        tracing::debug!("[confirm_npc] Failed to resolve candidate row for {}: {}", character_id, e);
+    if let Err(e) =
+        NpcCandidateRepo::mark_created_by_character(&state.db, &conversation_id, &character_id)
+            .await
+    {
+        tracing::debug!(
+            "[confirm_npc] Failed to resolve candidate row for {}: {}",
+            character_id,
+            e
+        );
     }
-    info!("Manually confirmed NPC {} in conversation {}", character_id, conversation_id);
+    info!(
+        "Manually confirmed NPC {} in conversation {}",
+        character_id, conversation_id
+    );
     Ok(())
 }
 
@@ -164,7 +178,9 @@ async fn linked_conversation_ids(
         id: surrealdb::sql::Thing,
     }
     if let Ok(mut result) = db
-        .query("SELECT id FROM conversations WHERE character_id = type::thing('characters', $char_id)")
+        .query(
+            "SELECT id FROM conversations WHERE character_id = type::thing('characters', $char_id)",
+        )
         .bind(("char_id", character_id.to_string()))
         .await
     {
@@ -207,7 +223,13 @@ pub async fn refresh_character_profile(
     let model_id = resolve_model_id(None, &provider_config, &db).await?;
 
     perform_profile_refresh(
-        &db, &character_id, &conversation_id, None, &provider, &model_id, system_prompt.as_deref(),
+        &db,
+        &character_id,
+        &conversation_id,
+        None,
+        &provider,
+        &model_id,
+        system_prompt.as_deref(),
     )
     .await
 }
@@ -247,12 +269,16 @@ pub async fn gather_character_dialogue(
         .query(
             "SELECT role, content, character_name, created_at FROM messages \
              WHERE conversation_id = type::thing('conversations', $conv_id) \
-             ORDER BY created_at DESC LIMIT 200"
+             ORDER BY created_at DESC LIMIT 200",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .await;
     if let Err(ref e) = query_result {
-        tracing::warn!("[gather_character_dialogue] dialogue query failed for conversation {}: {}", conversation_id, e);
+        tracing::warn!(
+            "[gather_character_dialogue] dialogue query failed for conversation {}: {}",
+            conversation_id,
+            e
+        );
     }
     if let Ok(mut result) = query_result {
         let take_result = result.take::<Vec<MsgRow>>(0);
@@ -260,12 +286,19 @@ pub async fn gather_character_dialogue(
             tracing::warn!("[gather_character_dialogue] dialogue row deserialize failed for conversation {}: {}", conversation_id, e);
         }
         if let Ok(all_rows) = take_result {
-            info!("[gather_character_dialogue] dialogue query returned {} row(s) for conversation {}", all_rows.len(), conversation_id);
+            info!(
+                "[gather_character_dialogue] dialogue query returned {} row(s) for conversation {}",
+                all_rows.len(),
+                conversation_id
+            );
             let mut relevant: Vec<&MsgRow> = all_rows
                 .iter()
                 .filter(|r| {
                     r.content.to_lowercase().contains(&name_lower)
-                        || r.character_name.as_deref().map(|n| n.eq_ignore_ascii_case(character_name)).unwrap_or(false)
+                        || r.character_name
+                            .as_deref()
+                            .map(|n| n.eq_ignore_ascii_case(character_name))
+                            .unwrap_or(false)
                 })
                 .take(20)
                 .collect();
@@ -275,7 +308,10 @@ pub async fn gather_character_dialogue(
             let mut rows: Vec<&MsgRow> = relevant;
             rows.reverse();
             for row in rows {
-                let speaker = row.character_name.clone().unwrap_or_else(|| row.role.clone());
+                let speaker = row
+                    .character_name
+                    .clone()
+                    .unwrap_or_else(|| row.role.clone());
                 dialogue.push_str(&format!("{}: {}\n\n", speaker, row.content));
             }
         }
@@ -301,12 +337,13 @@ pub async fn perform_profile_refresh(
     // extracted conversation memory (is_canon defaults to false) — exactly
     // where a detail like "assigned a stillbirth" would actually live,
     // leaving refreshes with almost nothing to work with.
-    let known_facts: Vec<String> = MemoryRepo::list_for_character_in_conv(db, character_id, conversation_id)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|m| m.content)
-        .collect();
+    let known_facts: Vec<String> =
+        MemoryRepo::list_for_character_in_conv(db, character_id, conversation_id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|m| m.content)
+            .collect();
 
     let recent_dialogue = match recent_dialogue_override {
         Some(text) => text.to_string(),
@@ -319,13 +356,20 @@ pub async fn perform_profile_refresh(
         truncate_at_char_boundary(&recent_dialogue, 300),
     );
 
-    let cast = ConversationCharacterRepo::list(db, conversation_id).await.unwrap_or_default();
+    let cast = ConversationCharacterRepo::list(db, conversation_id)
+        .await
+        .unwrap_or_default();
     let mut existing_cast: Vec<(String, String)> = Vec::new();
     if let Ok(conv) = ConversationRepo::get(db, conversation_id).await {
         if let Some(pc_id) = conv.character_id {
             if pc_id.id.to_raw() != character_id {
                 if let Ok(pc) = CharacterRepo::get(db, &pc_id.id.to_raw()).await {
-                    let desc = pc.data.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let desc = pc
+                        .data
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     existing_cast.push((pc.name, desc));
                 }
             }
@@ -337,21 +381,45 @@ pub async fn perform_profile_refresh(
             continue;
         }
         if let Ok(c) = CharacterRepo::get(db, &member_id).await {
-            let desc = c.data.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let desc = c
+                .data
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             existing_cast.push((c.name, desc));
         }
     }
 
-    let current_description = character.data.get("description").and_then(|v| v.as_str()).unwrap_or("");
-    let current_personality = character.data.get("personality").and_then(|v| v.as_str()).unwrap_or("");
-    let current_scenario = character.data.get("scenario").and_then(|v| v.as_str()).unwrap_or("");
+    let current_description = character
+        .data
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let current_personality = character
+        .data
+        .get("personality")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let current_scenario = character
+        .data
+        .get("scenario")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     let refined = profile_generator::refine_profile(
-        provider, model_id, &character.name,
-        current_description, current_personality, current_scenario,
-        &known_facts, &recent_dialogue, &existing_cast,
+        provider,
+        model_id,
+        &character.name,
+        current_description,
+        current_personality,
+        current_scenario,
+        &known_facts,
+        &recent_dialogue,
+        &existing_cast,
         system_prompt_override,
-    ).await?;
+    )
+    .await?;
 
     let linked = linked_conversation_ids(db, character_id).await;
     let is_shared = linked.iter().any(|id| id != conversation_id);
@@ -364,24 +432,51 @@ pub async fn perform_profile_refresh(
         let content = format!(
             "In this story: {} {}",
             refined.description, refined.personality
-        ).trim().to_string();
-        let _ = MemoryRepo::create(db, Some(character_id), Some(conversation_id), &content, "auto").await;
+        )
+        .trim()
+        .to_string();
+        let _ = MemoryRepo::create(
+            db,
+            Some(character_id),
+            Some(conversation_id),
+            &content,
+            "auto",
+        )
+        .await;
         info!("Character '{}' is shared across conversations — saved profile refresh as a memory instead of editing the card", character.name);
-        return Ok(ProfileRefreshResult { character, scope: "memory".to_string() });
+        return Ok(ProfileRefreshResult {
+            character,
+            scope: "memory".to_string(),
+        });
     }
 
     let mut merged_data = character.data.clone();
     if let Some(obj) = merged_data.as_object_mut() {
-        obj.insert("description".to_string(), serde_json::Value::String(refined.description));
-        obj.insert("personality".to_string(), serde_json::Value::String(refined.personality));
-        obj.insert("scenario".to_string(), serde_json::Value::String(refined.scenario));
+        obj.insert(
+            "description".to_string(),
+            serde_json::Value::String(refined.description),
+        );
+        obj.insert(
+            "personality".to_string(),
+            serde_json::Value::String(refined.personality),
+        );
+        obj.insert(
+            "scenario".to_string(),
+            serde_json::Value::String(refined.scenario),
+        );
     }
 
     CharacterRepo::update(db, character_id, None, Some(merged_data), None).await?;
     let updated = CharacterRepo::flag_needs_review(db, character_id).await?;
-    info!("Refreshed profile for character '{}' ({}) from conversation {}", updated.name, character_id, conversation_id);
+    info!(
+        "Refreshed profile for character '{}' ({}) from conversation {}",
+        updated.name, character_id, conversation_id
+    );
 
-    Ok(ProfileRefreshResult { character: updated, scope: "character".to_string() })
+    Ok(ProfileRefreshResult {
+        character: updated,
+        scope: "character".to_string(),
+    })
 }
 
 /// Generates a portrait for an NPC via the configured image provider,
@@ -406,13 +501,21 @@ pub async fn generate_npc_portrait(
         return Ok(character);
     };
 
-    let description = character.data.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let description = character
+        .data
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let truncated_desc = truncate_at_char_boundary(description, 400);
     // A concealed identity means the story is deliberately withholding this
     // character's face — a normal clear portrait would reveal/fabricate the
     // exact thing being withheld. Frame the prompt around concealment
     // instead of a clear headshot.
-    let identity_concealed = character.data.get("identity_concealed").and_then(|v| v.as_bool()).unwrap_or(false);
+    let identity_concealed = character
+        .data
+        .get("identity_concealed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let prompt = if identity_concealed {
         format!(
             "a mysterious hooded or shadowed figure, face obscured or turned away, concealed identity, {}, atmospheric, no visible face",
@@ -442,7 +545,8 @@ pub async fn generate_npc_portrait(
     let relative_path = format!("portraits/{}", filename);
 
     let image_bytes = if provider.adapter == ProviderAdapter::AiHorde {
-        let preset = ImagePresetRepo::resolve_for_conversation(&state_guard.db, &conversation_id).await?;
+        let preset =
+            ImagePresetRepo::resolve_for_conversation(&state_guard.db, &conversation_id).await?;
         // Namespaced key so this never collides with the conversation's own
         // scene-generation progress UI / single-flight lock — both are keyed
         // by whatever string is passed as `conversation_id` here.
@@ -459,14 +563,29 @@ pub async fn generate_npc_portrait(
         }
 
         let result = generate_via_ai_horde(
-            &app, &portrait_key, &state_guard.http_client, &provider, &params,
-            preset.as_ref(), None, None, None, &cancel_flag,
-        ).await;
+            &app,
+            &portrait_key,
+            &state_guard.http_client,
+            &provider,
+            &params,
+            preset.as_ref(),
+            None,
+            None,
+            None,
+            &cancel_flag,
+        )
+        .await;
 
-        state_guard.active_scene_generations.lock().await.remove(&portrait_key);
+        state_guard
+            .active_scene_generations
+            .lock()
+            .await
+            .remove(&portrait_key);
         result?.0
     } else {
-        generate_via_generic_provider(&state_guard.http_client, &provider, &params).await?.0
+        generate_via_generic_provider(&state_guard.http_client, &provider, &params)
+            .await?
+            .0
     };
 
     tokio::fs::write(&file_path, &image_bytes).await?;
@@ -474,9 +593,18 @@ pub async fn generate_npc_portrait(
     // A premature/wrong reveal is worse than an ordinary bad scene image —
     // concealed-identity portraits always require manual review, regardless
     // of the auto-approve setting.
-    let status = if identity_concealed || !auto_approve { "pending_review" } else { "approved" };
-    let updated = CharacterRepo::set_portrait(&state_guard.db, &character_id, Some(&relative_path), status).await?;
-    info!("Generated NPC portrait for {} (status={})", updated.name, status);
+    let status = if identity_concealed || !auto_approve {
+        "pending_review"
+    } else {
+        "approved"
+    };
+    let updated =
+        CharacterRepo::set_portrait(&state_guard.db, &character_id, Some(&relative_path), status)
+            .await?;
+    info!(
+        "Generated NPC portrait for {} (status={})",
+        updated.name, status
+    );
     Ok(updated)
 }
 
@@ -490,7 +618,13 @@ pub async fn approve_npc_portrait(
 ) -> Result<Character, MythicError> {
     let state = state.read().await;
     let character = CharacterRepo::get(&state.db, &character_id).await?;
-    CharacterRepo::set_portrait(&state.db, &character_id, character.avatar_path.as_deref(), "approved").await
+    CharacterRepo::set_portrait(
+        &state.db,
+        &character_id,
+        character.avatar_path.as_deref(),
+        "approved",
+    )
+    .await
 }
 
 /// Rejects a pending NPC portrait — clears the avatar entirely (back to the

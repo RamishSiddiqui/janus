@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::npc_candidate::{NpcCandidate, NpcDetectionState};
@@ -12,7 +12,10 @@ impl NpcCandidateRepo {
     /// record id (one row per conversation, mirrors `character_states`'s
     /// unique-index-per-key convention but as a single-part key here since
     /// there's only one dimension to key on).
-    async fn get_or_init_state(db: &Surreal<Db>, conversation_id: &str) -> Result<NpcDetectionState, MythicError> {
+    async fn get_or_init_state(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+    ) -> Result<NpcDetectionState, MythicError> {
         let mut result = db
             .query(
                 "UPSERT type::thing('npc_detection_state', $conv_id) \
@@ -89,7 +92,11 @@ impl NpcCandidateRepo {
         let existing: Option<NpcCandidate> = existing_result.take(0)?;
 
         if let Some(existing) = existing {
-            let new_count = if increments { existing.pass_count + 1 } else { existing.pass_count };
+            let new_count = if increments {
+                existing.pass_count + 1
+            } else {
+                existing.pass_count
+            };
             let mut result = db
                 .query(
                     "UPDATE type::thing('npc_candidates', $id) SET pass_count = $count, tag = $tag, last_seen_at = time::now()",
@@ -99,7 +106,8 @@ impl NpcCandidateRepo {
                 .bind(("tag", tag.to_string()))
                 .await?;
             let updated: Option<NpcCandidate> = result.take(0)?;
-            return updated.ok_or_else(|| MythicError::DatabaseOp("Failed to update npc_candidate".into()));
+            return updated
+                .ok_or_else(|| MythicError::DatabaseOp("Failed to update npc_candidate".into()));
         }
 
         let mut result = db
@@ -126,7 +134,10 @@ impl NpcCandidateRepo {
     /// All candidate display names ever seen for this conversation
     /// (regardless of status) — feeds the detector's "never rediscover a
     /// name" exclusion list, alongside the conversation's actual cast names.
-    pub async fn list_known_names(db: &Surreal<Db>, conversation_id: &str) -> Result<Vec<String>, MythicError> {
+    pub async fn list_known_names(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+    ) -> Result<Vec<String>, MythicError> {
         #[derive(serde::Deserialize)]
         struct NameRow {
             display_name: String,
@@ -141,7 +152,10 @@ impl NpcCandidateRepo {
 
     /// Candidates that have crossed the two-pass debounce threshold and
     /// haven't had a profile generated for them yet.
-    pub async fn get_debounced(db: &Surreal<Db>, conversation_id: &str) -> Result<Vec<NpcCandidate>, MythicError> {
+    pub async fn get_debounced(
+        db: &Surreal<Db>,
+        conversation_id: &str,
+    ) -> Result<Vec<NpcCandidate>, MythicError> {
         let mut result = db
             .query(
                 "SELECT * FROM npc_candidates \
@@ -156,7 +170,11 @@ impl NpcCandidateRepo {
 
     /// Marks a candidate as resolved into a real character row, so it's
     /// never re-generated.
-    pub async fn mark_created(db: &Surreal<Db>, candidate_id: &str, character_id: &str) -> Result<(), MythicError> {
+    pub async fn mark_created(
+        db: &Surreal<Db>,
+        candidate_id: &str,
+        character_id: &str,
+    ) -> Result<(), MythicError> {
         db.query(
             "UPDATE type::thing('npc_candidates', $id) SET \
                 status = 'created', \
@@ -193,7 +211,9 @@ impl NpcCandidateRepo {
         .bind(("char_id", character_id.to_string()))
         .await?
         .check()
-        .map_err(|e| MythicError::DatabaseOp(format!("npc_candidate mark_created_by_character: {}", e)))?;
+        .map_err(|e| {
+            MythicError::DatabaseOp(format!("npc_candidate mark_created_by_character: {}", e))
+        })?;
         Ok(())
     }
 
@@ -202,7 +222,11 @@ impl NpcCandidateRepo {
     /// character's real profile instead of creating a second one. Does NOT
     /// touch `status` — that still only flips to 'created' once Stage 2
     /// actually runs.
-    pub async fn set_placeholder_character(db: &Surreal<Db>, candidate_id: &str, character_id: &str) -> Result<(), MythicError> {
+    pub async fn set_placeholder_character(
+        db: &Surreal<Db>,
+        candidate_id: &str,
+        character_id: &str,
+    ) -> Result<(), MythicError> {
         db.query("UPDATE type::thing('npc_candidates', $id) SET resulting_character_id = type::thing('characters', $char_id)")
             .bind(("id", candidate_id.to_string()))
             .bind(("char_id", character_id.to_string()))

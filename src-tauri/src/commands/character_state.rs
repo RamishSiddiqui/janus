@@ -1,8 +1,8 @@
 //! Character emotional state commands — get and upsert per (character, conversation).
 
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::sync::Arc;
 use surrealdb::sql::Thing;
 use tauri::State;
 use tokio::sync::RwLock;
@@ -16,13 +16,22 @@ use crate::AppState;
 /// The persisted emotional state of a character within one conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CharacterState {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub character_id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub conversation_id: Thing,
     /// 0 = devastated, 50 = neutral, 100 = elated
@@ -44,7 +53,7 @@ pub struct CharacterState {
 #[specta::specta]
 pub async fn get_character_state(
     state: State<'_, Arc<RwLock<AppState>>>,
-    character_id:    String,
+    character_id: String,
     conversation_id: String,
 ) -> Result<Option<CharacterState>, MythicError> {
     let g = state.read().await;
@@ -57,16 +66,16 @@ pub async fn get_character_state(
 #[specta::specta]
 pub async fn upsert_character_state(
     state: State<'_, Arc<RwLock<AppState>>>,
-    character_id:     String,
-    conversation_id:  String,
-    mood:             i32,
-    trust:            i32,
-    arousal:          i32,
+    character_id: String,
+    conversation_id: String,
+    mood: i32,
+    trust: i32,
+    arousal: i32,
     dominant_emotion: String,
-    state_summary:    String,
+    state_summary: String,
 ) -> Result<CharacterState, MythicError> {
-    let mood    = mood.clamp(0, 100);
-    let trust   = trust.clamp(0, 100);
+    let mood = mood.clamp(0, 100);
+    let trust = trust.clamp(0, 100);
     let arousal = arousal.clamp(0, 100);
 
     let g = state.read().await;
@@ -100,5 +109,10 @@ pub async fn set_message_emotional_snapshot(
     states: DynamicJson,
 ) -> Result<(), MythicError> {
     let g = state.read().await;
-    MessageRepo::merge_metadata(&g.db, &message_id, serde_json::json!({ "emotional_states": states.0 })).await
+    MessageRepo::merge_metadata(
+        &g.db,
+        &message_id,
+        serde_json::json!({ "emotional_states": states.0 }),
+    )
+    .await
 }

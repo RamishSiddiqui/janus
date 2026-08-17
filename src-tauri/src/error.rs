@@ -64,7 +64,8 @@ where
                 let retryable = e.to_string().contains("can be retried");
                 if retryable && attempt < 2 {
                     attempt += 1;
-                    tokio::time::sleep(std::time::Duration::from_millis(120 * attempt as u64)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(120 * attempt as u64))
+                        .await;
                     continue;
                 }
                 return Err(e);
@@ -79,7 +80,9 @@ pub fn validate_string_length(field: &str, value: &str, max_len: usize) -> Resul
     if value.len() > max_len {
         Err(MythicError::Validation(format!(
             "{} is too long ({} chars, max {})",
-            field, value.len(), max_len
+            field,
+            value.len(),
+            max_len
         )))
     } else {
         Ok(())
@@ -87,10 +90,17 @@ pub fn validate_string_length(field: &str, value: &str, max_len: usize) -> Resul
 }
 
 /// Validates that a required string field is not empty and not too long.
-pub fn validate_required_string(field: &str, value: &str, max_len: usize) -> Result<(), MythicError> {
+pub fn validate_required_string(
+    field: &str,
+    value: &str,
+    max_len: usize,
+) -> Result<(), MythicError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err(MythicError::Validation(format!("{} cannot be empty", field)));
+        return Err(MythicError::Validation(format!(
+            "{} cannot be empty",
+            field
+        )));
     }
     validate_string_length(field, trimmed, max_len)
 }
@@ -102,7 +112,10 @@ pub fn validate_required_string(field: &str, value: &str, max_len: usize) -> Res
 /// Callers that don't require the target to already exist should still check
 /// `.exists()` afterward; the symlink check only applies once canonicalization
 /// succeeds, which requires the path to exist.
-pub fn resolve_within(base: &std::path::Path, relative: &str) -> Result<std::path::PathBuf, MythicError> {
+pub fn resolve_within(
+    base: &std::path::Path,
+    relative: &str,
+) -> Result<std::path::PathBuf, MythicError> {
     use std::path::Component;
 
     if relative.trim().is_empty() {
@@ -110,19 +123,25 @@ pub fn resolve_within(base: &std::path::Path, relative: &str) -> Result<std::pat
     }
 
     for component in std::path::Path::new(relative).components() {
-        if matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+        if matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        ) {
             return Err(MythicError::Validation(format!(
-                "Invalid path: '{}'", relative
+                "Invalid path: '{}'",
+                relative
             )));
         }
     }
 
     let joined = base.join(relative);
 
-    if let (Ok(canonical_base), Ok(canonical_joined)) = (base.canonicalize(), joined.canonicalize()) {
+    if let (Ok(canonical_base), Ok(canonical_joined)) = (base.canonicalize(), joined.canonicalize())
+    {
         if !canonical_joined.starts_with(&canonical_base) {
             return Err(MythicError::Validation(format!(
-                "Invalid path: '{}'", relative
+                "Invalid path: '{}'",
+                relative
             )));
         }
     }

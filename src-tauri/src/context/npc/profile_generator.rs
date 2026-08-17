@@ -79,7 +79,9 @@ pub async fn generate_profile(
         ..Default::default()
     };
 
-    let raw_output = provider.generate(model_id, &messages, &[], &gen_params).await?;
+    let raw_output = provider
+        .generate(model_id, &messages, &[], &gen_params)
+        .await?;
 
     let cleaned = raw_output
         .trim()
@@ -169,7 +171,11 @@ pub async fn refine_profile(
     let known_facts_list = if known_facts.is_empty() {
         "(none confirmed yet)".to_string()
     } else {
-        known_facts.iter().map(|f| format!("- {}", f)).collect::<Vec<_>>().join("\n")
+        known_facts
+            .iter()
+            .map(|f| format!("- {}", f))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let truncated = truncate_tail_at_char_boundary(recent_dialogue, 6000);
@@ -206,7 +212,9 @@ pub async fn refine_profile(
         ..Default::default()
     };
 
-    let raw_output = provider.generate(model_id, &messages, &[], &gen_params).await?;
+    let raw_output = provider
+        .generate(model_id, &messages, &[], &gen_params)
+        .await?;
 
     let fenced = raw_output
         .trim()
@@ -285,13 +293,21 @@ pub async fn generate_lorebook_entries(
     let known_facts_list = if known_facts.is_empty() {
         "(none confirmed yet)".to_string()
     } else {
-        known_facts.iter().map(|f| format!("- {}", f)).collect::<Vec<_>>().join("\n")
+        known_facts
+            .iter()
+            .map(|f| format!("- {}", f))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let existing_list = if existing_entry_names.is_empty() {
         "(none yet)".to_string()
     } else {
-        existing_entry_names.iter().map(|n| format!("- {}", n)).collect::<Vec<_>>().join("\n")
+        existing_entry_names
+            .iter()
+            .map(|n| format!("- {}", n))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let truncated_dialogue = truncate_tail_at_char_boundary(recent_dialogue, 6000);
@@ -325,7 +341,9 @@ pub async fn generate_lorebook_entries(
         ..Default::default()
     };
 
-    let raw_output = provider.generate(model_id, &messages, &[], &gen_params).await?;
+    let raw_output = provider
+        .generate(model_id, &messages, &[], &gen_params)
+        .await?;
 
     let fenced = raw_output
         .trim()

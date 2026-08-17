@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use surrealdb::Surreal;
+
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::provider::ProviderConfig;
@@ -147,8 +148,9 @@ impl ProviderRepo {
     pub async fn set_default(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         // Get the provider to find its type
         let provider = Self::get(db, id).await?;
-        let ptype = serde_json::to_value(&provider.provider_type)
-            .map_err(|e| MythicError::DatabaseOp(format!("Failed to serialize provider type: {}", e)))?;
+        let ptype = serde_json::to_value(&provider.provider_type).map_err(|e| {
+            MythicError::DatabaseOp(format!("Failed to serialize provider type: {}", e))
+        })?;
         let ptype_str = ptype.as_str().unwrap_or("llm");
 
         // Unset all defaults for this type
@@ -188,11 +190,7 @@ impl ProviderRepo {
         enabled: bool,
     ) -> Result<(), MythicError> {
         // Build a deterministic composite ID from provider_id + model_id
-        let composite_id = format!(
-            "{}_{}",
-            provider_id,
-            model_id.replace(['/', ':', '.'], "_")
-        );
+        let composite_id = format!("{}_{}", provider_id, model_id.replace(['/', ':', '.'], "_"));
 
         // MERGE (not CONTENT) is required here: CONTENT replaces the whole
         // document, so on every toggle *after* the first it would wipe
@@ -258,14 +256,17 @@ impl ProviderRepo {
     pub async fn get_all_enabled_states(
         db: &Surreal<Db>,
     ) -> Result<HashMap<(String, String), (bool, String)>, MythicError> {
-        let mut result = db
-            .query("SELECT * FROM enabled_models")
-            .await?;
+        let mut result = db.query("SELECT * FROM enabled_models").await?;
         let rows: Vec<EnabledModelFull> = result.take(0).unwrap_or_default();
 
         Ok(rows
             .into_iter()
-            .map(|r| ((r.provider_id.id.to_raw(), r.model_id), (r.enabled, r.model_type)))
+            .map(|r| {
+                (
+                    (r.provider_id.id.to_raw(), r.model_id),
+                    (r.enabled, r.model_type),
+                )
+            })
             .collect())
     }
 }

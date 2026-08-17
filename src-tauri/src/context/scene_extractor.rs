@@ -80,9 +80,14 @@ pub async fn extract_scene_state(
         ..Default::default()
     };
 
-    let raw_output = provider.generate(model_id, &messages, &[], &gen_params).await?;
+    let raw_output = provider
+        .generate(model_id, &messages, &[], &gen_params)
+        .await?;
 
-    debug!("[scene_extractor] Raw output: {}", truncate_at_char_boundary(&raw_output, 200));
+    debug!(
+        "[scene_extractor] Raw output: {}",
+        truncate_at_char_boundary(&raw_output, 200)
+    );
 
     // Parse the JSON — be lenient with markdown fences AND with reasoning
     // models (Nemotron, DeepSeek-R1, QwQ, etc.) that prepend a `<think>...`
@@ -101,14 +106,19 @@ pub async fn extract_scene_state(
         _ => fenced,
     };
 
-    let update: SceneStateUpdate = serde_json::from_str(cleaned)
-        .map_err(|e| {
-            warn!("[scene_extractor] Failed to parse JSON: {}. Raw: {}", e, truncate_at_char_boundary(&raw_output, 300));
-            MythicError::Provider(format!("Scene extraction parse error: {}", e))
-        })?;
+    let update: SceneStateUpdate = serde_json::from_str(cleaned).map_err(|e| {
+        warn!(
+            "[scene_extractor] Failed to parse JSON: {}. Raw: {}",
+            e,
+            truncate_at_char_boundary(&raw_output, 300)
+        );
+        MythicError::Provider(format!("Scene extraction parse error: {}", e))
+    })?;
 
-    debug!("[scene_extractor] Extracted: location={:?}, mood={:?}, changed={}",
-        update.location_name, update.scene_mood, update.scene_changed);
+    debug!(
+        "[scene_extractor] Extracted: location={:?}, mood={:?}, changed={}",
+        update.location_name, update.scene_mood, update.scene_changed
+    );
 
     Ok(update)
 }

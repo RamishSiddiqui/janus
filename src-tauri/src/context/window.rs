@@ -21,10 +21,7 @@ pub struct WindowResult {
 /// # Arguments
 /// * `chain` — Full conversation history in chronological order (root → leaf).
 /// * `token_budget` — Maximum tokens available for conversation messages.
-pub fn apply_sliding_window(
-    chain: &[ChatMessage],
-    token_budget: usize,
-) -> WindowResult {
+pub fn apply_sliding_window(chain: &[ChatMessage], token_budget: usize) -> WindowResult {
     if chain.is_empty() || token_budget == 0 {
         return WindowResult {
             included: Vec::new(),

@@ -4,12 +4,12 @@
 //! system that powers RAG (Retrieval-Augmented Generation).
 
 use std::sync::Arc;
-use tauri::{Emitter, State};
-use tokio::sync::RwLock;
-use tracing::{info, warn};
 
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
+use tauri::{Emitter, State};
+use tokio::sync::RwLock;
+use tracing::{info, warn};
 
 use crate::db::embeddings::EmbeddingRepo;
 use crate::db::providers::ProviderRepo;
@@ -45,31 +45,81 @@ pub struct EmbeddingIndexStatus {
 /// Returns the known embedding dimension for common models.
 pub(crate) fn get_model_dimension(model_id: &str) -> Option<usize> {
     let id = model_id.to_lowercase();
-    if id.contains("text-embedding-3-small") { return Some(1536); }
-    if id.contains("text-embedding-3-large") { return Some(3072); }
-    if id.contains("text-embedding-ada-002") { return Some(1536); }
-    if id.contains("nomic-embed-text") { return Some(768); }
-    if id.contains("mxbai-embed-large") { return Some(1024); }
-    if id.contains("all-minilm") { return Some(384); }
-    if id.contains("bge-large") { return Some(1024); }
-    if id.contains("bge-base") { return Some(768); }
-    if id.contains("bge-m3") { return Some(1024); }
-    if id.contains("gte-base") { return Some(768); }
-    if id.contains("gte-large") { return Some(1024); }
-    if id.contains("e5-large") { return Some(1024); }
-    if id.contains("e5-base") { return Some(768); }
-    if id.contains("embed-english-v3") || id.contains("embed-multilingual-v3") { return Some(1024); }
-    if id.contains("gemini-embedding") { return Some(768); }
-    if id.contains("mistral-embed") { return Some(1024); }
-    if id.contains("codestral-embed") { return Some(1024); }
-    if id.contains("nemotron-embed") { return Some(2048); }
-    if id.contains("pplx-embed") { return Some(4096); }
-    if id.contains("qwen3-embedding-8b") { return Some(4096); }
-    if id.contains("qwen3-embedding-4b") { return Some(2048); }
-    if id.contains("multi-qa-mpnet") { return Some(768); }
-    if id.contains("all-mpnet") { return Some(768); }
-    if id.contains("paraphrase-minilm") { return Some(384); }
-    if id.contains("m2-bert") { return Some(768); }
+    if id.contains("text-embedding-3-small") {
+        return Some(1536);
+    }
+    if id.contains("text-embedding-3-large") {
+        return Some(3072);
+    }
+    if id.contains("text-embedding-ada-002") {
+        return Some(1536);
+    }
+    if id.contains("nomic-embed-text") {
+        return Some(768);
+    }
+    if id.contains("mxbai-embed-large") {
+        return Some(1024);
+    }
+    if id.contains("all-minilm") {
+        return Some(384);
+    }
+    if id.contains("bge-large") {
+        return Some(1024);
+    }
+    if id.contains("bge-base") {
+        return Some(768);
+    }
+    if id.contains("bge-m3") {
+        return Some(1024);
+    }
+    if id.contains("gte-base") {
+        return Some(768);
+    }
+    if id.contains("gte-large") {
+        return Some(1024);
+    }
+    if id.contains("e5-large") {
+        return Some(1024);
+    }
+    if id.contains("e5-base") {
+        return Some(768);
+    }
+    if id.contains("embed-english-v3") || id.contains("embed-multilingual-v3") {
+        return Some(1024);
+    }
+    if id.contains("gemini-embedding") {
+        return Some(768);
+    }
+    if id.contains("mistral-embed") {
+        return Some(1024);
+    }
+    if id.contains("codestral-embed") {
+        return Some(1024);
+    }
+    if id.contains("nemotron-embed") {
+        return Some(2048);
+    }
+    if id.contains("pplx-embed") {
+        return Some(4096);
+    }
+    if id.contains("qwen3-embedding-8b") {
+        return Some(4096);
+    }
+    if id.contains("qwen3-embedding-4b") {
+        return Some(2048);
+    }
+    if id.contains("multi-qa-mpnet") {
+        return Some(768);
+    }
+    if id.contains("all-mpnet") {
+        return Some(768);
+    }
+    if id.contains("paraphrase-minilm") {
+        return Some(384);
+    }
+    if id.contains("m2-bert") {
+        return Some(768);
+    }
     None
 }
 
@@ -89,7 +139,10 @@ async fn get_embedding_index_status_inner(
         Some(_) => "SELECT count() FROM messages WHERE conversation_id = type::thing('conversations', $conv_id) AND role IN ['user', 'assistant'] GROUP ALL",
         None => "SELECT count() FROM messages WHERE role IN ['user', 'assistant'] GROUP ALL",
     };
-    let mut total_result = db.query(total_query).bind(("conv_id", conv_bind.clone())).await?;
+    let mut total_result = db
+        .query(total_query)
+        .bind(("conv_id", conv_bind.clone()))
+        .await?;
     let total_val: Option<serde_json::Value> = total_result.take(0)?;
     let total_messages = total_val
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
@@ -104,7 +157,10 @@ async fn get_embedding_index_status_inner(
         Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message' GROUP ALL",
         None => "SELECT count() FROM message_embeddings WHERE entry_type = 'message' GROUP ALL",
     };
-    let mut embedded_result = db.query(embedded_query).bind(("conv_id", conv_bind.clone())).await?;
+    let mut embedded_result = db
+        .query(embedded_query)
+        .bind(("conv_id", conv_bind.clone()))
+        .await?;
     let embedded_val: Option<serde_json::Value> = embedded_result.take(0)?;
     let embedded_messages = embedded_val
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
@@ -115,7 +171,10 @@ async fn get_embedding_index_status_inner(
         Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message' LIMIT 1",
         None => "SELECT model_name FROM message_embeddings WHERE entry_type = 'message' LIMIT 1",
     };
-    let mut model_result = db.query(model_query).bind(("conv_id", conv_bind.clone())).await?;
+    let mut model_result = db
+        .query(model_query)
+        .bind(("conv_id", conv_bind.clone()))
+        .await?;
 
     #[derive(serde::Deserialize)]
     struct ModelRow {
@@ -126,7 +185,8 @@ async fn get_embedding_index_status_inner(
     let index_model = model_rows.into_iter().next().map(|r| r.model_name);
 
     // Get stored dimension from existing embeddings
-    let index_dimension = EmbeddingRepo::get_index_dimension(db, conversation_id.as_deref()).await?;
+    let index_dimension =
+        EmbeddingRepo::get_index_dimension(db, conversation_id.as_deref()).await?;
 
     // Get the expected dimension for the selected model
     let selected_dimension = selected_model.as_deref().and_then(get_model_dimension);
@@ -220,7 +280,8 @@ pub async fn rebuild_embedding_index(
             EmbeddingRepo::delete_for_conversation(&db, conv_id).await?;
         }
         None => {
-            db.query("DELETE FROM message_embeddings WHERE entry_type = 'message'").await?;
+            db.query("DELETE FROM message_embeddings WHERE entry_type = 'message'")
+                .await?;
         }
     }
 
@@ -232,16 +293,21 @@ pub async fn rebuild_embedding_index(
 
     // Fetch all user/assistant messages in scope
     let messages_query = match &conversation_id {
-        Some(_) => "SELECT id, conversation_id, content, created_at FROM messages \
+        Some(_) => {
+            "SELECT id, conversation_id, content, created_at FROM messages \
              WHERE conversation_id = type::thing('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
-             ORDER BY created_at",
-        None => "SELECT id, conversation_id, content, created_at FROM messages \
+             ORDER BY created_at"
+        }
+        None => {
+            "SELECT id, conversation_id, content, created_at FROM messages \
              WHERE role IN ['user', 'assistant'] \
-             ORDER BY created_at",
+             ORDER BY created_at"
+        }
     };
 
-    let mut result = db.query(messages_query)
+    let mut result = db
+        .query(messages_query)
         .bind(("conv_id", conversation_id.clone().unwrap_or_default()))
         .await?;
 
@@ -274,7 +340,10 @@ pub async fn rebuild_embedding_index(
                 if !mtree_ensured {
                     if let Some(first) = embeddings.first() {
                         let actual_dim = first.len();
-                        info!("[rebuild_index] Detected embedding dimension: {}", actual_dim);
+                        info!(
+                            "[rebuild_index] Detected embedding dimension: {}",
+                            actual_dim
+                        );
                         EmbeddingRepo::ensure_mtree_index(&db, actual_dim).await?;
                         mtree_ensured = true;
                     }
@@ -290,8 +359,14 @@ pub async fn rebuild_embedding_index(
                         embedding,
                         &embedding_model,
                         None, // character_id — not available during bulk rebuild
-                    ).await {
-                        tracing::warn!("[rebuild_index] Failed to store embedding for message {}: {}", msg_id, e);
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            "[rebuild_index] Failed to store embedding for message {}: {}",
+                            msg_id,
+                            e
+                        );
                         continue;
                     }
                     embedded += 1;
@@ -333,9 +408,12 @@ pub async fn backfill_missing_embeddings(
     let embedding_entry = all_enabled
         .iter()
         .find(|m| m.model_type == "embedding")
-        .ok_or_else(|| MythicError::Config(
-            "No embedding model enabled. Go to AI Studio → Embedding Models and enable one.".to_string()
-        ))?;
+        .ok_or_else(|| {
+            MythicError::Config(
+                "No embedding model enabled. Go to AI Studio → Embedding Models and enable one."
+                    .to_string(),
+            )
+        })?;
 
     let embedding_model = embedding_entry.model_id.clone();
     let provider_config = ProviderRepo::get(&db, &embedding_entry.provider_id).await?;
@@ -364,15 +442,22 @@ pub async fn backfill_missing_embeddings(
             .query("SELECT id, message_id FROM message_embeddings WHERE entry_type = 'message'")
             .await?;
         let all_embeddings: Vec<EmbeddingRow> = all_embeddings_result.take(0).unwrap_or_else(|e| {
-            warn!("[backfill] Failed to deserialize message_embeddings rows during orphan sweep: {}", e);
+            warn!(
+                "[backfill] Failed to deserialize message_embeddings rows during orphan sweep: {}",
+                e
+            );
             Vec::new()
         });
 
         let mut real_msg_ids_result = db.query("SELECT VALUE id FROM messages").await?;
-        let real_msg_things: Vec<surrealdb::sql::Thing> = real_msg_ids_result.take(0).unwrap_or_else(|e| {
-            warn!("[backfill] Failed to deserialize message ids during orphan sweep: {}", e);
-            Vec::new()
-        });
+        let real_msg_things: Vec<surrealdb::sql::Thing> =
+            real_msg_ids_result.take(0).unwrap_or_else(|e| {
+                warn!(
+                    "[backfill] Failed to deserialize message ids during orphan sweep: {}",
+                    e
+                );
+                Vec::new()
+            });
         let real_msg_ids: std::collections::HashSet<String> = real_msg_things
             .into_iter()
             .map(|t| format!("{}:{}", t.tb, t.id.to_raw()))
@@ -381,7 +466,10 @@ pub async fn backfill_missing_embeddings(
         let orphan_ids: Vec<String> = all_embeddings
             .into_iter()
             .filter(|e| {
-                let full_id = e.message_id.as_ref().map(|t| format!("{}:{}", t.tb, t.id.to_raw()));
+                let full_id = e
+                    .message_id
+                    .as_ref()
+                    .map(|t| format!("{}:{}", t.tb, t.id.to_raw()));
                 match full_id {
                     Some(id) => !real_msg_ids.contains(&id),
                     None => true, // entry_type='message' but no message_id at all — also junk
@@ -391,7 +479,10 @@ pub async fn backfill_missing_embeddings(
             .collect();
 
         if !orphan_ids.is_empty() {
-            info!("[backfill] Purging {} orphaned message embedding(s) from deleted messages", orphan_ids.len());
+            info!(
+                "[backfill] Purging {} orphaned message embedding(s) from deleted messages",
+                orphan_ids.len()
+            );
             for orphan_id in &orphan_ids {
                 let _ = db
                     .query("DELETE type::thing('message_embeddings', $id)")
@@ -412,7 +503,10 @@ pub async fn backfill_missing_embeddings(
         Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message'",
         None => "SELECT VALUE message_id FROM message_embeddings WHERE entry_type = 'message'",
     };
-    let mut embedded_result = db.query(embedded_ids_query).bind(("conv_id", conv_bind.clone())).await?;
+    let mut embedded_result = db
+        .query(embedded_ids_query)
+        .bind(("conv_id", conv_bind.clone()))
+        .await?;
     let embedded_things: Vec<surrealdb::sql::Thing> = embedded_result.take(0).unwrap_or_else(|e| {
         warn!("[backfill] Failed to deserialize already-embedded message ids — treating as none embedded, which will re-request embeddings for everything: {}", e);
         Vec::new()
@@ -424,18 +518,25 @@ pub async fn backfill_missing_embeddings(
 
     // 2) Get all user/assistant messages
     let all_msgs_query = match &conversation_id {
-        Some(_) => "SELECT id, conversation_id, character_id, content, created_at FROM messages \
+        Some(_) => {
+            "SELECT id, conversation_id, character_id, content, created_at FROM messages \
              WHERE conversation_id = type::thing('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              AND content != '' \
-             ORDER BY created_at",
-        None => "SELECT id, conversation_id, character_id, content, created_at FROM messages \
+             ORDER BY created_at"
+        }
+        None => {
+            "SELECT id, conversation_id, character_id, content, created_at FROM messages \
              WHERE role IN ['user', 'assistant'] \
              AND content != '' \
-             ORDER BY created_at",
+             ORDER BY created_at"
+        }
     };
 
-    let mut result = db.query(all_msgs_query).bind(("conv_id", conv_bind)).await?;
+    let mut result = db
+        .query(all_msgs_query)
+        .bind(("conv_id", conv_bind))
+        .await?;
 
     #[derive(serde::Deserialize)]
     struct MsgRow {
@@ -488,8 +589,14 @@ pub async fn backfill_missing_embeddings(
                         embedding,
                         &embedding_model,
                         char_id.as_deref(),
-                    ).await {
-                        tracing::warn!("[backfill] Failed to store embedding for message {}: {}", msg_id, e);
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            "[backfill] Failed to store embedding for message {}: {}",
+                            msg_id,
+                            e
+                        );
                         continue;
                     }
                     embedded += 1;

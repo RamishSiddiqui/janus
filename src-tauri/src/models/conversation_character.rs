@@ -6,13 +6,22 @@ use surrealdb::sql::Thing;
 /// Each character in a multi-character conversation gets one record.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ConversationCharacter {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub conversation_id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub character_id: Thing,
     /// "primary" | "secondary" | "npc"

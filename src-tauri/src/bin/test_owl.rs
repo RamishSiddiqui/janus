@@ -2,22 +2,22 @@
 ///
 /// Usage: cargo run --bin test_owl -- <YOUR_OPENROUTER_API_KEY>
 use futures::StreamExt;
-use rig_core::providers::openrouter;
-use rig_core::client::CompletionClient;
-use rig_core::streaming::StreamingChat;
 use rig_core::agent::MultiTurnStreamItem;
-use rig_core::streaming::StreamedAssistantContent;
+use rig_core::client::CompletionClient;
 use rig_core::completion::Chat;
+use rig_core::providers::openrouter;
+use rig_core::streaming::StreamedAssistantContent;
+use rig_core::streaming::StreamingChat;
 
 #[tokio::main]
 async fn main() {
     let api_key = std::env::args().nth(1).expect("Usage: test_owl <API_KEY>");
-    
-    let client = openrouter::Client::new(&api_key)
-        .expect("Failed to create OpenRouter client");
+
+    let client = openrouter::Client::new(&api_key).expect("Failed to create OpenRouter client");
 
     println!("=== Test 1: Non-streaming chat ===");
-    let agent = client.agent("openrouter/owl-alpha")
+    let agent = client
+        .agent("openrouter/owl-alpha")
         .preamble("You are a helpful assistant.")
         .temperature(0.8)
         .build();
@@ -29,19 +29,25 @@ async fn main() {
     }
 
     println!("\n=== Test 2: Streaming chat ===");
-    let agent2 = client.agent("openrouter/owl-alpha")
+    let agent2 = client
+        .agent("openrouter/owl-alpha")
         .preamble("You are a helpful assistant.")
         .temperature(0.8)
         .build();
 
-    let mut stream = agent2.stream_chat("Tell me a short joke.", Vec::<rig_core::completion::Message>::new()).await;
+    let mut stream = agent2
+        .stream_chat(
+            "Tell me a short joke.",
+            Vec::<rig_core::completion::Message>::new(),
+        )
+        .await;
     {
         let mut full_text = String::new();
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text)
-                )) => {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
                     print!("{}", text.text);
                     full_text.push_str(&text.text);
                 }
@@ -76,24 +82,33 @@ async fn main() {
         Determined, curious, idealistic, sometimes reckless with magic, fiercely proud of her mixed \
         heritage, warm-hearted but quick to anger when her lineage is questioned.";
 
-    let agent3 = client.agent("openrouter/owl-alpha")
+    let agent3 = client
+        .agent("openrouter/owl-alpha")
         .preamble(long_preamble)
         .temperature(0.8)
         .build();
 
-    let mut stream = agent3.stream_chat("*walks into the hall* Hello there.", Vec::<rig_core::completion::Message>::new()).await;
+    let mut stream = agent3
+        .stream_chat(
+            "*walks into the hall* Hello there.",
+            Vec::<rig_core::completion::Message>::new(),
+        )
+        .await;
     {
         let mut full_text = String::new();
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text)
-                )) => {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
                     print!("{}", text.text);
                     full_text.push_str(&text.text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-                    println!("\n✅ Final response received ({} chars)", fin.response().len());
+                    println!(
+                        "\n✅ Final response received ({} chars)",
+                        fin.response().len()
+                    );
                     break;
                 }
                 Ok(_) => {}

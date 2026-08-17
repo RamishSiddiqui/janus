@@ -67,7 +67,10 @@ pub enum ProviderAdapter {
 /// at runtime. The `config` field holds adapter-specific JSON settings.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ProviderConfig {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
 

@@ -96,33 +96,88 @@ pub fn parse_multi_character_response(
             }
         }
 
-        // Complete fallback — no markers at all
-        // Heuristic: check if the response starts with a known character's name
-        // (e.g., "Finn holds Aria's gaze..." → attribute to Finn)
+        // Complete fallback — no [Name]: markers anywhere. Some models
+        // (especially smaller/free ones) never emit the mandated marker
+        // format at all, and instead just narrate multiple characters'
+        // actions/dialogue across plain prose paragraphs — e.g. one
+        // paragraph opening "Aria's head snaps toward you..." followed later
+        // by one opening "Finn pushes off the shelf...". Scan
+        // paragraph-by-paragraph: a paragraph whose leading word/phrase is a
+        // known character's name (or that name's possessive, e.g. "Aria's")
+        // starts a new segment for that character; a paragraph with no name
+        // cue stays attributed to whoever spoke last, since most RP prose
+        // alternates between a named action beat and unattributed
+        // dialogue/description for that same speaker.
         let trimmed = response.trim();
-        // Strip leading RP formatting (* for actions, " for speech)
-        let stripped = trimmed.trim_start_matches(['*', '"', '\u{201C}', '_']);
-        let first_word = stripped.split(|c: char| c.is_whitespace() || c == '\'' || c == '\u{2019}' || c == '*').next().unwrap_or("");
-        let first_word_lower = first_word.to_lowercase();
 
-        for name in known_names {
-            let name_lower = name.to_lowercase();
-            let first_name_lower = name.split_whitespace().next().unwrap_or("").to_lowercase();
+        // Checks whether `para` opens with one of `known_names` (full name,
+        // first name, or a possessive/continuation of either) — same
+        // matching rule the single-paragraph heuristic used before this was
+        // generalized to scan every paragraph.
+        let match_leading_name = |para: &str| -> Option<&String> {
+            let stripped = para.trim_start_matches(['*', '"', '\u{201C}', '_']);
+            let first_word = stripped
+                .split(|c: char| c.is_whitespace() || c == '\'' || c == '\u{2019}' || c == '*')
+                .next()
+                .unwrap_or("")
+                .to_lowercase();
+            let stripped_lower = stripped.to_lowercase();
+            known_names.iter().find(|name| {
+                let name_lower = name.to_lowercase();
+                let first_name_lower =
+                    name.split_whitespace().next().unwrap_or("").to_lowercase();
+                first_word == first_name_lower || stripped_lower.starts_with(&name_lower)
+            })
+        };
 
-            // Match if response starts with either the full name or first name
-            if first_word_lower == first_name_lower
-                || trimmed.to_lowercase().starts_with(&name_lower)
-            {
-                debug!(
-                    "[response_parser] No markers found but response starts with '{}' — attributing to {}",
-                    first_word, name
-                );
-                return vec![ParsedSegment {
-                    character_name: name.clone(),
-                    content: trimmed.to_string(),
-                    index: 0,
-                }];
+        let mut para_segments: Vec<ParsedSegment> = Vec::new();
+        let mut current_name: Option<String> = None; // None = unattributed preamble
+        let mut current_content = String::new();
+
+        for para in trimmed.split("\n\n") {
+            let para = para.trim();
+            if para.is_empty() || para.chars().all(|c| matches!(c, '-' | '=' | '*' | '_')) {
+                continue; // blank line or a "---" style scene-break divider
             }
+
+            if let Some(name) = match_leading_name(para) {
+                let content = current_content.trim();
+                if !content.is_empty() {
+                    para_segments.push(ParsedSegment {
+                        character_name: current_name
+                            .clone()
+                            .unwrap_or_else(|| fallback_name.to_string()),
+                        content: content.to_string(),
+                        index: para_segments.len(),
+                    });
+                }
+                current_name = Some(name.clone());
+                current_content = para.to_string();
+            } else {
+                if !current_content.is_empty() {
+                    current_content.push_str("\n\n");
+                }
+                current_content.push_str(para);
+            }
+        }
+        let content = current_content.trim();
+        if !content.is_empty() {
+            para_segments.push(ParsedSegment {
+                character_name: current_name.unwrap_or_else(|| fallback_name.to_string()),
+                content: content.to_string(),
+                index: para_segments.len(),
+            });
+        }
+
+        if !para_segments.is_empty() {
+            let para_segments = merge_adjacent_segments(para_segments);
+            if para_segments.len() > 1 {
+                debug!(
+                    "[response_parser] No [Name]: markers found but detected {} narrative speaker segments via paragraph name-cues",
+                    para_segments.len()
+                );
+            }
+            return para_segments;
         }
 
         debug!("[response_parser] No character markers found, using fallback");
@@ -134,6 +189,31 @@ pub fn parse_multi_character_response(
     }
 
     parse_with_regex(response, &re, known_names, fallback_name)
+}
+
+/// Merges adjacent segments attributed to the same character. Smaller/free
+/// models occasionally re-emit a redundant `[Name]:` marker (or, in the
+/// paragraph-name-cue fallback, a redundant leading-name paragraph) partway
+/// through a long completion even though no other character actually spoke
+/// in between — left unmerged, that produces two separate message bubbles
+/// for one speaker back-to-back, which reads as a bug in the UI, not a
+/// stylistic choice.
+fn merge_adjacent_segments(segments: Vec<ParsedSegment>) -> Vec<ParsedSegment> {
+    let mut merged: Vec<ParsedSegment> = Vec::with_capacity(segments.len());
+    for seg in segments {
+        if let Some(last) = merged.last_mut() {
+            if last.character_name == seg.character_name {
+                last.content.push_str("\n\n");
+                last.content.push_str(&seg.content);
+                continue;
+            }
+        }
+        merged.push(seg);
+    }
+    for (i, seg) in merged.iter_mut().enumerate() {
+        seg.index = i;
+    }
+    merged
 }
 
 /// Internal helper — splits response using the compiled regex.
@@ -205,27 +285,7 @@ fn parse_with_regex(
         });
     }
 
-    // Merge adjacent segments attributed to the same character. Smaller/free
-    // models occasionally re-emit a redundant `[Name]:` marker partway
-    // through a long completion even though no other character actually
-    // spoke in between — left unmerged, that produces two separate message
-    // bubbles for one speaker back-to-back, which reads as a bug in the UI,
-    // not a stylistic choice.
-    let mut merged: Vec<ParsedSegment> = Vec::with_capacity(segments.len());
-    for seg in segments {
-        if let Some(last) = merged.last_mut() {
-            if last.character_name == seg.character_name {
-                last.content.push_str("\n\n");
-                last.content.push_str(&seg.content);
-                continue;
-            }
-        }
-        merged.push(seg);
-    }
-    for (i, seg) in merged.iter_mut().enumerate() {
-        seg.index = i;
-    }
-    let segments = merged;
+    let segments = merge_adjacent_segments(segments);
 
     debug!(
         "[response_parser] Parsed {} segments from {} chars of response",
@@ -271,6 +331,10 @@ pub fn resolve_character_id(
     let candidate_words: std::collections::HashSet<&str> = lower.split_whitespace().collect();
     known_chars
         .iter()
-        .find(|(n, _)| n.to_lowercase().split_whitespace().any(|w| candidate_words.contains(w)))
+        .find(|(n, _)| {
+            n.to_lowercase()
+                .split_whitespace()
+                .any(|w| candidate_words.contains(w))
+        })
         .map(|(_, id)| id.clone())
 }

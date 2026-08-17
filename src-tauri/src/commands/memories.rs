@@ -4,15 +4,16 @@
 //! Tauri state extraction and input validation only.
 
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+use crate::commands::chat::pipeline::spawn_embed_memory;
 use crate::db::embeddings::EmbeddingRepo;
 use crate::db::memories::MemoryRepo;
 use crate::error::MythicError;
 use crate::models::memory::{Memory, MemoryGraph, MemoryLink};
-use crate::commands::chat::pipeline::spawn_embed_memory;
 use crate::AppState;
 
 /// Lists memories for a character and/or conversation.
@@ -59,7 +60,12 @@ pub async fn create_memory(
 
     // Background: embed memory for semantic retrieval
     if let Some(ref char_id) = character_id {
-        spawn_embed_memory(db.clone(), memory.id.id.to_raw(), char_id.clone(), content.clone());
+        spawn_embed_memory(
+            db.clone(),
+            memory.id.id.to_raw(),
+            char_id.clone(),
+            content.clone(),
+        );
     }
 
     Ok(memory)
@@ -85,9 +91,17 @@ pub async fn update_memory(
     if let Some(ref char_id) = memory.character_id {
         // Delete old embedding first
         if let Err(e) = EmbeddingRepo::delete_memory_embedding(&db, &memory_id).await {
-            warn!("Failed to delete stale embedding for memory {}: {}", memory_id, e);
+            warn!(
+                "Failed to delete stale embedding for memory {}: {}",
+                memory_id, e
+            );
         }
-        spawn_embed_memory(db.clone(), memory_id.clone(), char_id.id.to_raw(), content.clone());
+        spawn_embed_memory(
+            db.clone(),
+            memory_id.clone(),
+            char_id.id.to_raw(),
+            content.clone(),
+        );
     }
 
     Ok(memory)
@@ -104,7 +118,10 @@ pub async fn set_memory_importance(
 ) -> Result<Memory, MythicError> {
     let state = state.read().await;
     let updated = MemoryRepo::set_importance(&state.db, &memory_id, importance).await?;
-    info!("Set memory {} importance to {}", memory_id, updated.importance);
+    info!(
+        "Set memory {} importance to {}",
+        memory_id, updated.importance
+    );
     Ok(updated)
 }
 
@@ -159,13 +176,19 @@ pub async fn share_memory(
 
     // Validate link parameters
     if !matches!(link_type.as_str(), "copy" | "sync") {
-        return Err(MythicError::Config("link_type must be 'copy' or 'sync'".to_string()));
+        return Err(MythicError::Config(
+            "link_type must be 'copy' or 'sync'".to_string(),
+        ));
     }
     if !matches!(direction.as_str(), "one_way" | "two_way") {
-        return Err(MythicError::Config("direction must be 'one_way' or 'two_way'".to_string()));
+        return Err(MythicError::Config(
+            "direction must be 'one_way' or 'two_way'".to_string(),
+        ));
     }
     if !matches!(sync_mode.as_str(), "auto" | "manual") {
-        return Err(MythicError::Config("sync_mode must be 'auto' or 'manual'".to_string()));
+        return Err(MythicError::Config(
+            "sync_mode must be 'auto' or 'manual'".to_string(),
+        ));
     }
 
     let state = state.read().await;

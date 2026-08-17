@@ -12,7 +12,7 @@ pub mod scene;
 pub mod scene_state;
 pub mod summary;
 
-use serde::{Deserializer, Deserialize, Serializer};
+use serde::{Deserialize, Deserializer, Serializer};
 use surrealdb::sql::Thing;
 
 /// Serializes a SurrealDB Thing as just its ID string (without table prefix)
@@ -125,4 +125,3 @@ impl specta::Type for DynamicJson {
         JsonValue::definition(types)
     }
 }
-

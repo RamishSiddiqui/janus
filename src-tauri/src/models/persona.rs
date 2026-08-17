@@ -9,7 +9,10 @@ use surrealdb::sql::Thing;
 /// `profile_reviewed`) since every persona is user-facing by definition.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Persona {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
     pub name: String,
@@ -29,7 +32,10 @@ pub struct Persona {
     pub updated_at: String,
 
     /// Set when the persona is in the Trash; None means it's live.
-    #[serde(default, deserialize_with = "crate::models::deserialize_option_datetime")]
+    #[serde(
+        default,
+        deserialize_with = "crate::models::deserialize_option_datetime"
+    )]
     #[specta(type = Option<String>)]
     pub deleted_at: Option<String>,
 }

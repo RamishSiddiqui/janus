@@ -6,19 +6,20 @@
 //! always user-controlled, so a generated portrait auto-approves).
 
 use std::sync::Arc;
+
 use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::commands::scenes::generate_via_generic_provider;
-use crate::providers::ai_horde::generate_via_ai_horde;
 use crate::db::image_presets::ImagePresetRepo;
 use crate::db::personas::PersonaRepo;
 use crate::db::providers::ProviderRepo;
-use crate::error::{truncate_at_char_boundary, MythicError, validate_required_string};
+use crate::error::{truncate_at_char_boundary, validate_required_string, MythicError};
 use crate::models::persona::Persona;
 use crate::models::provider::{ImageGenParams, ProviderAdapter};
 use crate::models::DynamicJson;
+use crate::providers::ai_horde::generate_via_ai_horde;
 use crate::AppState;
 
 /// Creates a new persona from a Character Card V2-shaped payload.
@@ -165,7 +166,11 @@ pub async fn generate_persona_portrait(
         return Ok(persona);
     };
 
-    let description = persona.data.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let description = persona
+        .data
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let truncated_desc = truncate_at_char_boundary(description, 400);
     let prompt = format!(
         "portrait of {}, {}, character portrait, detailed face, upper body",
@@ -190,7 +195,9 @@ pub async fn generate_persona_portrait(
 
     let image_bytes = if provider.adapter == ProviderAdapter::AiHorde {
         let preset = match &conversation_id {
-            Some(conv_id) => ImagePresetRepo::resolve_for_conversation(&state_guard.db, conv_id).await?,
+            Some(conv_id) => {
+                ImagePresetRepo::resolve_for_conversation(&state_guard.db, conv_id).await?
+            }
             None => ImagePresetRepo::get_default(&state_guard.db).await?,
         };
         // Namespaced key so this never collides with scene generation or NPC
@@ -209,19 +216,35 @@ pub async fn generate_persona_portrait(
         }
 
         let result = generate_via_ai_horde(
-            &app, &portrait_key, &state_guard.http_client, &provider, &params,
-            preset.as_ref(), None, None, None, &cancel_flag,
-        ).await;
+            &app,
+            &portrait_key,
+            &state_guard.http_client,
+            &provider,
+            &params,
+            preset.as_ref(),
+            None,
+            None,
+            None,
+            &cancel_flag,
+        )
+        .await;
 
-        state_guard.active_scene_generations.lock().await.remove(&portrait_key);
+        state_guard
+            .active_scene_generations
+            .lock()
+            .await
+            .remove(&portrait_key);
         result?.0
     } else {
-        generate_via_generic_provider(&state_guard.http_client, &provider, &params).await?.0
+        generate_via_generic_provider(&state_guard.http_client, &provider, &params)
+            .await?
+            .0
     };
 
     tokio::fs::write(&file_path, &image_bytes).await?;
 
-    let updated = PersonaRepo::set_avatar(&state_guard.db, &persona_id, Some(&relative_path)).await?;
+    let updated =
+        PersonaRepo::set_avatar(&state_guard.db, &persona_id, Some(&relative_path)).await?;
     info!("Generated persona portrait for {}", updated.name);
     Ok(updated)
 }

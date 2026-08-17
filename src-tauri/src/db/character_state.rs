@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::commands::character_state::CharacterState;
 use crate::error::MythicError;
@@ -64,8 +64,6 @@ impl CharacterStateRepo {
             .await?;
 
         let upserted: Option<CharacterState> = result.take(0)?;
-        upserted.ok_or_else(|| {
-            MythicError::DatabaseOp("Failed to upsert character state".into())
-        })
+        upserted.ok_or_else(|| MythicError::DatabaseOp("Failed to upsert character state".into()))
     }
 }

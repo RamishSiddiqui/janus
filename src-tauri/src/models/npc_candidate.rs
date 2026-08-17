@@ -8,10 +8,16 @@ use surrealdb::sql::Thing;
 /// before a full profile is generated for it.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct NpcCandidate {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub conversation_id: Thing,
     /// Trimmed + lowercased `display_name`, used as the dedupe key.
@@ -24,7 +30,11 @@ pub struct NpcCandidate {
     pub pass_count: i32,
     /// "pending" | "created"
     pub status: String,
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub resulting_character_id: Option<Thing>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
@@ -41,10 +51,16 @@ pub struct NpcCandidate {
 /// flag ever fires.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct NpcDetectionState {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub conversation_id: Thing,
     pub messages_since_scan: i32,

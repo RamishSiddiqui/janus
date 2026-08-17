@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::lorebook::LorebookEntry;
@@ -69,11 +69,7 @@ impl LorebookRepo {
     }
 
     /// Toggles the enabled state of a lorebook entry.
-    pub async fn toggle(
-        db: &Surreal<Db>,
-        id: &str,
-        enabled: bool,
-    ) -> Result<(), MythicError> {
+    pub async fn toggle(db: &Surreal<Db>, id: &str, enabled: bool) -> Result<(), MythicError> {
         db.query("UPDATE type::thing('lorebook_entries', $id) SET enabled = $enabled")
             .bind(("id", id.to_string()))
             .bind(("enabled", enabled))
@@ -141,19 +137,35 @@ impl LorebookRepo {
                 // fire, so importing it would just be silent dead weight.
                 continue;
             }
-            let name = entry.name.clone().unwrap_or_else(|| format!("Entry {}", i + 1));
+            let name = entry
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("Entry {}", i + 1));
             let created = Self::create(
-                db, Some(character_id), &name, entry.keys.clone(), &entry.content, entry.constant,
-            ).await?;
+                db,
+                Some(character_id),
+                &name,
+                entry.keys.clone(),
+                &entry.content,
+                entry.constant,
+            )
+            .await?;
             // `create` always sets enabled=true/priority=10/insertion_order=100 —
             // carry over the source card's real values in a follow-up update
             // when they differ, rather than losing that fidelity.
             let needs_update = entry.priority != 10 || entry.insertion_order != 100;
             let mut final_entry = if needs_update {
                 Self::update(
-                    db, &created.id.id.to_raw(), &name, entry.keys.clone(), &entry.content,
-                    entry.constant, entry.priority, entry.insertion_order,
-                ).await?
+                    db,
+                    &created.id.id.to_raw(),
+                    &name,
+                    entry.keys.clone(),
+                    &entry.content,
+                    entry.constant,
+                    entry.priority,
+                    entry.insertion_order,
+                )
+                .await?
             } else {
                 created
             };

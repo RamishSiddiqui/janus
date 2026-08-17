@@ -1,5 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tracing::info;
 
 use crate::error::MythicError;
@@ -100,7 +100,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     // the NPC-pipeline-only fields. Defined before `conversations` since
     // that table references it via `persona_id`.
     info!("  schema: personas...");
-    db.query("
+    db.query(
+        "
         DEFINE TABLE IF NOT EXISTS personas SCHEMAFULL;
 
         DEFINE FIELD IF NOT EXISTS name        ON personas TYPE string ASSERT $value != NONE;
@@ -114,7 +115,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE INDEX IF NOT EXISTS idx_personas_updated ON personas FIELDS updated_at;
         DEFINE INDEX IF NOT EXISTS idx_personas_deleted ON personas FIELDS deleted_at;
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:personas: {}", e)))?;
@@ -150,7 +152,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // ── 3. messages ─────────────────────────────────────────────────────
     info!("  schema: messages...");
-    db.query("
+    db.query(
+        "
         DEFINE TABLE IF NOT EXISTS messages SCHEMAFULL;
 
         DEFINE FIELD IF NOT EXISTS conversation_id ON messages TYPE record<conversations>;
@@ -166,7 +169,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE INDEX IF NOT EXISTS idx_messages_conversation ON messages FIELDS conversation_id;
         DEFINE INDEX IF NOT EXISTS idx_messages_parent       ON messages FIELDS parent_id;
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:messages: {}", e)))?;
@@ -184,7 +188,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // ── 4. memories ─────────────────────────────────────────────────────
     info!("  schema: memories...");
-    db.query("
+    db.query(
+        "
         DEFINE TABLE IF NOT EXISTS memories SCHEMAFULL;
 
         DEFINE FIELD IF NOT EXISTS character_id    ON memories TYPE option<record<characters>>;
@@ -203,7 +208,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE INDEX IF NOT EXISTS idx_memories_character    ON memories FIELDS character_id;
         DEFINE INDEX IF NOT EXISTS idx_memories_conversation ON memories FIELDS conversation_id;
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:memories: {}", e)))?;
@@ -211,10 +217,12 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     // FTS index on memory content — reuses the same analyzer as messages so
     // hybrid (BM25 + vector) retrieval works identically for both.
     info!("  schema: memories FTS...");
-    db.query("
+    db.query(
+        "
         DEFINE INDEX IF NOT EXISTS idx_memories_fts ON memories FIELDS content
             SEARCH ANALYZER msg_analyzer BM25;
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:memories_fts: {}", e)))?;
@@ -236,14 +244,16 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // memory_link event
     info!("  schema: memory_link event...");
-    db.query("
+    db.query(
+        "
         DEFINE EVENT IF NOT EXISTS enforce_copy_direction ON TABLE memory_link
             WHEN $event = 'CREATE' OR $event = 'UPDATE' THEN {
             IF $after.link_type = 'copy' AND $after.direction != 'one_way' {
                 THROW 'Copy links must be one_way';
             };
         };
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:memory_link_event: {}", e)))?;
@@ -270,7 +280,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // ── 7. provider_configs ─────────────────────────────────────────────
     info!("  schema: provider_configs...");
-    db.query("
+    db.query(
+        "
         DEFINE TABLE IF NOT EXISTS provider_configs SCHEMAFULL;
 
         DEFINE FIELD IF NOT EXISTS name          ON provider_configs TYPE string;
@@ -281,7 +292,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS is_default    ON provider_configs TYPE bool DEFAULT false;
 
         DEFINE INDEX IF NOT EXISTS idx_provider_type ON provider_configs FIELDS provider_type;
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:providers: {}", e)))?;
@@ -466,9 +478,11 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // Add dimension field to track embedding dimensions per record
     info!("  schema: message_embeddings dimension field...");
-    db.query("
+    db.query(
+        "
         DEFINE FIELD IF NOT EXISTS dimension ON message_embeddings TYPE int DEFAULT 0;
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_dimension: {}", e)))?;
@@ -492,7 +506,8 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
     // ── Cascade delete events ───────────────────────────────────────────
     info!("  schema: cascade events...");
-    db.query("
+    db.query(
+        "
         DEFINE EVENT IF NOT EXISTS cascade_character_delete ON TABLE characters
             WHEN $event = 'DELETE' THEN {
             DELETE FROM conversations WHERE character_id = $before.id;
@@ -508,12 +523,14 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             DELETE FROM message_embeddings WHERE character_id = $before.id;
             DELETE FROM npc_candidates WHERE resulting_character_id = $before.id;
         };
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:cascade_char: {}", e)))?;
 
-    db.query("
+    db.query(
+        "
         DEFINE EVENT IF NOT EXISTS cascade_conversation_delete ON TABLE conversations
             WHEN $event = 'DELETE' THEN {
             -- Must run BEFORE conversation_characters is wiped below — a
@@ -542,38 +559,45 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             DELETE FROM npc_candidates WHERE conversation_id = $before.id;
             DELETE FROM npc_detection_state WHERE conversation_id = $before.id;
         };
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:cascade_conv: {}", e)))?;
 
-    db.query("
+    db.query(
+        "
         DEFINE EVENT IF NOT EXISTS cascade_memory_delete ON TABLE memories
             WHEN $event = 'DELETE' THEN {
             DELETE FROM memory_link WHERE in = $before.id;
             DELETE FROM memory_link WHERE linked_memory_id = $before.id;
         };
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:cascade_mem: {}", e)))?;
 
-    db.query("
+    db.query(
+        "
         DEFINE EVENT IF NOT EXISTS cascade_image_preset_delete ON TABLE image_presets
             WHEN $event = 'DELETE' THEN {
             UPDATE conversations SET image_preset_id = NONE WHERE image_preset_id = $before.id;
         };
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:cascade_image_preset: {}", e)))?;
 
-    db.query("
+    db.query(
+        "
         DEFINE EVENT IF NOT EXISTS cascade_persona_delete ON TABLE personas
             WHEN $event = 'DELETE' THEN {
             UPDATE conversations SET persona_id = NONE WHERE persona_id = $before.id;
         };
-    ")
+    ",
+    )
     .await?
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:cascade_persona: {}", e)))?;

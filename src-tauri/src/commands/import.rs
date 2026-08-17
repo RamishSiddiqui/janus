@@ -45,8 +45,9 @@ fn extract_chara_from_png(png_bytes: &[u8]) -> Result<String, MythicError> {
                 MythicError::Validation(format!("Failed to decode base64 chara data: {}", e))
             })?;
 
-            let json_str = String::from_utf8(decoded)
-                .map_err(|e| MythicError::Validation(format!("Invalid UTF-8 in chara data: {}", e)))?;
+            let json_str = String::from_utf8(decoded).map_err(|e| {
+                MythicError::Validation(format!("Invalid UTF-8 in chara data: {}", e))
+            })?;
 
             return Ok(json_str);
         }
@@ -55,19 +56,19 @@ fn extract_chara_from_png(png_bytes: &[u8]) -> Result<String, MythicError> {
     // Also check compressed text chunks (iTXt/zTXt)
     for text_chunk in &info.compressed_latin1_text {
         if text_chunk.keyword == "chara" {
-            let decompressed = text_chunk.get_text()
-                .map_err(|e| MythicError::Validation(format!("Failed to decompress chara data: {}", e)))?;
-
-            let decoded = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                &decompressed,
-            )
-            .map_err(|e| {
-                MythicError::Validation(format!("Failed to decode base64 chara data: {}", e))
+            let decompressed = text_chunk.get_text().map_err(|e| {
+                MythicError::Validation(format!("Failed to decompress chara data: {}", e))
             })?;
 
-            let json_str = String::from_utf8(decoded)
-                .map_err(|e| MythicError::Validation(format!("Invalid UTF-8 in chara data: {}", e)))?;
+            let decoded =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &decompressed)
+                    .map_err(|e| {
+                    MythicError::Validation(format!("Failed to decode base64 chara data: {}", e))
+                })?;
+
+            let json_str = String::from_utf8(decoded).map_err(|e| {
+                MythicError::Validation(format!("Invalid UTF-8 in chara data: {}", e))
+            })?;
 
             return Ok(json_str);
         }
@@ -99,7 +100,10 @@ pub async fn import_character_card(
     // Read the PNG file
     let path = PathBuf::from(&file_path);
     if !path.exists() {
-        return Err(MythicError::NotFound(format!("File not found: {}", file_path)));
+        return Err(MythicError::NotFound(format!(
+            "File not found: {}",
+            file_path
+        )));
     }
 
     let png_bytes = tokio::fs::read(&path).await?;
@@ -112,18 +116,17 @@ pub async fn import_character_card(
 
     let character_name = card.data.name.clone();
 
-    info!("Parsed character card: {} (spec: {})", character_name, card.spec);
+    info!(
+        "Parsed character card: {} (spec: {})",
+        character_name, card.spec
+    );
 
     // Convert card data to JSON value for storage
     let data_value = serde_json::to_value(&card.data)?;
 
     // Create the character via repo (spec is hardcoded in create, avatar set via update)
     let state_guard = state.read().await;
-    let character = CharacterRepo::create(
-        &state_guard.db,
-        &character_name,
-        data_value,
-    ).await?;
+    let character = CharacterRepo::create(&state_guard.db, &character_name, data_value).await?;
 
     // Extract the character ID for the avatar filename
     let character_id = character.id.id.to_raw();
@@ -135,10 +138,21 @@ pub async fn import_character_card(
     if let Some(ref book) = card.data.character_book {
         if !book.entries.is_empty() {
             match crate::db::lorebook::LorebookRepo::import_from_character_book(
-                &state_guard.db, &character_id, book,
-            ).await {
-                Ok(imported) => info!("Imported {} lorebook entries embedded in '{}'", imported.len(), character_name),
-                Err(e) => warn!("Failed to import embedded lorebook for '{}': {}", character_name, e),
+                &state_guard.db,
+                &character_id,
+                book,
+            )
+            .await
+            {
+                Ok(imported) => info!(
+                    "Imported {} lorebook entries embedded in '{}'",
+                    imported.len(),
+                    character_name
+                ),
+                Err(e) => warn!(
+                    "Failed to import embedded lorebook for '{}': {}",
+                    character_name, e
+                ),
             }
         }
     }
@@ -162,12 +176,16 @@ pub async fn import_character_card(
     let updated = CharacterRepo::update(
         &state_guard.db,
         &character_id,
-        None,  // name unchanged
-        None,  // data unchanged
+        None, // name unchanged
+        None, // data unchanged
         Some(&relative_avatar),
-    ).await?;
+    )
+    .await?;
 
-    info!("Imported character: {} ({}) with avatar at {}", character_name, character_id, relative_avatar);
+    info!(
+        "Imported character: {} ({}) with avatar at {}",
+        character_name, character_id, relative_avatar
+    );
 
     Ok(updated)
 }
@@ -187,7 +205,10 @@ pub async fn import_persona_card(
 
     let path = PathBuf::from(&file_path);
     if !path.exists() {
-        return Err(MythicError::NotFound(format!("File not found: {}", file_path)));
+        return Err(MythicError::NotFound(format!(
+            "File not found: {}",
+            file_path
+        )));
     }
 
     let png_bytes = tokio::fs::read(&path).await?;
@@ -199,16 +220,15 @@ pub async fn import_persona_card(
 
     let persona_name = card.data.name.clone();
 
-    info!("Parsed persona card: {} (spec: {})", persona_name, card.spec);
+    info!(
+        "Parsed persona card: {} (spec: {})",
+        persona_name, card.spec
+    );
 
     let data_value = serde_json::to_value(&card.data)?;
 
     let state_guard = state.read().await;
-    let persona = PersonaRepo::create(
-        &state_guard.db,
-        &persona_name,
-        data_value,
-    ).await?;
+    let persona = PersonaRepo::create(&state_guard.db, &persona_name, data_value).await?;
 
     let persona_id = persona.id.id.to_raw();
 
@@ -232,9 +252,13 @@ pub async fn import_persona_card(
         None,
         None,
         Some(&relative_avatar),
-    ).await?;
+    )
+    .await?;
 
-    info!("Imported persona: {} ({}) with avatar at {}", persona_name, persona_id, relative_avatar);
+    info!(
+        "Imported persona: {} ({}) with avatar at {}",
+        persona_name, persona_id, relative_avatar
+    );
 
     Ok(updated)
 }

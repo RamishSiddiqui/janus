@@ -129,14 +129,18 @@ impl<'a> ResolvedGenParams<'a> {
     fn from_provider(provider: &'a ProviderConfig) -> Self {
         Self {
             model: provider.config["model"].as_str().filter(|s| !s.is_empty()),
-            sampler_name: provider.config["sampler_name"].as_str().unwrap_or("k_euler_a"),
+            sampler_name: provider.config["sampler_name"]
+                .as_str()
+                .unwrap_or("k_euler_a"),
             cfg_scale: provider.config["cfg_scale"].as_f64().unwrap_or(7.5),
             steps: provider.config["steps"].as_u64().unwrap_or(30),
             // The bare API default is `false`, but community consensus
             // favors `true` for smoother results at the same step count.
             karras: provider.config["karras"].as_bool().unwrap_or(true),
             style: provider.config["style"].as_str().filter(|s| !s.is_empty()),
-            negative_prompt: provider.config["negative_prompt"].as_str().filter(|s| !s.is_empty()),
+            negative_prompt: provider.config["negative_prompt"]
+                .as_str()
+                .filter(|s| !s.is_empty()),
             clip_skip: provider.config["clip_skip"].as_u64().map(|v| v as u32),
             post_processing: &[],
             hires_fix: provider.config["hires_fix"].as_bool().unwrap_or(false),
@@ -168,7 +172,10 @@ pub(crate) async fn generate_via_ai_horde(
     // queue priority); a free registered account starts with 25 kudos and
     // gets real priority. This is the "excellent default" — it works out of
     // the box, and users can paste their own key in Settings for priority.
-    let api_key = provider.config["api_key"].as_str().filter(|s| !s.is_empty()).unwrap_or("0000000000");
+    let api_key = provider.config["api_key"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("0000000000");
 
     // A resolved preset (this conversation's own choice, or the global
     // default) fully overrides the provider's raw config fields — presets
@@ -237,7 +244,10 @@ pub(crate) async fn generate_via_ai_horde(
         if let Some(model) = model {
             body["models"] = serde_json::json!([model]);
         } else if let Some(picked) = pick_default_model(http_client).await {
-            info!("[ai_horde] No model pinned — auto-selected '{}' from the live roster", picked);
+            info!(
+                "[ai_horde] No model pinned — auto-selected '{}' from the live roster",
+                picked
+            );
             body["models"] = serde_json::json!([picked]);
             model_was_auto_selected = true;
         }
@@ -282,7 +292,10 @@ pub(crate) async fn generate_via_ai_horde(
     let submit_resp = http_client
         .post(format!("{}/generate/async", AI_HORDE_BASE_URL))
         .header("apikey", api_key)
-        .header("Client-Agent", concat!("Janus:", env!("CARGO_PKG_VERSION"), ":github.com/janus"))
+        .header(
+            "Client-Agent",
+            concat!("Janus:", env!("CARGO_PKG_VERSION"), ":github.com/janus"),
+        )
         .json(&body)
         .send()
         .await
@@ -291,35 +304,55 @@ pub(crate) async fn generate_via_ai_horde(
     if !submit_resp.status().is_success() {
         let status = submit_resp.status();
         let text = submit_resp.text().await.unwrap_or_default();
-        return Err(MythicError::Provider(format!("AI Horde rejected the request ({}): {}", status, text)));
+        return Err(MythicError::Provider(format!(
+            "AI Horde rejected the request ({}): {}",
+            status, text
+        )));
     }
 
-    let submit_json: serde_json::Value = submit_resp.json().await
-        .map_err(|e| MythicError::Provider(format!("Failed to parse AI Horde submit response: {}", e)))?;
-    let job_id = submit_json["id"].as_str()
+    let submit_json: serde_json::Value = submit_resp.json().await.map_err(|e| {
+        MythicError::Provider(format!("Failed to parse AI Horde submit response: {}", e))
+    })?;
+    let job_id = submit_json["id"]
+        .as_str()
         .ok_or_else(|| MythicError::Provider("AI Horde did not return a job ID".to_string()))?
         .to_string();
 
-    info!("[ai_horde] Submitted job {} (estimated kudos cost: {:?})", job_id, submit_json.get("kudos"));
-    let _ = app.emit("ai_horde_progress", serde_json::json!({
-        "conversation_id": conversation_id,
-        "phase": "queued",
-        "kudos": submit_json.get("kudos"),
-    }));
+    info!(
+        "[ai_horde] Submitted job {} (estimated kudos cost: {:?})",
+        job_id,
+        submit_json.get("kudos")
+    );
+    let _ = app.emit(
+        "ai_horde_progress",
+        serde_json::json!({
+            "conversation_id": conversation_id,
+            "phase": "queued",
+            "kudos": submit_json.get("kudos"),
+        }),
+    );
 
     // Poll the lightweight `check` endpoint until done, faulted, cancelled, or timeout.
     let started = std::time::Instant::now();
     loop {
         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
             // Best-effort cancellation so the job stops consuming a worker slot.
-            let _ = http_client.delete(format!("{}/generate/status/{}", AI_HORDE_BASE_URL, job_id)).send().await;
+            let _ = http_client
+                .delete(format!("{}/generate/status/{}", AI_HORDE_BASE_URL, job_id))
+                .send()
+                .await;
             return Err(MythicError::Provider("Generation cancelled".to_string()));
         }
 
         if started.elapsed() > AI_HORDE_MAX_WAIT {
             // Best-effort cancellation so the job stops consuming a worker slot.
-            let _ = http_client.delete(format!("{}/generate/status/{}", AI_HORDE_BASE_URL, job_id)).send().await;
-            return Err(MythicError::Provider("AI Horde generation timed out".to_string()));
+            let _ = http_client
+                .delete(format!("{}/generate/status/{}", AI_HORDE_BASE_URL, job_id))
+                .send()
+                .await;
+            return Err(MythicError::Provider(
+                "AI Horde generation timed out".to_string(),
+            ));
         }
 
         tokio::time::sleep(AI_HORDE_POLL_INTERVAL).await;
@@ -343,12 +376,16 @@ pub(crate) async fn generate_via_ai_horde(
             // here would otherwise be silently read as "still processing" for
             // the rest of the wait budget, masking the real failure. Log and
             // keep polling instead.
-            warn!("[ai_horde] check for job {} returned {}: {} — retrying", job_id, status, body);
+            warn!(
+                "[ai_horde] check for job {} returned {}: {} — retrying",
+                job_id, status, body
+            );
             continue;
         }
 
-        let check: serde_json::Value = check_resp.json().await
-            .map_err(|e| MythicError::Provider(format!("Failed to parse AI Horde check response: {}", e)))?;
+        let check: serde_json::Value = check_resp.json().await.map_err(|e| {
+            MythicError::Provider(format!("Failed to parse AI Horde check response: {}", e))
+        })?;
 
         let _ = app.emit("ai_horde_progress", serde_json::json!({
             "conversation_id": conversation_id,
@@ -359,7 +396,9 @@ pub(crate) async fn generate_via_ai_horde(
         }));
 
         if check["faulted"].as_bool().unwrap_or(false) {
-            return Err(MythicError::Provider("AI Horde generation faulted (no worker could complete it)".to_string()));
+            return Err(MythicError::Provider(
+                "AI Horde generation faulted (no worker could complete it)".to_string(),
+            ));
         }
         if !check["is_possible"].as_bool().unwrap_or(true) {
             warn!("[ai_horde] Job {} reported as not currently possible with the available worker pool — continuing to wait in case it recovers", job_id);
@@ -369,10 +408,13 @@ pub(crate) async fn generate_via_ai_horde(
         }
     }
 
-    let _ = app.emit("ai_horde_progress", serde_json::json!({
-        "conversation_id": conversation_id,
-        "phase": "finalizing",
-    }));
+    let _ = app.emit(
+        "ai_horde_progress",
+        serde_json::json!({
+            "conversation_id": conversation_id,
+            "phase": "finalizing",
+        }),
+    );
 
     // Only `status` returns the actual image(s), and it's rate-limited to
     // 10/min — safe to call once now that `check` has confirmed completion.
@@ -391,25 +433,32 @@ pub(crate) async fn generate_via_ai_horde(
         )));
     }
 
-    let status_json: serde_json::Value = status_resp.json().await
-        .map_err(|e| MythicError::Provider(format!("Failed to parse AI Horde status response: {}", e)))?;
+    let status_json: serde_json::Value = status_resp.json().await.map_err(|e| {
+        MythicError::Provider(format!("Failed to parse AI Horde status response: {}", e))
+    })?;
 
-    let generation = status_json["generations"].get(0)
+    let generation = status_json["generations"]
+        .get(0)
         .ok_or_else(|| MythicError::Provider("AI Horde returned no generations".to_string()))?;
 
-    let img_b64 = generation["img"].as_str()
-        .ok_or_else(|| MythicError::Provider("AI Horde generation had no image data".to_string()))?;
+    let img_b64 = generation["img"].as_str().ok_or_else(|| {
+        MythicError::Provider("AI Horde generation had no image data".to_string())
+    })?;
 
     let webp_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, img_b64)
         .map_err(|e| MythicError::Provider(format!("Failed to decode AI Horde image: {}", e)))?;
 
     // AI Horde returns WebP — re-encode to PNG for consistency with the rest
     // of the scenes pipeline (and every other image path in this app).
-    let decoded = image::load_from_memory(&webp_bytes)
-        .map_err(|e| MythicError::Provider(format!("Failed to decode AI Horde WebP image: {}", e)))?;
+    let decoded = image::load_from_memory(&webp_bytes).map_err(|e| {
+        MythicError::Provider(format!("Failed to decode AI Horde WebP image: {}", e))
+    })?;
     let mut png_buf = std::io::Cursor::new(Vec::new());
-    decoded.write_to(&mut png_buf, image::ImageFormat::Png)
-        .map_err(|e| MythicError::Provider(format!("Failed to re-encode AI Horde image as PNG: {}", e)))?;
+    decoded
+        .write_to(&mut png_buf, image::ImageFormat::Png)
+        .map_err(|e| {
+            MythicError::Provider(format!("Failed to re-encode AI Horde image as PNG: {}", e))
+        })?;
 
     // Full generation details, captured so a scene can be replicated later
     // from the gallery — everything actually sent to AI Horde for this job.

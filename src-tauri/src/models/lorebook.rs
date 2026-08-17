@@ -10,12 +10,19 @@ use surrealdb::sql::Thing;
 /// while allowing rich world-building.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LorebookEntry {
-    #[serde(serialize_with = "crate::models::serialize_thing", deserialize_with = "crate::models::deserialize_thing")]
+    #[serde(
+        serialize_with = "crate::models::serialize_thing",
+        deserialize_with = "crate::models::deserialize_thing"
+    )]
     #[specta(type = String)]
     pub id: Thing,
 
     /// The character this entry belongs to (None = global lorebook)
-    #[serde(default, serialize_with = "crate::models::serialize_option_thing", deserialize_with = "crate::models::deserialize_option_thing")]
+    #[serde(
+        default,
+        serialize_with = "crate::models::serialize_option_thing",
+        deserialize_with = "crate::models::deserialize_option_thing"
+    )]
     #[specta(type = Option<String>)]
     pub character_id: Option<Thing>,
 

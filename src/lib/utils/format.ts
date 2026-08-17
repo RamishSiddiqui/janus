@@ -44,8 +44,12 @@ export function formatRoleplayContent(text: string): string {
   });
 
   const formatted = formattedLines.join('\n')
-    // Double newlines → paragraph break
-    .replace(/\n{2,}/g, '<br/><br/>')
+    // Double newlines → paragraph break. A single <br/> is enough — block-level
+    // action paragraphs (.rp-action-block) already carry their own margin, so
+    // doubling up here (as this used to) stacked a full blank line on top of
+    // that margin for every paragraph, and RP prose breaks paragraphs after
+    // nearly every line, producing far too much vertical gap between lines.
+    .replace(/\n{2,}/g, '<br/>')
     // Single newline → space (prose continuation)
     .replace(/\n/g, ' ')
     // Any '*' still here is an orphaned marker the passes above couldn't

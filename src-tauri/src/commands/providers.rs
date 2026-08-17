@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+
 use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::db::ai_horde_models::AiHordeModelRepo;
 use crate::db::providers::ProviderRepo;
-use crate::error::{MythicError, validate_required_string};
+use crate::error::{validate_required_string, MythicError};
 use crate::models::ai_horde_model::AiHordeModelInfo;
 use crate::models::provider::{ProviderAdapter, ProviderConfig, ProviderType};
 use crate::models::DynamicJson;
@@ -18,8 +19,9 @@ use crate::AppState;
 /// every Models-page load and every "Add Provider" adapter switch, re-
 /// downloading the whole file from raw.githubusercontent.com each time.
 /// Live worker counts (a separate, cheap request) are always fetched fresh.
-static REFERENCE_CACHE: std::sync::OnceLock<tokio::sync::Mutex<Option<(std::time::Instant, HashMap<String, serde_json::Value>)>>> =
-    std::sync::OnceLock::new();
+static REFERENCE_CACHE: std::sync::OnceLock<
+    tokio::sync::Mutex<Option<(std::time::Instant, HashMap<String, serde_json::Value>)>>,
+> = std::sync::OnceLock::new();
 const REFERENCE_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
 async fn fetch_model_reference(http: &reqwest::Client) -> HashMap<String, serde_json::Value> {
@@ -69,32 +71,57 @@ async fn fetch_ai_horde_model_info(http: &reqwest::Client) -> Vec<AiHordeModelIn
 
     let reference = fetch_model_reference(http).await;
 
-    live.into_iter().filter_map(|m| {
-        let name = m.get("name")?.as_str()?.to_string();
-        let worker_count = m.get("count").and_then(|v| v.as_i64()).unwrap_or(0);
+    live.into_iter()
+        .filter_map(|m| {
+            let name = m.get("name")?.as_str()?.to_string();
+            let worker_count = m.get("count").and_then(|v| v.as_i64()).unwrap_or(0);
 
-        // The reference is keyed by model name matching AI Horde's own
-        // naming, but fall back to scanning by each entry's own `name`
-        // field in case keying ever diverges from display names.
-        let ref_entry = reference.get(&name).or_else(|| {
-            reference.values().find(|v| v.get("name").and_then(|n| n.as_str()) == Some(name.as_str()))
-        });
+            // The reference is keyed by model name matching AI Horde's own
+            // naming, but fall back to scanning by each entry's own `name`
+            // field in case keying ever diverges from display names.
+            let ref_entry = reference.get(&name).or_else(|| {
+                reference
+                    .values()
+                    .find(|v| v.get("name").and_then(|n| n.as_str()) == Some(name.as_str()))
+            });
 
-        let baseline = ref_entry.and_then(|e| e.get("baseline")).and_then(|v| v.as_str()).map(String::from);
-        let inpainting = ref_entry.and_then(|e| e.get("inpainting")).and_then(|v| v.as_bool()).unwrap_or(false);
-        let nsfw = ref_entry.and_then(|e| e.get("nsfw")).and_then(|v| v.as_bool()).unwrap_or(false);
-        let style = ref_entry.and_then(|e| e.get("style")).and_then(|v| v.as_str()).map(String::from);
+            let baseline = ref_entry
+                .and_then(|e| e.get("baseline"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let inpainting = ref_entry
+                .and_then(|e| e.get("inpainting"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let nsfw = ref_entry
+                .and_then(|e| e.get("nsfw"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let style = ref_entry
+                .and_then(|e| e.get("style"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
 
-        // img2img is a generic diffusion capability, not gated by a
-        // dedicated per-model API flag — but newer architectures are
-        // documented as unreliable/unsupported for it on AI Horde: Flux
-        // img2img produces blurred/oversaturated results, and Stable
-        // Cascade originally launched text2img-only.
-        let baseline_lower = baseline.as_deref().unwrap_or_default().to_lowercase();
-        let img2img_supported = !(baseline_lower.contains("flux") || baseline_lower.contains("cascade"));
+            // img2img is a generic diffusion capability, not gated by a
+            // dedicated per-model API flag — but newer architectures are
+            // documented as unreliable/unsupported for it on AI Horde: Flux
+            // img2img produces blurred/oversaturated results, and Stable
+            // Cascade originally launched text2img-only.
+            let baseline_lower = baseline.as_deref().unwrap_or_default().to_lowercase();
+            let img2img_supported =
+                !(baseline_lower.contains("flux") || baseline_lower.contains("cascade"));
 
-        Some(AiHordeModelInfo { name, baseline, inpainting, nsfw, style, img2img_supported, worker_count })
-    }).collect()
+            Some(AiHordeModelInfo {
+                name,
+                baseline,
+                inpainting,
+                nsfw,
+                style,
+                img2img_supported,
+                worker_count,
+            })
+        })
+        .collect()
 }
 
 /// Runs `fetch_ai_horde_model_info` and caches the result — best effort,
@@ -141,7 +168,10 @@ pub async fn create_provider(
     )
     .await?;
 
-    info!("Created provider: {} ({}) [{}]", name, adapter, provider_type);
+    info!(
+        "Created provider: {} ({}) [{}]",
+        name, adapter, provider_type
+    );
     Ok(provider)
 }
 
@@ -181,7 +211,8 @@ pub async fn update_provider(
     }
 
     let state = state.read().await;
-    let provider = ProviderRepo::update(&state.db, &id, name.as_deref(), config.map(|c| c.0)).await?;
+    let provider =
+        ProviderRepo::update(&state.db, &id, name.as_deref(), config.map(|c| c.0)).await?;
     info!("Updated provider: {}", id);
     Ok(provider)
 }
@@ -225,18 +256,26 @@ pub struct ConnectionTestResult {
 }
 
 fn ok_result() -> ConnectionTestResult {
-    ConnectionTestResult { ok: true, detail: None }
+    ConnectionTestResult {
+        ok: true,
+        detail: None,
+    }
 }
 
 fn fail_result(detail: impl Into<String>) -> ConnectionTestResult {
-    ConnectionTestResult { ok: false, detail: Some(detail.into()) }
+    ConnectionTestResult {
+        ok: false,
+        detail: Some(detail.into()),
+    }
 }
 
 /// Turns an HTTP response/error into a `ConnectionTestResult`, reading the
 /// response body on a non-2xx status so the actual provider-side rejection
 /// reason (e.g. "invalid_api_key", "model not found") makes it back to the
 /// user instead of just a status code.
-async fn summarize_http_result(resp: Result<reqwest::Response, reqwest::Error>) -> ConnectionTestResult {
+async fn summarize_http_result(
+    resp: Result<reqwest::Response, reqwest::Error>,
+) -> ConnectionTestResult {
     match resp {
         Ok(r) => {
             let status = r.status();
@@ -246,7 +285,11 @@ async fn summarize_http_result(resp: Result<reqwest::Response, reqwest::Error>) 
                 let body = r.text().await.unwrap_or_default();
                 let body_trimmed: String = body.trim().chars().take(300).collect();
                 if body_trimmed.is_empty() {
-                    fail_result(format!("HTTP {} {}", status.as_u16(), status.canonical_reason().unwrap_or("")))
+                    fail_result(format!(
+                        "HTTP {} {}",
+                        status.as_u16(),
+                        status.canonical_reason().unwrap_or("")
+                    ))
                 } else {
                     fail_result(format!("HTTP {}: {}", status.as_u16(), body_trimmed))
                 }
@@ -282,13 +325,15 @@ pub async fn test_provider_connection(
     // through to rig-core's OpenAI-compatible client, unmodified) — so
     // endpoint paths below must be appended directly, never with an extra
     // "/v1/" prefix.
-    let base_url = provider.config
+    let base_url = provider
+        .config
         .get("base_url")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim_end_matches('/');
 
-    let api_key = provider.config
+    let api_key = provider
+        .config
         .get("api_key")
         .and_then(|v| v.as_str())
         .unwrap_or("");
@@ -302,7 +347,8 @@ pub async fn test_provider_connection(
         // Use a direct HTTP check for cloud providers
         return match provider.adapter {
             ProviderAdapter::OpenRouter => {
-                let resp = state.http_client
+                let resp = state
+                    .http_client
                     .get("https://openrouter.ai/api/v1/models")
                     .header("Authorization", format!("Bearer {}", api_key))
                     .header("HTTP-Referer", "https://janus.app")
@@ -316,7 +362,8 @@ pub async fn test_provider_connection(
                 // No auth needed for a heartbeat — just confirms the service is up.
                 // The configured key (even the anonymous default) is always "valid"
                 // in the sense that AI Horde never rejects it outright.
-                let resp = state.http_client
+                let resp = state
+                    .http_client
                     .get("https://aihorde.net/api/v2/status/heartbeat")
                     .timeout(std::time::Duration::from_secs(5))
                     .send()
@@ -358,7 +405,8 @@ pub async fn test_provider_connection(
         _ => format!("{}/models", base_url),
     };
 
-    let mut req = state.http_client
+    let mut req = state
+        .http_client
         .get(&health_url)
         .timeout(std::time::Duration::from_secs(5));
     if !api_key.is_empty() {
@@ -381,13 +429,15 @@ pub async fn list_provider_models(
     let state = state.read().await;
     let provider = ProviderRepo::get(&state.db, &id).await?;
 
-    let base_url = provider.config
+    let base_url = provider
+        .config
         .get("base_url")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim_end_matches('/');
 
-    let api_key = provider.config
+    let api_key = provider
+        .config
         .get("api_key")
         .and_then(|v| v.as_str())
         .unwrap_or("");
@@ -399,31 +449,40 @@ pub async fn list_provider_models(
         let mut infos = refresh_ai_horde_model_info(&state.db, &state.http_client).await;
         infos.sort_by(|a, b| a.name.cmp(&b.name));
         let models: Vec<String> = infos.into_iter().map(|m| m.name).collect();
-        info!("Listed {} models from provider {}", models.len(), provider.name);
+        info!(
+            "Listed {} models from provider {}",
+            models.len(),
+            provider.name
+        );
         return Ok(models);
     }
 
     let (url, is_ollama) = match provider.adapter {
         ProviderAdapter::Ollama => {
-            let base = if base_url.is_empty() { "http://localhost:11434" } else { base_url };
+            let base = if base_url.is_empty() {
+                "http://localhost:11434"
+            } else {
+                base_url
+            };
             (format!("{}/api/tags", base), true)
         }
-        ProviderAdapter::OpenRouter => {
-            ("https://openrouter.ai/api/v1/models".to_string(), false)
-        }
+        ProviderAdapter::OpenRouter => ("https://openrouter.ai/api/v1/models".to_string(), false),
         _ => {
             // OpenAI-compatible (LM Studio, vLLM, NVIDIA NIM, etc.) —
             // base_url already includes the version segment (see the
             // matching comment in test_provider_connection above); appending
             // another "/v1/" here produced a broken .../v1/v1/models URL.
             if base_url.is_empty() {
-                return Err(MythicError::Validation("Base URL is required to list models".to_string()));
+                return Err(MythicError::Validation(
+                    "Base URL is required to list models".to_string(),
+                ));
             }
             (format!("{}/models", base_url), false)
         }
     };
 
-    let mut req = state.http_client
+    let mut req = state
+        .http_client
         .get(&url)
         .timeout(std::time::Duration::from_secs(10));
 
@@ -434,7 +493,8 @@ pub async fn list_provider_models(
     let resp = req.send().await?;
     if !resp.status().is_success() {
         return Err(MythicError::Provider(format!(
-            "Failed to list models: HTTP {}", resp.status()
+            "Failed to list models: HTTP {}",
+            resp.status()
         )));
     }
 
@@ -444,17 +504,29 @@ pub async fn list_provider_models(
         // Ollama format: { "models": [{ "name": "gemma3:latest", ... }] }
         body.get("models")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
+                    .collect()
+            })
             .unwrap_or_default()
     } else {
         // OpenAI/OpenRouter format: { "data": [{ "id": "gpt-4o", ... }] }
         body.get("data")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|m| m.get("id").and_then(|n| n.as_str()).map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| m.get("id").and_then(|n| n.as_str()).map(String::from))
+                    .collect()
+            })
             .unwrap_or_default()
     };
 
-    info!("Listed {} models from provider {}", models.len(), provider.name);
+    info!(
+        "Listed {} models from provider {}",
+        models.len(),
+        provider.name
+    );
     Ok(models)
 }
 
@@ -463,27 +535,27 @@ pub async fn list_provider_models(
 /// A single model entry returned by `list_all_models`.
 #[derive(serde::Serialize, Debug, Clone, specta::Type)]
 pub struct ModelEntry {
-    pub model_id:      String,
-    pub provider_id:   String,
+    pub model_id: String,
+    pub provider_id: String,
     pub provider_name: String,
-    pub adapter:       String,
-    pub model_type:    String,
+    pub adapter: String,
+    pub model_type: String,
     pub context_length: Option<u32>,
-    pub enabled:       bool,
+    pub enabled: bool,
     // ── Rich metadata (populated from OpenRouter API) ──
-    pub display_name:          Option<String>,
-    pub description:           Option<String>,
-    pub pricing_prompt:        Option<String>,
-    pub pricing_completion:    Option<String>,
-    pub is_free:               bool,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub pricing_prompt: Option<String>,
+    pub pricing_completion: Option<String>,
+    pub is_free: bool,
     pub max_completion_tokens: Option<u32>,
-    pub input_modalities:      Vec<String>,
-    pub output_modalities:     Vec<String>,
-    pub supports_tools:        bool,
-    pub supports_vision:       bool,
-    pub supports_reasoning:    bool,
+    pub input_modalities: Vec<String>,
+    pub output_modalities: Vec<String>,
+    pub supports_tools: bool,
+    pub supports_vision: bool,
+    pub supports_reasoning: bool,
     /// Embedding vector dimensions (populated for embedding models)
-    pub embedding_dimensions:  Option<u32>,
+    pub embedding_dimensions: Option<u32>,
     /// True when this model is enabled locally but no longer appears in the
     /// provider's live catalog (e.g. delisted upstream). Stale entries carry
     /// no fetched metadata (pricing, context length, etc.) — just enough to
@@ -526,8 +598,16 @@ pub async fn list_all_models(
     let mut tasks = Vec::new();
     for provider in &providers {
         let config = &provider.config;
-        let base_url = config.get("base_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let base_url = config
+            .get("base_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let api_key = config
+            .get("api_key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let adapter = serde_json::to_value(&provider.adapter)
             .ok()
             .and_then(|v| v.as_str().map(String::from))
@@ -564,44 +644,61 @@ pub async fn list_all_models(
             // OpenAI-compatible/Ollama/OpenRouter paths below.
             if adapter == "ai_horde" {
                 let infos = refresh_ai_horde_model_info(&db_c, &http_c).await;
-                return (provider_id.clone(), true, infos.into_iter().map(|info| {
-                    let count = info.worker_count;
-                    ModelEntry {
-                        model_id: info.name,
-                        provider_id: provider_id.clone(),
-                        provider_name: provider_name.clone(),
-                        adapter: adapter.clone(),
-                        model_type: provider_type.clone(),
-                        context_length: None,
-                        enabled: false, // set below
-                        display_name: None,
-                        description: Some(format!("{} worker{} online", count, if count == 1 { "" } else { "s" })),
-                        pricing_prompt: None,
-                        pricing_completion: None,
-                        is_free: true,
-                        max_completion_tokens: None,
-                        input_modalities: vec![],
-                        output_modalities: vec![],
-                        supports_tools: false,
-                        supports_vision: false,
-                        supports_reasoning: false,
-                        is_stale: false,
-                        embedding_dimensions: None,
-                        baseline: info.baseline,
-                        img2img_supported: Some(info.img2img_supported),
-                        inpainting: Some(info.inpainting),
-                    }
-                }).collect::<Vec<_>>());
+                return (
+                    provider_id.clone(),
+                    true,
+                    infos
+                        .into_iter()
+                        .map(|info| {
+                            let count = info.worker_count;
+                            ModelEntry {
+                                model_id: info.name,
+                                provider_id: provider_id.clone(),
+                                provider_name: provider_name.clone(),
+                                adapter: adapter.clone(),
+                                model_type: provider_type.clone(),
+                                context_length: None,
+                                enabled: false, // set below
+                                display_name: None,
+                                description: Some(format!(
+                                    "{} worker{} online",
+                                    count,
+                                    if count == 1 { "" } else { "s" }
+                                )),
+                                pricing_prompt: None,
+                                pricing_completion: None,
+                                is_free: true,
+                                max_completion_tokens: None,
+                                input_modalities: vec![],
+                                output_modalities: vec![],
+                                supports_tools: false,
+                                supports_vision: false,
+                                supports_reasoning: false,
+                                is_stale: false,
+                                embedding_dimensions: None,
+                                baseline: info.baseline,
+                                img2img_supported: Some(info.img2img_supported),
+                                inpainting: Some(info.inpainting),
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                );
             }
 
             let (url, is_ollama) = match adapter.as_str() {
                 "ollama" => {
-                    let base = if base_url.is_empty() { "http://localhost:11434".to_string() } else { base_url };
+                    let base = if base_url.is_empty() {
+                        "http://localhost:11434".to_string()
+                    } else {
+                        base_url
+                    };
                     (format!("{}/api/tags", base), true)
                 }
                 "open_router" => ("https://openrouter.ai/api/v1/models".to_string(), false),
                 _ => {
-                    if base_url.is_empty() { return (provider_id.clone(), false, vec![]); }
+                    if base_url.is_empty() {
+                        return (provider_id.clone(), false, vec![]);
+                    }
                     // OpenAI-compatible base_urls already include the version
                     // segment (e.g. NVIDIA's "https://integrate.api.nvidia.com/v1")
                     // — see the matching comment on test_provider_connection.
@@ -634,97 +731,157 @@ pub async fn list_all_models(
             let entries: Vec<RawModel> = if is_ollama {
                 body.get("models")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|m| {
-                        Some(RawModel {
-                            model_id: m.get("name")?.as_str()?.to_string(),
-                            context_length: None, display_name: None, description: None,
-                            pricing_prompt: None, pricing_completion: None, is_free: false,
-                            max_completion_tokens: None, input_modalities: vec![],
-                            output_modalities: vec![], supports_tools: false,
-                            supports_vision: false, supports_reasoning: false,
-                        })
-                    }).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| {
+                                Some(RawModel {
+                                    model_id: m.get("name")?.as_str()?.to_string(),
+                                    context_length: None,
+                                    display_name: None,
+                                    description: None,
+                                    pricing_prompt: None,
+                                    pricing_completion: None,
+                                    is_free: false,
+                                    max_completion_tokens: None,
+                                    input_modalities: vec![],
+                                    output_modalities: vec![],
+                                    supports_tools: false,
+                                    supports_vision: false,
+                                    supports_reasoning: false,
+                                })
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default()
             } else {
                 body.get("data")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|m| {
-                        let id = m.get("id")?.as_str()?.to_string();
-                        let ctx = m.get("context_length").and_then(|v| v.as_u64()).map(|v| v as u32);
-                        let name = m.get("name").and_then(|v| v.as_str()).map(String::from);
-                        let desc = m.get("description").and_then(|v| v.as_str()).map(|s| {
-                            let chars: String = s.chars().take(200).collect();
-                            if chars.len() < s.len() { format!("{}...", chars) } else { chars }
-                        });
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| {
+                                let id = m.get("id")?.as_str()?.to_string();
+                                let ctx = m
+                                    .get("context_length")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
+                                let name = m.get("name").and_then(|v| v.as_str()).map(String::from);
+                                let desc = m.get("description").and_then(|v| v.as_str()).map(|s| {
+                                    let chars: String = s.chars().take(200).collect();
+                                    if chars.len() < s.len() {
+                                        format!("{}...", chars)
+                                    } else {
+                                        chars
+                                    }
+                                });
 
-                        // Pricing
-                        let pricing = m.get("pricing");
-                        let p_prompt = pricing.and_then(|p| p.get("prompt")).and_then(|v| v.as_str()).map(String::from);
-                        let p_completion = pricing.and_then(|p| p.get("completion")).and_then(|v| v.as_str()).map(String::from);
-                        let is_free = p_prompt.as_deref() == Some("0") && p_completion.as_deref() == Some("0");
+                                // Pricing
+                                let pricing = m.get("pricing");
+                                let p_prompt = pricing
+                                    .and_then(|p| p.get("prompt"))
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
+                                let p_completion = pricing
+                                    .and_then(|p| p.get("completion"))
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
+                                let is_free = p_prompt.as_deref() == Some("0")
+                                    && p_completion.as_deref() == Some("0");
 
-                        // Top provider
-                        let max_comp = m.get("top_provider")
-                            .and_then(|tp| tp.get("max_completion_tokens"))
-                            .and_then(|v| v.as_u64()).map(|v| v as u32);
+                                // Top provider
+                                let max_comp = m
+                                    .get("top_provider")
+                                    .and_then(|tp| tp.get("max_completion_tokens"))
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
 
-                        // Architecture / modalities
-                        let arch = m.get("architecture");
-                        let input_mods: Vec<String> = arch.and_then(|a| a.get("input_modalities"))
-                            .and_then(|v| v.as_array())
-                            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-                            .unwrap_or_default();
-                        let output_mods: Vec<String> = arch.and_then(|a| a.get("output_modalities"))
-                            .and_then(|v| v.as_array())
-                            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-                            .unwrap_or_default();
+                                // Architecture / modalities
+                                let arch = m.get("architecture");
+                                let input_mods: Vec<String> = arch
+                                    .and_then(|a| a.get("input_modalities"))
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|x| x.as_str().map(String::from))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
+                                let output_mods: Vec<String> = arch
+                                    .and_then(|a| a.get("output_modalities"))
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|x| x.as_str().map(String::from))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
 
-                        // Supported parameters
-                        let params: Vec<String> = m.get("supported_parameters")
-                            .and_then(|v| v.as_array())
-                            .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-                            .unwrap_or_default();
-                        let supports_tools = params.iter().any(|p| p == "tools");
-                        let supports_vision = input_mods.iter().any(|m| m == "image");
-                        let supports_reasoning = params.iter().any(|p| p == "reasoning" || p == "include_reasoning");
+                                // Supported parameters
+                                let params: Vec<String> = m
+                                    .get("supported_parameters")
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|x| x.as_str().map(String::from))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
+                                let supports_tools = params.iter().any(|p| p == "tools");
+                                let supports_vision = input_mods.iter().any(|m| m == "image");
+                                let supports_reasoning = params
+                                    .iter()
+                                    .any(|p| p == "reasoning" || p == "include_reasoning");
 
-                        Some(RawModel {
-                            model_id: id, context_length: ctx, display_name: name, description: desc,
-                            pricing_prompt: p_prompt, pricing_completion: p_completion, is_free,
-                            max_completion_tokens: max_comp, input_modalities: input_mods,
-                            output_modalities: output_mods, supports_tools, supports_vision, supports_reasoning,
-                        })
-                    }).collect())
+                                Some(RawModel {
+                                    model_id: id,
+                                    context_length: ctx,
+                                    display_name: name,
+                                    description: desc,
+                                    pricing_prompt: p_prompt,
+                                    pricing_completion: p_completion,
+                                    is_free,
+                                    max_completion_tokens: max_comp,
+                                    input_modalities: input_mods,
+                                    output_modalities: output_mods,
+                                    supports_tools,
+                                    supports_vision,
+                                    supports_reasoning,
+                                })
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default()
             };
 
-            let parsed = entries.into_iter().map(|raw| {
-                ModelEntry {
-                    model_id: raw.model_id,
-                    provider_id: provider_id.clone(),
-                    provider_name: provider_name.clone(),
-                    adapter: adapter.clone(),
-                    model_type: provider_type.clone(),
-                    context_length: raw.context_length,
-                    enabled: false, // will be set below
-                    display_name: raw.display_name,
-                    description: raw.description,
-                    pricing_prompt: raw.pricing_prompt,
-                    pricing_completion: raw.pricing_completion,
-                    is_free: raw.is_free,
-                    max_completion_tokens: raw.max_completion_tokens,
-                    input_modalities: raw.input_modalities,
-                    output_modalities: raw.output_modalities,
-                    supports_tools: raw.supports_tools,
-                    supports_vision: raw.supports_vision,
-                    supports_reasoning: raw.supports_reasoning,
-                    is_stale: false,
-                    embedding_dimensions: None,
-                    baseline: None,
-                    img2img_supported: None,
-                    inpainting: None,
-                }
-            }).collect::<Vec<_>>();
+            let parsed = entries
+                .into_iter()
+                .map(|raw| {
+                    ModelEntry {
+                        model_id: raw.model_id,
+                        provider_id: provider_id.clone(),
+                        provider_name: provider_name.clone(),
+                        adapter: adapter.clone(),
+                        model_type: provider_type.clone(),
+                        context_length: raw.context_length,
+                        enabled: false, // will be set below
+                        display_name: raw.display_name,
+                        description: raw.description,
+                        pricing_prompt: raw.pricing_prompt,
+                        pricing_completion: raw.pricing_completion,
+                        is_free: raw.is_free,
+                        max_completion_tokens: raw.max_completion_tokens,
+                        input_modalities: raw.input_modalities,
+                        output_modalities: raw.output_modalities,
+                        supports_tools: raw.supports_tools,
+                        supports_vision: raw.supports_vision,
+                        supports_reasoning: raw.supports_reasoning,
+                        is_stale: false,
+                        embedding_dimensions: None,
+                        baseline: None,
+                        img2img_supported: None,
+                        inpainting: None,
+                    }
+                })
+                .collect::<Vec<_>>();
             (provider_id.clone(), true, parsed)
         }));
     }
@@ -748,7 +905,10 @@ pub async fn list_all_models(
             }
             for mut entry in rows {
                 let key = (entry.provider_id.clone(), entry.model_id.clone());
-                entry.enabled = enabled_map.get(&key).map(|(enabled, _)| *enabled).unwrap_or(false);
+                entry.enabled = enabled_map
+                    .get(&key)
+                    .map(|(enabled, _)| *enabled)
+                    .unwrap_or(false);
                 seen.insert(key);
                 all_entries.push(entry);
             }
@@ -763,7 +923,8 @@ pub async fn list_all_models(
     let stale: Vec<(String, String, String)> = enabled_map
         .iter()
         .filter(|((provider_id, model_id), (enabled, model_type))| {
-            *enabled && model_type != "embedding"
+            *enabled
+                && model_type != "embedding"
                 && fetch_ok.contains(provider_id)
                 && !seen.contains(&(provider_id.clone(), model_id.clone()))
         })
@@ -775,9 +936,25 @@ pub async fn list_all_models(
     if !stale.is_empty() {
         let state_guard = state.read().await;
         for (provider_id, model_id, model_type) in &stale {
-            match ProviderRepo::toggle_model(&state_guard.db, provider_id, model_id, model_type, false).await {
-                Ok(()) => info!("Auto-disabled stale model {} on provider {}", model_id, provider_id),
-                Err(e) => tracing::warn!("Failed to auto-disable stale model {} on provider {}: {}", model_id, provider_id, e),
+            match ProviderRepo::toggle_model(
+                &state_guard.db,
+                provider_id,
+                model_id,
+                model_type,
+                false,
+            )
+            .await
+            {
+                Ok(()) => info!(
+                    "Auto-disabled stale model {} on provider {}",
+                    model_id, provider_id
+                ),
+                Err(e) => tracing::warn!(
+                    "Failed to auto-disable stale model {} on provider {}: {}",
+                    model_id,
+                    provider_id,
+                    e
+                ),
             }
         }
     }
@@ -816,7 +993,11 @@ pub async fn list_all_models(
         }
     }
 
-    info!("list_all_models: {} total models across {} providers", all_entries.len(), providers.len());
+    info!(
+        "list_all_models: {} total models across {} providers",
+        all_entries.len(),
+        providers.len()
+    );
     Ok(all_entries)
 }
 
@@ -841,8 +1022,16 @@ pub async fn list_embedding_models(
     let mut tasks = Vec::new();
     for provider in &providers {
         let config = &provider.config;
-        let base_url = config.get("base_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let api_key = config.get("api_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let base_url = config
+            .get("base_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let api_key = config
+            .get("api_key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let adapter = serde_json::to_value(&provider.adapter)
             .ok()
             .and_then(|v| v.as_str().map(String::from))
@@ -860,15 +1049,25 @@ pub async fn list_embedding_models(
                     true, // dedicated embedding endpoint — all results are embedding models
                 ),
                 "ollama" => {
-                    let base = if base_url.is_empty() { "http://localhost:11434".to_string() } else { base_url };
+                    let base = if base_url.is_empty() {
+                        "http://localhost:11434".to_string()
+                    } else {
+                        base_url
+                    };
                     (format!("{}/api/tags", base), true, false)
                 }
                 _ => {
-                    if base_url.is_empty() { return (provider_id.clone(), false, vec![]); }
+                    if base_url.is_empty() {
+                        return (provider_id.clone(), false, vec![]);
+                    }
                     // Same "/v1/v1/models" bug as the other OpenAI-compatible
                     // model-listing branches in this file — base_url already
                     // includes the version segment.
-                    (format!("{}/models", base_url.trim_end_matches('/')), false, false)
+                    (
+                        format!("{}/models", base_url.trim_end_matches('/')),
+                        false,
+                        false,
+                    )
                 }
             };
 
@@ -891,67 +1090,105 @@ pub async fn list_embedding_models(
             };
 
             // Parse models from response
-            let raw_models: Vec<(String, Option<String>, Option<u32>, Option<String>, Option<String>, bool)> = if is_ollama {
+            let raw_models: Vec<(
+                String,
+                Option<String>,
+                Option<u32>,
+                Option<String>,
+                Option<String>,
+                bool,
+            )> = if is_ollama {
                 body.get("models")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|m| {
-                        let id = m.get("name")?.as_str()?.to_string();
-                        Some((id, None, None, None, None, false))
-                    }).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| {
+                                let id = m.get("name")?.as_str()?.to_string();
+                                Some((id, None, None, None, None, false))
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default()
             } else {
                 body.get("data")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|m| {
-                        let id = m.get("id")?.as_str()?.to_string();
-                        let name = m.get("name").and_then(|v| v.as_str()).map(String::from);
-                        let ctx = m.get("context_length").and_then(|v| v.as_u64()).map(|v| v as u32);
-                        let pricing = m.get("pricing");
-                        let p_prompt = pricing.and_then(|p| p.get("prompt")).and_then(|v| v.as_str()).map(String::from);
-                        let p_completion = pricing.and_then(|p| p.get("completion")).and_then(|v| v.as_str()).map(String::from);
-                        let is_free = p_prompt.as_deref() == Some("0") && p_completion.as_deref() == Some("0");
-                        Some((id, name, ctx, p_prompt, p_completion, is_free))
-                    }).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| {
+                                let id = m.get("id")?.as_str()?.to_string();
+                                let name = m.get("name").and_then(|v| v.as_str()).map(String::from);
+                                let ctx = m
+                                    .get("context_length")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
+                                let pricing = m.get("pricing");
+                                let p_prompt = pricing
+                                    .and_then(|p| p.get("prompt"))
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
+                                let p_completion = pricing
+                                    .and_then(|p| p.get("completion"))
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
+                                let is_free = p_prompt.as_deref() == Some("0")
+                                    && p_completion.as_deref() == Some("0");
+                                Some((id, name, ctx, p_prompt, p_completion, is_free))
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default()
             };
 
             // Filter: if this is a dedicated embedding endpoint, keep all;
             // otherwise only keep models with "embed" in their ID
-            let parsed = raw_models.into_iter()
+            let parsed = raw_models
+                .into_iter()
                 .filter(|(id, name, ..)| {
-                    if is_embedding_endpoint { return true; }
+                    if is_embedding_endpoint {
+                        return true;
+                    }
                     let id_lower = id.to_lowercase();
                     let name_lower = name.as_deref().unwrap_or("").to_lowercase();
                     id_lower.contains("embed") || name_lower.contains("embed")
                 })
-                .map(|(model_id, display_name, context_length, pricing_prompt, pricing_completion, is_free)| {
-                    let dims = super::embeddings::get_model_dimension(&model_id).map(|d| d as u32);
-                    ModelEntry {
+                .map(
+                    |(
                         model_id,
-                        provider_id: provider_id.clone(),
-                        provider_name: provider_name.clone(),
-                        adapter: adapter.clone(),
-                        model_type: "embedding".to_string(),
-                        context_length,
-                        enabled: false,
                         display_name,
-                        description: None,
+                        context_length,
                         pricing_prompt,
                         pricing_completion,
                         is_free,
-                        max_completion_tokens: None,
-                        input_modalities: vec![],
-                        output_modalities: vec![],
-                        supports_tools: false,
-                        supports_vision: false,
-                        supports_reasoning: false,
-                        embedding_dimensions: dims,
-                        is_stale: false,
-                        baseline: None,
-                        img2img_supported: None,
-                        inpainting: None,
-                    }
-                })
+                    )| {
+                        let dims =
+                            super::embeddings::get_model_dimension(&model_id).map(|d| d as u32);
+                        ModelEntry {
+                            model_id,
+                            provider_id: provider_id.clone(),
+                            provider_name: provider_name.clone(),
+                            adapter: adapter.clone(),
+                            model_type: "embedding".to_string(),
+                            context_length,
+                            enabled: false,
+                            display_name,
+                            description: None,
+                            pricing_prompt,
+                            pricing_completion,
+                            is_free,
+                            max_completion_tokens: None,
+                            input_modalities: vec![],
+                            output_modalities: vec![],
+                            supports_tools: false,
+                            supports_vision: false,
+                            supports_reasoning: false,
+                            embedding_dimensions: dims,
+                            is_stale: false,
+                            baseline: None,
+                            img2img_supported: None,
+                            inpainting: None,
+                        }
+                    },
+                )
                 .collect::<Vec<_>>();
             (provider_id.clone(), true, parsed)
         }));
@@ -967,7 +1204,10 @@ pub async fn list_embedding_models(
             }
             for mut entry in rows {
                 let key = (entry.provider_id.clone(), entry.model_id.clone());
-                entry.enabled = enabled_map.get(&key).map(|(enabled, _)| *enabled).unwrap_or(false);
+                entry.enabled = enabled_map
+                    .get(&key)
+                    .map(|(enabled, _)| *enabled)
+                    .unwrap_or(false);
                 seen.insert(key);
                 all_entries.push(entry);
             }
@@ -980,7 +1220,8 @@ pub async fn list_embedding_models(
     let stale: Vec<(String, String, String)> = enabled_map
         .iter()
         .filter(|((provider_id, model_id), (enabled, model_type))| {
-            *enabled && model_type == "embedding"
+            *enabled
+                && model_type == "embedding"
                 && fetch_ok.contains(provider_id)
                 && !seen.contains(&(provider_id.clone(), model_id.clone()))
         })
@@ -992,8 +1233,21 @@ pub async fn list_embedding_models(
     if !stale.is_empty() {
         let state_guard = state.read().await;
         for (provider_id, model_id, model_type) in &stale {
-            if let Err(e) = ProviderRepo::toggle_model(&state_guard.db, provider_id, model_id, model_type, false).await {
-                tracing::warn!("Failed to auto-disable stale embedding model {} on provider {}: {}", model_id, provider_id, e);
+            if let Err(e) = ProviderRepo::toggle_model(
+                &state_guard.db,
+                provider_id,
+                model_id,
+                model_type,
+                false,
+            )
+            .await
+            {
+                tracing::warn!(
+                    "Failed to auto-disable stale embedding model {} on provider {}: {}",
+                    model_id,
+                    provider_id,
+                    e
+                );
             }
         }
     }
@@ -1032,7 +1286,11 @@ pub async fn list_embedding_models(
         }
     }
 
-    info!("list_embedding_models: {} total across {} providers", all_entries.len(), providers.len());
+    info!(
+        "list_embedding_models: {} total across {} providers",
+        all_entries.len(),
+        providers.len()
+    );
     Ok(all_entries)
 }
 
@@ -1049,7 +1307,10 @@ pub async fn toggle_model_enabled(
 ) -> Result<(), MythicError> {
     let state = state.read().await;
     ProviderRepo::toggle_model(&state.db, &provider_id, &model_id, &model_type, enabled).await?;
-    info!("Model {} on provider {} -> enabled={}", model_id, provider_id, enabled);
+    info!(
+        "Model {} on provider {} -> enabled={}",
+        model_id, provider_id, enabled
+    );
     Ok(())
 }
 
@@ -1067,10 +1328,10 @@ pub async fn list_enabled_models(
     // one query per row (was N+1 for both — fine at today's scale, but
     // needlessly so).
     let providers = ProviderRepo::list(&state.db, None).await?;
-    let provider_map: HashMap<String, &ProviderConfig> = providers.iter()
-        .map(|p| (p.id.id.to_raw(), p))
-        .collect();
-    let ai_horde_info: HashMap<String, AiHordeModelInfo> = AiHordeModelRepo::list(&state.db).await
+    let provider_map: HashMap<String, &ProviderConfig> =
+        providers.iter().map(|p| (p.id.id.to_raw(), p)).collect();
+    let ai_horde_info: HashMap<String, AiHordeModelInfo> = AiHordeModelRepo::list(&state.db)
+        .await
         .unwrap_or_default()
         .into_iter()
         .map(|info| (info.name.clone(), info))
@@ -1089,7 +1350,11 @@ pub async fn list_enabled_models(
             // whether img2img is viable for this model without a live fetch.
             let (baseline, img2img_supported, inpainting) = if adapter_str == "ai_horde" {
                 match ai_horde_info.get(&r.model_id) {
-                    Some(info) => (info.baseline.clone(), Some(info.img2img_supported), Some(info.inpainting)),
+                    Some(info) => (
+                        info.baseline.clone(),
+                        Some(info.img2img_supported),
+                        Some(info.inpainting),
+                    ),
                     None => (None, None, None),
                 }
             } else {
@@ -1134,7 +1399,10 @@ fn parse_provider_type(s: &str) -> Result<ProviderType, MythicError> {
         "llm" => Ok(ProviderType::Llm),
         "image" => Ok(ProviderType::Image),
         "video" => Ok(ProviderType::Video),
-        _ => Err(MythicError::Validation(format!("Invalid provider type: {}", s))),
+        _ => Err(MythicError::Validation(format!(
+            "Invalid provider type: {}",
+            s
+        ))),
     }
 }
 

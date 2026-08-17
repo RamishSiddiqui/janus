@@ -8,8 +8,8 @@
 //! never block or fail a chat turn.
 
 use serde_json::json;
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tauri::Emitter;
 use tracing::{debug, info};
 
@@ -47,10 +47,16 @@ pub async fn run_npc_detection(
     )
     .await?;
     if !due {
-        debug!("[npc_flow] Not due for conversation {} (forced={})", conversation_id, forced);
+        debug!(
+            "[npc_flow] Not due for conversation {} (forced={})",
+            conversation_id, forced
+        );
         return Ok(());
     }
-    info!("[npc_flow] Running detection pass for conversation {} (forced={})", conversation_id, forced);
+    info!(
+        "[npc_flow] Running detection pass for conversation {} (forced={})",
+        conversation_id, forced
+    );
 
     let provider_config = get_default_llm_provider(db).await?;
     let provider = create_rig_provider(&provider_config)?;
@@ -75,13 +81,14 @@ pub async fn run_npc_detection(
     // additions — so it must be fetched and included separately here, or the
     // detector never learns who the main character even is and can flag
     // them as a brand-new candidate.
-    let primary_character: Option<Character> = match ConversationRepo::get(db, conversation_id).await {
-        Ok(conv) => match conv.character_id {
-            Some(char_id) => CharacterRepo::get(db, &char_id.id.to_raw()).await.ok(),
-            None => None,
-        },
-        Err(_) => None,
-    };
+    let primary_character: Option<Character> =
+        match ConversationRepo::get(db, conversation_id).await {
+            Ok(conv) => match conv.character_id {
+                Some(char_id) => CharacterRepo::get(db, &char_id.id.to_raw()).await.ok(),
+                None => None,
+            },
+            Err(_) => None,
+        };
     if let Some(ref pc) = primary_character {
         known_names.push(pc.name.clone());
     }
@@ -92,11 +99,15 @@ pub async fn run_npc_detection(
             .unwrap_or_default(),
     );
 
-    let candidates = detector::detect_candidates(&provider, &model_id, ai_response, &known_names).await?;
+    let candidates =
+        detector::detect_candidates(&provider, &model_id, ai_response, &known_names).await?;
     info!(
         "[npc_flow] Stage 1 detected {} candidate(s): {:?}",
         candidates.len(),
-        candidates.iter().map(|c| format!("{} ({})", c.name, c.tag)).collect::<Vec<_>>()
+        candidates
+            .iter()
+            .map(|c| format!("{} ({})", c.name, c.tag))
+            .collect::<Vec<_>>()
     );
 
     // (name, id) pairs for everyone already in the cast — used below to catch
@@ -134,18 +145,29 @@ pub async fn run_npc_detection(
             // known" check unconditionally short-circuited before
             // upsert_candidate (the only thing that bumps pass_count) ever
             // ran again.
-            let is_primary = primary_character.as_ref()
+            let is_primary = primary_character
+                .as_ref()
                 .map(|pc| pc.id.id.to_raw() == existing_id)
                 .unwrap_or(false);
-            let still_pending = !is_primary && cast.iter()
-                .any(|m| m.character_id.id.to_raw() == existing_id && m.role == "transient");
+            let still_pending = !is_primary
+                && cast
+                    .iter()
+                    .any(|m| m.character_id.id.to_raw() == existing_id && m.role == "transient");
 
             if !still_pending {
                 debug!(
                     "[npc_pipeline] '{}' resolves to an already-established cast member ({}) — not tracked for debounce",
                     c.name, existing_id
                 );
-                maybe_auto_refresh_placeholder(db, conversation_id, &existing_id, ai_response, &provider, &model_id).await;
+                maybe_auto_refresh_placeholder(
+                    db,
+                    conversation_id,
+                    &existing_id,
+                    ai_response,
+                    &provider,
+                    &model_id,
+                )
+                .await;
                 continue;
             }
 
@@ -153,8 +175,13 @@ pub async fn run_npc_detection(
                 "[npc_pipeline] '{}' resolves to a still-pending placeholder ({}) — counting this detection toward the debounce",
                 c.name, existing_id
             );
-            if let Err(e) = NpcCandidateRepo::upsert_candidate(db, conversation_id, &c.name, &c.tag).await {
-                debug!("[npc_pipeline] Failed to bump pass count for pending candidate '{}': {}", c.name, e);
+            if let Err(e) =
+                NpcCandidateRepo::upsert_candidate(db, conversation_id, &c.name, &c.tag).await
+            {
+                debug!(
+                    "[npc_pipeline] Failed to bump pass count for pending candidate '{}': {}",
+                    c.name, e
+                );
             }
             continue;
         }
@@ -171,7 +198,10 @@ pub async fn run_npc_detection(
                     register_placeholder(db, app, conversation_id, &candidate).await;
                 }
             }
-            Err(e) => debug!("[npc_pipeline] Failed to upsert candidate '{}': {}", c.name, e),
+            Err(e) => debug!(
+                "[npc_pipeline] Failed to upsert candidate '{}': {}",
+                c.name, e
+            ),
         }
     }
 
@@ -182,7 +212,10 @@ pub async fn run_npc_detection(
     info!(
         "[npc_flow] {} candidate(s) crossed the debounce threshold, generating profiles: {:?}",
         debounced.len(),
-        debounced.iter().map(|c| c.display_name.clone()).collect::<Vec<_>>()
+        debounced
+            .iter()
+            .map(|c| c.display_name.clone())
+            .collect::<Vec<_>>()
     );
 
     // Context shared across every candidate resolved this pass.
@@ -193,7 +226,12 @@ pub async fn run_npc_detection(
 
     let mut existing_cast: Vec<(String, String)> = Vec::new();
     if let Some(ref pc) = primary_character {
-        let desc = pc.data.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let desc = pc
+            .data
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         existing_cast.push((pc.name.clone(), desc));
     }
     for member in &cast {
@@ -246,10 +284,20 @@ pub async fn run_npc_detection(
         // creating a second character.
         let character = match &candidate.resulting_character_id {
             Some(existing) => {
-                match CharacterRepo::update_npc_profile(db, &existing.id.to_raw(), &profile.name, data).await {
+                match CharacterRepo::update_npc_profile(
+                    db,
+                    &existing.id.to_raw(),
+                    &profile.name,
+                    data,
+                )
+                .await
+                {
                     Ok(c) => c,
                     Err(e) => {
-                        debug!("[npc_pipeline] Failed to update placeholder profile for '{}': {}", profile.name, e);
+                        debug!(
+                            "[npc_pipeline] Failed to update placeholder profile for '{}': {}",
+                            profile.name, e
+                        );
                         continue;
                     }
                 }
@@ -260,7 +308,10 @@ pub async fn run_npc_detection(
                 match CharacterRepo::create_npc(db, &profile.name, data).await {
                     Ok(c) => c,
                     Err(e) => {
-                        debug!("[npc_pipeline] Failed to create NPC character '{}': {}", profile.name, e);
+                        debug!(
+                            "[npc_pipeline] Failed to create NPC character '{}': {}",
+                            profile.name, e
+                        );
                         continue;
                     }
                 }
@@ -272,23 +323,46 @@ pub async fn run_npc_detection(
             Some(_) => {
                 // A placeholder already exists in the cast (role 'transient')
                 // — promote it now that a real profile has been written.
-                if let Err(e) = ConversationCharacterRepo::set_role(db, conversation_id, &char_id, "npc").await {
-                    debug!("[npc_pipeline] Failed to promote '{}' to npc: {}", character.name, e);
+                if let Err(e) =
+                    ConversationCharacterRepo::set_role(db, conversation_id, &char_id, "npc").await
+                {
+                    debug!(
+                        "[npc_pipeline] Failed to promote '{}' to npc: {}",
+                        character.name, e
+                    );
                 }
             }
             None => {
-                if let Err(e) =
-                    ConversationCharacterRepo::add(db, conversation_id, &char_id, &character.name, "npc", 50).await
+                if let Err(e) = ConversationCharacterRepo::add(
+                    db,
+                    conversation_id,
+                    &char_id,
+                    &character.name,
+                    "npc",
+                    50,
+                )
+                .await
                 {
-                    debug!("[npc_pipeline] Failed to add NPC '{}' to cast: {}", character.name, e);
+                    debug!(
+                        "[npc_pipeline] Failed to add NPC '{}' to cast: {}",
+                        character.name, e
+                    );
                 }
             }
         }
-        if let Err(e) = NpcCandidateRepo::mark_created(db, &candidate.id.id.to_raw(), &char_id).await {
-            debug!("[npc_pipeline] Failed to mark candidate '{}' created: {}", candidate.display_name, e);
+        if let Err(e) =
+            NpcCandidateRepo::mark_created(db, &candidate.id.id.to_raw(), &char_id).await
+        {
+            debug!(
+                "[npc_pipeline] Failed to mark candidate '{}' created: {}",
+                candidate.display_name, e
+            );
         }
 
-        info!("[npc_flow] Filled in full profile for '{}' ({}) in conversation {}", character.name, char_id, conversation_id);
+        info!(
+            "[npc_flow] Filled in full profile for '{}' ({}) in conversation {}",
+            character.name, char_id, conversation_id
+        );
 
         let _ = app.emit(
             "npc_created",
@@ -327,12 +401,26 @@ async fn maybe_auto_refresh_placeholder(
         Ok(c) => c,
         Err(_) => return,
     };
-    let description = character.data.get("description").and_then(|v| v.as_str()).unwrap_or("");
+    let description = character
+        .data
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if !PLACEHOLDER_DESCRIPTIONS.contains(&description.trim()) {
         return;
     }
 
-    match perform_profile_refresh(db, character_id, conversation_id, Some(ai_response), provider, model_id, None).await {
+    match perform_profile_refresh(
+        db,
+        character_id,
+        conversation_id,
+        Some(ai_response),
+        provider,
+        model_id,
+        None,
+    )
+    .await
+    {
         Ok(result) => {
             info!(
                 "[npc_flow] Auto-refreshed still-placeholder profile for '{}' ({}) in conversation {} (scope={})",
@@ -340,7 +428,10 @@ async fn maybe_auto_refresh_placeholder(
             );
         }
         Err(e) => {
-            debug!("[npc_pipeline] Auto profile refresh failed for '{}': {}", character.name, e);
+            debug!(
+                "[npc_pipeline] Auto profile refresh failed for '{}': {}",
+                character.name, e
+            );
         }
     }
 }
@@ -359,7 +450,9 @@ async fn find_existing_cast_member(
     conversation_id: &str,
     name: &str,
 ) -> Option<(String, String)> {
-    let cast = ConversationCharacterRepo::list(db, conversation_id).await.ok()?;
+    let cast = ConversationCharacterRepo::list(db, conversation_id)
+        .await
+        .ok()?;
     let mut known_pairs: Vec<(String, String)> = Vec::new();
     if let Ok(conv) = ConversationRepo::get(db, conversation_id).await {
         if let Some(char_id) = conv.character_id {
@@ -372,7 +465,10 @@ async fn find_existing_cast_member(
         known_pairs.push((c.character_name.clone(), c.character_id.id.to_raw()));
     }
     let id = resolve_character_id(name, &known_pairs)?;
-    let matched_name = known_pairs.iter().find(|(_, i)| *i == id).map(|(n, _)| n.clone())?;
+    let matched_name = known_pairs
+        .iter()
+        .find(|(_, i)| *i == id)
+        .map(|(n, _)| n.clone())?;
     Some((id, matched_name))
 }
 
@@ -386,13 +482,21 @@ async fn register_placeholder(
     conversation_id: &str,
     candidate: &crate::models::npc_candidate::NpcCandidate,
 ) {
-    if let Some((existing_id, existing_name)) = find_existing_cast_member(db, conversation_id, &candidate.display_name).await {
+    if let Some((existing_id, existing_name)) =
+        find_existing_cast_member(db, conversation_id, &candidate.display_name).await
+    {
         debug!(
             "[npc_pipeline] '{}' already matches existing cast member '{}' ({}) — linking instead of creating a duplicate",
             candidate.display_name, existing_name, existing_id
         );
-        if let Err(e) = NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &existing_id).await {
-            debug!("[npc_pipeline] Failed to link '{}' to existing character: {}", candidate.display_name, e);
+        if let Err(e) =
+            NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &existing_id)
+                .await
+        {
+            debug!(
+                "[npc_pipeline] Failed to link '{}' to existing character: {}",
+                candidate.display_name, e
+            );
         }
         return;
     }
@@ -406,22 +510,41 @@ async fn register_placeholder(
         "tags": [],
     });
 
-    let character = match CharacterRepo::create_npc(db, &candidate.display_name, placeholder_data).await {
-        Ok(c) => c,
-        Err(e) => {
-            debug!("[npc_pipeline] Failed to create placeholder for '{}': {}", candidate.display_name, e);
-            return;
-        }
-    };
+    let character =
+        match CharacterRepo::create_npc(db, &candidate.display_name, placeholder_data).await {
+            Ok(c) => c,
+            Err(e) => {
+                debug!(
+                    "[npc_pipeline] Failed to create placeholder for '{}': {}",
+                    candidate.display_name, e
+                );
+                return;
+            }
+        };
 
     let char_id = character.id.id.to_raw();
-    if let Err(e) =
-        ConversationCharacterRepo::add(db, conversation_id, &char_id, &character.name, "transient", 30).await
+    if let Err(e) = ConversationCharacterRepo::add(
+        db,
+        conversation_id,
+        &char_id,
+        &character.name,
+        "transient",
+        30,
+    )
+    .await
     {
-        debug!("[npc_pipeline] Failed to add placeholder '{}' to cast: {}", character.name, e);
+        debug!(
+            "[npc_pipeline] Failed to add placeholder '{}' to cast: {}",
+            character.name, e
+        );
     }
-    if let Err(e) = NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &char_id).await {
-        debug!("[npc_pipeline] Failed to link placeholder for '{}': {}", candidate.display_name, e);
+    if let Err(e) =
+        NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &char_id).await
+    {
+        debug!(
+            "[npc_pipeline] Failed to link placeholder for '{}': {}",
+            candidate.display_name, e
+        );
     }
 
     info!(
@@ -458,7 +581,9 @@ pub async fn register_transient_speaker(
     conversation_id: &str,
     name: &str,
 ) -> Option<(String, String)> {
-    if let Some((existing_id, existing_name)) = find_existing_cast_member(db, conversation_id, name).await {
+    if let Some((existing_id, existing_name)) =
+        find_existing_cast_member(db, conversation_id, name).await
+    {
         debug!(
             "[npc_pipeline] '{}' already matches existing cast member '{}' ({}) — reusing instead of creating a duplicate",
             name, existing_name, existing_id
@@ -478,21 +603,42 @@ pub async fn register_transient_speaker(
     let character = match CharacterRepo::create_npc(db, name, placeholder_data).await {
         Ok(c) => c,
         Err(e) => {
-            debug!("[npc_pipeline] Failed to register transient speaker '{}': {}", name, e);
+            debug!(
+                "[npc_pipeline] Failed to register transient speaker '{}': {}",
+                name, e
+            );
             return None;
         }
     };
     let char_id = character.id.id.to_raw();
 
-    if let Err(e) =
-        ConversationCharacterRepo::add(db, conversation_id, &char_id, &character.name, "transient", 30).await
+    if let Err(e) = ConversationCharacterRepo::add(
+        db,
+        conversation_id,
+        &char_id,
+        &character.name,
+        "transient",
+        30,
+    )
+    .await
     {
-        debug!("[npc_pipeline] Failed to add transient speaker '{}' to cast: {}", character.name, e);
+        debug!(
+            "[npc_pipeline] Failed to add transient speaker '{}' to cast: {}",
+            character.name, e
+        );
     }
 
-    if let Ok(candidate) = NpcCandidateRepo::upsert_candidate(db, conversation_id, name, "recurring").await {
-        if let Err(e) = NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &char_id).await {
-            debug!("[npc_pipeline] Failed to link transient speaker '{}' to its candidate row: {}", name, e);
+    if let Ok(candidate) =
+        NpcCandidateRepo::upsert_candidate(db, conversation_id, name, "recurring").await
+    {
+        if let Err(e) =
+            NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &char_id)
+                .await
+        {
+            debug!(
+                "[npc_pipeline] Failed to link transient speaker '{}' to its candidate row: {}",
+                name, e
+            );
         }
     }
 

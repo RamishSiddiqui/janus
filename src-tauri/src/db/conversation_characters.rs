@@ -1,6 +1,5 @@
-use surrealdb::Surreal;
 use surrealdb::engine::local::Db;
-
+use surrealdb::Surreal;
 
 use crate::error::MythicError;
 use crate::models::conversation_character::ConversationCharacter;
@@ -17,7 +16,7 @@ impl ConversationCharacterRepo {
             .query(
                 "SELECT * FROM conversation_characters \
                  WHERE conversation_id = type::thing('conversations', $conv_id) \
-                 ORDER BY role ASC, created_at ASC"
+                 ORDER BY role ASC, created_at ASC",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
@@ -47,7 +46,7 @@ impl ConversationCharacterRepo {
                     is_active: true, \
                     character_name: $char_name, \
                     created_at: time::now(), \
-                }"
+                }",
             )
             .bind(("id", composite_id))
             .bind(("conv_id", conversation_id.to_string()))
@@ -70,7 +69,7 @@ impl ConversationCharacterRepo {
         db.query(
             "DELETE FROM conversation_characters WHERE \
              conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)"
+             character_id = type::thing('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -89,7 +88,7 @@ impl ConversationCharacterRepo {
         db.query(
             "UPDATE conversation_characters SET talkativeness = $talk WHERE \
              conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)"
+             character_id = type::thing('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -110,7 +109,7 @@ impl ConversationCharacterRepo {
         db.query(
             "UPDATE conversation_characters SET role = $role WHERE \
              conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)"
+             character_id = type::thing('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -129,7 +128,7 @@ impl ConversationCharacterRepo {
         db.query(
             "UPDATE conversation_characters SET is_active = $active WHERE \
              conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)"
+             character_id = type::thing('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
