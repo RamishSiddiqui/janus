@@ -9,6 +9,7 @@
   import {
     sceneGenerations, getSceneGenerationState, runSceneGeneration, runVideoSceneGeneration, describeProgress,
   } from '$lib/stores/sceneGeneration';
+  import { humanizeProviderError } from '$lib/utils/providerError';
 
   let {
     characterId = null,
@@ -557,7 +558,7 @@
         sceneCaption = 'Generation stopped';
       } else {
         console.error('Failed to generate scene:', err);
-        sceneCaption = 'Generation failed — check your image provider settings';
+        sceneCaption = `Generation failed: ${humanizeProviderError((err as { message?: string } | null)?.message ?? '')}`;
       }
     }
   }
@@ -590,7 +591,7 @@
         videoCaption = 'Generation stopped';
       } else {
         console.error('Failed to generate video scene:', err);
-        videoCaption = 'Generation failed — check your video provider settings';
+        videoCaption = `Generation failed: ${humanizeProviderError((err as { message?: string } | null)?.message ?? '')}`;
       }
     }
   }

@@ -16,6 +16,7 @@
   import ContextPanel from "$lib/components/ContextPanel.svelte";
   import SceneGalleryModal from "$lib/components/SceneGalleryModal.svelte";
   import { parseCharacterData } from "$lib/utils/character";
+  import { humanizeProviderError } from "$lib/utils/providerError";
   import {
     messages,
     conversations,
@@ -202,6 +203,17 @@
     $messages.reduce((acc, m) => acc + m.content.length / 4, 0).toFixed(0),
   );
 
+  // Humanized detail for the retry banner — the backend stores the raw
+  // provider error as the failed message's content; without this the banner
+  // only ever said "Response failed. Check your provider connection." no
+  // matter whether it was a bad API key, a rate limit, or a dead model.
+  let retryErrorDetail = $derived.by(() => {
+    if (!$lastStreamError) return null;
+    const failed = [...$messages].reverse().find((m) => m.isError);
+    if (!failed?.content || failed.content === "Generation failed") return null;
+    return humanizeProviderError(failed.content);
+  });
+
   // Character info from active conversation (with fallbacks)
   let characterName = $derived(
     $activeConversation?.characterName ?? "Select a character",
@@ -245,6 +257,11 @@
   let selectedModelSupportsVision = $derived(modelVisionSupport[selectedModel] ?? false);
   let pendingAttachments: { relativePath: string; mimeType: string; previewUrl: string }[] = $state([]);
   let activeProviderId = $state("");
+  // Defaults optimistic (true) so a normal install with providers already
+  // configured never sees a flash of the "add a provider" banner before the
+  // onMount check below resolves — only flips to show it once we actually
+  // know there are zero LLM providers.
+  let hasLlmProvider = $state(true);
 
   // Branch lineage — if the active conversation was forked from another
   let parentConversationId = $derived(
@@ -274,6 +291,7 @@
     try {
       const ipc = await import("$lib/services/ipc");
       const providers = await ipc.listProviders("llm");
+      hasLlmProvider = providers.length > 0;
       const active = providers.find((p) => p.is_default) ?? providers[0];
       if (active) {
         activeProviderId = active.id;
@@ -545,6 +563,22 @@
           </a>
         </div>
 
+        {#if !hasLlmProvider}
+          <!-- No LLM provider configured yet — without this, a new user can
+               pick a character and start typing, and the only explanation
+               for why nothing happens is a hint buried inside the model
+               dropdown in ChatInput. Surface the actual prerequisite here,
+               before they hit that dead end. -->
+          <a href="/providers" class="landing-provider-notice">
+            <Icon name="alert-circle" size={14} color="#f0b429" />
+            <span
+              >No AI provider configured yet — add one to start
+              chatting</span
+            >
+            <span class="landing-provider-arrow">→</span>
+          </a>
+        {/if}
+
         <!-- Floating chat bubble decorations -->
         <div class="landing-bubbles">
           <div class="bubble bubble-1">
@@ -691,9 +725,9 @@
         {#if $lastStreamError && !$isStreaming}
           <div class="retry-banner">
             <span class="retry-icon">⚠</span>
-            <span class="retry-text"
-              >Response failed. Check your provider connection.</span
-            >
+            <span class="retry-text">
+              {retryErrorDetail ?? "Response failed. Check your provider connection."}
+            </span>
             <button class="retry-btn" onclick={() => retryLastMessage(selectedModel || undefined)}>
               <Icon name="refresh-cw" size={13} color="#fff" />
               <span>Retry</span>
@@ -998,6 +1032,32 @@
     box-shadow: 0 6px 28px rgba(139, 92, 246, 0.45);
   }
 
+  .landing-provider-notice {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding: 10px 16px;
+    border-radius: var(--rounded-lg);
+    background: rgba(240, 180, 41, 0.08);
+    border: 1px solid rgba(240, 180, 41, 0.22);
+    color: #f0b429;
+    font-size: var(--text-sm);
+    text-decoration: none;
+    transition: all var(--duration-normal) var(--ease-out);
+  }
+  .landing-provider-notice:hover {
+    background: rgba(240, 180, 41, 0.14);
+    border-color: rgba(240, 180, 41, 0.35);
+  }
+  .landing-provider-arrow {
+    font-weight: 600;
+    transition: transform var(--duration-normal) var(--ease-out);
+  }
+  .landing-provider-notice:hover .landing-provider-arrow {
+    transform: translateX(3px);
+  }
+
   /* Floating chat bubbles decoration */
   .landing-bubbles {
     position: absolute;
@@ -1086,6 +1146,17 @@
     gap: 20px;
     /* Smooth scrollbar for the container */
     scroll-behavior: auto;
+    /* The browser's own scroll-anchoring tries to preserve visual position
+       when content resizes anywhere in this container — including content
+       streaming in below the user's current read position. That "helpful"
+       adjustment moves scrollTop on its own, which fires a native scroll
+       event and can land within STICKY_THRESHOLD of the bottom, silently
+       re-arming isSticky even though the user deliberately scrolled up to
+       read. The next content change (token append, multi-char split) then
+       snaps them to the bottom mid-read. Our own onMessagesScroll/isSticky
+       logic already owns this container's scroll behavior deliberately —
+       disable the browser's competing mechanism entirely. */
+    overflow-anchor: none;
   }
 
   /* ───────────────────────────────────────────────

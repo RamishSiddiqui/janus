@@ -155,7 +155,7 @@
             <div class="gallery-details-row">
               <div class="gallery-details-row-hdr">
                 <span class="gallery-details-label">Prompt</span>
-                <button class="gallery-copy-btn" onclick={() => copyText(enlarged.prompt, 'prompt')} title="Copy prompt">
+                <button class="gallery-copy-btn" onclick={() => copyText(enlarged.prompt, 'prompt')} title="Copy prompt" aria-label="Copy prompt">
                   <Icon name={copiedField === 'prompt' ? 'check' : 'copy'} size={11} color={copiedField === 'prompt' ? 'var(--success)' : 'var(--fg-muted)'} />
                 </button>
               </div>
@@ -166,7 +166,7 @@
               <div class="gallery-details-row">
                 <div class="gallery-details-row-hdr">
                   <span class="gallery-details-label">Negative Prompt</span>
-                  <button class="gallery-copy-btn" onclick={() => copyText(enlargedMeta?.negative_prompt ?? '', 'negative')} title="Copy negative prompt">
+                  <button class="gallery-copy-btn" onclick={() => copyText(enlargedMeta?.negative_prompt ?? '', 'negative')} title="Copy negative prompt" aria-label="Copy negative prompt">
                     <Icon name={copiedField === 'negative' ? 'check' : 'copy'} size={11} color={copiedField === 'negative' ? 'var(--success)' : 'var(--fg-muted)'} />
                   </button>
                 </div>

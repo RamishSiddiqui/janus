@@ -475,7 +475,7 @@ function getAvatarColor(name: string): string {
 // ── Re-exports from split modules ──
 // Keeps every existing `import { X } from '$lib/stores/chat'` call site
 // working unchanged after the split.
-export { loadMessages, loadMoreMessages, switchBranch } from './chatMessages';
+export { loadMessages, loadMoreMessages, switchBranch, deleteMessageWithUndo } from './chatMessages';
 export { cancelGeneration, sendMessage, retryLastMessage, regenerateMessage } from './chatStream';
 export { parseEmotionSnapshot, runEmotionUpdatePipeline } from './chatEmotion';
 export { initMultiCharListener, cleanupMultiCharListener } from './chatMultiChar';

@@ -40,7 +40,19 @@ export function formatRoleplayContent(text: string): string {
     // '*' — that's what let one bad marker desync every action/dialogue
     // pairing for the rest of the message. Capped here, pairing resyncs
     // at the next quote boundary instead of cascading.
-    return line.replace(/\*([^*"]+)\*/g, '<em class="rp-action">$1</em>');
+    //
+    // A span inside an open pair of "double quotes" is vocal emphasis on a
+    // word the character is SAYING (e.g. "Well. *That* worked.") — it should
+    // read as plain italic within the dialogue's own color/size. The
+    // '.rp-action' class is for narrative action beats (muted, smaller) and
+    // was being applied here too, so a single stressed word mid-sentence
+    // came out shrunk and washed-out instead of emphasized. Track quote
+    // parity up to each match to tell the two cases apart.
+    return line.replace(/\*([^*"]+)\*/g, (match, inner: string, offset: number) => {
+      const quotesBefore = (line.slice(0, offset).match(/"/g) ?? []).length;
+      const insideDialogue = quotesBefore % 2 === 1;
+      return insideDialogue ? `<em>${inner}</em>` : `<em class="rp-action">${inner}</em>`;
+    });
   });
 
   const formatted = formattedLines.join('\n')

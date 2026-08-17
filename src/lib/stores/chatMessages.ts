@@ -8,7 +8,7 @@
 import { get } from 'svelte/store';
 import type { CharacterState } from '$lib/services/ipc';
 import { charAccentColor, type CharMeta } from '$lib/services/presentation-buffer';
-import { error as toastError } from '$lib/stores/toast';
+import { error as toastError, undoableDelete } from '$lib/stores/toast';
 import { browser } from '$app/environment';
 import {
   activeConversationId, characterEmotionStates, conversationCharMeta, conversations,
@@ -464,4 +464,58 @@ export async function switchBranch(siblingId: string) {
   } catch (err) {
     console.error('Failed to switch branch:', err);
   }
+}
+
+/**
+ * Deletes a message with an undo window, via the same undoableDelete
+ * pattern already used for memory deletion (see MemoryGraph.svelte /
+ * MemoryTimeline.svelte) instead of the previous instant, unrecoverable
+ * delete. Unlike conversations, messages have no backend trash/restore
+ * mechanism, and reconstructing one after a real delete would also need to
+ * repair the parent_id chain of whatever message came after it — so instead
+ * of deleting immediately, this only removes the message from the LOCAL
+ * view and defers the actual backend delete until the undo toast's window
+ * naturally expires (pause-on-hover keeps it safe while the toast is being
+ * looked at). Clicking Undo before then just restores it to the store; the
+ * backend is never touched.
+ */
+export function deleteMessageWithUndo(id: string) {
+  if (!isTauri) return;
+
+  const msgs = get(messages);
+  const idx = msgs.findIndex(m => m.id === id);
+  if (idx < 0) return;
+  const removed = msgs[idx];
+  const apIdx = pathState.fullActivePath.findIndex(m => m.id === id);
+
+  messages.update(list => list.filter(m => m.id !== id));
+  if (apIdx >= 0) {
+    pathState.fullActivePath = pathState.fullActivePath.filter(m => m.id !== id);
+    pathState.currentRenderCount -= 1;
+  }
+
+  undoableDelete(
+    'Message deleted',
+    async () => {
+      try {
+        const ipc = await import('$lib/services/ipc');
+        await ipc.deleteMessage(id);
+      } catch {
+        toastError('Failed to delete message');
+      }
+    },
+    () => {
+      messages.update(list => {
+        const copy = [...list];
+        copy.splice(Math.min(idx, copy.length), 0, removed);
+        return copy;
+      });
+      if (apIdx >= 0) {
+        const copy = [...pathState.fullActivePath];
+        copy.splice(Math.min(apIdx, copy.length), 0, removed);
+        pathState.fullActivePath = copy;
+        pathState.currentRenderCount += 1;
+      }
+    }
+  );
 }

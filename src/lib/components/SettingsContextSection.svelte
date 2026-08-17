@@ -292,7 +292,7 @@
       <div class="index-panel">
         <div class="index-header">
           <span class="index-title">Index Status</span>
-          <button class="index-refresh-btn" onclick={loadIndexStatus} disabled={isLoadingIndex}>
+          <button class="index-refresh-btn" onclick={loadIndexStatus} disabled={isLoadingIndex} aria-label="Refresh index status" title="Refresh index status">
             <Icon name="refresh-cw" size={11} color={isLoadingIndex ? '#4a4a6a' : '#a78bfa'} />
           </button>
         </div>

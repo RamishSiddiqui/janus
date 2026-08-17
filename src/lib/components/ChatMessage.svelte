@@ -6,8 +6,9 @@
   import ThinkingBlock from './ThinkingBlock.svelte';
   import type { Message } from '$lib/types';
   import { formatRoleplayContent } from '$lib/utils/format';
+  import { humanizeProviderError } from '$lib/utils/providerError';
   import { browser } from '$app/environment';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage } from '$lib/stores/chat';
+  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage, deleteMessageWithUndo } from '$lib/stores/chat';
   import { settings } from '$lib/stores/settings';
   import { success, error as toastError } from '$lib/stores/toast';
   import { get } from 'svelte/store';
@@ -249,6 +250,21 @@
     setTimeout(() => isSwitching = false, 400);
   }
 
+  // Arrow-key cycling for the timeline navigator — the prev/next arrows and
+  // dots are all real <button>s so Tab+Enter already reaches them, but a
+  // dedicated Left/Right shortcut matches the carousel-style interaction the
+  // dot track visually implies, and works from anywhere inside the group
+  // (not just when a specific arrow button has focus).
+  function handleTimelineKeydown(e: KeyboardEvent) {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      navigateBranch(-1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      navigateBranch(1);
+    }
+  }
+
   async function handleRegenerate() {
     if (!isTauri || isRegenerating || get(isStreaming)) return;
     isRegenerating = true;
@@ -306,16 +322,11 @@
     isEditing = false;
   }
 
-  async function handleDelete() {
-    if (!isTauri) return;
-    try {
-      const ipc = await import('$lib/services/ipc');
-      await ipc.deleteMessage(message.id);
-      messages.update(msgs => msgs.filter(m => m.id !== message.id));
-      success('Message deleted');
-    } catch (err) {
-      toastError('Failed to delete message');
-    }
+  function handleDelete() {
+    // Undo-toast handles the actual removal + deferred backend delete —
+    // see deleteMessageWithUndo for why messages don't get an instant,
+    // unrecoverable delete like they used to.
+    deleteMessageWithUndo(message.id);
   }
 </script>
 
@@ -378,6 +389,15 @@
                   <Icon name="alert-circle" size={14} color="#F43F5E" />
                   <span class="error-label">Generation failed</span>
                 </div>
+                {#if message.content && message.content !== 'Generation failed'}
+                  <!-- The backend stores the raw (un-humanized) provider error
+                       as this message's content — the toast shown at failure
+                       time already humanizes it, but toasts vanish; this is
+                       what's left to explain WHY once the user comes back to
+                       look, instead of just "Generation failed" with no
+                       further detail. -->
+                  <span class="error-detail">{humanizeProviderError(message.content)}</span>
+                {/if}
               </div>
             {:else if message.isStreaming}
               <!-- During streaming: use direct DOM updates via $effect (no Svelte diffing) -->
@@ -395,7 +415,8 @@
       <div class="msg-toolbar" class:visible={showActions || hasBranches} role="toolbar" aria-label="Message actions">
         <!-- Quantum Timeline Branch Navigator -->
         {#if hasBranches}
-          <div class="timeline-nav" aria-label="Timeline navigation" title="Alternate AI responses — navigate parallel timelines">
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div class="timeline-nav" role="group" aria-label="Timeline navigation" title="Alternate AI responses — navigate parallel timelines" onkeydown={handleTimelineKeydown}>
             <button 
               class="tl-arrow tl-prev"
               disabled={!canPrev || isSwitching}
@@ -408,7 +429,7 @@
             </button>
 
             <!-- Dot Track -->
-            <div class="tl-track" aria-hidden="true">
+            <div class="tl-track" role="group" aria-label="Timeline positions">
               {#each Array(branchTotal) as _, i}
                 <button
                   class="tl-dot"
@@ -535,8 +556,9 @@
       <!-- User Action Bar -->
       <div class="msg-toolbar user-toolbar" class:visible={showActions || hasBranches} role="toolbar" aria-label="Message actions">
         {#if hasBranches}
-          <div class="timeline-nav" aria-label="Timeline navigation">
-            <button 
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div class="timeline-nav" role="group" aria-label="Timeline navigation" onkeydown={handleTimelineKeydown}>
+            <button
               class="tl-arrow tl-prev"
               disabled={!canPrev || isSwitching}
               onclick={() => navigateBranch(-1)}
@@ -644,6 +666,10 @@
   .error-content {
     font-size: 13px; color: #c8c8e0; line-height: 1.5;
     opacity: 0.7;
+  }
+  .error-detail {
+    font-size: 12.5px; color: rgba(224, 220, 248, 0.6);
+    line-height: 1.5; margin-top: -2px;
   }
   .user-error { align-items: flex-end; }
 
@@ -831,6 +857,18 @@
   .msg-text :global(strong) {
     color: rgba(255, 255, 255, 0.98);
     font-weight: 700;
+  }
+  /* Bold nested inside muted italic RP action narration (e.g. "*she
+     **breathes**.*") — the stark white of the base `strong` rule above
+     clashes against the hushed, dimmed action text around it, popping out
+     instead of reading as emphasis within the sentence. Keep it bolder and
+     brighter than its neighbors, but from the same muted hue family rather
+     than jumping all the way to pure white; font-style: italic is inherited
+     from the ancestor <em> already, kept explicit here for clarity. */
+  .msg-text :global(.rp-action strong),
+  .msg-text :global(.rp-action-block strong) {
+    color: rgba(199, 195, 226, 0.95);
+    font-style: italic;
   }
   .user-text {
     color: rgba(255, 255, 255, 0.96);
