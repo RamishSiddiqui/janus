@@ -248,7 +248,7 @@ pub async fn get_embedding_index_status(
 #[specta::specta]
 pub async fn rebuild_embedding_index(
     state: State<'_, Arc<RwLock<AppState>>>,
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     conversation_id: Option<String>,
     embedding_model: String,
 ) -> Result<EmbeddingIndexStatus, MythicError> {
@@ -371,6 +371,14 @@ pub async fn rebuild_embedding_index(
                     }
                     embedded += 1;
                 }
+                // Live progress for the Settings > Context "Rebuild Index"
+                // button — without this the frontend has no way to show
+                // anything beyond a spinner for what can be a long-running
+                // bulk operation.
+                let _ = app.emit(
+                    "embedding_index_progress",
+                    serde_json::json!({ "embedded": embedded, "total": total }),
+                );
             }
             Err(e) => {
                 tracing::warn!("[rebuild_index] Batch embedding failed: {}", e);
@@ -601,8 +609,16 @@ pub async fn backfill_missing_embeddings(
                     }
                     embedded += 1;
                 }
-                // Notify frontend after each batch
+                // Notify frontend after each batch — embedding_updated is the
+                // generic "something changed, worth a refresh" signal used
+                // elsewhere (live per-message embedding, etc.); embedding_index_progress
+                // carries the actual counts so the Settings > Context "Catch
+                // Up" button can show real progress instead of just a spinner.
                 let _ = app.emit("embedding_updated", ());
+                let _ = app.emit(
+                    "embedding_index_progress",
+                    serde_json::json!({ "embedded": embedded, "total": total_missing }),
+                );
             }
             Err(e) => {
                 tracing::warn!("[backfill] Batch embedding failed: {}", e);

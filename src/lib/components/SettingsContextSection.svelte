@@ -39,6 +39,15 @@
   let isLoadingIndex = $state(false);
   let isRebuilding = $state(false);
   let isBackfilling = $state(false);
+  // Live counts from the backend's embedding_index_progress event, shown
+  // instead of indexStatus.coverage_percent (which only updates once the
+  // whole rebuild/backfill finishes) while one of those is in progress.
+  let rebuildProgress = $state<{ embedded: number; total: number } | null>(null);
+  let effectiveProgressPercent = $derived(
+    rebuildProgress && rebuildProgress.total > 0
+      ? (rebuildProgress.embedded / rebuildProgress.total) * 100
+      : (indexStatus?.coverage_percent ?? 0)
+  );
 
   async function loadIndexStatus() {
     if (!isTauri) return;
@@ -55,6 +64,7 @@
   async function rebuildIndex() {
     if (!isTauri || isRebuilding) return;
     isRebuilding = true;
+    rebuildProgress = null;
     try {
       const ipc = await import('$lib/services/ipc');
       indexStatus = await ipc.rebuildEmbeddingIndex(null, ragEmbeddingModel);
@@ -64,11 +74,13 @@
       console.error('[Memory] Rebuild failed:', err);
     }
     isRebuilding = false;
+    rebuildProgress = null;
   }
 
   async function backfillIndex() {
     if (!isTauri || isBackfilling) return;
     isBackfilling = true;
+    rebuildProgress = null;
     try {
       const ipc = await import('$lib/services/ipc');
       indexStatus = await ipc.backfillMissingEmbeddings(null);
@@ -78,6 +90,7 @@
       console.error('[Memory] Backfill failed:', err);
     }
     isBackfilling = false;
+    rebuildProgress = null;
   }
 
   // All embedding models across providers — populates the picker below.
@@ -131,6 +144,7 @@
 
     // Listen for real-time embedding updates from the backend
     let embedCleanup: (() => void) | null = null;
+    let progressCleanup: (() => void) | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     if (isTauri) {
       import('@tauri-apps/api/event').then(({ listen }) => {
@@ -143,11 +157,24 @@
         }).then(unlisten => {
           embedCleanup = unlisten;
         });
+
+        // Only rebuildIndex/backfillIndex emit this — no debounce needed,
+        // it's just updating two numbers, not triggering a backend refetch.
+        listen('embedding_index_progress', (event: any) => {
+          if (!isRebuilding && !isBackfilling) return;
+          const payload = event.payload as { embedded?: number; total?: number } | undefined;
+          if (typeof payload?.embedded === 'number' && typeof payload?.total === 'number') {
+            rebuildProgress = { embedded: payload.embedded, total: payload.total };
+          }
+        }).then(unlisten => {
+          progressCleanup = unlisten;
+        });
       });
     }
 
     return () => {
       if (embedCleanup) embedCleanup();
+      if (progressCleanup) progressCleanup();
       if (debounceTimer) clearTimeout(debounceTimer);
     };
   });
@@ -305,22 +332,32 @@
         {:else if indexStatus}
           <div class="index-stats">
             <div class="index-stat">
-              <span class="stat-value">{indexStatus.embedded_messages}</span>
+              <span class="stat-value">{rebuildProgress?.embedded ?? indexStatus.embedded_messages}</span>
               <span class="stat-label">Indexed</span>
             </div>
             <div class="index-stat">
-              <span class="stat-value">{indexStatus.total_messages}</span>
+              <span class="stat-value">{rebuildProgress?.total ?? indexStatus.total_messages}</span>
               <span class="stat-label">Total</span>
             </div>
             <div class="index-stat">
-              <span class="stat-value">{indexStatus.coverage_percent.toFixed(0)}%</span>
+              <span class="stat-value">{effectiveProgressPercent.toFixed(0)}%</span>
               <span class="stat-label">Coverage</span>
             </div>
           </div>
 
+          {#if (isRebuilding || isBackfilling) && rebuildProgress}
+            <!-- Live progress while a rebuild/backfill is actually running —
+                 without this the numbers above only ever jump straight from
+                 their pre-rebuild value to the final one, with nothing in
+                 between during what can be a long-running operation. -->
+            <div class="index-progress-live-label">
+              {rebuildProgress.embedded} of {rebuildProgress.total} messages indexed…
+            </div>
+          {/if}
+
           <!-- Progress bar -->
           <div class="index-progress">
-            <div class="index-progress-fill" style="width: {indexStatus.coverage_percent}%"></div>
+            <div class="index-progress-fill" style="width: {effectiveProgressPercent}%"></div>
           </div>
 
           <!-- Dimension Mismatch Warning -->
@@ -406,7 +443,7 @@
           >
             {#if isRebuilding}
               <div class="btn-spinner"></div>
-              Rebuilding…
+              {rebuildProgress ? `Rebuilding… (${rebuildProgress.embedded}/${rebuildProgress.total})` : 'Rebuilding…'}
             {:else}
               <Icon name="refresh-cw" size={13} color={indexStatus.dimension_mismatch ? '#F59E0B' : '#e0e0f0'} />
               {indexStatus.dimension_mismatch ? 'Rebuild Index (Required)' : indexStatus.needs_rebuild ? 'Rebuild Index' : 'Rebuild Index'}
@@ -423,7 +460,7 @@
             >
               {#if isBackfilling}
                 <div class="btn-spinner"></div>
-                Catching up…
+                {rebuildProgress ? `Catching up… (${rebuildProgress.embedded}/${rebuildProgress.total})` : 'Catching up…'}
               {:else}
                 <Icon name="zap" size={13} color="#34D399" />
                 Catch Up ({Math.round(indexStatus.total_messages - indexStatus.embedded_messages)} missing)
@@ -527,6 +564,12 @@
     font-size: 9px; font-weight: 700; letter-spacing: 0.8px;
     text-transform: uppercase; color: #4a4a6a;
     font-family: var(--font-mono);
+  }
+
+  .index-progress-live-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.2px;
+    color: #a78bfa; font-family: var(--font-mono);
+    margin-bottom: 2px;
   }
 
   .index-progress {
