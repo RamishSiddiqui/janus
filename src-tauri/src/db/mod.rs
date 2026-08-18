@@ -7,6 +7,7 @@ use tracing::info;
 use crate::error::MythicError;
 
 pub mod ai_horde_models;
+pub mod backup;
 pub mod character_state;
 pub mod characters;
 pub mod conversation_characters;

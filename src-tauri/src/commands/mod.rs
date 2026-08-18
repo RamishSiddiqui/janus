@@ -3,6 +3,7 @@ pub mod characters;
 pub mod chat;
 pub mod conversation_characters;
 pub mod conversations;
+pub mod data_backup;
 pub mod embeddings;
 pub mod image_presets;
 pub mod import;
