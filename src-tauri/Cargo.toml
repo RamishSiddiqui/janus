@@ -30,7 +30,12 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 
 # LLM Framework (unified provider abstraction for 17+ providers)
-rig-core = { version = "0.37", features = ["derive", "image"] }
+rig-core = { version = "0.41", features = ["derive", "image"] }
+# rig-core >= 0.41 split the Agent/Chat/StreamingChat convenience layer out
+# into this sibling crate — rig-core alone only has the low-level
+# CompletionModel API now. Same trait names/signatures as before, just a
+# different crate path.
+rig-agent = { version = "0.41", features = ["derive"] }
 
 # HTTP client (for non-LLM HTTP calls: image gen, health checks)
 reqwest = { version = "0.12", features = ["json", "stream", "multipart", "rustls-tls"], default-features = false }

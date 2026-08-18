@@ -2,12 +2,12 @@
 ///
 /// Usage: cargo run --bin test_owl -- <YOUR_OPENROUTER_API_KEY>
 use futures::StreamExt;
-use rig_core::agent::MultiTurnStreamItem;
-use rig_core::client::CompletionClient;
-use rig_core::completion::Chat;
+use rig_agent::agent::MultiTurnStreamItem;
+use rig_agent::client::AgentClientExt;
+use rig_agent::completion::Chat;
+use rig_agent::streaming::StreamedAssistantContent;
+use rig_agent::streaming::StreamingChat;
 use rig_core::providers::openrouter;
-use rig_core::streaming::StreamedAssistantContent;
-use rig_core::streaming::StreamingChat;
 
 #[tokio::main]
 async fn main() {
@@ -52,11 +52,11 @@ async fn main() {
                     full_text.push_str(&text.text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
-                    println!("\n✅ Final: {}", fin.response());
+                    println!("\n✅ Final: {}", fin.output());
                     break;
                 }
-                Ok(other) => {
-                    println!("[other item: {other:?}]");
+                Ok(_) => {
+                    println!("[other item]");
                 }
                 Err(e) => {
                     println!("\n❌ Stream error: {e}");
@@ -107,7 +107,7 @@ async fn main() {
                 Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
                     println!(
                         "\n✅ Final response received ({} chars)",
-                        fin.response().len()
+                        fin.output().len()
                     );
                     break;
                 }
