@@ -35,7 +35,52 @@ jobs:
           # feature, pinned to the 0.7 line. No patched 0.7.x release exists —
           # the fix is rkyv 0.8, a breaking migration upstream hasn't made
           # yet. Revisit and drop this once surrealdb-core updates.
-          ignore: RUSTSEC-2026-0235
+          #
+          # RUSTSEC-2024-0411/0412/0413/0414/0415/0416/0417/0418/0419/0420
+          # (gtk-rs GTK3 bindings, "no longer maintained"): real, reachable,
+          # load-bearing dependency of tauri's tray-icon feature on Linux
+          # (tray-icon -> libappindicator -> gtk 0.18) — confirmed via
+          # `cargo tree -i gtk --target all`. Maintenance-status warnings,
+          # not exploitable CVEs. No drop-in replacement exists upstream yet.
+          #
+          # RUSTSEC-2024-0429 (glib VariantStrIter unsoundness): also from
+          # the gtk-rs 0.18 stack above. This one IS a real soundness bug
+          # (unlike the maintenance warnings above), but glib 0.18.5 is
+          # already the newest version compatible with gtk 0.18's semver
+          # range (`cargo update -p glib --dry-run` resolves nothing newer)
+          # — the fix requires bumping the whole gtk-rs stack to 0.19+,
+          # which cascades through tray-icon/tauri and isn't a drop-in bump.
+          # Revisit alongside the gtk-rs entries above once that's feasible.
+          #
+          # RUSTSEC-2025-0075/0080/0081/0098/0100 (unic-char-range,
+          # unic-common, unic-char-property, unic-ucd-version,
+          # unic-ucd-ident, "unmaintained"): pulled in transitively via
+          # tauri-utils -> urlpattern. No replacement shipped upstream yet.
+          #
+          # RUSTSEC-2025-0141 (bincode 1.x "unmaintained"): pulled in
+          # transitively via surrealdb/surrealdb-core, not a direct dep —
+          # can't bump independently of a surrealdb upgrade.
+          #
+          # RUSTSEC-2024-0436 (paste "unmaintained"): transitive via
+          # image -> exr -> pulp, a proc-macro used only at compile time.
+          #
+          # RUSTSEC-2024-0370 (proc-macro-error "unmaintained"): transitive
+          # via glib-macros (part of the gtk-rs 0.18 stack above), also a
+          # compile-time-only proc-macro.
+          #
+          # RUSTSEC-2023-0089 (atomic-polyfill "unmaintained"): NOT actually
+          # reachable in the build — `cargo tree -i atomic-polyfill --target
+          # all` resolves to nothing. It's a stale, unreferenced Cargo.lock
+          # entry (via an orphaned heapless 0.7.17/rstar 0.9-0.11 record
+          # that nothing depends on; the real rstar in use is 0.12.2). Drop
+          # this ignore once a `cargo update` prunes the lockfile.
+          ignore: >-
+            RUSTSEC-2026-0235,RUSTSEC-2024-0411,RUSTSEC-2024-0412,RUSTSEC-2024-0413,
+            RUSTSEC-2024-0414,RUSTSEC-2024-0415,RUSTSEC-2024-0416,RUSTSEC-2024-0417,
+            RUSTSEC-2024-0418,RUSTSEC-2024-0419,RUSTSEC-2024-0420,RUSTSEC-2024-0429,
+            RUSTSEC-2025-0075,RUSTSEC-2025-0080,RUSTSEC-2025-0081,RUSTSEC-2025-0098,
+            RUSTSEC-2025-0100,RUSTSEC-2025-0141,RUSTSEC-2024-0436,RUSTSEC-2024-0370,
+            RUSTSEC-2023-0089
 
   npm-audit:
     runs-on: ubuntu-latest
