@@ -44,7 +44,7 @@ reqwest = { version = "0.12", features = ["json", "stream", "multipart", "rustls
 rmcp = { version = "3.1.2", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
 
 # Database
-surrealdb = { version = "2", features = ["kv-rocksdb"] }
+surrealdb = { version = "3", features = ["kv-rocksdb"] }
 
 # Rust -> TypeScript type generation for the Tauri IPC boundary
 specta = { version = "2.0.0-rc", features = ["derive", "serde_json"] }
