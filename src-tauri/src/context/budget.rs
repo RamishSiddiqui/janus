@@ -84,3 +84,76 @@ impl ContextBudget {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::conversation::MessageRole;
+
+    fn msg(content: &str) -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::System,
+            content: content.to_string(),
+        }
+    }
+
+    #[test]
+    fn default_budget_matches_documented_constants() {
+        let budget = ContextBudget::default();
+        assert_eq!(budget.max_context_tokens, 16384);
+        assert_eq!(budget.reserved_for_response, 2048);
+        assert_eq!(budget.max_memory_tokens, 800);
+        assert_eq!(budget.max_lorebook_tokens, 1500);
+    }
+
+    #[test]
+    fn total_usable_applies_response_reservation_and_safety_margin() {
+        let budget = ContextBudget::default();
+        let allocation = budget.allocate(&[]);
+        // (16384 - 2048) * 0.90 = 12902.4 -> truncated to 12902
+        assert_eq!(allocation.total_usable, 12902);
+    }
+
+    #[test]
+    fn history_budget_shrinks_as_fixed_layers_grow() {
+        let budget = ContextBudget::default();
+        let empty_allocation = budget.allocate(&[]);
+
+        let fixed_layers = vec![msg(&"system prompt content ".repeat(20))];
+        let with_fixed_layers = budget.allocate(&fixed_layers);
+
+        assert!(with_fixed_layers.fixed_layers_tokens > 0);
+        assert!(with_fixed_layers.history_budget < empty_allocation.history_budget);
+    }
+
+    #[test]
+    fn fixed_layers_exceeding_total_usable_saturate_history_budget_to_zero() {
+        let budget = ContextBudget {
+            max_context_tokens: 100,
+            reserved_for_response: 10,
+            safety_margin: 1.0,
+            ..ContextBudget::default()
+        };
+        // A fixed-layers block far larger than the tiny total_usable above.
+        let fixed_layers = vec![msg(&"word ".repeat(500))];
+        let allocation = budget.allocate(&fixed_layers);
+
+        assert_eq!(allocation.history_budget, 0);
+        assert_eq!(allocation.summary_budget, 0);
+        assert_eq!(allocation.rag_budget, 0);
+        assert_eq!(allocation.messages_budget, 0);
+    }
+
+    #[test]
+    fn summary_and_rag_budgets_are_fixed_fractions_of_history_budget() {
+        let budget = ContextBudget::default();
+        let allocation = budget.allocate(&[]);
+
+        assert_eq!(allocation.summary_budget, allocation.history_budget / 5);
+        assert_eq!(allocation.rag_budget, allocation.history_budget / 10);
+        assert_eq!(
+            allocation.messages_budget,
+            allocation.history_budget - allocation.summary_budget - allocation.rag_budget
+        );
+    }
+}

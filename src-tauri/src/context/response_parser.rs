@@ -337,3 +337,151 @@ pub fn resolve_character_id(
         })
         .map(|(_, id)| id.clone())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn bracket_markers_split_into_segments_per_character() {
+        let response = "[Aria]: Hello there.\n\n[Finn]: I disagree.";
+        let known = names(&["Aria", "Finn"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].character_name, "Aria");
+        assert_eq!(segments[0].content, "Hello there.");
+        assert_eq!(segments[1].character_name, "Finn");
+        assert_eq!(segments[1].content, "I disagree.");
+    }
+
+    #[test]
+    fn bracket_marker_matches_first_name_of_a_full_name() {
+        let response = "[Roran]: We move at dawn.";
+        let known = names(&["Roran Ironfist"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].character_name, "Roran");
+        assert_eq!(segments[0].content, "We move at dawn.");
+    }
+
+    #[test]
+    fn preamble_before_first_marker_is_attributed_to_fallback() {
+        let response = "The room falls silent.\n\n[Aria]: Finally.";
+        let known = names(&["Aria"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].character_name, "Narrator");
+        assert_eq!(segments[0].content, "The room falls silent.");
+        assert_eq!(segments[1].character_name, "Aria");
+    }
+
+    #[test]
+    fn loose_name_colon_format_without_brackets_is_recognized() {
+        let response = "Aria: Hello there.\n\nFinn: I disagree.";
+        let known = names(&["Aria", "Finn"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].character_name, "Aria");
+        assert_eq!(segments[1].character_name, "Finn");
+    }
+
+    #[test]
+    fn no_markers_falls_back_to_single_segment_for_fallback_name() {
+        let response = "Just a plain narrated response with no speaker cues.";
+        let known = names(&["Aria", "Finn"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].character_name, "Narrator");
+        assert_eq!(segments[0].content, response);
+    }
+
+    #[test]
+    fn paragraph_name_cue_fallback_splits_unmarked_prose_by_leading_name() {
+        // No [Name]: markers anywhere, but each paragraph opens with a
+        // known character's name — the fallback that replaced the old
+        // single-paragraph heuristic (see module docs on the fn).
+        let response = "Aria's head snaps toward you, eyes narrowing.\n\n\
+                         Finn pushes off the shelf, unimpressed.";
+        let known = names(&["Aria", "Finn"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].character_name, "Aria");
+        assert_eq!(segments[1].character_name, "Finn");
+    }
+
+    #[test]
+    fn empty_response_produces_no_segments() {
+        let segments = parse_multi_character_response("   \n  ", &names(&["Aria"]), "Narrator");
+        assert!(segments.is_empty());
+    }
+
+    #[test]
+    fn adjacent_segments_for_the_same_character_are_merged() {
+        // Smaller/free models sometimes re-emit a redundant marker for the
+        // same speaker mid-completion — this must not produce two bubbles.
+        let response = "[Aria]: First part.\n\n[Aria]: Second part, still her.";
+        let known = names(&["Aria"]);
+        let segments = parse_multi_character_response(response, &known, "Narrator");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].character_name, "Aria");
+        assert_eq!(
+            segments[0].content,
+            "First part.\n\nSecond part, still her."
+        );
+    }
+
+    #[test]
+    fn resolve_character_id_exact_match() {
+        let known = vec![("Aria".to_string(), "id-aria".to_string())];
+        assert_eq!(
+            resolve_character_id("Aria", &known),
+            Some("id-aria".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_character_id_case_insensitive_match() {
+        let known = vec![("Aria".to_string(), "id-aria".to_string())];
+        assert_eq!(
+            resolve_character_id("aria", &known),
+            Some("id-aria".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_character_id_first_name_match() {
+        let known = vec![("Roran Ironfist".to_string(), "id-roran".to_string())];
+        assert_eq!(
+            resolve_character_id("Roran", &known),
+            Some("id-roran".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_character_id_word_boundary_match_on_last_name() {
+        let known = vec![("Finn Shadowcloak".to_string(), "id-finn".to_string())];
+        assert_eq!(
+            resolve_character_id("Shadowcloak", &known),
+            Some("id-finn".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_character_id_does_not_substring_match_short_names() {
+        // Regression: "Ari" must NOT match "Aria Silverleaf" — a raw
+        // `.contains()` used to let a short new speaker's name incorrectly
+        // resolve to an unrelated existing character sharing a substring.
+        let known = vec![("Aria Silverleaf".to_string(), "id-aria".to_string())];
+        assert_eq!(resolve_character_id("Ari", &known), None);
+    }
+
+    #[test]
+    fn resolve_character_id_no_match_returns_none() {
+        let known = vec![("Aria".to_string(), "id-aria".to_string())];
+        assert_eq!(resolve_character_id("Completely Different", &known), None);
+    }
+}

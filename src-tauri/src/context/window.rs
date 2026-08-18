@@ -61,3 +61,71 @@ pub fn apply_sliding_window(chain: &[ChatMessage], token_budget: usize) -> Windo
         included_tokens,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::conversation::MessageRole;
+
+    fn msg(content: &str) -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::User,
+            content: content.to_string(),
+        }
+    }
+
+    #[test]
+    fn empty_chain_returns_empty_result() {
+        let result = apply_sliding_window(&[], 1000);
+        assert!(result.included.is_empty());
+        assert_eq!(result.evicted_count, 0);
+        assert_eq!(result.included_tokens, 0);
+    }
+
+    #[test]
+    fn zero_budget_evicts_everything() {
+        let chain = vec![msg("hello"), msg("world")];
+        let result = apply_sliding_window(&chain, 0);
+        assert!(result.included.is_empty());
+        assert_eq!(result.evicted_count, 2);
+    }
+
+    #[test]
+    fn everything_fits_when_budget_is_generous() {
+        let chain = vec![msg("hello"), msg("world"), msg("how are you")];
+        let result = apply_sliding_window(&chain, 10_000);
+        assert_eq!(result.included.len(), 3);
+        assert_eq!(result.evicted_count, 0);
+        // Chronological order is preserved.
+        assert_eq!(result.included[0].content, "hello");
+        assert_eq!(result.included[2].content, "how are you");
+    }
+
+    #[test]
+    fn oldest_messages_are_evicted_first_when_budget_is_tight() {
+        // Each short message costs roughly the same number of tokens
+        // (content + fixed per-message overhead), so a budget sized for
+        // ~2 messages should keep only the most recent ones.
+        let chain = vec![msg("one"), msg("two"), msg("three"), msg("four")];
+        let per_message = crate::context::tokenizer::count_message_tokens(&msg("four"));
+        let result = apply_sliding_window(&chain, per_message * 2);
+
+        assert!(result.included.len() < chain.len());
+        assert_eq!(result.evicted_count, chain.len() - result.included.len());
+        // Most recent message must always survive.
+        assert_eq!(
+            result.included.last().unwrap().content,
+            chain.last().unwrap().content
+        );
+    }
+
+    #[test]
+    fn always_force_includes_the_last_message_even_if_it_alone_exceeds_budget() {
+        let chain = vec![msg("short"), msg(&"a very long message ".repeat(50))];
+        // Budget too small for even the single last message.
+        let result = apply_sliding_window(&chain, 1);
+        assert_eq!(result.included.len(), 1);
+        assert_eq!(result.included[0].content, chain[1].content);
+        assert_eq!(result.evicted_count, 1);
+    }
+}
