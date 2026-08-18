@@ -589,3 +589,155 @@ fn extract_text_from_message(msg: &Message) -> String {
         Message::System { content } => content.clone(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chat_msg(role: MessageRole, content: &str) -> ChatMessage {
+        ChatMessage {
+            role,
+            content: content.to_string(),
+        }
+    }
+
+    // ── convert_messages ───────────────────────────────────────────
+
+    #[test]
+    fn convert_messages_filters_out_system_messages() {
+        let messages = vec![
+            chat_msg(MessageRole::System, "You are a helpful assistant."),
+            chat_msg(MessageRole::User, "Hi"),
+            chat_msg(MessageRole::Assistant, "Hello!"),
+        ];
+        let rig_messages = convert_messages(&messages, &[]);
+        assert_eq!(rig_messages.len(), 2);
+        assert!(matches!(rig_messages[0], Message::User { .. }));
+        assert!(matches!(rig_messages[1], Message::Assistant { .. }));
+    }
+
+    #[test]
+    fn convert_messages_preserves_user_and_assistant_text() {
+        let messages = vec![
+            chat_msg(MessageRole::User, "What's the weather?"),
+            chat_msg(MessageRole::Assistant, "It's sunny."),
+        ];
+        let rig_messages = convert_messages(&messages, &[]);
+        assert_eq!(
+            extract_text_from_message(&rig_messages[0]),
+            "What's the weather?"
+        );
+        assert_eq!(extract_text_from_message(&rig_messages[1]), "It's sunny.");
+    }
+
+    #[test]
+    fn convert_messages_without_images_produces_plain_text_user_message() {
+        let messages = vec![chat_msg(MessageRole::User, "hello")];
+        let rig_messages = convert_messages(&messages, &[]);
+        match &rig_messages[0] {
+            Message::User { content } => assert_eq!(content.len(), 1),
+            other => panic!("expected User message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn convert_messages_attaches_images_only_to_last_user_message() {
+        let messages = vec![
+            chat_msg(MessageRole::User, "first turn"),
+            chat_msg(MessageRole::Assistant, "reply"),
+            chat_msg(MessageRole::User, "second turn, with an image"),
+        ];
+        let images = vec![(vec![0u8, 1, 2, 3], "image/png".to_string())];
+        let rig_messages = convert_messages(&messages, &images);
+
+        // First user message: text-only (1 content item).
+        match &rig_messages[0] {
+            Message::User { content } => assert_eq!(content.len(), 1),
+            other => panic!("expected User message, got {other:?}"),
+        }
+        // Last user message: text + 1 image = 2 content items.
+        match &rig_messages[2] {
+            Message::User { content } => assert_eq!(content.len(), 2),
+            other => panic!("expected User message, got {other:?}"),
+        }
+    }
+
+    // ── extract_system_preamble ────────────────────────────────────
+
+    #[test]
+    fn extract_system_preamble_returns_none_when_no_system_messages() {
+        let messages = vec![chat_msg(MessageRole::User, "hi")];
+        assert_eq!(extract_system_preamble(&messages), None);
+    }
+
+    #[test]
+    fn extract_system_preamble_joins_multiple_system_messages() {
+        let messages = vec![
+            chat_msg(MessageRole::System, "You are Aria."),
+            chat_msg(MessageRole::User, "hi"),
+            chat_msg(MessageRole::System, "Stay in character."),
+        ];
+        assert_eq!(
+            extract_system_preamble(&messages),
+            Some("You are Aria.\n\nStay in character.".to_string())
+        );
+    }
+
+    // ── split_prompt_and_history ───────────────────────────────────
+
+    #[test]
+    fn split_prompt_and_history_on_empty_input() {
+        let (prompt, history) = split_prompt_and_history(&[]);
+        assert_eq!(prompt, "");
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn split_prompt_and_history_separates_last_message_as_prompt() {
+        let messages = vec![
+            Message::user("first"),
+            Message::assistant("second"),
+            Message::user("third"),
+        ];
+        let (prompt, history) = split_prompt_and_history(&messages);
+        assert_eq!(prompt, "third");
+        assert_eq!(history.len(), 2);
+    }
+
+    // ── extract_text_from_message ──────────────────────────────────
+
+    #[test]
+    fn extract_text_from_message_handles_all_roles() {
+        assert_eq!(extract_text_from_message(&Message::user("u")), "u");
+        assert_eq!(extract_text_from_message(&Message::assistant("a")), "a");
+        assert_eq!(extract_text_from_message(&Message::system("s")), "s");
+    }
+
+    // ── image_media_type ────────────────────────────────────────────
+
+    #[test]
+    fn image_media_type_maps_known_mime_types() {
+        assert!(matches!(
+            image_media_type("image/png"),
+            Some(ImageMediaType::PNG)
+        ));
+        assert!(matches!(
+            image_media_type("image/jpeg"),
+            Some(ImageMediaType::JPEG)
+        ));
+        assert!(matches!(
+            image_media_type("image/webp"),
+            Some(ImageMediaType::WEBP)
+        ));
+        assert!(matches!(
+            image_media_type("image/gif"),
+            Some(ImageMediaType::GIF)
+        ));
+    }
+
+    #[test]
+    fn image_media_type_returns_none_for_unknown_mime_type() {
+        assert_eq!(image_media_type("image/bmp"), None);
+        assert_eq!(image_media_type("application/octet-stream"), None);
+    }
+}
