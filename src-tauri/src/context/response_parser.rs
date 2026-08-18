@@ -124,8 +124,7 @@ pub fn parse_multi_character_response(
             let stripped_lower = stripped.to_lowercase();
             known_names.iter().find(|name| {
                 let name_lower = name.to_lowercase();
-                let first_name_lower =
-                    name.split_whitespace().next().unwrap_or("").to_lowercase();
+                let first_name_lower = name.split_whitespace().next().unwrap_or("").to_lowercase();
                 first_word == first_name_lower || stripped_lower.starts_with(&name_lower)
             })
         };
