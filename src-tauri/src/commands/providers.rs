@@ -710,7 +710,9 @@ pub async fn list_all_models(
             // models. list_models() talks to it over MCP instead, same as
             // the Providers page's Default Model picker.
             if adapter == "wan_gp" {
-                let models = crate::providers::wangp::list_models(&base_url).await.unwrap_or_default();
+                let models = crate::providers::wangp::list_models(&base_url)
+                    .await
+                    .unwrap_or_default();
                 return (
                     provider_id.clone(),
                     true,
@@ -726,7 +728,9 @@ pub async fn list_all_models(
                             enabled: false, // set below
                             display_name: Some(m.name),
                             description: match (m.description, m.availability_status) {
-                                (Some(desc), Some(status)) => Some(format!("{} — {}", desc, status)),
+                                (Some(desc), Some(status)) => {
+                                    Some(format!("{} — {}", desc, status))
+                                }
                                 (Some(desc), None) => Some(desc),
                                 (None, Some(status)) => Some(status),
                                 (None, None) => None,
