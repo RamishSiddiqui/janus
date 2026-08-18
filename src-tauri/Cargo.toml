@@ -60,7 +60,7 @@ tracing-appender = "0.2"
 # Image processing (for character card PNG embedding)
 image = "0.25"
 png = "0.18"
-base64 = "0.22"
+base64 = "0.23"
 
 # Async traits
 async-trait = "0.1"
