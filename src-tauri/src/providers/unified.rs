@@ -232,9 +232,9 @@ impl RigProvider {
         /// MultiTurnStreamItem chunks to our mpsc channel as StreamChunks.
         macro_rules! stream_with {
             ($client:expr) => {{
-                use rig_core::agent::MultiTurnStreamItem;
-                use rig_core::client::CompletionClient;
-                use rig_core::streaming::{StreamingChat, StreamedAssistantContent};
+                use rig_agent::agent::MultiTurnStreamItem;
+                use rig_agent::client::AgentClientExt;
+                use rig_agent::streaming::{StreamingChat, StreamedAssistantContent};
 
                 let mut agent_builder = $client.agent(model_id);
                 if let Some(ref pre) = preamble {
@@ -320,7 +320,7 @@ impl RigProvider {
                             } else if !reasoning_text.trim().is_empty() {
                                 reasoning_text.clone()
                             } else {
-                                fin.response().to_string()
+                                fin.output().to_string()
                             };
 
                             if final_text.trim().is_empty() {
@@ -399,8 +399,8 @@ impl RigProvider {
 
         macro_rules! complete_with {
             ($client:expr) => {{
-                use rig_core::client::CompletionClient;
-                use rig_core::completion::Chat;
+                use rig_agent::client::AgentClientExt;
+                use rig_agent::completion::Chat;
 
                 let mut agent_builder = $client.agent(model_id);
                 if let Some(ref pre) = preamble {
