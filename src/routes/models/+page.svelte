@@ -213,7 +213,7 @@
           <span class="th th-caps">Capabilities</span>
           <span class="th th-price">Input / Output</span>
           <span class="th th-ctx">Context</span>
-          <span class="th th-action"></span>
+          <span class="th th-action">Enabled</span>
         </div>
         {#each Array(10) as _, i}
           <div class="trow skeleton-row" style="animation-delay:{i*40}ms">
@@ -249,7 +249,7 @@
           <span class="th th-caps">Capabilities</span>
           <span class="th th-price">Input / Output <span class="th-unit">(per 1M tokens)</span></span>
           <span class="th th-ctx">Context</span>
-          <span class="th th-action"></span>
+          <span class="th th-action">Enabled</span>
         </div>
         {#each filtered() as m, i (`${m.provider_id}::${m.model_id}`)}
           {@const rowKey = `${m.provider_id}::${m.model_id}`}
@@ -507,6 +507,10 @@
   .thead {
     display: grid;
     grid-template-columns: 1.4fr 130px 120px 160px 120px 60px;
+    /* Columns had no gap at all, so adjacent short-width ones (e.g. the
+       unlabeled toggle column) visually crowded into their neighbor with
+       zero breathing room. */
+    column-gap: 16px;
     padding: 10px 16px; position: sticky; top: 0; z-index: 2;
     background: rgba(8,8,20,0.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(139,92,246,0.08);
@@ -516,10 +520,12 @@
     text-transform: uppercase; color: #3a3a5a; font-family: var(--font-mono);
   }
   .th-unit { font-weight: 400; letter-spacing: 0.5px; font-size: 9px; color: #2a2a4a; }
+  .th-action { text-align: right; }
 
   .trow {
     display: grid;
     grid-template-columns: 1.4fr 130px 120px 160px 120px 60px;
+    column-gap: 16px;
     align-items: center; padding: 10px 16px;
     border-radius: 10px; position: relative;
     border: 1px solid transparent; cursor: pointer;
@@ -550,6 +556,7 @@
   }
 
   .td { display: flex; align-items: center; overflow: hidden; }
+  .td-action { justify-content: flex-end; }
 
   /* Model column */
   .model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

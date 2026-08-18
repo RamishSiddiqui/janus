@@ -418,6 +418,26 @@ pub async fn test_provider_connection(
     Ok(summarize_http_result(resp).await)
 }
 
+/// Lists every model a WanGP provider knows about (with local download
+/// availability), for the Default Model picker on that provider. WanGP is
+/// MCP-only, so this is separate from `list_provider_models`'s plain-REST
+/// model listing below (which doesn't apply here).
+#[tauri::command]
+#[specta::specta]
+pub async fn list_wangp_models(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    id: String,
+) -> Result<Vec<crate::providers::wangp::WangpModelInfo>, MythicError> {
+    let state = state.read().await;
+    let provider = ProviderRepo::get(&state.db, &id).await?;
+    let base_url = provider
+        .config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("http://127.0.0.1:7866");
+    crate::providers::wangp::list_models(base_url).await
+}
+
 /// Lists available models from a provider's API.
 /// Supports Ollama (/api/tags), OpenRouter (/api/v1/models), and OpenAI-compatible (/v1/models).
 #[tauri::command]
@@ -680,6 +700,51 @@ pub async fn list_all_models(
                                 img2img_supported: Some(info.img2img_supported),
                                 inpainting: Some(info.inpainting),
                             }
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            }
+
+            // WanGP: MCP-only, no REST /models endpoint to hit — the generic
+            // path below would just 404/timeout and silently contribute 0
+            // models. list_models() talks to it over MCP instead, same as
+            // the Providers page's Default Model picker.
+            if adapter == "wan_gp" {
+                let models = crate::providers::wangp::list_models(&base_url).await.unwrap_or_default();
+                return (
+                    provider_id.clone(),
+                    true,
+                    models
+                        .into_iter()
+                        .map(|m| ModelEntry {
+                            model_id: m.model_type,
+                            provider_id: provider_id.clone(),
+                            provider_name: provider_name.clone(),
+                            adapter: adapter.clone(),
+                            model_type: provider_type.clone(),
+                            context_length: None,
+                            enabled: false, // set below
+                            display_name: Some(m.name),
+                            description: match (m.description, m.availability_status) {
+                                (Some(desc), Some(status)) => Some(format!("{} — {}", desc, status)),
+                                (Some(desc), None) => Some(desc),
+                                (None, Some(status)) => Some(status),
+                                (None, None) => None,
+                            },
+                            pricing_prompt: None,
+                            pricing_completion: None,
+                            is_free: true,
+                            max_completion_tokens: None,
+                            input_modalities: vec![],
+                            output_modalities: vec![],
+                            supports_tools: false,
+                            supports_vision: false,
+                            supports_reasoning: false,
+                            embedding_dimensions: None,
+                            is_stale: false,
+                            baseline: None,
+                            img2img_supported: None,
+                            inpainting: None,
                         })
                         .collect::<Vec<_>>(),
                 );

@@ -129,6 +129,11 @@
         isConnected: undefined,
         isExpanded: p.is_default,
       }));
+      // A WanGP provider that starts expanded (it's the default) never gets
+      // the click that normally triggers the model-list fetch below.
+      for (const p of providers) {
+        if (p.isExpanded && p.adapter === 'wan_gp') loadWangpModels(p);
+      }
     } catch (err) { handleIpcError('load providers', err); }
     isLoading = false;
   }
@@ -222,11 +227,13 @@
       // (see the matching comment in the prefill $effect above).
       const actualAdapter = newAdapter === 'puter' ? 'open_ai_compatible' : newAdapter;
       const p = await ipc.createProvider(newName, newType, actualAdapter, config, false);
-      providers = [...providers, {
+      const newRow: ProviderRow = {
         id: p.id, name: p.name, provider_type: p.provider_type,
         adapter: p.adapter, config: p.config as Record<string, string>,
         is_default: p.is_default, isExpanded: true,
-      }];
+      };
+      providers = [...providers, newRow];
+      if (newRow.adapter === 'wan_gp') loadWangpModels(newRow);
       showAddForm = false;
       newName = ''; newApiKey = ''; newBaseUrl = ''; newModel = '';
       newHordeSampler = 'k_euler_a'; newHordeCfgScale = 7.5; newHordeSteps = 30; newHordeKarras = true;
@@ -267,6 +274,23 @@
   let keyEditMode = $state<Record<string, boolean>>({});
   function toggleKeyEdit(id: string) {
     keyEditMode = { ...keyEditMode, [id]: !keyEditMode[id] };
+  }
+
+  // WanGP model catalog per provider — fetched lazily on card expand rather
+  // than requiring the user to already know an exact model_type string, the
+  // way a free-text field on every other adapter's Default Model does.
+  let wangpModels = $state<Record<string, import('$lib/services/ipc').WangpModelInfo[]>>({});
+  let wangpModelsLoading = $state<Record<string, boolean>>({});
+  async function loadWangpModels(p: ProviderRow) {
+    if (wangpModels[p.id] || wangpModelsLoading[p.id]) return;
+    wangpModelsLoading = { ...wangpModelsLoading, [p.id]: true };
+    try {
+      const ipc = await import('$lib/services/ipc');
+      wangpModels = { ...wangpModels, [p.id]: await ipc.listWangpModels(p.id) };
+    } catch (err) {
+      console.error('Failed to list WanGP models:', err);
+    }
+    wangpModelsLoading = { ...wangpModelsLoading, [p.id]: false };
   }
 </script>
 
@@ -522,7 +546,11 @@
               {:else if p.isConnected === false}
                 <span class="conn-fail">● Failed</span>
               {/if}
-              <button class="icon-btn" onclick={() => { p.isExpanded = !p.isExpanded; providers = [...providers]; }}
+              <button class="icon-btn" onclick={() => {
+                  p.isExpanded = !p.isExpanded;
+                  providers = [...providers];
+                  if (p.isExpanded && p.adapter === 'wan_gp') loadWangpModels(p);
+                }}
                 aria-label="Toggle details">
                 <Icon name={p.isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#5a5a7a" />
               </button>
@@ -540,7 +568,27 @@
                        Provider form. -->
                   <div class="pfield">
                     <span class="pflabel">Default Model</span>
-                    {#if p.config.model}
+                    {#if p.adapter === 'wan_gp'}
+                      <!-- WanGP's MCP server can list its own model catalog
+                           (with local download availability) — a real
+                           picker instead of requiring an exact model_type
+                           string typed from memory. -->
+                      <select class="pfinput mono"
+                        value={p.config.model ?? ''}
+                        onchange={(e) => { const v = e.currentTarget.value; p.config.model = v; providers = [...providers]; saveField(p, 'model', v); }}>
+                        <option value="" disabled>
+                          {wangpModelsLoading[p.id] ? 'Loading models…' : 'Select a model…'}
+                        </option>
+                        {#each wangpModels[p.id] ?? [] as m (m.model_type)}
+                          <option value={m.model_type}>
+                            {m.name}{m.availability_status ? ` — ${m.availability_status}` : ''}
+                          </option>
+                        {/each}
+                      </select>
+                      {#if !wangpModelsLoading[p.id] && wangpModels[p.id]?.length === 0}
+                        <span class="field-hint">No models found — check WanGP is running and reachable at the Base URL below.</span>
+                      {/if}
+                    {:else if p.config.model}
                       <input class="pfinput mono" value={p.config.model}
                         onblur={(e) => { const v = e.currentTarget.value; p.config.model = v; providers = [...providers]; saveField(p, 'model', v); }} />
                     {:else}

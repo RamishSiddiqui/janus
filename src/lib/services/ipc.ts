@@ -17,6 +17,7 @@ import type {
   ProviderConfig_Serialize as ProviderConfig,
   CharacterState_Serialize as CharacterState,
   ModelEntry,
+  WangpModelInfo,
   SendMessageResult,
   ContextStats,
   Scene_Serialize,
@@ -500,6 +501,12 @@ export async function testProviderConnection(id: string): Promise<ConnectionTest
 
 export async function listProviderModels(id: string): Promise<string[]> {
   return safeInvoke<string[]>('list_provider_models', { id });
+}
+
+export type { WangpModelInfo };
+
+export async function listWangpModels(id: string): Promise<WangpModelInfo[]> {
+  return safeInvoke<WangpModelInfo[]>('list_wangp_models', { id });
 }
 
 export type { ModelEntry };

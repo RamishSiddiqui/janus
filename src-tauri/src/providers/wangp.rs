@@ -16,11 +16,31 @@ use rmcp::model::{
 };
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::ServiceExt;
+use serde::Serialize;
+use specta::Type;
 use tauri::{AppHandle, Emitter};
 use tracing::info;
 
 use crate::error::MythicError;
 use crate::models::provider::{CharacterImageRef, ImageGenParams, ProviderConfig, VideoGenParams};
+
+/// One entry from `wangp_list_models(include_availability=true)` — see
+/// `WanGPSession.list_model_metadata`/`_model_availability_to_dict` in
+/// WanGP's `shared/api.py`. Each raw record is the model's own free-form
+/// metadata dict plus guaranteed `model_type`/`name` keys and (when
+/// availability was requested) an `availability` sub-object; fields beyond
+/// what's captured here are ignored rather than causing a parse failure,
+/// since that metadata dict's shape isn't a fixed schema across models.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct WangpModelInfo {
+    pub model_type: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// "available" | "partial" | "missing" — whether the model's files are
+    /// actually downloaded locally, not just theoretically supported.
+    pub availability_status: Option<String>,
+    pub available: bool,
+}
 
 /// WanGP jobs run locally; polling faster than this just wastes cycles.
 const WANGP_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -30,7 +50,14 @@ const WANGP_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const WANGP_MAX_WAIT: Duration = Duration::from_secs(30 * 60);
 
 fn mcp_url(base_url: &str) -> String {
-    format!("{}/mcp", base_url.trim_end_matches('/'))
+    // Trailing slash is load-bearing: WanGP's MCP app is mounted at `/mcp/`
+    // (Starlette's default Mount trailing-slash normalization), so a
+    // request to the bare `/mcp` gets a 307 redirect to `/mcp/` — confirmed
+    // directly against a live WanGP instance. rmcp's StreamableHttpClientTransport
+    // doesn't follow that redirect, so without the slash here every call
+    // fails with `UnexpectedServerResponse("HTTP 307 Temporary Redirect")`
+    // instead of ever reaching the actual MCP endpoint.
+    format!("{}/mcp/", base_url.trim_end_matches('/'))
 }
 
 fn client_info() -> ClientInfo {
@@ -441,4 +468,73 @@ pub async fn test_connection(base_url: &str) -> Result<(), MythicError> {
         .map_err(|e| MythicError::Provider(format!("WanGP didn't respond: {}", e)))?;
     let _ = client.cancel().await;
     Ok(())
+}
+
+/// Lists every model WanGP knows about (with local download availability),
+/// for the Default Model picker on a WanGP provider — replaces requiring the
+/// user to already know an exact `model_type` string.
+pub async fn list_models(base_url: &str) -> Result<Vec<WangpModelInfo>, MythicError> {
+    let transport = StreamableHttpClientTransport::from_uri(mcp_url(base_url));
+    let client = client_info().serve(transport).await.map_err(|e| {
+        MythicError::Provider(format!("Failed to connect to WanGP at {}: {}", base_url, e))
+    })?;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("wangp_list_models").with_arguments(
+                serde_json::json!({ "include_availability": true })
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+            ),
+        )
+        .await
+        .map_err(|e| MythicError::Provider(format!("Failed to list WanGP models: {}", e)))?;
+    let _ = client.cancel().await;
+
+    let json = extract_tool_json(&result)?;
+    // `wangp_list_models` returns a bare `list[dict]` in Python, but MCP's
+    // structuredContent must be a JSON *object* — FastMCP auto-wraps
+    // non-object tool results under a "result" key to satisfy that, unlike
+    // wangp_generate/wangp_get_job/wangp_get_model_schema above, which
+    // already return a dict and so come through unwrapped. Accept either
+    // shape rather than assuming a bare array.
+    let records = json
+        .as_array()
+        .or_else(|| json.get("result").and_then(|v| v.as_array()))
+        .ok_or_else(|| {
+            MythicError::Provider("WanGP returned an unexpected model list shape".to_string())
+        })?;
+
+    Ok(records
+        .iter()
+        .filter_map(|record| {
+            let model_type = record.get("model_type")?.as_str()?.to_string();
+            let name = record
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&model_type)
+                .to_string();
+            let description = record
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let availability = record.get("availability");
+            let availability_status = availability
+                .and_then(|a| a.get("status"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let available = availability
+                .and_then(|a| a.get("available"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            Some(WangpModelInfo {
+                model_type,
+                name,
+                description,
+                availability_status,
+                available,
+            })
+        })
+        .collect())
 }

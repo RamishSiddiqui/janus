@@ -14,7 +14,50 @@
   // ── State ──────────────────────────────────────────────────
   let allModels = $state<ModelEntry[]>([]);
   let isLoading = $state(true);
-  let providers = $state<Array<{ id: string; name: string }>>([]);
+  let providers = $state<Array<{ id: string; name: string; adapter: string }>>([]);
+
+  // WanGP is MCP-only and — unlike every other adapter here — its
+  // reachability isn't implied by whether models loaded: a down MCP server
+  // just silently contributes 0 models (list_all_models swallows the
+  // error), which reads as "no models exist" instead of "can't reach it
+  // right now". This surfaces that distinction explicitly.
+  let wangpStatus = $state<Record<string, 'checking' | 'reachable' | 'unreachable'>>({});
+  let wangpProviders = $derived(providers.filter(p => p.adapter === 'wan_gp'));
+
+  function wangpStatusLabel(id: string): string {
+    const s = wangpStatus[id];
+    return s === 'reachable' ? 'MCP server reachable'
+      : s === 'unreachable' ? 'MCP server unreachable — is it running?'
+      : 'Checking…';
+  }
+
+  // ── Custom provider dropdown (see markup for why this isn't a native
+  // <select>) ──
+  let providerComboOpen = $state(false);
+  let providerComboEl: HTMLDivElement | undefined = $state();
+
+  function handleProviderComboWindowClick(e: MouseEvent) {
+    if (!providerComboOpen) return;
+    if (providerComboEl && !providerComboEl.contains(e.target as Node)) providerComboOpen = false;
+  }
+  function handleProviderComboKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') providerComboOpen = false;
+  }
+
+  async function checkWangpStatus() {
+    const wangp = providers.filter(p => p.adapter === 'wan_gp');
+    if (wangp.length === 0) return;
+    const ipc = await import('$lib/services/ipc');
+    for (const p of wangp) wangpStatus = { ...wangpStatus, [p.id]: 'checking' };
+    await Promise.all(wangp.map(async p => {
+      try {
+        const result = await ipc.testProviderConnection(p.id);
+        wangpStatus = { ...wangpStatus, [p.id]: result.ok ? 'reachable' : 'unreachable' };
+      } catch {
+        wangpStatus = { ...wangpStatus, [p.id]: 'unreachable' };
+      }
+    }));
+  }
 
   // Filters
   let filterProvider = $state('all');
@@ -23,6 +66,11 @@
   let filterPricing = $state('all');
   let filterSearch = $state('');
   let filterCaps = $state<Set<string>>(new Set());
+
+  let selectedProviderName = $derived(
+    filterProvider === 'all' ? 'All Providers' : (providers.find(p => p.id === filterProvider)?.name ?? 'All Providers')
+  );
+  let selectedWangpProvider = $derived(providers.find(p => p.id === filterProvider && p.adapter === 'wan_gp'));
 
   // Sorting — no context-based sort here (image/video models don't carry
   // a context_length), unlike the LLM Models page this was split from.
@@ -78,7 +126,8 @@
           ipc.listProviders(),
         ]);
         allModels = models.filter(m => m.model_type === 'image' || m.model_type === 'video');
-        providers = pList.map(p => ({ id: p.id, name: p.name }));
+        providers = pList.map(p => ({ id: p.id, name: p.name, adapter: p.adapter }));
+        checkWangpStatus();
       }
     } catch (err) { handleIpcError('load models', err); }
     isLoading = false;
@@ -110,6 +159,8 @@
     return t === 'image' ? 'image' : 'video';
   }
 </script>
+
+<svelte:window onclick={handleProviderComboWindowClick} onkeydown={handleProviderComboKeydown} />
 
 <svelte:head><title>Image/Video Models — Janus</title></svelte:head>
 
@@ -149,10 +200,48 @@
         {#if filterSearch}<button class="search-clear" onclick={() => filterSearch = ''}>✕</button>{/if}
       </div>
 
-      <select class="filter-select" bind:value={filterProvider} aria-label="Filter by provider">
-        <option value="all">All Providers</option>
-        {#each providers as p}<option value={p.id}>{p.name}</option>{/each}
-      </select>
+      <!-- Custom trigger+panel (not a native <select>) so the WanGP MCP
+           status pill can render inline with its name, both in the closed
+           trigger and its row in the open list — a native <select>/<option>
+           can't host arbitrary markup like a colored status dot. -->
+      <div class="provider-combo" bind:this={providerComboEl}>
+        <button type="button" class="filter-select provider-trigger" class:is-open={providerComboOpen}
+          onclick={() => providerComboOpen = !providerComboOpen}
+          aria-haspopup="listbox" aria-expanded={providerComboOpen} aria-label="Filter by provider">
+          <span class="provider-trigger-text">{selectedProviderName}</span>
+          {#if selectedWangpProvider}
+            <span class="wangp-pill wangp-pill--{wangpStatus[selectedWangpProvider.id] ?? 'checking'}" title={wangpStatusLabel(selectedWangpProvider.id)}>
+              <span class="wangp-pill-dot" aria-hidden="true"></span>
+            </span>
+          {/if}
+          <svg class="provider-caret" class:flipped={providerComboOpen} width="10" height="10" viewBox="0 0 10 6" fill="none">
+            <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        {#if providerComboOpen}
+          <div class="provider-panel" role="listbox" aria-label="Filter by provider">
+            <button type="button" class="provider-item" class:is-active={filterProvider === 'all'}
+              onclick={() => { filterProvider = 'all'; providerComboOpen = false; }} role="option" aria-selected={filterProvider === 'all'}>
+              All Providers
+            </button>
+            {#each providers as p (p.id)}
+              <button type="button" class="provider-item" class:is-active={filterProvider === p.id}
+                onclick={() => { filterProvider = p.id; providerComboOpen = false; }} role="option" aria-selected={filterProvider === p.id}>
+                <span class="provider-item-name">{p.name}</span>
+                {#if p.adapter === 'wan_gp'}
+                  <!-- WanGP is MCP-only — a down server silently contributes
+                       0 models rather than erroring, which otherwise looks
+                       identical to "this provider genuinely has no models". -->
+                  <span class="wangp-pill wangp-pill--{wangpStatus[p.id] ?? 'checking'}" title={wangpStatusLabel(p.id)}>
+                    <span class="wangp-pill-dot" aria-hidden="true"></span>
+                    {wangpStatus[p.id] === 'reachable' ? 'reachable' : wangpStatus[p.id] === 'unreachable' ? 'unreachable' : 'checking…'}
+                  </span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
 
       <select class="filter-select" bind:value={sortBy} aria-label="Sort by">
         <option value="name">Sort: Name A→Z</option>
@@ -214,7 +303,7 @@
           <span class="th th-caps">Capabilities</span>
           <span class="th th-price">Input / Output</span>
           <span class="th th-ctx">Architecture</span>
-          <span class="th th-action"></span>
+          <span class="th th-action">Enabled</span>
         </div>
         {#each Array(10) as _, i}
           <div class="trow skeleton-row" style="animation-delay:{i*40}ms">
@@ -250,7 +339,7 @@
           <span class="th th-caps">Capabilities</span>
           <span class="th th-price">Input / Output <span class="th-unit">(per generation)</span></span>
           <span class="th th-ctx">Architecture</span>
-          <span class="th th-action"></span>
+          <span class="th th-action">Enabled</span>
         </div>
         {#each filtered() as m, i (`${m.provider_id}::${m.model_id}`)}
           {@const rowKey = `${m.provider_id}::${m.model_id}`}
@@ -441,6 +530,12 @@
     padding: 20px 28px; flex-shrink: 0;
     border-bottom: 1px solid rgba(139,92,246,0.06);
     background: rgba(8,8,20,0.5); backdrop-filter: blur(12px);
+    /* Without an explicit position, this whole (static) subtree — including
+       the provider-panel dropdown, z-index:60 or not — paints below ANY
+       positioned element elsewhere on the page, including .thead's
+       position:sticky/z-index:2 further down. Promoting this to a
+       positioned stacking context makes z-index comparisons actually apply. */
+    position: relative; z-index: 10;
   }
   .filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
@@ -469,6 +564,74 @@
     transition: border-color 200ms;
   }
   .filter-select:focus { border-color: rgba(139,92,246,0.4); }
+
+  /* ── Custom provider dropdown ── */
+  .provider-combo { position: relative; }
+
+  .provider-trigger {
+    display: flex; align-items: center; gap: 6px;
+    width: auto; min-width: 140px;
+    background-image: none; /* override .filter-select's chevron bg-image — uses a real <svg> instead */
+  }
+  .provider-trigger-text {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left;
+  }
+  .provider-caret {
+    flex-shrink: 0; color: #6b6b8a;
+    transition: transform 180ms ease;
+  }
+  .provider-caret.flipped { transform: rotate(180deg); }
+
+  .provider-panel {
+    position: absolute; top: calc(100% + 6px); left: 0;
+    min-width: 220px; max-height: 320px; overflow-y: auto;
+    background: rgba(8,6,20,0.97);
+    backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid rgba(139,92,246,0.16);
+    border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.2);
+    z-index: 60; padding: 5px;
+    animation: providerPanelIn 160ms cubic-bezier(0.16,1,0.3,1) both;
+  }
+  @keyframes providerPanelIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .provider-item {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; border: none; border-radius: 7px; background: transparent;
+    color: rgba(190,180,220,0.85); font-size: 12px; font-family: var(--font-body);
+    cursor: pointer; transition: background 120ms, color 120ms; text-align: left;
+  }
+  .provider-item:hover { background: rgba(139,92,246,0.08); color: rgba(220,210,255,0.95); }
+  .provider-item.is-active { background: rgba(139,92,246,0.12); color: #BF40FF; }
+  .provider-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* WanGP MCP reachability pill — same green-pulse/red convention used
+     elsewhere for live status (e.g. connected/failed badges). */
+  .wangp-pill {
+    display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+    padding: 2px 7px; border-radius: 99px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.2px; white-space: nowrap;
+    background: rgba(74,74,106,0.15); color: #8b8ba7;
+  }
+  .wangp-pill-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: #4a4a6a; }
+  .wangp-pill--reachable { background: rgba(16,185,129,0.12); color: #34D399; }
+  .wangp-pill--reachable .wangp-pill-dot {
+    background: #10B981;
+    box-shadow: 0 0 6px rgba(16,185,129,0.8);
+    animation: wangpPulse 1.6s ease-in-out infinite;
+  }
+  .wangp-pill--unreachable { background: rgba(244,63,94,0.1); color: #F43F5E; }
+  .wangp-pill--unreachable .wangp-pill-dot { background: #F43F5E; }
+  @keyframes wangpPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.55); }
+    50%      { box-shadow: 0 0 0 5px rgba(16,185,129,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wangp-pill--reachable .wangp-pill-dot { animation: none; }
+  }
 
   .chip-group { display: flex; gap: 6px; }
   .chip-divider { width: 1px; height: 20px; background: rgba(139,92,246,0.1); margin: 0 6px; }
@@ -505,6 +668,11 @@
   .thead {
     display: grid;
     grid-template-columns: 1.4fr 130px 120px 160px 120px 60px;
+    /* Columns had no gap at all, so adjacent short-width ones (Architecture,
+       the unlabeled toggle column) visually crowded into each other with
+       zero breathing room even though .td's own overflow:hidden meant
+       nothing was actually bleeding across the boundary. */
+    column-gap: 16px;
     padding: 10px 16px; position: sticky; top: 0; z-index: 2;
     background: rgba(8,8,20,0.95); backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(139,92,246,0.08);
@@ -514,10 +682,12 @@
     text-transform: uppercase; color: #3a3a5a; font-family: var(--font-mono);
   }
   .th-unit { font-weight: 400; letter-spacing: 0.5px; font-size: 9px; color: #2a2a4a; }
+  .th-action { text-align: right; }
 
   .trow {
     display: grid;
     grid-template-columns: 1.4fr 130px 120px 160px 120px 60px;
+    column-gap: 16px;
     align-items: center; padding: 10px 16px;
     border-radius: 10px; position: relative;
     border: 1px solid transparent; cursor: pointer;
@@ -548,6 +718,7 @@
   }
 
   .td { display: flex; align-items: center; overflow: hidden; }
+  .td-action { justify-content: flex-end; }
 
   /* Model column */
   .model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

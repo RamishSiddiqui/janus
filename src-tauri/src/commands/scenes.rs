@@ -259,6 +259,7 @@ pub async fn generate_scene(
                 &app,
                 &conversation_id,
                 &state_guard.http_client,
+                &state_guard.db,
                 p,
                 &params,
                 preset.as_ref(),

@@ -156,6 +156,13 @@ export const commands = {
 	 */
 	listProviderModels: (id: string) => typedError<string[], MythicError>(__TAURI_INVOKE("list_provider_models", { id })),
 	/**
+	 *  Lists every model a WanGP provider knows about (with local download
+	 *  availability), for the Default Model picker on that provider. WanGP is
+	 *  MCP-only, so this is separate from `list_provider_models`'s plain-REST
+	 *  model listing below (which doesn't apply here).
+	 */
+	listWangpModels: (id: string) => typedError<WangpModelInfo[], MythicError>(__TAURI_INVOKE("list_wangp_models", { id })),
+	/**
 	 *  Fetches models from ALL configured providers in parallel and merges them
 	 *  with their enabled/disabled state from the `enabled_models` table.
 	 * 
@@ -1983,6 +1990,27 @@ export type UpdateImagePresetFields = {
 	postProcessing: string[] | null,
 	hiresFix: boolean | null,
 	hiresFixDenoisingStrength: number | null,
+};
+
+/**
+ *  One entry from `wangp_list_models(include_availability=true)` — see
+ *  `WanGPSession.list_model_metadata`/`_model_availability_to_dict` in
+ *  WanGP's `shared/api.py`. Each raw record is the model's own free-form
+ *  metadata dict plus guaranteed `model_type`/`name` keys and (when
+ *  availability was requested) an `availability` sub-object; fields beyond
+ *  what's captured here are ignored rather than causing a parse failure,
+ *  since that metadata dict's shape isn't a fixed schema across models.
+ */
+export type WangpModelInfo = {
+	model_type: string,
+	name: string,
+	description: string | null,
+	/**
+	 *  "available" | "partial" | "missing" — whether the model's files are
+	 *  actually downloaded locally, not just theoretically supported.
+	 */
+	availability_status: string | null,
+	available: boolean,
 };
 
 /* Tauri Specta runtime */

@@ -219,6 +219,7 @@ pub async fn generate_persona_portrait(
             &app,
             &portrait_key,
             &state_guard.http_client,
+            &state_guard.db,
             &provider,
             &params,
             preset.as_ref(),

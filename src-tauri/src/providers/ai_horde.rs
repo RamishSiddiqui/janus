@@ -1,12 +1,16 @@
 //! AI Horde image generation adapter — submits an async job, polls until
 //! done, and fetches the result. Mirrors the shape of `comfyui.rs`/`wangp.rs`
-//! (raw bytes + metadata, no DB/file writes here — the caller does that).
+//! (raw bytes + metadata, no DB writes/file writes here — the caller does
+//! that; the one DB access is the read-only enabled-model check below).
 
 use std::time::Duration;
 
+use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 
+use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
 use crate::models::image_preset::ImagePreset;
 use crate::models::provider::{ImageGenParams, ProviderConfig};
@@ -160,6 +164,7 @@ pub(crate) async fn generate_via_ai_horde(
     app: &AppHandle,
     conversation_id: &str,
     http_client: &reqwest::Client,
+    db: &Surreal<Db>,
     provider: &ProviderConfig,
     params: &ImageGenParams,
     preset: Option<&ImagePreset>,
@@ -201,6 +206,25 @@ pub(crate) async fn generate_via_ai_horde(
         hires_fix,
         hires_fix_denoising_strength,
     } = resolved;
+
+    // An explicitly-configured model (Default Model field or an Image
+    // Preset override) must actually be enabled locally — without this, the
+    // Image/Video Models page's toggle was purely cosmetic for AI Horde:
+    // turning a model off there had zero effect on what generation actually
+    // used, unlike every other provider type where "enabled" is the real
+    // gate. The no-model-pinned auto-pick-from-the-live-roster path below is
+    // intentionally left alone — it never claimed to respect local enable
+    // state and picks from AI Horde's live public roster, not a local catalog.
+    if let Some(m) = model {
+        let provider_id = provider.id.id.to_raw();
+        let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id)).await?;
+        if !enabled.iter().any(|row| row.model_id == m) {
+            return Err(MythicError::Validation(format!(
+                "Model '{}' is set as this provider's Default Model but isn't enabled — enable it on the Image/Video Models page first.",
+                m
+            )));
+        }
+    }
 
     let negative_prompt: &str = if !params.negative_prompt.is_empty() {
         &params.negative_prompt
