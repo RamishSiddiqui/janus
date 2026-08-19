@@ -17,13 +17,12 @@
 //!    old engine, which can still read the old store), then import into a
 //!    freshly-initialized datastore on the new engine after.
 //!
-//! The export uses SurrealDB's v3-compatibility mode (`.v3(true)`), which
-//! translates renamed/removed syntax during export (e.g. `SEARCH ANALYZER`
-//! -> `FULLTEXT ANALYZER`, `MTREE` -> `HNSW`) — the same translation the
-//! `surreal v2 export --v3` CLI flag performs. This keeps one backup file
-//! importable both into a same-version datastore (routine backup/restore)
-//! and into a future major-version datastore (migration), without needing
-//! two separate export paths.
+//! Note: the `.v3(true)` v3-compatibility export mode mentioned in earlier
+//! design notes only exists on surrealdb 2.x's SDK (it's the transitional
+//! flag for exporting *out of* a 2.x datastore in a 3.x-importable format,
+//! matching the `surreal v2 export --v3` CLI flag). Now that this app itself
+//! runs on surrealdb 3.x, `.export()` is already native 3.x format with no
+//! compatibility toggle needed or available.
 
 use std::path::{Path, PathBuf};
 
@@ -53,8 +52,6 @@ pub async fn export_to_file(db: &Surreal<Db>, dest: &Path) -> Result<(), MythicE
         tokio::fs::create_dir_all(parent).await?;
     }
     db.export(dest)
-        .with_config()
-        .v3(true)
         .await
         .map_err(|e| MythicError::DatabaseOp(format!("export failed: {e}")))?;
     info!("[backup] Exported datastore to {:?}", dest);

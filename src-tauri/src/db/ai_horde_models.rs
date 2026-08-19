@@ -30,7 +30,7 @@ impl AiHordeModelRepo {
     ) -> Result<(), MythicError> {
         for m in models {
             db.query(
-                "UPSERT type::thing('ai_horde_model_info', $id) MERGE {
+                "UPSERT type::record('ai_horde_model_info', $id) MERGE {
                     name: $name,
                     baseline: $baseline,
                     inpainting: $inpainting,
@@ -60,9 +60,10 @@ impl AiHordeModelRepo {
         db: &Surreal<Db>,
         name: &str,
     ) -> Result<Option<AiHordeModelInfo>, MythicError> {
-        let row: Option<AiHordeModelInfo> = db
-            .select(("ai_horde_model_info", sanitize_id(name)))
-            .await?;
+        let row: Option<AiHordeModelInfo> = crate::db::value_bridge::from_value_opt(
+            db.select(("ai_horde_model_info", sanitize_id(name)))
+                .await?,
+        )?;
         Ok(row)
     }
 
@@ -70,7 +71,7 @@ impl AiHordeModelRepo {
         let mut result = db
             .query("SELECT * FROM ai_horde_model_info ORDER BY name ASC")
             .await?;
-        let rows: Vec<AiHordeModelInfo> = result.take(0)?;
+        let rows: Vec<AiHordeModelInfo> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(rows)
     }
 }

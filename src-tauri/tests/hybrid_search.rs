@@ -45,18 +45,30 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
         .await
         .expect("create character");
 
-    let conv_a =
-        ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv A"), None)
-            .await
-            .expect("create conversation A");
-    let conv_b =
-        ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv B"), None)
-            .await
-            .expect("create conversation B");
+    let conv_a = ConversationRepo::create(
+        &db,
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &character.id,
+        )),
+        Some("Conv A"),
+        None,
+    )
+    .await
+    .expect("create conversation A");
+    let conv_b = ConversationRepo::create(
+        &db,
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &character.id,
+        )),
+        Some("Conv B"),
+        None,
+    )
+    .await
+    .expect("create conversation B");
 
     MessageRepo::create(
         &db,
-        &conv_a.id.id.to_raw(),
+        &janus_lib::db::value_bridge::record_id_to_string(&conv_a.id),
         "user",
         "I saw a griffin over the mountains",
         None,
@@ -66,7 +78,7 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     .expect("create message with distinctive term");
     MessageRepo::create(
         &db,
-        &conv_a.id.id.to_raw(),
+        &janus_lib::db::value_bridge::record_id_to_string(&conv_a.id),
         "assistant",
         "That sounds like an ordinary hawk to me",
         None,
@@ -76,7 +88,7 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     .expect("create unrelated message");
     let griffin_b = MessageRepo::create(
         &db,
-        &conv_b.id.id.to_raw(),
+        &janus_lib::db::value_bridge::record_id_to_string(&conv_b.id),
         "user",
         "Another griffin sighting near the tower",
         None,
@@ -88,7 +100,9 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     // Conversation-scoped: only conv_a's griffin message should come back.
     let hits_a = EmbeddingRepo::keyword_search_messages(
         &db,
-        Some(&conv_a.id.id.to_raw()),
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &conv_a.id,
+        )),
         None,
         "griffin",
         10,
@@ -106,7 +120,9 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     // The unrelated message in the same conversation must not match.
     let hits_hawk = EmbeddingRepo::keyword_search_messages(
         &db,
-        Some(&conv_a.id.id.to_raw()),
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &conv_a.id,
+        )),
         None,
         "hawk",
         10,
@@ -122,7 +138,9 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     let hits_char = EmbeddingRepo::keyword_search_messages(
         &db,
         None,
-        Some(&character.id.id.to_raw()),
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &character.id,
+        )),
         "griffin",
         10,
         &[],
@@ -139,10 +157,14 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     let hits_excluded = EmbeddingRepo::keyword_search_messages(
         &db,
         None,
-        Some(&character.id.id.to_raw()),
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &character.id,
+        )),
         "griffin",
         10,
-        &[griffin_b.id.id.to_raw()],
+        &[janus_lib::db::value_bridge::record_id_to_string(
+            &griffin_b.id,
+        )],
     )
     .await
     .expect("keyword search with exclusion should not error");
@@ -153,7 +175,7 @@ async fn keyword_search_messages_finds_exact_term_and_respects_scope() {
     );
     assert!(!hits_excluded
         .iter()
-        .any(|h| h.message_id == griffin_b.id.id.to_raw()));
+        .any(|h| h.message_id == janus_lib::db::value_bridge::record_id_to_string(&griffin_b.id)));
 
     cleanup(dir);
 }
@@ -169,13 +191,20 @@ async fn search_messages_finds_exact_term() {
     let character = CharacterRepo::create(&db, "Elara", serde_json::json!({"name": "Elara"}))
         .await
         .expect("create character");
-    let conv = ConversationRepo::create(&db, Some(&character.id.id.to_raw()), Some("Conv"), None)
-        .await
-        .expect("create conversation");
+    let conv = ConversationRepo::create(
+        &db,
+        Some(&janus_lib::db::value_bridge::record_id_to_string(
+            &character.id,
+        )),
+        Some("Conv"),
+        None,
+    )
+    .await
+    .expect("create conversation");
 
     MessageRepo::create(
         &db,
-        &conv.id.id.to_raw(),
+        &janus_lib::db::value_bridge::record_id_to_string(&conv.id),
         "user",
         "I saw a griffin over the mountains",
         None,
@@ -185,7 +214,7 @@ async fn search_messages_finds_exact_term() {
     .expect("create message");
     MessageRepo::create(
         &db,
-        &conv.id.id.to_raw(),
+        &janus_lib::db::value_bridge::record_id_to_string(&conv.id),
         "assistant",
         "That sounds like an ordinary hawk to me",
         None,
@@ -210,7 +239,7 @@ async fn keyword_search_memories_finds_exact_term() {
     let character = CharacterRepo::create(&db, "Kael", serde_json::json!({"name": "Kael"}))
         .await
         .expect("create character");
-    let char_id = character.id.id.to_raw();
+    let char_id = janus_lib::db::value_bridge::record_id_to_string(&character.id);
 
     MemoryRepo::create(
         &db,

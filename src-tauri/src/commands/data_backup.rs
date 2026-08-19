@@ -66,9 +66,13 @@ pub struct BackupFileInfo {
     pub path: String,
     pub filename: String,
     pub is_auto: bool,
-    /// Unix timestamp (seconds) of the file's last modification.
-    pub modified_at: i64,
-    pub size_bytes: u64,
+    /// RFC 3339 timestamp of the file's last modification — a formatted
+    /// string, not a raw epoch integer, since specta forbids exporting
+    /// BigInt-style types (i64/u64) to TypeScript (precision-loss risk).
+    pub modified_at: String,
+    /// File size in bytes, as a string for the same BigInt-export reason —
+    /// a backup file can plausibly exceed u32's ~4GB ceiling.
+    pub size_bytes: String,
 }
 
 #[tauri::command]
@@ -88,22 +92,31 @@ pub async fn list_data_backups(app: AppHandle) -> Result<Vec<BackupFileInfo>, My
         }
         let filename = entry.file_name().to_string_lossy().to_string();
         let meta = entry.metadata().await?;
-        let modified_at = meta
+        let modified_sort_key = meta
             .modified()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
+            .map(|d| d.as_secs())
             .unwrap_or(0);
+        let modified_at = meta
+            .modified()
+            .ok()
+            .map(chrono::DateTime::<chrono::Utc>::from)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_default();
 
-        backups.push(BackupFileInfo {
-            path: path.to_string_lossy().to_string(),
-            is_auto: filename == "janus_auto_backup.surql",
-            filename,
-            modified_at,
-            size_bytes: meta.len(),
-        });
+        backups.push((
+            modified_sort_key,
+            BackupFileInfo {
+                path: path.to_string_lossy().to_string(),
+                is_auto: filename == "janus_auto_backup.surql",
+                filename,
+                modified_at,
+                size_bytes: meta.len().to_string(),
+            },
+        ));
     }
 
-    backups.sort_by_key(|b| std::cmp::Reverse(b.modified_at));
-    Ok(backups)
+    backups.sort_by_key(|(sort_key, _)| std::cmp::Reverse(*sort_key));
+    Ok(backups.into_iter().map(|(_, info)| info).collect())
 }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A persisted memory entry — user-pinned facts or AI-extracted context.
 ///
@@ -15,21 +15,21 @@ pub struct Memory {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         default,
         serialize_with = "crate::models::serialize_option_thing",
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub character_id: Option<Thing>,
+    pub character_id: Option<RecordId>,
     #[serde(
         default,
         serialize_with = "crate::models::serialize_option_thing",
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub conversation_id: Option<Thing>,
+    pub conversation_id: Option<RecordId>,
     pub content: String,
     pub source: String, // "user" | "auto"
 
@@ -40,7 +40,7 @@ pub struct Memory {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub parent_id: Option<Thing>,
+    pub parent_id: Option<RecordId>,
     /// Version counter — increments on each edit
     pub version: i32,
     /// Whether this is a character-level "canon" memory (trunk of the tree)
@@ -85,7 +85,7 @@ pub struct MemoryLink {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         alias = "in",
         rename(serialize = "source_memory_id", deserialize = "in"),
@@ -93,7 +93,7 @@ pub struct MemoryLink {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub source: Thing, // in = source memory
+    pub source: RecordId, // in = source memory
     #[serde(
         alias = "out",
         rename(serialize = "target_conversation_id", deserialize = "out"),
@@ -101,7 +101,7 @@ pub struct MemoryLink {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub target: Thing, // out = target conversation
+    pub target: RecordId, // out = target conversation
     pub link_type: String, // "copy" | "sync"
     pub direction: String, // "one_way" | "two_way"
     pub sync_mode: String, // "auto" | "manual"
@@ -111,7 +111,7 @@ pub struct MemoryLink {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub linked_memory_id: Option<Thing>,
+    pub linked_memory_id: Option<RecordId>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     #[specta(type = String)]
     pub created_at: String,

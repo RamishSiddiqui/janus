@@ -7,9 +7,12 @@ use crate::error::MythicError;
 pub struct EmbeddingRepo;
 
 impl EmbeddingRepo {
-    /// Ensures the MTREE index exists with the correct dimension.
+    /// Ensures the HNSW vector index exists with the correct dimension.
     /// If the index exists with a different dimension, it is dropped and recreated.
-    pub async fn ensure_mtree_index(db: &Surreal<Db>, dimension: usize) -> Result<(), MythicError> {
+    pub async fn ensure_vector_index(
+        db: &Surreal<Db>,
+        dimension: usize,
+    ) -> Result<(), MythicError> {
         // Drop existing index (safe if it doesn't exist)
         let _ = db
             .query("REMOVE INDEX IF EXISTS idx_me_embedding ON message_embeddings")
@@ -17,14 +20,14 @@ impl EmbeddingRepo {
 
         // Create with the correct dimension
         let query = format!(
-            "DEFINE INDEX idx_me_embedding ON message_embeddings FIELDS embedding MTREE DIMENSION {} DIST COSINE TYPE F32",
+            "DEFINE INDEX idx_me_embedding ON message_embeddings FIELDS embedding HNSW DIMENSION {} DIST COSINE TYPE F32",
             dimension
         );
         db.query(&query).await?.check().map_err(|e| {
-            MythicError::DatabaseOp(format!("ensure_mtree_index({}): {}", dimension, e))
+            MythicError::DatabaseOp(format!("ensure_vector_index({}): {}", dimension, e))
         })?;
 
-        tracing::info!("[embeddings] MTREE index set to dimension {}", dimension);
+        tracing::info!("[embeddings] HNSW index set to dimension {}", dimension);
         Ok(())
     }
 
@@ -43,18 +46,18 @@ impl EmbeddingRepo {
                 let mut result = db
                     .query(
                         "SELECT dimension FROM message_embeddings \
-                     WHERE conversation_id = type::thing('conversations', $conv_id) \
+                     WHERE conversation_id = type::record('conversations', $conv_id) \
                         AND entry_type = 'message' LIMIT 1",
                     )
                     .bind(("conv_id", conv_id.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_vec(result.take(0)?)?
             }
             None => {
                 let mut result = db.query(
                     "SELECT dimension FROM message_embeddings WHERE entry_type = 'message' LIMIT 1"
                 ).await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_vec(result.take(0)?)?
             }
         };
 
@@ -72,16 +75,16 @@ impl EmbeddingRepo {
         model_name: &str,
         character_id: Option<&str>,
     ) -> Result<(), MythicError> {
-        // Convert f64 to f32 for storage efficiency (MTREE index uses F32)
+        // Convert f64 to f32 for storage efficiency (HNSW index uses F32)
         let embedding_f32: Vec<f32> = embedding.iter().map(|&v| v as f32).collect();
         let dimension = embedding_f32.len() as i64;
 
         let query = if let Some(char_id) = character_id {
             db.query(
                 "CREATE message_embeddings SET \
-                    message_id = type::thing('messages', $msg_id), \
-                    conversation_id = type::thing('conversations', $conv_id), \
-                    character_id = type::thing('characters', $char_id), \
+                    message_id = type::record('messages', $msg_id), \
+                    conversation_id = type::record('conversations', $conv_id), \
+                    character_id = type::record('characters', $char_id), \
                     embedding = $embedding, \
                     model_name = $model, \
                     dimension = $dim, \
@@ -97,8 +100,8 @@ impl EmbeddingRepo {
         } else {
             db.query(
                 "CREATE message_embeddings SET \
-                    message_id = type::thing('messages', $msg_id), \
-                    conversation_id = type::thing('conversations', $conv_id), \
+                    message_id = type::record('messages', $msg_id), \
+                    conversation_id = type::record('conversations', $conv_id), \
                     embedding = $embedding, \
                     model_name = $model, \
                     dimension = $dim, \
@@ -137,7 +140,7 @@ impl EmbeddingRepo {
 
         db.query(
             "CREATE message_embeddings SET \
-                character_id = type::thing('characters', $char_id), \
+                character_id = type::record('characters', $char_id), \
                 source_id = $source_id, \
                 embedding = $embedding, \
                 model_name = $model, \
@@ -169,7 +172,8 @@ impl EmbeddingRepo {
             .bind(("source_id", memory_id.to_string()))
             .await?;
 
-        let count: Option<serde_json::Value> = result.take(0)?;
+        let count: Option<serde_json::Value> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         Ok(count
             .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
             .unwrap_or(0)
@@ -199,13 +203,14 @@ impl EmbeddingRepo {
         let mut result = db
             .query(
                 "SELECT count() FROM message_embeddings \
-                 WHERE message_id = type::thing('messages', $msg_id) \
+                 WHERE message_id = type::record('messages', $msg_id) \
                  GROUP ALL",
             )
             .bind(("msg_id", message_id.to_string()))
             .await?;
 
-        let count: Option<serde_json::Value> = result.take(0)?;
+        let count: Option<serde_json::Value> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         Ok(count
             .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
             .unwrap_or(0)
@@ -233,18 +238,18 @@ impl EmbeddingRepo {
         let query_f32: Vec<f32> = query_embedding.iter().map(|&v| v as f32).collect();
 
         // Build exclude list as bound Record IDs — never interpolated into the query text
-        let exclude_things: Vec<surrealdb::sql::Thing> = exclude_message_ids
+        let exclude_things: Vec<surrealdb::types::RecordId> = exclude_message_ids
             .iter()
-            .map(|id| surrealdb::sql::Thing::from(("messages", id.as_str())))
+            .map(|id| surrealdb::types::RecordId::new("messages", id.as_str()))
             .collect();
 
         // Build scope filter
         let scope_filter = match (conversation_id, character_id) {
             (Some(_conv_id), _) => {
-                "conversation_id = type::thing('conversations', $scope_id)".to_string()
+                "conversation_id = type::record('conversations', $scope_id)".to_string()
             }
             (None, Some(_char_id)) => {
-                "character_id = type::thing('characters', $scope_id)".to_string()
+                "character_id = type::record('characters', $scope_id)".to_string()
             }
             (None, None) => "true".to_string(), // no filter (shouldn't happen)
         };
@@ -275,18 +280,19 @@ impl EmbeddingRepo {
 
         #[derive(serde::Deserialize, Debug)]
         struct EmbeddingHit {
-            message_id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            message_id: surrealdb::types::RecordId,
             similarity: f64,
         }
 
-        let hits: Vec<EmbeddingHit> = result.take(0)?;
+        let hits: Vec<EmbeddingHit> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
 
         // For each hit, fetch the actual message content
         let mut results = Vec::with_capacity(hits.len());
         for hit in hits {
-            let msg_id = hit.message_id.id.to_raw();
+            let msg_id = crate::db::value_bridge::record_id_to_string(&hit.message_id);
             let mut msg_result = db
-                .query("SELECT role, content FROM type::thing('messages', $id)")
+                .query("SELECT role, content FROM type::record('messages', $id)")
                 .bind(("id", msg_id.clone()))
                 .await?;
 
@@ -296,7 +302,10 @@ impl EmbeddingRepo {
                 content: String,
             }
 
-            if let Ok(Some(msg)) = msg_result.take::<Option<MsgContent>>(0) {
+            let raw = msg_result.take::<Option<surrealdb::types::Value>>(0);
+            if let Ok(Some(msg)) = raw
+                .map(|v| v.and_then(|v| crate::db::value_bridge::from_value::<MsgContent>(v).ok()))
+            {
                 results.push(RetrievedContext {
                     message_id: msg_id,
                     role: msg.role,
@@ -360,19 +369,23 @@ impl EmbeddingRepo {
 
         #[derive(serde::Deserialize)]
         struct KeywordHit {
-            message_id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            message_id: surrealdb::types::RecordId,
             role: String,
             content: String,
-            conversation_id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            conversation_id: surrealdb::types::RecordId,
             // Message-level attribution (multi-char segments) — `None` for
             // ordinary single-character messages.
-            character_id: Option<surrealdb::sql::Thing>,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            character_id: Option<surrealdb::types::RecordId>,
             // The owning conversation's character — set for every message in
             // a single-character conversation.
-            conv_character_id: Option<surrealdb::sql::Thing>,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            conv_character_id: Option<surrealdb::types::RecordId>,
         }
 
-        let hits: Vec<KeywordHit> = result.take(0)?;
+        let hits: Vec<KeywordHit> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         let exclude_set: std::collections::HashSet<&str> =
             exclude_message_ids.iter().map(|s| s.as_str()).collect();
 
@@ -384,16 +397,24 @@ impl EmbeddingRepo {
                 if !matches!(h.role.as_str(), "user" | "assistant") || h.content.is_empty() {
                     return false;
                 }
-                if exclude_set.contains(h.message_id.id.to_raw().as_str()) {
+                if exclude_set
+                    .contains(crate::db::value_bridge::record_id_to_string(&h.message_id).as_str())
+                {
                     return false;
                 }
                 match (conversation_id, character_id) {
-                    (Some(conv), _) => h.conversation_id.id.to_raw() == conv,
+                    (Some(conv), _) => {
+                        crate::db::value_bridge::record_id_to_string(&h.conversation_id) == conv
+                    }
                     (None, Some(ch)) => {
-                        h.character_id.as_ref().map(|c| c.id.to_raw()).as_deref() == Some(ch)
+                        h.character_id
+                            .as_ref()
+                            .map(crate::db::value_bridge::record_id_to_string)
+                            .as_deref()
+                            == Some(ch)
                             || h.conv_character_id
                                 .as_ref()
-                                .map(|c| c.id.to_raw())
+                                .map(crate::db::value_bridge::record_id_to_string)
                                 .as_deref()
                                 == Some(ch)
                     }
@@ -402,7 +423,7 @@ impl EmbeddingRepo {
             })
             .take(top_k)
             .map(|h| RetrievedContext {
-                message_id: h.message_id.id.to_raw(),
+                message_id: crate::db::value_bridge::record_id_to_string(&h.message_id),
                 role: h.role,
                 content: h.content,
                 similarity: 0.0,
@@ -457,7 +478,7 @@ impl EmbeddingRepo {
                     source_id, \
                     vector::similarity::cosine(embedding, $query_vec) AS similarity \
                  FROM message_embeddings \
-                 WHERE character_id = type::thing('characters', $char_id) \
+                 WHERE character_id = type::record('characters', $char_id) \
                     AND entry_type = 'memory' \
                     AND vector::similarity::cosine(embedding, $query_vec) >= $min_sim \
                  ORDER BY similarity DESC \
@@ -475,13 +496,13 @@ impl EmbeddingRepo {
             similarity: f64,
         }
 
-        let hits: Vec<MemoryHit> = result.take(0)?;
+        let hits: Vec<MemoryHit> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
 
         // Fetch memory content for each hit
         let mut results = Vec::with_capacity(hits.len());
         for hit in hits {
             let mut mem_result = db
-                .query("SELECT content, is_canon, importance, last_accessed, conversation_id FROM type::thing('memories', $id)")
+                .query("SELECT content, is_canon, importance, last_accessed, conversation_id FROM type::record('memories', $id)")
                 .bind(("id", hit.source_id.clone()))
                 .await?;
 
@@ -496,15 +517,19 @@ impl EmbeddingRepo {
                     deserialize_with = "crate::models::deserialize_option_datetime"
                 )]
                 last_accessed: Option<String>,
-                conversation_id: Option<surrealdb::sql::Thing>,
+                #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+                conversation_id: Option<surrealdb::types::RecordId>,
             }
 
-            if let Ok(Some(mem)) = mem_result.take::<Option<MemContent>>(0) {
+            let raw = mem_result.take::<Option<surrealdb::types::Value>>(0);
+            if let Ok(Some(mem)) = raw
+                .map(|v| v.and_then(|v| crate::db::value_bridge::from_value::<MemContent>(v).ok()))
+            {
                 if let Some(scope_conv_id) = conversation_id {
                     let belongs_here = mem
                         .conversation_id
                         .as_ref()
-                        .map(|t| t.id.to_raw() == scope_conv_id)
+                        .map(|t| crate::db::value_bridge::record_id_to_string(t) == scope_conv_id)
                         .unwrap_or(false);
                     if !mem.is_canon && !belongs_here {
                         continue;
@@ -569,7 +594,8 @@ impl EmbeddingRepo {
 
         #[derive(serde::Deserialize)]
         struct KeywordMemHit {
-            memory_id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            memory_id: surrealdb::types::RecordId,
             content: String,
             is_canon: bool,
             #[serde(default = "crate::models::memory::default_importance")]
@@ -579,31 +605,39 @@ impl EmbeddingRepo {
                 deserialize_with = "crate::models::deserialize_option_datetime"
             )]
             last_accessed: Option<String>,
-            character_id: Option<surrealdb::sql::Thing>,
-            conversation_id: Option<surrealdb::sql::Thing>,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            character_id: Option<surrealdb::types::RecordId>,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            conversation_id: Option<surrealdb::types::RecordId>,
         }
 
-        let hits: Vec<KeywordMemHit> = result.take(0)?;
+        let hits: Vec<KeywordMemHit> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
 
         // `similarity` has no BM25 meaning here — overwritten once fused.
         let filtered: Vec<RetrievedMemoryContext> = hits
             .into_iter()
             .filter(|h| {
-                h.character_id.as_ref().map(|c| c.id.to_raw()).as_deref() == Some(character_id)
+                h.character_id
+                    .as_ref()
+                    .map(crate::db::value_bridge::record_id_to_string)
+                    .as_deref()
+                    == Some(character_id)
             })
             .filter(|h| match conversation_id {
                 Some(scope_conv_id) => {
                     h.is_canon
                         || h.conversation_id
                             .as_ref()
-                            .map(|t| t.id.to_raw() == scope_conv_id)
+                            .map(|t| {
+                                crate::db::value_bridge::record_id_to_string(t) == scope_conv_id
+                            })
                             .unwrap_or(false)
                 }
                 None => true,
             })
             .take(top_k)
             .map(|h| RetrievedMemoryContext {
-                memory_id: h.memory_id.id.to_raw(),
+                memory_id: crate::db::value_bridge::record_id_to_string(&h.memory_id),
                 content: h.content,
                 is_canon: h.is_canon,
                 importance: h.importance,
@@ -630,7 +664,7 @@ impl EmbeddingRepo {
     ) -> Result<(), MythicError> {
         db.query(
             "DELETE FROM message_embeddings \
-             WHERE conversation_id = type::thing('conversations', $conv_id)",
+             WHERE conversation_id = type::record('conversations', $conv_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .await?;

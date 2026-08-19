@@ -13,66 +13,121 @@ pub mod scene_state;
 pub mod summary;
 
 use serde::{Deserialize, Deserializer, Serializer};
-use surrealdb::sql::Thing;
+use surrealdb::types::{RecordId, RecordIdKey};
 
-/// Serializes a SurrealDB Thing as just its ID string (without table prefix)
-pub fn serialize_thing<S>(thing: &Thing, serializer: S) -> Result<S::Ok, S::Error>
+/// Extracts a [`RecordIdKey`]'s raw string form. Janus only ever constructs
+/// `String`-keyed records (UUIDs or fixed slugs like `"char-aria-silverleaf"`);
+/// the other variants (Number/Uuid/Array/Object/Range) never occur in
+/// practice, so they fall back to a debug rendering rather than a precise
+/// per-variant conversion.
+fn record_id_key_to_string(key: &RecordIdKey) -> String {
+    match key {
+        RecordIdKey::String(s) => s.clone(),
+        RecordIdKey::Number(n) => n.to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Serializes a SurrealDB RecordId as just its key string (without table prefix)
+pub fn serialize_thing<S>(thing: &RecordId, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    serializer.serialize_str(&thing.id.to_raw())
+    serializer.serialize_str(&record_id_key_to_string(&thing.key))
 }
 
-/// Deserializes a Thing from SurrealDB responses
-pub fn deserialize_thing<'de, D>(deserializer: D) -> Result<Thing, D::Error>
+/// Strips SurrealQL backtick-quoting from a record key, if present, and
+/// unescapes any `` \` `` / `\\` sequences within — the inverse of
+/// `EscapeRecordKey`'s escaping in surrealdb-types (used by `RecordId`'s
+/// `ToSql`/`into_json_value()` output). Any key containing a non-alphanumeric,
+/// non-underscore character (e.g. every UUID, which contains hyphens) gets
+/// backtick-wrapped by that escaping — `RecordId::parse_simple` does a naive
+/// `split_once(':')` with no unescaping at all, so every hyphenated ID would
+/// otherwise deserialize with the literal backticks still embedded in it.
+fn unescape_record_key(raw: &str) -> String {
+    if raw.len() >= 2 && raw.starts_with('`') && raw.ends_with('`') {
+        let inner = &raw[1..raw.len() - 1];
+        let mut out = String::with_capacity(inner.len());
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                if let Some(escaped) = chars.next() {
+                    out.push(escaped);
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    } else {
+        raw.to_string()
+    }
+}
+
+/// Parses a `"table:key"` string (optionally backtick-quoted key) into a
+/// `RecordId` — see [`unescape_record_key`] for why this exists instead of
+/// `RecordId::parse_simple`.
+fn parse_record_id(s: &str) -> Option<RecordId> {
+    let (table, key_raw) = s.split_once(':')?;
+    Some(RecordId::new(table, unescape_record_key(key_raw)))
+}
+
+/// Deserializes a RecordId from the `"table:key"` string the query-result
+/// JSON bridge produces (`Value::into_json_value()` renders a `RecordId` as
+/// its bare SurrealQL `table:key` form, not a structured object) — see
+/// `db::value_bridge`.
+pub fn deserialize_thing<'de, D>(deserializer: D) -> Result<RecordId, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Thing::deserialize(deserializer)
+    let s = String::deserialize(deserializer)?;
+    parse_record_id(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid record id: {s}")))
 }
 
-/// Serializes an Option<Thing> as Option<String>
-pub fn serialize_option_thing<S>(thing: &Option<Thing>, serializer: S) -> Result<S::Ok, S::Error>
+/// Serializes an Option<RecordId> as Option<String>
+pub fn serialize_option_thing<S>(thing: &Option<RecordId>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     match thing {
-        Some(t) => serializer.serialize_some(&t.id.to_raw()),
+        Some(t) => serializer.serialize_some(&record_id_key_to_string(&t.key)),
         None => serializer.serialize_none(),
     }
 }
 
-/// Deserializes an Option<Thing> from SurrealDB responses
-pub fn deserialize_option_thing<'de, D>(deserializer: D) -> Result<Option<Thing>, D::Error>
+/// Deserializes an Option<RecordId> — see [`deserialize_thing`].
+pub fn deserialize_option_thing<'de, D>(deserializer: D) -> Result<Option<RecordId>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Option::<Thing>::deserialize(deserializer)
+    let s = Option::<String>::deserialize(deserializer)?;
+    s.map(|s| {
+        parse_record_id(&s)
+            .ok_or_else(|| serde::de::Error::custom(format!("invalid record id: {s}")))
+    })
+    .transpose()
 }
 
-/// Deserializes a SurrealDB Datetime into a plain RFC3339 String — `.to_raw()`,
-/// not `.to_string()`/`Display`, which wraps the value in SurrealQL literal
-/// syntax (`d'2024-01-01T00:00:00Z'`, quotes and `d` prefix included) that
-/// JS's `new Date(...)` can't parse and silently turns into "NaNd ago"
-/// throughout the frontend.
+/// Deserializes a datetime field into a plain RFC3339 String. The
+/// query-result JSON bridge (`Value::into_json_value()`) already renders
+/// SurrealDB's `datetime` type as an RFC3339 string, so this is now just a
+/// pass-through — kept as a named helper (rather than switching every model
+/// field to plain `String`) so the "this came from a SurrealDB datetime, not
+/// an arbitrary string" intent stays visible at each field.
 pub fn deserialize_datetime<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let dt = surrealdb::sql::Datetime::deserialize(deserializer)?;
-    Ok(dt.to_raw())
+    String::deserialize(deserializer)
 }
 
-/// Deserializes an optional SurrealDB Datetime into an Option<String> — for
-/// fields like `last_accessed` that are absent until first set, including on
-/// rows created before the field existed. See [`deserialize_datetime`] for
-/// why `.to_raw()` and not `.to_string()`.
+/// [`deserialize_datetime`] for fields like `last_accessed` that are absent
+/// until first set, including on rows created before the field existed.
 pub fn deserialize_option_datetime<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let dt = Option::<surrealdb::sql::Datetime>::deserialize(deserializer)?;
-    Ok(dt.map(|d| d.to_raw()))
+    Option::<String>::deserialize(deserializer)
 }
 
 /// A minimal recursive JSON type used purely as a `#[specta(type = JsonValue)]`

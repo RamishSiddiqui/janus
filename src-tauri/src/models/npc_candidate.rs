@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A named character seen in a conversation's narrative that the NPC
 /// detector is tracking toward possible profile generation. Requires two
@@ -13,13 +13,13 @@ pub struct NpcCandidate {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     /// Trimmed + lowercased `display_name`, used as the dedupe key.
     pub candidate_key: String,
     pub display_name: String,
@@ -36,7 +36,7 @@ pub struct NpcCandidate {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub resulting_character_id: Option<Thing>,
+    pub resulting_character_id: Option<RecordId>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     #[specta(type = String)]
     pub first_seen_at: String,
@@ -56,13 +56,13 @@ pub struct NpcDetectionState {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     pub messages_since_scan: i32,
     pub last_scanned_message_id: Option<String>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]

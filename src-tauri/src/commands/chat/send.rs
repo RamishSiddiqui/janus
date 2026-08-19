@@ -62,7 +62,10 @@ pub async fn send_message(
     // 1. Save the user message
     // Get current active message as parent for branching
     let conv = ConversationRepo::get(&db, &conversation_id).await?;
-    let parent_id: Option<String> = conv.active_message_id.as_ref().map(|t| t.id.to_raw());
+    let parent_id: Option<String> = conv
+        .active_message_id
+        .as_ref()
+        .map(crate::db::value_bridge::record_id_to_string);
 
     let attachment_metadata = attachments
         .as_ref()
@@ -80,14 +83,17 @@ pub async fn send_message(
         attachment_metadata,
     )
     .await?;
-    let user_msg_id = user_msg.id.id.to_raw();
+    let user_msg_id = crate::db::value_bridge::record_id_to_string(&user_msg.id);
 
     // Resolved once, reused by every generation attempt below (initial +
     // empty-response retry + non-streaming path) — see `load_message_images`.
     let images = load_message_images(&app_data_dir, user_msg.metadata.as_ref()).await;
 
     // Extract character_id early — needed for embed calls and build_prompt
-    let conv_character_id: Option<String> = conv.character_id.as_ref().map(|t| t.id.to_raw());
+    let conv_character_id: Option<String> = conv
+        .character_id
+        .as_ref()
+        .map(crate::db::value_bridge::record_id_to_string);
 
     // Resolve multi-character list for this conversation (empty = single-char mode).
     // Always prepend the conversation's own primary character — conv_chars has no
@@ -109,7 +115,7 @@ pub async fn send_message(
         }
     }
     for c in conv_chars.iter().filter(|c| c.is_active) {
-        let id = c.character_id.id.to_raw();
+        let id = crate::db::value_bridge::record_id_to_string(&c.character_id);
         if multi_char_pairs.iter().any(|(_, existing)| existing == &id) {
             continue; // already added as the primary above
         }
@@ -188,7 +194,7 @@ pub async fn send_message(
         None,
     )
     .await?;
-    let assistant_msg_id = assistant_msg.id.id.to_raw();
+    let assistant_msg_id = crate::db::value_bridge::record_id_to_string(&assistant_msg.id);
 
     // 5. Stream or generate the response
     let use_streaming = streaming.unwrap_or(true);

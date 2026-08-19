@@ -136,14 +136,15 @@ async fn get_embedding_index_status_inner(
 
     // Count total user/assistant messages (optionally filtered by conversation)
     let total_query = match &conversation_id {
-        Some(_) => "SELECT count() FROM messages WHERE conversation_id = type::thing('conversations', $conv_id) AND role IN ['user', 'assistant'] GROUP ALL",
+        Some(_) => "SELECT count() FROM messages WHERE conversation_id = type::record('conversations', $conv_id) AND role IN ['user', 'assistant'] GROUP ALL",
         None => "SELECT count() FROM messages WHERE role IN ['user', 'assistant'] GROUP ALL",
     };
     let mut total_result = db
         .query(total_query)
         .bind(("conv_id", conv_bind.clone()))
         .await?;
-    let total_val: Option<serde_json::Value> = total_result.take(0)?;
+    let total_val: Option<serde_json::Value> =
+        crate::db::value_bridge::from_value_opt(total_result.take(0)?)?;
     let total_messages = total_val
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
         .unwrap_or(0) as usize;
@@ -154,21 +155,22 @@ async fn get_embedding_index_status_inner(
     // would otherwise count them as if they were embedded messages and
     // inflate "coverage" above what's actually indexed.
     let embedded_query = match &conversation_id {
-        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message' GROUP ALL",
+        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message' GROUP ALL",
         None => "SELECT count() FROM message_embeddings WHERE entry_type = 'message' GROUP ALL",
     };
     let mut embedded_result = db
         .query(embedded_query)
         .bind(("conv_id", conv_bind.clone()))
         .await?;
-    let embedded_val: Option<serde_json::Value> = embedded_result.take(0)?;
+    let embedded_val: Option<serde_json::Value> =
+        crate::db::value_bridge::from_value_opt(embedded_result.take(0)?)?;
     let embedded_messages = embedded_val
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
         .unwrap_or(0) as usize;
 
     // Get the model used for existing embeddings (check first row)
     let model_query = match &conversation_id {
-        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message' LIMIT 1",
+        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message' LIMIT 1",
         None => "SELECT model_name FROM message_embeddings WHERE entry_type = 'message' LIMIT 1",
     };
     let mut model_result = db
@@ -181,7 +183,7 @@ async fn get_embedding_index_status_inner(
         model_name: String,
     }
 
-    let model_rows: Vec<ModelRow> = model_result.take(0)?;
+    let model_rows: Vec<ModelRow> = crate::db::value_bridge::from_value_vec(model_result.take(0)?)?;
     let index_model = model_rows.into_iter().next().map(|r| r.model_name);
 
     // Get stored dimension from existing embeddings
@@ -285,17 +287,17 @@ pub async fn rebuild_embedding_index(
         }
     }
 
-    // Ensure MTREE index if we know the dimension upfront
+    // Ensure the vector index if we know the dimension upfront
     let known_dim = get_model_dimension(&embedding_model);
     if let Some(dim) = known_dim {
-        EmbeddingRepo::ensure_mtree_index(&db, dim).await?;
+        EmbeddingRepo::ensure_vector_index(&db, dim).await?;
     }
 
     // Fetch all user/assistant messages in scope
     let messages_query = match &conversation_id {
         Some(_) => {
             "SELECT id, conversation_id, content, created_at FROM messages \
-             WHERE conversation_id = type::thing('conversations', $conv_id) \
+             WHERE conversation_id = type::record('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              ORDER BY created_at"
         }
@@ -313,12 +315,14 @@ pub async fn rebuild_embedding_index(
 
     #[derive(serde::Deserialize)]
     struct MsgRow {
-        id: surrealdb::sql::Thing,
-        conversation_id: surrealdb::sql::Thing,
+        #[serde(deserialize_with = "crate::models::deserialize_thing")]
+        id: surrealdb::types::RecordId,
+        #[serde(deserialize_with = "crate::models::deserialize_thing")]
+        conversation_id: surrealdb::types::RecordId,
         content: String,
     }
 
-    let messages: Vec<MsgRow> = result.take(0)?;
+    let messages: Vec<MsgRow> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
     let total = messages.len();
 
     info!(
@@ -329,29 +333,30 @@ pub async fn rebuild_embedding_index(
     // Process in batches of 10
     let batch_size = 10;
     let mut embedded = 0;
-    let mut mtree_ensured = known_dim.is_some();
+    let mut vector_index_ensured = known_dim.is_some();
 
     for chunk in messages.chunks(batch_size) {
         let texts: Vec<String> = chunk.iter().map(|m| m.content.clone()).collect();
 
         match provider.generate_embedding(&embedding_model, texts).await {
             Ok(embeddings) => {
-                // On first successful batch, detect actual dimension and ensure MTREE
-                if !mtree_ensured {
+                // On first successful batch, detect actual dimension and ensure the vector index
+                if !vector_index_ensured {
                     if let Some(first) = embeddings.first() {
                         let actual_dim = first.len();
                         info!(
                             "[rebuild_index] Detected embedding dimension: {}",
                             actual_dim
                         );
-                        EmbeddingRepo::ensure_mtree_index(&db, actual_dim).await?;
-                        mtree_ensured = true;
+                        EmbeddingRepo::ensure_vector_index(&db, actual_dim).await?;
+                        vector_index_ensured = true;
                     }
                 }
 
                 for (msg, embedding) in chunk.iter().zip(embeddings.iter()) {
-                    let msg_id = msg.id.id.to_raw();
-                    let conv_id = msg.conversation_id.id.to_raw();
+                    let msg_id = crate::db::value_bridge::record_id_to_string(&msg.id);
+                    let conv_id =
+                        crate::db::value_bridge::record_id_to_string(&msg.conversation_id);
                     if let Err(e) = EmbeddingRepo::store(
                         &db,
                         &msg_id,
@@ -443,22 +448,31 @@ pub async fn backfill_missing_embeddings(
     {
         #[derive(serde::Deserialize)]
         struct EmbeddingRow {
-            id: surrealdb::sql::Thing,
-            message_id: Option<surrealdb::sql::Thing>,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            id: surrealdb::types::RecordId,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            message_id: Option<surrealdb::types::RecordId>,
         }
         let mut all_embeddings_result = db
             .query("SELECT id, message_id FROM message_embeddings WHERE entry_type = 'message'")
             .await?;
-        let all_embeddings: Vec<EmbeddingRow> = all_embeddings_result.take(0).unwrap_or_else(|e| {
-            warn!(
-                "[backfill] Failed to deserialize message_embeddings rows during orphan sweep: {}",
-                e
-            );
-            Vec::new()
-        });
+        let all_embeddings: Vec<EmbeddingRow> = all_embeddings_result
+            .take::<Vec<surrealdb::types::Value>>(0)
+            .map_err(|e| e.to_string())
+            .and_then(|raw| {
+                crate::db::value_bridge::from_value_vec::<EmbeddingRow>(raw)
+                    .map_err(|e| e.to_string())
+            })
+            .unwrap_or_else(|e| {
+                warn!(
+                    "[backfill] Failed to deserialize message_embeddings rows during orphan sweep: {}",
+                    e
+                );
+                Vec::new()
+            });
 
         let mut real_msg_ids_result = db.query("SELECT VALUE id FROM messages").await?;
-        let real_msg_things: Vec<surrealdb::sql::Thing> =
+        let real_msg_things: Vec<surrealdb::types::RecordId> =
             real_msg_ids_result.take(0).unwrap_or_else(|e| {
                 warn!(
                     "[backfill] Failed to deserialize message ids during orphan sweep: {}",
@@ -468,22 +482,31 @@ pub async fn backfill_missing_embeddings(
             });
         let real_msg_ids: std::collections::HashSet<String> = real_msg_things
             .into_iter()
-            .map(|t| format!("{}:{}", t.tb, t.id.to_raw()))
+            .map(|t| {
+                format!(
+                    "{}:{}",
+                    t.table,
+                    crate::db::value_bridge::record_id_to_string(&t)
+                )
+            })
             .collect();
 
         let orphan_ids: Vec<String> = all_embeddings
             .into_iter()
             .filter(|e| {
-                let full_id = e
-                    .message_id
-                    .as_ref()
-                    .map(|t| format!("{}:{}", t.tb, t.id.to_raw()));
+                let full_id = e.message_id.as_ref().map(|t| {
+                    format!(
+                        "{}:{}",
+                        t.table,
+                        crate::db::value_bridge::record_id_to_string(t)
+                    )
+                });
                 match full_id {
                     Some(id) => !real_msg_ids.contains(&id),
                     None => true, // entry_type='message' but no message_id at all — also junk
                 }
             })
-            .map(|e| e.id.id.to_raw())
+            .map(|e| crate::db::value_bridge::record_id_to_string(&e.id))
             .collect();
 
         if !orphan_ids.is_empty() {
@@ -493,7 +516,7 @@ pub async fn backfill_missing_embeddings(
             );
             for orphan_id in &orphan_ids {
                 let _ = db
-                    .query("DELETE type::thing('message_embeddings', $id)")
+                    .query("DELETE type::record('message_embeddings', $id)")
                     .bind(("id", orphan_id.clone()))
                     .await;
             }
@@ -508,27 +531,33 @@ pub async fn backfill_missing_embeddings(
     // would make backfill re-request embeddings for every message, every
     // time it runs).
     let embedded_ids_query = match &conversation_id {
-        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::thing('conversations', $conv_id) AND entry_type = 'message'",
+        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message'",
         None => "SELECT VALUE message_id FROM message_embeddings WHERE entry_type = 'message'",
     };
     let mut embedded_result = db
         .query(embedded_ids_query)
         .bind(("conv_id", conv_bind.clone()))
         .await?;
-    let embedded_things: Vec<surrealdb::sql::Thing> = embedded_result.take(0).unwrap_or_else(|e| {
+    let embedded_things: Vec<surrealdb::types::RecordId> = embedded_result.take(0).unwrap_or_else(|e| {
         warn!("[backfill] Failed to deserialize already-embedded message ids — treating as none embedded, which will re-request embeddings for everything: {}", e);
         Vec::new()
     });
     let embedded_ids: std::collections::HashSet<String> = embedded_things
         .into_iter()
-        .map(|t| format!("{}:{}", t.tb, t.id.to_raw()))
+        .map(|t| {
+            format!(
+                "{}:{}",
+                t.table,
+                crate::db::value_bridge::record_id_to_string(&t)
+            )
+        })
         .collect();
 
     // 2) Get all user/assistant messages
     let all_msgs_query = match &conversation_id {
         Some(_) => {
             "SELECT id, conversation_id, character_id, content, created_at FROM messages \
-             WHERE conversation_id = type::thing('conversations', $conv_id) \
+             WHERE conversation_id = type::record('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              AND content != '' \
              ORDER BY created_at"
@@ -548,19 +577,26 @@ pub async fn backfill_missing_embeddings(
 
     #[derive(serde::Deserialize)]
     struct MsgRow {
-        id: surrealdb::sql::Thing,
-        conversation_id: surrealdb::sql::Thing,
-        character_id: Option<surrealdb::sql::Thing>,
+        #[serde(deserialize_with = "crate::models::deserialize_thing")]
+        id: surrealdb::types::RecordId,
+        #[serde(deserialize_with = "crate::models::deserialize_thing")]
+        conversation_id: surrealdb::types::RecordId,
+        #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+        character_id: Option<surrealdb::types::RecordId>,
         content: String,
     }
 
-    let all_messages: Vec<MsgRow> = result.take(0)?;
+    let all_messages: Vec<MsgRow> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
 
     // 3) Filter to only un-embedded messages
     let missing: Vec<MsgRow> = all_messages
         .into_iter()
         .filter(|m| {
-            let full_id = format!("{}:{}", m.id.tb, m.id.id.to_raw());
+            let full_id = format!(
+                "{}:{}",
+                m.id.table,
+                crate::db::value_bridge::record_id_to_string(&m.id)
+            );
             !embedded_ids.contains(&full_id)
         })
         .collect();
@@ -587,9 +623,13 @@ pub async fn backfill_missing_embeddings(
         match provider.generate_embedding(&embedding_model, texts).await {
             Ok(embeddings) => {
                 for (msg, embedding) in chunk.iter().zip(embeddings.iter()) {
-                    let msg_id = msg.id.id.to_raw();
-                    let conv_id = msg.conversation_id.id.to_raw();
-                    let char_id = msg.character_id.as_ref().map(|c| c.id.to_raw());
+                    let msg_id = crate::db::value_bridge::record_id_to_string(&msg.id);
+                    let conv_id =
+                        crate::db::value_bridge::record_id_to_string(&msg.conversation_id);
+                    let char_id = msg
+                        .character_id
+                        .as_ref()
+                        .map(crate::db::value_bridge::record_id_to_string);
                     if let Err(e) = EmbeddingRepo::store(
                         &db,
                         &msg_id,

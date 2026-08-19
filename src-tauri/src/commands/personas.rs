@@ -33,7 +33,11 @@ pub async fn create_persona(
     validate_required_string("Persona name", &name, 200)?;
     let state = state.read().await;
     let persona = PersonaRepo::create(&state.db, &name, data.0).await?;
-    info!("Created persona: {} ({})", name, persona.id);
+    info!(
+        "Created persona: {} ({})",
+        name,
+        crate::db::value_bridge::record_id_to_string(&persona.id)
+    );
     Ok(persona)
 }
 

@@ -18,12 +18,13 @@ impl NpcCandidateRepo {
     ) -> Result<NpcDetectionState, MythicError> {
         let mut result = db
             .query(
-                "UPSERT type::thing('npc_detection_state', $conv_id) \
-                 MERGE { conversation_id: type::thing('conversations', $conv_id) }",
+                "UPSERT type::record('npc_detection_state', $conv_id) \
+                 MERGE { conversation_id: type::record('conversations', $conv_id) }",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let state: Option<NpcDetectionState> = result.take(0)?;
+        let state: Option<NpcDetectionState> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         state.ok_or_else(|| MythicError::DatabaseOp("Failed to init npc_detection_state".into()))
     }
 
@@ -53,7 +54,7 @@ impl NpcCandidateRepo {
         let next_count = if due { 0 } else { messages_since_scan };
 
         db.query(
-            "UPDATE type::thing('npc_detection_state', $conv_id) SET \
+            "UPDATE type::record('npc_detection_state', $conv_id) SET \
                 messages_since_scan = $count, \
                 last_scanned_message_id = $message_id, \
                 updated_at = time::now()",
@@ -84,12 +85,13 @@ impl NpcCandidateRepo {
         let mut existing_result = db
             .query(
                 "SELECT * FROM npc_candidates \
-                 WHERE conversation_id = type::thing('conversations', $conv_id) AND candidate_key = $key",
+                 WHERE conversation_id = type::record('conversations', $conv_id) AND candidate_key = $key",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("key", candidate_key.clone()))
             .await?;
-        let existing: Option<NpcCandidate> = existing_result.take(0)?;
+        let existing: Option<NpcCandidate> =
+            crate::db::value_bridge::from_value_opt(existing_result.take(0)?)?;
 
         if let Some(existing) = existing {
             let new_count = if increments {
@@ -99,13 +101,14 @@ impl NpcCandidateRepo {
             };
             let mut result = db
                 .query(
-                    "UPDATE type::thing('npc_candidates', $id) SET pass_count = $count, tag = $tag, last_seen_at = time::now()",
+                    "UPDATE type::record('npc_candidates', $id) SET pass_count = $count, tag = $tag, last_seen_at = time::now()",
                 )
-                .bind(("id", existing.id.id.to_raw()))
+                .bind(("id", crate::db::value_bridge::record_id_to_string(&existing.id)))
                 .bind(("count", new_count))
                 .bind(("tag", tag.to_string()))
                 .await?;
-            let updated: Option<NpcCandidate> = result.take(0)?;
+            let updated: Option<NpcCandidate> =
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?;
             return updated
                 .ok_or_else(|| MythicError::DatabaseOp("Failed to update npc_candidate".into()));
         }
@@ -113,7 +116,7 @@ impl NpcCandidateRepo {
         let mut result = db
             .query(
                 "CREATE npc_candidates CONTENT { \
-                    conversation_id: type::thing('conversations', $conv_id), \
+                    conversation_id: type::record('conversations', $conv_id), \
                     candidate_key: $key, \
                     display_name: $name, \
                     tag: $tag, \
@@ -127,7 +130,8 @@ impl NpcCandidateRepo {
             .bind(("tag", tag.to_string()))
             .bind(("count", if increments { 1 } else { 0 }))
             .await?;
-        let created: Option<NpcCandidate> = result.take(0)?;
+        let created: Option<NpcCandidate> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         created.ok_or_else(|| MythicError::DatabaseOp("Failed to create npc_candidate".into()))
     }
 
@@ -143,10 +147,10 @@ impl NpcCandidateRepo {
             display_name: String,
         }
         let mut result = db
-            .query("SELECT display_name FROM npc_candidates WHERE conversation_id = type::thing('conversations', $conv_id)")
+            .query("SELECT display_name FROM npc_candidates WHERE conversation_id = type::record('conversations', $conv_id)")
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let rows: Vec<NameRow> = result.take(0)?;
+        let rows: Vec<NameRow> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(rows.into_iter().map(|r| r.display_name).collect())
     }
 
@@ -159,12 +163,13 @@ impl NpcCandidateRepo {
         let mut result = db
             .query(
                 "SELECT * FROM npc_candidates \
-                 WHERE conversation_id = type::thing('conversations', $conv_id) \
+                 WHERE conversation_id = type::record('conversations', $conv_id) \
                  AND pass_count >= 2 AND status = 'pending'",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let candidates: Vec<NpcCandidate> = result.take(0)?;
+        let candidates: Vec<NpcCandidate> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(candidates)
     }
 
@@ -176,9 +181,9 @@ impl NpcCandidateRepo {
         character_id: &str,
     ) -> Result<(), MythicError> {
         db.query(
-            "UPDATE type::thing('npc_candidates', $id) SET \
+            "UPDATE type::record('npc_candidates', $id) SET \
                 status = 'created', \
-                resulting_character_id = type::thing('characters', $char_id)",
+                resulting_character_id = type::record('characters', $char_id)",
         )
         .bind(("id", candidate_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -203,8 +208,8 @@ impl NpcCandidateRepo {
     ) -> Result<(), MythicError> {
         db.query(
             "UPDATE npc_candidates SET status = 'created' WHERE \
-                conversation_id = type::thing('conversations', $conv_id) AND \
-                resulting_character_id = type::thing('characters', $char_id) AND \
+                conversation_id = type::record('conversations', $conv_id) AND \
+                resulting_character_id = type::record('characters', $char_id) AND \
                 status = 'pending'",
         )
         .bind(("conv_id", conversation_id.to_string()))
@@ -227,7 +232,7 @@ impl NpcCandidateRepo {
         candidate_id: &str,
         character_id: &str,
     ) -> Result<(), MythicError> {
-        db.query("UPDATE type::thing('npc_candidates', $id) SET resulting_character_id = type::thing('characters', $char_id)")
+        db.query("UPDATE type::record('npc_candidates', $id) SET resulting_character_id = type::record('characters', $char_id)")
             .bind(("id", candidate_id.to_string()))
             .bind(("char_id", character_id.to_string()))
             .await?

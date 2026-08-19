@@ -56,13 +56,17 @@ pub async fn create_memory(
         &source,
     )
     .await?;
-    info!("Created memory: {} (source: {})", memory.id, source);
+    info!(
+        "Created memory: {} (source: {})",
+        crate::db::value_bridge::record_id_to_string(&memory.id),
+        source
+    );
 
     // Background: embed memory for semantic retrieval
     if let Some(ref char_id) = character_id {
         spawn_embed_memory(
             db.clone(),
-            memory.id.id.to_raw(),
+            crate::db::value_bridge::record_id_to_string(&memory.id),
             char_id.clone(),
             content.clone(),
         );
@@ -99,7 +103,7 @@ pub async fn update_memory(
         spawn_embed_memory(
             db.clone(),
             memory_id.clone(),
-            char_id.id.to_raw(),
+            crate::db::value_bridge::record_id_to_string(char_id),
             content.clone(),
         );
     }

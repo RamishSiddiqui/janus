@@ -168,7 +168,10 @@ pub(crate) async fn build_prompt(
 
     let (character_id, memory_scope) = match conv {
         Some(ref c) => {
-            let char_id = c.character_id.as_ref().map(|t| t.id.to_raw());
+            let char_id = c
+                .character_id
+                .as_ref()
+                .map(crate::db::value_bridge::record_id_to_string);
             (char_id, c.memory_scope.clone())
         }
         None => (None, "character".to_string()),
@@ -180,7 +183,9 @@ pub(crate) async fn build_prompt(
     // an "About the User" context block (only shown when a persona IS set —
     // there's nothing persona-specific to say otherwise).
     let persona = match conv.as_ref().and_then(|c| c.persona_id.as_ref()) {
-        Some(pid) => PersonaRepo::get(db, &pid.id.to_raw()).await.ok(),
+        Some(pid) => PersonaRepo::get(db, &crate::db::value_bridge::record_id_to_string(pid))
+            .await
+            .ok(),
         None => None,
     };
     let persona_name = persona.as_ref().map(|p| p.name.as_str());
@@ -203,7 +208,7 @@ pub(crate) async fn build_prompt(
     let active_conv_chars: Vec<_> = conv_chars.iter().filter(|c| c.is_active).collect();
     let mut is_multi_char = false;
     for c in &active_conv_chars {
-        let char_id_raw = c.character_id.id.to_raw();
+        let char_id_raw = crate::db::value_bridge::record_id_to_string(&c.character_id);
         if character_id.as_deref() == Some(char_id_raw.as_str()) {
             continue; // the primary herself never counts toward "genuine multi-char"
         }
@@ -234,9 +239,10 @@ pub(crate) async fn build_prompt(
         // primary migrated in on its own. Without this, "genuine multi-char"
         // mode (see above) could fire with a prompt that describes every
         // *other* cast member but never the primary character herself.
-        let primary_has_row = active_conv_chars
-            .iter()
-            .any(|c| Some(c.character_id.id.to_raw().as_str()) == character_id.as_deref());
+        let primary_has_row = active_conv_chars.iter().any(|c| {
+            Some(crate::db::value_bridge::record_id_to_string(&c.character_id).as_str())
+                == character_id.as_deref()
+        });
         if !primary_has_row {
             if let Some(ref char_id) = character_id {
                 if let Ok(character) = CharacterRepo::get(db, char_id).await {
@@ -276,7 +282,7 @@ pub(crate) async fn build_prompt(
         }
 
         for conv_char in &active_conv_chars {
-            let char_id_raw = conv_char.character_id.id.to_raw();
+            let char_id_raw = crate::db::value_bridge::record_id_to_string(&conv_char.character_id);
             if let Ok(character) = CharacterRepo::get(db, &char_id_raw).await {
                 let card = &character.data;
                 let name = &conv_char.character_name;
@@ -434,7 +440,12 @@ pub(crate) async fn build_prompt(
             // scene extractor's permission to exist.
             let known_others: Vec<String> = active_conv_chars
                 .iter()
-                .filter(|c| character_id.as_deref() != Some(c.character_id.id.to_raw().as_str()))
+                .filter(|c| {
+                    character_id.as_deref()
+                        != Some(
+                            crate::db::value_bridge::record_id_to_string(&c.character_id).as_str(),
+                        )
+                })
                 .map(|c| c.character_name.clone())
                 .collect();
             let known_others_clause = if known_others.is_empty() {
@@ -554,7 +565,7 @@ pub(crate) async fn build_prompt(
     if let Some(ref char_id) = character_id {
         let mut lorebook_char_ids: Vec<String> = vec![char_id.clone()];
         for c in &active_conv_chars {
-            let id = c.character_id.id.to_raw();
+            let id = crate::db::value_bridge::record_id_to_string(&c.character_id);
             if !lorebook_char_ids.contains(&id) {
                 lorebook_char_ids.push(id);
             }
@@ -568,7 +579,7 @@ pub(crate) async fn build_prompt(
                         // A global entry (character_id IS NONE) is returned
                         // for every character queried — dedupe by id so it
                         // isn't injected once per cast member.
-                        let entry_id = entry.id.id.to_raw();
+                        let entry_id = crate::db::value_bridge::record_id_to_string(&entry.id);
                         if seen_ids.insert(entry_id) {
                             all_entries.push(entry);
                         }
@@ -692,7 +703,8 @@ pub(crate) async fn build_prompt(
                     // ── Multi-character memory injection ──
                     // Each character gets their own attributed memory block
                     for conv_char in &active_conv_chars {
-                        let cc_char_id = conv_char.character_id.id.to_raw();
+                        let cc_char_id =
+                            crate::db::value_bridge::record_id_to_string(&conv_char.character_id);
                         let char_memories = MemoryRepo::list_for_character_in_conv(
                             db,
                             &cc_char_id,
@@ -841,7 +853,8 @@ pub(crate) async fn build_prompt(
                 // ── Multi-character emotional states ──
                 let mut state_parts: Vec<String> = Vec::new();
                 for conv_char in &active_conv_chars {
-                    let cc_char_id = conv_char.character_id.id.to_raw();
+                    let cc_char_id =
+                        crate::db::value_bridge::record_id_to_string(&conv_char.character_id);
                     if let Ok(Some(state)) =
                         CharacterStateRepo::get(db, &cc_char_id, conversation_id).await
                     {
@@ -998,7 +1011,7 @@ pub(crate) async fn build_prompt(
                     let include_from = chain.len().saturating_sub(included_messages);
                     let window_msg_ids: Vec<String> = branch[include_from..]
                         .iter()
-                        .map(|m| m.id.id.to_raw())
+                        .map(|m| crate::db::value_bridge::record_id_to_string(&m.id))
                         .collect();
 
                     let rag_results = match get_default_llm_provider(db).await {

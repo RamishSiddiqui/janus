@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// The role of a message sender in a conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -25,13 +25,13 @@ pub struct Message {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     pub role: MessageRole,
     pub content: String,
 
@@ -43,7 +43,7 @@ pub struct Message {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub parent_id: Option<Thing>,
+    pub parent_id: Option<RecordId>,
 
     /// JSON metadata for attached images, generation params, etc.
     #[specta(type = Option<crate::models::JsonValue>)]
@@ -57,7 +57,7 @@ pub struct Message {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub character_id: Option<Thing>,
+    pub character_id: Option<RecordId>,
     /// Denormalized character name for display (avoids extra lookups).
     #[serde(default)]
     pub character_name: Option<String>,
@@ -100,7 +100,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     pub title: String,
 
     /// The character associated with this conversation
@@ -109,7 +109,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub character_id: Option<Thing>,
+    pub character_id: Option<RecordId>,
 
     /// ID of the active (latest) message in the current branch
     #[serde(
@@ -118,7 +118,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub active_message_id: Option<Thing>,
+    pub active_message_id: Option<RecordId>,
 
     /// Controls how auto-extracted memories are scoped:
     /// - "character"    — shared across all conversations with this character (default)
@@ -137,7 +137,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub parent_conversation_id: Option<Thing>,
+    pub parent_conversation_id: Option<RecordId>,
 
     /// The exact message in the parent conversation where the fork happened.
     #[serde(
@@ -146,7 +146,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub branch_point_message_id: Option<Thing>,
+    pub branch_point_message_id: Option<RecordId>,
 
     /// This conversation's chosen image-generation preset. When unset, scene
     /// generation falls back to the global default preset (if any), then to
@@ -157,7 +157,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub image_preset_id: Option<Thing>,
+    pub image_preset_id: Option<RecordId>,
 
     /// This conversation's chosen persona (the user's stand-in). When unset,
     /// prompt-building is a complete no-op with respect to persona features
@@ -168,7 +168,7 @@ pub struct Conversation {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub persona_id: Option<Thing>,
+    pub persona_id: Option<RecordId>,
 
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     #[specta(type = String)]

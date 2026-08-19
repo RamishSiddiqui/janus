@@ -84,7 +84,11 @@ pub async fn run_npc_detection(
     let primary_character: Option<Character> =
         match ConversationRepo::get(db, conversation_id).await {
             Ok(conv) => match conv.character_id {
-                Some(char_id) => CharacterRepo::get(db, &char_id.id.to_raw()).await.ok(),
+                Some(char_id) => {
+                    CharacterRepo::get(db, &crate::db::value_bridge::record_id_to_string(&char_id))
+                        .await
+                        .ok()
+                }
                 None => None,
             },
             Err(_) => None,
@@ -122,10 +126,16 @@ pub async fn run_npc_detection(
     // marker against known cast members.
     let mut known_pairs: Vec<(String, String)> = Vec::new();
     if let Some(ref pc) = primary_character {
-        known_pairs.push((pc.name.clone(), pc.id.id.to_raw()));
+        known_pairs.push((
+            pc.name.clone(),
+            crate::db::value_bridge::record_id_to_string(&pc.id),
+        ));
     }
     for c in &cast {
-        known_pairs.push((c.character_name.clone(), c.character_id.id.to_raw()));
+        known_pairs.push((
+            c.character_name.clone(),
+            crate::db::value_bridge::record_id_to_string(&c.character_id),
+        ));
     }
 
     for c in &candidates {
@@ -147,12 +157,13 @@ pub async fn run_npc_detection(
             // ran again.
             let is_primary = primary_character
                 .as_ref()
-                .map(|pc| pc.id.id.to_raw() == existing_id)
+                .map(|pc| crate::db::value_bridge::record_id_to_string(&pc.id) == existing_id)
                 .unwrap_or(false);
             let still_pending = !is_primary
-                && cast
-                    .iter()
-                    .any(|m| m.character_id.id.to_raw() == existing_id && m.role == "transient");
+                && cast.iter().any(|m| {
+                    crate::db::value_bridge::record_id_to_string(&m.character_id) == existing_id
+                        && m.role == "transient"
+                });
 
             if !still_pending {
                 debug!(
@@ -235,7 +246,12 @@ pub async fn run_npc_detection(
         existing_cast.push((pc.name.clone(), desc));
     }
     for member in &cast {
-        if let Ok(character) = CharacterRepo::get(db, &member.character_id.id.to_raw()).await {
+        if let Ok(character) = CharacterRepo::get(
+            db,
+            &crate::db::value_bridge::record_id_to_string(&member.character_id),
+        )
+        .await
+        {
             let desc = character
                 .data
                 .get("description")
@@ -286,7 +302,7 @@ pub async fn run_npc_detection(
             Some(existing) => {
                 match CharacterRepo::update_npc_profile(
                     db,
-                    &existing.id.to_raw(),
+                    &crate::db::value_bridge::record_id_to_string(existing),
                     &profile.name,
                     data,
                 )
@@ -318,7 +334,7 @@ pub async fn run_npc_detection(
             }
         };
 
-        let char_id = character.id.id.to_raw();
+        let char_id = crate::db::value_bridge::record_id_to_string(&character.id);
         match &candidate.resulting_character_id {
             Some(_) => {
                 // A placeholder already exists in the cast (role 'transient')
@@ -350,8 +366,12 @@ pub async fn run_npc_detection(
                 }
             }
         }
-        if let Err(e) =
-            NpcCandidateRepo::mark_created(db, &candidate.id.id.to_raw(), &char_id).await
+        if let Err(e) = NpcCandidateRepo::mark_created(
+            db,
+            &crate::db::value_bridge::record_id_to_string(&candidate.id),
+            &char_id,
+        )
+        .await
         {
             debug!(
                 "[npc_pipeline] Failed to mark candidate '{}' created: {}",
@@ -456,13 +476,22 @@ async fn find_existing_cast_member(
     let mut known_pairs: Vec<(String, String)> = Vec::new();
     if let Ok(conv) = ConversationRepo::get(db, conversation_id).await {
         if let Some(char_id) = conv.character_id {
-            if let Ok(primary) = CharacterRepo::get(db, &char_id.id.to_raw()).await {
-                known_pairs.push((primary.name, char_id.id.to_raw()));
+            if let Ok(primary) =
+                CharacterRepo::get(db, &crate::db::value_bridge::record_id_to_string(&char_id))
+                    .await
+            {
+                known_pairs.push((
+                    primary.name,
+                    crate::db::value_bridge::record_id_to_string(&char_id),
+                ));
             }
         }
     }
     for c in &cast {
-        known_pairs.push((c.character_name.clone(), c.character_id.id.to_raw()));
+        known_pairs.push((
+            c.character_name.clone(),
+            crate::db::value_bridge::record_id_to_string(&c.character_id),
+        ));
     }
     let id = resolve_character_id(name, &known_pairs)?;
     let matched_name = known_pairs
@@ -489,9 +518,12 @@ async fn register_placeholder(
             "[npc_pipeline] '{}' already matches existing cast member '{}' ({}) — linking instead of creating a duplicate",
             candidate.display_name, existing_name, existing_id
         );
-        if let Err(e) =
-            NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &existing_id)
-                .await
+        if let Err(e) = NpcCandidateRepo::set_placeholder_character(
+            db,
+            &crate::db::value_bridge::record_id_to_string(&candidate.id),
+            &existing_id,
+        )
+        .await
         {
             debug!(
                 "[npc_pipeline] Failed to link '{}' to existing character: {}",
@@ -522,7 +554,7 @@ async fn register_placeholder(
             }
         };
 
-    let char_id = character.id.id.to_raw();
+    let char_id = crate::db::value_bridge::record_id_to_string(&character.id);
     if let Err(e) = ConversationCharacterRepo::add(
         db,
         conversation_id,
@@ -538,8 +570,12 @@ async fn register_placeholder(
             character.name, e
         );
     }
-    if let Err(e) =
-        NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &char_id).await
+    if let Err(e) = NpcCandidateRepo::set_placeholder_character(
+        db,
+        &crate::db::value_bridge::record_id_to_string(&candidate.id),
+        &char_id,
+    )
+    .await
     {
         debug!(
             "[npc_pipeline] Failed to link placeholder for '{}': {}",
@@ -610,7 +646,7 @@ pub async fn register_transient_speaker(
             return None;
         }
     };
-    let char_id = character.id.id.to_raw();
+    let char_id = crate::db::value_bridge::record_id_to_string(&character.id);
 
     if let Err(e) = ConversationCharacterRepo::add(
         db,
@@ -631,9 +667,12 @@ pub async fn register_transient_speaker(
     if let Ok(candidate) =
         NpcCandidateRepo::upsert_candidate(db, conversation_id, name, "recurring").await
     {
-        if let Err(e) =
-            NpcCandidateRepo::set_placeholder_character(db, &candidate.id.id.to_raw(), &char_id)
-                .await
+        if let Err(e) = NpcCandidateRepo::set_placeholder_character(
+            db,
+            &crate::db::value_bridge::record_id_to_string(&candidate.id),
+            &char_id,
+        )
+        .await
         {
             debug!(
                 "[npc_pipeline] Failed to link transient speaker '{}' to its candidate row: {}",

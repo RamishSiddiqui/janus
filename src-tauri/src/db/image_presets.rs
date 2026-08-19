@@ -9,7 +9,7 @@ use crate::models::image_preset::ImagePreset;
 #[derive(Debug, serde::Deserialize)]
 struct ConvPresetRef {
     #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
-    image_preset_id: Option<surrealdb::sql::Thing>,
+    image_preset_id: Option<surrealdb::types::RecordId>,
 }
 
 pub struct ImagePresetRepo;
@@ -42,7 +42,7 @@ impl ImagePresetRepo {
 
         let mut result = db
             .query(
-                "CREATE type::thing('image_presets', $id) CONTENT {
+                "CREATE type::record('image_presets', $id) CONTENT {
                     name: $name,
                     model: $model,
                     sampler_name: $sampler_name,
@@ -74,12 +74,14 @@ impl ImagePresetRepo {
             .bind(("hires_fix_denoising_strength", hires_fix_denoising_strength))
             .await?;
 
-        let created: Option<ImagePreset> = result.take(0)?;
+        let created: Option<ImagePreset> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         created.ok_or_else(|| MythicError::DatabaseOp("Failed to create image preset".into()))
     }
 
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<ImagePreset, MythicError> {
-        let preset: Option<ImagePreset> = db.select(("image_presets", id)).await?;
+        let preset: Option<ImagePreset> =
+            crate::db::value_bridge::from_value_opt(db.select(("image_presets", id)).await?)?;
         preset.ok_or_else(|| MythicError::NotFound(format!("Image preset not found: {}", id)))
     }
 
@@ -87,7 +89,7 @@ impl ImagePresetRepo {
         let mut result = db
             .query("SELECT * FROM image_presets ORDER BY is_default DESC, name ASC")
             .await?;
-        let rows: Vec<ImagePreset> = result.take(0)?;
+        let rows: Vec<ImagePreset> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(rows)
     }
 
@@ -196,22 +198,26 @@ impl ImagePresetRepo {
         }
 
         let query = format!(
-            "UPDATE type::thing('image_presets', $id) SET {}",
+            "UPDATE type::record('image_presets', $id) SET {}",
             sets.join(", ")
         );
         bindings.insert("id".into(), serde_json::Value::String(id.to_string()));
 
         let mut result = db
             .query(&query)
-            .bind(serde_json::Value::Object(bindings))
+            .bind(crate::db::value_bridge::to_surreal_value(
+                serde_json::Value::Object(bindings),
+            ))
             .await?;
 
-        let updated: Option<ImagePreset> = result.take(0)?;
+        let updated: Option<ImagePreset> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Image preset not found: {}", id)))
     }
 
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        let result: Option<ImagePreset> = db.delete(("image_presets", id)).await?;
+        let result: Option<ImagePreset> =
+            crate::db::value_bridge::from_value_opt(db.delete(("image_presets", id)).await?)?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Image preset not found: {}",
@@ -227,7 +233,7 @@ impl ImagePresetRepo {
 
         db.query("UPDATE image_presets SET is_default = false")
             .await?;
-        db.query("UPDATE type::thing('image_presets', $id) SET is_default = true")
+        db.query("UPDATE type::record('image_presets', $id) SET is_default = true")
             .bind(("id", id.to_string()))
             .await?;
 
@@ -239,7 +245,7 @@ impl ImagePresetRepo {
         let mut result = db
             .query("SELECT * FROM image_presets WHERE is_default = true LIMIT 1")
             .await?;
-        let rows: Vec<ImagePreset> = result.take(0)?;
+        let rows: Vec<ImagePreset> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(rows.into_iter().next())
     }
 
@@ -251,13 +257,18 @@ impl ImagePresetRepo {
         conversation_id: &str,
     ) -> Result<Option<ImagePreset>, MythicError> {
         let mut result = db
-            .query("SELECT image_preset_id FROM type::thing('conversations', $id)")
+            .query("SELECT image_preset_id FROM type::record('conversations', $id)")
             .bind(("id", conversation_id.to_string()))
             .await?;
-        let row: Option<ConvPresetRef> = result.take(0)?;
+        let row: Option<ConvPresetRef> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
 
         if let Some(preset_thing) = row.and_then(|r| r.image_preset_id) {
-            match Self::get(db, &preset_thing.id.to_raw()).await {
+            match Self::get(
+                db,
+                &crate::db::value_bridge::record_id_to_string(&preset_thing),
+            )
+            .await
+            {
                 Ok(preset) => return Ok(Some(preset)),
                 // The preset was deleted out from under this conversation
                 // (the cascade event should normally clear image_preset_id

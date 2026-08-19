@@ -23,11 +23,11 @@ impl MessageRepo {
             if let Some(ref meta) = metadata {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('messages', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                        "CREATE type::record('messages', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         role: $role,
                         content: $content,
-                        parent_id: type::thing('messages', $parent_id),
+                        parent_id: type::record('messages', $parent_id),
                         metadata: $metadata,
                     }",
                     )
@@ -36,17 +36,20 @@ impl MessageRepo {
                     .bind(("role", role.to_string()))
                     .bind(("content", content.to_string()))
                     .bind(("parent_id", pid.to_string()))
-                    .bind(("metadata", meta.clone()))
+                    .bind((
+                        "metadata",
+                        crate::db::value_bridge::to_surreal_value(meta.clone()),
+                    ))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             } else {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('messages', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                        "CREATE type::record('messages', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         role: $role,
                         content: $content,
-                        parent_id: type::thing('messages', $parent_id),
+                        parent_id: type::record('messages', $parent_id),
                     }",
                     )
                     .bind(("id", id.clone()))
@@ -55,14 +58,14 @@ impl MessageRepo {
                     .bind(("content", content.to_string()))
                     .bind(("parent_id", pid.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             }
         } else {
             if let Some(ref meta) = metadata {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('messages', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                        "CREATE type::record('messages', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         role: $role,
                         content: $content,
                         metadata: $metadata,
@@ -72,14 +75,17 @@ impl MessageRepo {
                     .bind(("conv_id", conversation_id.to_string()))
                     .bind(("role", role.to_string()))
                     .bind(("content", content.to_string()))
-                    .bind(("metadata", meta.clone()))
+                    .bind((
+                        "metadata",
+                        crate::db::value_bridge::to_surreal_value(meta.clone()),
+                    ))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             } else {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('messages', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                        "CREATE type::record('messages', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         role: $role,
                         content: $content,
                     }",
@@ -89,12 +95,12 @@ impl MessageRepo {
                     .bind(("role", role.to_string()))
                     .bind(("content", content.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             }
         };
 
         // Update the conversation's active_message_id
-        db.query("UPDATE type::thing('conversations', $conv_id) SET active_message_id = type::thing('messages', $msg_id), updated_at = time::now()")
+        db.query("UPDATE type::record('conversations', $conv_id) SET active_message_id = type::record('messages', $msg_id), updated_at = time::now()")
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("msg_id", id.clone()))
             .await?;
@@ -104,18 +110,19 @@ impl MessageRepo {
 
     /// Gets a single message by ID.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<Message, MythicError> {
-        let message: Option<Message> = db.select(("messages", id)).await?;
+        let message: Option<Message> =
+            crate::db::value_bridge::from_value_opt(db.select(("messages", id)).await?)?;
         message.ok_or_else(|| MythicError::NotFound(format!("Message not found: {}", id)))
     }
 
     /// Updates message content.
     pub async fn update(db: &Surreal<Db>, id: &str, content: &str) -> Result<Message, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('messages', $id) SET content = $content")
+            .query("UPDATE type::record('messages', $id) SET content = $content")
             .bind(("id", id.to_string()))
             .bind(("content", content.to_string()))
             .await?;
-        let updated: Option<Message> = result.take(0)?;
+        let updated: Option<Message> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Message not found: {}", id)))
     }
 
@@ -127,7 +134,7 @@ impl MessageRepo {
         id: &str,
         reasoning: &str,
     ) -> Result<(), MythicError> {
-        db.query("UPDATE type::thing('messages', $id) SET reasoning = $reasoning")
+        db.query("UPDATE type::record('messages', $id) SET reasoning = $reasoning")
             .bind(("id", id.to_string()))
             .bind(("reasoning", reasoning.to_string()))
             .await?;
@@ -151,16 +158,20 @@ impl MessageRepo {
                 merged_obj.insert(k.clone(), v.clone());
             }
         }
-        db.query("UPDATE type::thing('messages', $id) SET metadata = $metadata")
+        db.query("UPDATE type::record('messages', $id) SET metadata = $metadata")
             .bind(("id", id.to_string()))
-            .bind(("metadata", merged))
+            .bind((
+                "metadata",
+                crate::db::value_bridge::to_surreal_value(merged),
+            ))
             .await?;
         Ok(())
     }
 
     /// Deletes a message.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        let result: Option<Message> = db.delete(("messages", id)).await?;
+        let result: Option<Message> =
+            crate::db::value_bridge::from_value_opt(db.delete(("messages", id)).await?)?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!("Message not found: {}", id)));
         }
@@ -177,10 +188,15 @@ impl MessageRepo {
         let mut current_id = Some(message_id.to_string());
 
         while let Some(ref id) = current_id {
-            let msg: Option<Message> = db.select(("messages", id.as_str())).await?;
+            let msg: Option<Message> = crate::db::value_bridge::from_value_opt(
+                db.select(("messages", id.as_str())).await?,
+            )?;
             match msg {
                 Some(m) => {
-                    current_id = m.parent_id.as_ref().map(|t| t.id.to_raw());
+                    current_id = m
+                        .parent_id
+                        .as_ref()
+                        .map(crate::db::value_bridge::record_id_to_string);
                     chain.push(m);
                 }
                 None => break,
@@ -200,20 +216,20 @@ impl MessageRepo {
         let target = Self::get(db, message_id).await?;
 
         let siblings: Vec<Message> = if let Some(ref parent_thing) = target.parent_id {
-            let parent_raw = parent_thing.id.to_raw();
+            let parent_raw = crate::db::value_bridge::record_id_to_string(parent_thing);
             let mut result = db
-                .query("SELECT * FROM messages WHERE parent_id = type::thing('messages', $parent_id) ORDER BY created_at ASC")
+                .query("SELECT * FROM messages WHERE parent_id = type::record('messages', $parent_id) ORDER BY created_at ASC")
                 .bind(("parent_id", parent_raw))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         } else {
             // Root message — find all root messages in the same conversation
-            let conv_raw = target.conversation_id.id.to_raw();
+            let conv_raw = crate::db::value_bridge::record_id_to_string(&target.conversation_id);
             let mut result = db
-                .query("SELECT * FROM messages WHERE conversation_id = type::thing('conversations', $conv_id) AND parent_id IS NONE ORDER BY created_at ASC")
+                .query("SELECT * FROM messages WHERE conversation_id = type::record('conversations', $conv_id) AND parent_id IS NONE ORDER BY created_at ASC")
                 .bind(("conv_id", conv_raw))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         };
 
         Ok(siblings)
@@ -236,12 +252,12 @@ impl MessageRepo {
         let created: Option<Message> = if let Some(pid) = parent_id {
             let mut result = db
                 .query(
-                    "CREATE type::thing('messages', $id) CONTENT {
-                    conversation_id: type::thing('conversations', $conv_id),
+                    "CREATE type::record('messages', $id) CONTENT {
+                    conversation_id: type::record('conversations', $conv_id),
                     role: $role,
                     content: $content,
-                    parent_id: type::thing('messages', $parent_id),
-                    character_id: type::thing('characters', $char_id),
+                    parent_id: type::record('messages', $parent_id),
+                    character_id: type::record('characters', $char_id),
                     character_name: $char_name,
                 }",
                 )
@@ -253,15 +269,15 @@ impl MessageRepo {
                 .bind(("char_id", character_id.to_string()))
                 .bind(("char_name", character_name.to_string()))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?
         } else {
             let mut result = db
                 .query(
-                    "CREATE type::thing('messages', $id) CONTENT {
-                    conversation_id: type::thing('conversations', $conv_id),
+                    "CREATE type::record('messages', $id) CONTENT {
+                    conversation_id: type::record('conversations', $conv_id),
                     role: $role,
                     content: $content,
-                    character_id: type::thing('characters', $char_id),
+                    character_id: type::record('characters', $char_id),
                     character_name: $char_name,
                 }",
                 )
@@ -272,11 +288,11 @@ impl MessageRepo {
                 .bind(("char_id", character_id.to_string()))
                 .bind(("char_name", character_name.to_string()))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?
         };
 
         // Update the conversation's active_message_id
-        db.query("UPDATE type::thing('conversations', $conv_id) SET active_message_id = type::thing('messages', $msg_id), updated_at = time::now()")
+        db.query("UPDATE type::record('conversations', $conv_id) SET active_message_id = type::record('messages', $msg_id), updated_at = time::now()")
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("msg_id", id.clone()))
             .await?;

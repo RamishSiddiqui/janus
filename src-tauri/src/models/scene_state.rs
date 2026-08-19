@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// Dynamic scene state for a conversation — tracks location, time, weather,
 /// characters present, and ambient atmosphere. Updated automatically after
@@ -12,13 +12,13 @@ pub struct SceneState {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     pub location_name: String,
     pub location_description: String,
     /// morning | midday | afternoon | evening | night | late_night | dawn | unspecified

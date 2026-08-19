@@ -14,20 +14,24 @@ impl PersonaRepo {
         data: serde_json::Value,
     ) -> Result<Persona, MythicError> {
         let id = uuid::Uuid::new_v4().to_string();
-        let created: Option<Persona> = db
-            .create(("personas", &*id))
-            .content(serde_json::json!({
-                "name": name,
-                "spec": "chara_card_v2",
-                "data": data,
-            }))
-            .await?;
+        let created: Option<Persona> = crate::db::value_bridge::from_value_opt(
+            db.create(("personas", &*id))
+                .content(crate::db::value_bridge::to_surreal_value(
+                    serde_json::json!({
+                        "name": name,
+                        "spec": "chara_card_v2",
+                        "data": data,
+                    }),
+                ))
+                .await?,
+        )?;
         created.ok_or_else(|| MythicError::DatabaseOp("Failed to create persona".into()))
     }
 
     /// Gets a single persona by ID.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<Persona, MythicError> {
-        let persona: Option<Persona> = db.select(("personas", id)).await?;
+        let persona: Option<Persona> =
+            crate::db::value_bridge::from_value_opt(db.select(("personas", id)).await?)?;
         persona.ok_or_else(|| MythicError::NotFound(format!("Persona not found: {}", id)))
     }
 
@@ -36,7 +40,7 @@ impl PersonaRepo {
         let mut result = db
             .query("SELECT * FROM personas WHERE deleted_at IS NONE ORDER BY updated_at DESC")
             .await?;
-        let personas: Vec<Persona> = result.take(0)?;
+        let personas: Vec<Persona> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(personas)
     }
 
@@ -73,16 +77,18 @@ impl PersonaRepo {
 
         sets.push("updated_at = time::now()");
         let query = format!(
-            "UPDATE type::thing('personas', $id) SET {}",
+            "UPDATE type::record('personas', $id) SET {}",
             sets.join(", ")
         );
         bindings_json.insert("id".into(), serde_json::Value::String(id.to_string()));
         let mut result = db
             .query(&query)
-            .bind(serde_json::Value::Object(bindings_json))
+            .bind(crate::db::value_bridge::to_surreal_value(
+                serde_json::Value::Object(bindings_json),
+            ))
             .await?;
 
-        let updated: Option<Persona> = result.take(0)?;
+        let updated: Option<Persona> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Persona not found: {}", id)))
     }
 
@@ -94,11 +100,11 @@ impl PersonaRepo {
         avatar_path: Option<&str>,
     ) -> Result<Persona, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('personas', $id) SET avatar_path = $avatar_path, updated_at = time::now()")
+            .query("UPDATE type::record('personas', $id) SET avatar_path = $avatar_path, updated_at = time::now()")
             .bind(("id", id.to_string()))
             .bind(("avatar_path", avatar_path.map(|s| s.to_string())))
             .await?;
-        let updated: Option<Persona> = result.take(0)?;
+        let updated: Option<Persona> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Persona not found: {}", id)))
     }
 
@@ -108,8 +114,9 @@ impl PersonaRepo {
     /// "Delete" should call `trash` instead.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         // See `retry_on_conflict` in error.rs.
-        let result: Option<Persona> =
-            crate::error::retry_on_conflict(|| async { db.delete(("personas", id)).await }).await?;
+        let result: Option<Persona> = crate::db::value_bridge::from_value_opt(
+            crate::error::retry_on_conflict(|| async { db.delete(("personas", id)).await }).await?,
+        )?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!("Persona not found: {}", id)));
         }
@@ -120,20 +127,20 @@ impl PersonaRepo {
     /// on `ConversationRepo::trash`.
     pub async fn trash(db: &Surreal<Db>, id: &str) -> Result<Persona, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('personas', $id) SET deleted_at = time::now()")
+            .query("UPDATE type::record('personas', $id) SET deleted_at = time::now()")
             .bind(("id", id.to_string()))
             .await?;
-        let updated: Option<Persona> = result.take(0)?;
+        let updated: Option<Persona> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Persona not found: {}", id)))
     }
 
     /// Restores a trashed persona.
     pub async fn restore(db: &Surreal<Db>, id: &str) -> Result<Persona, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('personas', $id) SET deleted_at = NONE")
+            .query("UPDATE type::record('personas', $id) SET deleted_at = NONE")
             .bind(("id", id.to_string()))
             .await?;
-        let updated: Option<Persona> = result.take(0)?;
+        let updated: Option<Persona> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Persona not found: {}", id)))
     }
 
@@ -142,7 +149,7 @@ impl PersonaRepo {
         let mut result = db
             .query("SELECT * FROM personas WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC")
             .await?;
-        let personas: Vec<Persona> = result.take(0)?;
+        let personas: Vec<Persona> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(personas)
     }
 }

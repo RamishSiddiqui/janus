@@ -42,7 +42,8 @@ pub(crate) async fn resolve_model_id(
             } else {
                 // Fall back to first enabled LLM model for this provider
                 // (explicitly exclude embedding models)
-                let provider_id_str = provider_config.id.id.to_raw();
+                let provider_id_str =
+                    crate::db::value_bridge::record_id_to_string(&provider_config.id);
                 let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id_str)).await?;
                 match enabled.into_iter().find(|m| m.model_type != "embedding") {
                     Some(m) => Ok(m.model_id),

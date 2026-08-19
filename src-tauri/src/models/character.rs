@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// Character Card V2 specification — the community standard for
 /// portable AI character definitions. Compatible with SillyTavern,
@@ -165,7 +165,7 @@ pub struct Character {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     pub name: String,
     pub spec: String,
 

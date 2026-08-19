@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A standalone lorebook entry stored in the database.
 ///
@@ -15,7 +15,7 @@ pub struct LorebookEntry {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
 
     /// The character this entry belongs to (None = global lorebook)
     #[serde(
@@ -24,7 +24,7 @@ pub struct LorebookEntry {
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
     #[specta(type = Option<String>)]
-    pub character_id: Option<Thing>,
+    pub character_id: Option<RecordId>,
 
     /// Trigger keywords — entry activates when any keyword is found in chat.
     /// Stored as native array in SurrealDB.
