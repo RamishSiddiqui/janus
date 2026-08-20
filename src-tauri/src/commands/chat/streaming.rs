@@ -10,7 +10,7 @@ use std::sync::Arc;
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
 use tauri::Emitter;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::pipeline::{spawn_embed_message, spawn_scene_extraction};
 use crate::context::prompt_builder::ContextStats;
@@ -22,6 +22,7 @@ use crate::models::conversation::{ChatMessage, GenerationParams};
 use crate::models::provider::ProviderConfig;
 use crate::providers::resolve::{create_rig_provider, get_default_llm_provider};
 use crate::providers::traits::StreamChunk;
+use crate::tts::{chunker::split_complete_sentences, KokoroEngine};
 
 /// Payload emitted to the frontend via Tauri events during streaming.
 #[derive(Clone, serde::Serialize)]
@@ -87,6 +88,23 @@ pub(crate) struct StreamCompletionCtx {
     /// `Some` only for the original send — see `StreamOrigin` doc comment.
     pub(crate) context_stats: Option<ContextStats>,
     pub(crate) origin: StreamOrigin,
+
+    /// Voice this stream's primary character speaks with, resolved once at
+    /// ctx-construction time (not per-delta). `None` means silent — no
+    /// voice assigned, or TTS was never enabled — and the entire
+    /// sentence-buffering block in the `Delta` arm is skipped as a true
+    /// no-op in that case (see issue #66: this must add zero overhead to
+    /// the hot streaming path when TTS isn't in use).
+    pub(crate) tts_voice_id: Option<String>,
+    /// Shared with the caller only so it starts empty and consistent;
+    /// owned exclusively by this function afterward.
+    pub(crate) tts_sentence_buffer: Arc<std::sync::Mutex<String>>,
+    /// Cloned from `AppState.tts_engine` — `None` inside means the engine
+    /// hasn't been loaded yet (TTS enabled but the user hasn't triggered a
+    /// voice list / model download yet), which is also a no-op, not an
+    /// error: synthesis is skipped for this stream rather than blocking on
+    /// a multi-second engine load in the middle of a chat response.
+    pub(crate) tts_engine: Arc<tokio::sync::Mutex<Option<KokoroEngine>>>,
 }
 
 /// Consumes provider stream chunks until the response completes (or errors),
@@ -127,6 +145,10 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
     let retry_gen_params = ctx.retry_gen_params;
     let retry_messages = ctx.retry_messages;
     let retry_images = ctx.retry_images;
+    let tts_voice_id = ctx.tts_voice_id;
+    let tts_sentence_buffer = ctx.tts_sentence_buffer;
+    let tts_engine = ctx.tts_engine;
+    let mut tts_sequence: u32 = 0;
 
     let mut attempted_retry = false;
     while let Some(chunk) = ctx.rx.recv().await {
@@ -135,6 +157,32 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 if let Ok(mut p) = partial.lock() {
                     p.push_str(&text);
                 }
+
+                // TTS: gated behind a single cheap check so this is a true
+                // no-op on the hot path when no voice is assigned — see
+                // `StreamCompletionCtx::tts_voice_id`'s doc comment.
+                if let Some(voice_id) = tts_voice_id.as_deref() {
+                    let complete_sentences = {
+                        let mut buf = tts_sentence_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                        buf.push_str(&text);
+                        let (sentences, remainder) = split_complete_sentences(&buf);
+                        *buf = remainder;
+                        sentences
+                    };
+                    for sentence in complete_sentences {
+                        tts_sequence += 1;
+                        spawn_tts_chunk(
+                            app.clone(),
+                            tts_engine.clone(),
+                            conv_id.clone(),
+                            assist_id.clone(),
+                            voice_id.to_string(),
+                            sentence,
+                            tts_sequence,
+                        );
+                    }
+                }
+
                 let _ = app.emit(
                     "chat-stream",
                     StreamEvent {
@@ -158,6 +206,31 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 );
             }
             StreamChunk::Done(full_text) => {
+                // Flush whatever partial sentence never hit a boundary —
+                // otherwise the trailing clause of every streamed response
+                // (very often literally the last sentence, if it has no
+                // trailing whitespace after its terminator) never gets
+                // synthesized.
+                if let Some(voice_id) = tts_voice_id.as_deref() {
+                    let leftover = {
+                        let mut buf = tts_sentence_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                        std::mem::take(&mut *buf)
+                    };
+                    let trimmed = leftover.trim();
+                    if !trimmed.is_empty() {
+                        tts_sequence += 1;
+                        spawn_tts_chunk(
+                            app.clone(),
+                            tts_engine.clone(),
+                            conv_id.clone(),
+                            assist_id.clone(),
+                            voice_id.to_string(),
+                            trimmed.to_string(),
+                            tts_sequence,
+                        );
+                    }
+                }
+
                 // Some providers fail "quietly" under load — the stream
                 // completes with zero content instead of a hard error
                 // (observed: OpenRouter-routed free models returning a
@@ -624,4 +697,63 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
             }
         }
     }
+}
+
+/// Payload emitted per synthesized sentence during a streamed response.
+/// `audio` is base64-encoded WAV — a raw `Vec<u8>` field would still
+/// serialize as a JSON array of numbers over Tauri's IPC (3-5x the byte
+/// size in JSON text for a payload that's routinely a few hundred KB per
+/// sentence), while base64 is ~1.33x.
+#[derive(Clone, serde::Serialize)]
+struct TtsChunkEvent {
+    conversation_id: String,
+    message_id: String,
+    sequence: u32,
+    audio: String,
+}
+
+/// Synthesizes one sentence and emits it as a `tts-chunk` event.
+/// Fire-and-forget, matching `spawn_embed_message`/`spawn_scene_extraction`
+/// — failures (including "engine not loaded yet") are logged, never
+/// propagated, since TTS must never disrupt the text streaming it rides
+/// alongside.
+fn spawn_tts_chunk(
+    app: tauri::AppHandle,
+    tts_engine: Arc<tokio::sync::Mutex<Option<KokoroEngine>>>,
+    conversation_id: String,
+    message_id: String,
+    voice_id: String,
+    text: String,
+    sequence: u32,
+) {
+    tokio::spawn(async move {
+        let mut guard = tts_engine.lock().await;
+        let Some(engine) = guard.as_mut() else {
+            debug!(
+                "[tts] Skipping synthesis for conversation {} — engine not loaded yet",
+                conversation_id
+            );
+            return;
+        };
+        match engine.synthesize(&text, &voice_id, 1.0) {
+            Ok(wav) => {
+                let audio = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wav);
+                let _ = app.emit(
+                    "tts-chunk",
+                    TtsChunkEvent {
+                        conversation_id,
+                        message_id,
+                        sequence,
+                        audio,
+                    },
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "[tts] Synthesis failed for conversation {} (non-fatal): {}",
+                    conversation_id, e
+                );
+            }
+        }
+    });
 }

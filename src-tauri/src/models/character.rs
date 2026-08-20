@@ -204,6 +204,13 @@ pub struct Character {
     )]
     #[specta(type = Option<String>)]
     pub deleted_at: Option<String>,
+
+    /// Kokoro voice id (e.g. "af_heart") this character speaks with when
+    /// TTS is enabled. `None` means no voice assigned — the character
+    /// stays silent rather than falling back to some default voice, since
+    /// an unwanted voice being wrong is worse than no audio at all.
+    #[serde(default)]
+    pub voice_id: Option<String>,
 }
 
 fn default_character_origin() -> String {

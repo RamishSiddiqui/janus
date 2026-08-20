@@ -80,6 +80,18 @@ regex = "1"
 futures = "0.3"
 tokio-stream = "0.1"
 
+# Native TTS (Kokoro-82M, embedded in-process via ONNX Runtime — no
+# external server, see src/tts/ and GitHub issue #66). `ort` is still
+# pre-1.0 (rc) but has been for a long time and is the de facto standard
+# Rust ONNX binding; `misaki-rs` with espeak disabled is the pure-Rust
+# phonemizer that avoids needing an `espeak-ng` system dependency, which
+# has no clean Windows story.
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["download-binaries", "tls-rustls"] }
+ndarray = "0.16"
+ndarray-npy = { version = "0.9", default-features = false, features = ["npz"] }
+misaki-rs = { version = "0.3", default-features = false }
+hound = "3.5"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

@@ -206,6 +206,27 @@ impl CharacterRepo {
             .ok_or_else(|| MythicError::NotFound(format!("Character not found: {}", id)))
     }
 
+    /// Sets (or clears, via `None`) the Kokoro voice a character speaks
+    /// with — kept as its own single-field setter rather than routed
+    /// through `update`, since the voice picker in the character editor
+    /// shouldn't need to resend the whole character payload just to
+    /// change one field.
+    pub async fn set_voice(
+        db: &Surreal<Db>,
+        id: &str,
+        voice_id: Option<&str>,
+    ) -> Result<Character, MythicError> {
+        let mut result = db
+            .query("UPDATE type::record('characters', $id) SET voice_id = $voice_id, updated_at = time::now()")
+            .bind(("id", id.to_string()))
+            .bind(("voice_id", voice_id.map(|v| v.to_string())))
+            .await?;
+
+        let updated: Option<Value> = result.take(0)?;
+        from_value_opt(updated)?
+            .ok_or_else(|| MythicError::NotFound(format!("Character not found: {}", id)))
+    }
+
     /// Permanently deletes a character by ID. Cascade is handled by SurrealDB
     /// events. Only ever called from the Trash view — normal "Delete" from
     /// Gallery should call `trash` instead.

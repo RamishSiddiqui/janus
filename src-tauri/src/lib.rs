@@ -16,6 +16,7 @@ pub mod db;
 pub mod error;
 pub mod models;
 pub mod providers;
+pub mod tts;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -65,6 +66,14 @@ pub struct AppState {
     /// returning a "cancelled" error.
     pub active_scene_generations:
         Arc<AsyncMutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
+
+    /// Lazily-loaded native Kokoro TTS engine — `None` until the first
+    /// synthesis call (or an explicit init) actually loads the ONNX
+    /// session, since that's real I/O/parse time that must not block app
+    /// startup. `Mutex` (not `RwLock`) because loading mutates it and
+    /// synthesis calls are infrequent enough that exclusive access per
+    /// call is fine — this isn't a hot concurrent-read path like `db`.
+    pub tts_engine: Arc<AsyncMutex<Option<crate::tts::KokoroEngine>>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -199,6 +208,12 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::data_backup::export_data_backup,
         commands::data_backup::import_data_backup,
         commands::data_backup::list_data_backups,
+        // TTS
+        commands::tts::tts_model_status,
+        commands::tts::tts_download_model,
+        commands::tts::tts_list_voices,
+        commands::tts::tts_set_character_voice,
+        commands::tts::tts_test_speak,
     ])
 }
 
@@ -388,6 +403,7 @@ pub fn run() {
                 http_client,
                 active_generations: Arc::new(AsyncMutex::new(HashMap::new())),
                 active_scene_generations: Arc::new(AsyncMutex::new(HashMap::new())),
+                tts_engine: Arc::new(AsyncMutex::new(None)),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
@@ -537,6 +553,12 @@ pub fn run() {
             commands::data_backup::export_data_backup,
             commands::data_backup::import_data_backup,
             commands::data_backup::list_data_backups,
+            // TTS
+            commands::tts::tts_model_status,
+            commands::tts::tts_download_model,
+            commands::tts::tts_list_voices,
+            commands::tts::tts_set_character_voice,
+            commands::tts::tts_test_speak,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Janus");
