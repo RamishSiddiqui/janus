@@ -10,6 +10,7 @@
   import ToastContainer from '$lib/components/ToastContainer.svelte';
   import { settings } from '$lib/stores/settings';
   import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
+  import { initTtsPlaybackListener, cleanupTtsPlaybackListener, isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
   import { initFrontendLogCapture } from '$lib/stores/logs';
   import type { NavItem } from '$lib/types';
 
@@ -84,6 +85,15 @@
     if (!browser) return;
     initMultiCharListener();
     return () => cleanupMultiCharListener();
+  });
+
+  // Initialize the TTS streamed-playback listener (a no-op subscription
+  // when TTS is disabled — the listener itself gates on $settings.ttsEnabled
+  // per chunk, see ttsPlayback.ts).
+  $effect(() => {
+    if (!browser) return;
+    initTtsPlaybackListener();
+    return () => cleanupTtsPlaybackListener();
   });
 
   /** Global keyboard shortcuts */

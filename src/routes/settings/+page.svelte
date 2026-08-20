@@ -5,6 +5,7 @@
   import SettingsChatSection from '$lib/components/SettingsChatSection.svelte';
   import SettingsContextSection from '$lib/components/SettingsContextSection.svelte';
   import SettingsPrivacySection from '$lib/components/SettingsPrivacySection.svelte';
+  import SettingsVoiceSection from '$lib/components/SettingsVoiceSection.svelte';
   import SettingsImageSection from '$lib/components/SettingsImageSection.svelte';
   import SettingsPromptsSection from '$lib/components/SettingsPromptsSection.svelte';
   import SettingsLoggingSection from '$lib/components/SettingsLoggingSection.svelte';
@@ -16,12 +17,13 @@
   // quality knobs, the reasoning toggle, etc). A single active-section panel
   // with sidebar nav (the VS Code / Linear / macOS System Settings pattern)
   // scales to any number of sections without the page just getting taller.
-  type SettingsSection = 'appearance' | 'chat' | 'context' | 'privacy' | 'image' | 'prompts' | 'logging';
+  type SettingsSection = 'appearance' | 'chat' | 'context' | 'voice' | 'privacy' | 'image' | 'prompts' | 'logging';
   let activeSection = $state<SettingsSection>('appearance');
   const NAV_ITEMS: { id: SettingsSection; label: string; icon: string; accent: string }[] = [
     { id: 'appearance', label: 'Appearance', icon: 'palette', accent: '#9075f2' },
     { id: 'chat', label: 'Chat Behavior', icon: 'message-circle', accent: '#22d3ee' },
     { id: 'context', label: 'Context & Memory', icon: 'network', accent: '#e879f9' },
+    { id: 'voice', label: 'Voice', icon: 'volume-2', accent: '#38bdf8' },
     { id: 'image', label: 'Image Generation', icon: 'image', accent: '#fbbf24' },
     { id: 'prompts', label: 'Prompts', icon: 'file-text', accent: '#34d399' },
     { id: 'privacy', label: 'Data & Privacy', icon: 'shield', accent: '#fb7185' },
@@ -103,6 +105,10 @@
 
     {#if activeSection === 'context'}
       <SettingsContextSection />
+    {/if}
+
+    {#if activeSection === 'voice'}
+      <SettingsVoiceSection />
     {/if}
 
     {#if activeSection === 'privacy'}

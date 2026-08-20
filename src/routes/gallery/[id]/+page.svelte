@@ -11,7 +11,8 @@
   import Icon from "$lib/components/Icon.svelte";
   import { selectedPersonaId } from "$lib/stores/personas";
   import { get } from "svelte/store";
-  import type { MemoryGraph as MemoryGraphData } from "$lib/services/ipc";
+  import { playBase64Wav } from "$lib/utils/audioPreview";
+  import type { MemoryGraph as MemoryGraphData, VoiceInfo } from "$lib/services/ipc";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
   const charId = $derived($page.params.id);
@@ -67,6 +68,12 @@
   let editTags = $state("");
   let isSaving = $state(false);
 
+  let voiceId = $state<string | null>(null);
+  let voices = $state<VoiceInfo[]>([]);
+  let voicesLoaded = $state(false);
+  let savingVoice = $state(false);
+  let previewingVoice = $state(false);
+
   $effect(() => {
     const id = charId;
     if (id && isTauri) {
@@ -78,6 +85,7 @@
   $effect(() => {
     if (activeTab === "memories" && charId && isTauri) loadMemoryGraph(charId);
     if (activeTab === "lore" && charId && isTauri) loadLore(charId);
+    if (activeTab === "edit" && isTauri) loadVoices();
     if (activeTab === "edit" && charData) {
       editName = charName;
       editDesc = charData.description;
@@ -118,6 +126,7 @@
         system_prompt: (parsed.system_prompt as string) || "",
       };
       avatarUrl = await resolveAvatar(char.avatar_path);
+      voiceId = char.voice_id;
     } catch {
       toastError("Failed to load character");
       goto("/gallery");
@@ -186,6 +195,45 @@
     }
     isLoadingLore = false;
     loreLoaded = true;
+  }
+
+  async function loadVoices() {
+    if (voicesLoaded || !isTauri) return;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      voices = await ipc.ttsListVoices();
+      voicesLoaded = true;
+    } catch {
+      voices = [];
+    }
+  }
+
+  async function handleVoiceChange() {
+    if (!isTauri || !charId) return;
+    savingVoice = true;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      await ipc.ttsSetCharacterVoice(charId, voiceId);
+    } catch {
+      toastError("Failed to save voice");
+    }
+    savingVoice = false;
+  }
+
+  async function previewVoice() {
+    if (!isTauri || !voiceId || previewingVoice) return;
+    previewingVoice = true;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      const audio = await ipc.ttsTestSpeak(
+        `Hello, I'm ${editName || charName}.`,
+        voiceId,
+      );
+      await playBase64Wav(audio);
+    } catch {
+      toastError("Preview failed");
+    }
+    previewingVoice = false;
   }
 
   async function startNewChat() {
@@ -564,6 +612,31 @@
                 bind:value={editTags}
                 placeholder="Fantasy, Adventure"
               />
+            </div>
+            <div class="edit-field">
+              <label class="edit-label" for="ef-voice">Voice</label>
+              <div class="edit-actions" style="justify-content: flex-start; gap: 8px;">
+                <select
+                  id="ef-voice"
+                  class="edit-input"
+                  bind:value={voiceId}
+                  onchange={handleVoiceChange}
+                  disabled={savingVoice}
+                >
+                  <option value={null}>Use default voice</option>
+                  {#each voices as v (v.id)}
+                    <option value={v.id}>{v.name}</option>
+                  {/each}
+                </select>
+                <button
+                  class="btn-cancel"
+                  onclick={previewVoice}
+                  disabled={!voiceId || previewingVoice}
+                  type="button"
+                >
+                  {previewingVoice ? "Playing…" : "Preview"}
+                </button>
+              </div>
             </div>
             <div class="edit-actions">
               <button class="btn-cancel" onclick={() => (activeTab = "profile")}

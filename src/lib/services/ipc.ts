@@ -34,6 +34,8 @@ import type {
   ConnectionTestResult,
   ProfileRefreshResult,
   BackupFileInfo,
+  TtsModelStatus,
+  VoiceInfo,
 } from './bindings';
 
 // --- Error Handling ---
@@ -657,6 +659,77 @@ export async function onChatStream(
   callback: (event: StreamEvent) => void
 ): Promise<UnlistenFn> {
   return listen<StreamEvent>('chat-stream', (event) => {
+    callback(event.payload);
+  });
+}
+
+// --- Text-to-Speech (Kokoro) ---
+
+export type { TtsModelStatus, VoiceInfo };
+
+export interface TtsChunkEvent {
+  conversation_id: string;
+  message_id: string;
+  sequence: number;
+  /** Base64-encoded WAV. */
+  audio: string;
+}
+
+export interface TtsDownloadProgressEvent {
+  phase: 'model' | 'voices' | 'runtime';
+  percent: number;
+}
+
+/** Whether the Kokoro ONNX model, voice pack, and ONNX Runtime dylib have
+ *  already been downloaded into the app data dir. */
+export async function ttsModelStatus(): Promise<TtsModelStatus> {
+  return safeInvoke<TtsModelStatus>('tts_model_status');
+}
+
+/** Downloads the model/voices/runtime (~90MB+) if not already present.
+ *  Emits `tts-download-progress` events as it runs — subscribe via
+ *  `onTtsDownloadProgress` before calling this to see live progress. */
+export async function ttsDownloadModel(): Promise<void> {
+  return safeInvoke<void>('tts_download_model');
+}
+
+/** Lists the 54 bundled Kokoro voices. Loads the ONNX engine into memory on
+ *  first call if it isn't already loaded — can take a few seconds. */
+export async function ttsListVoices(): Promise<VoiceInfo[]> {
+  return safeInvoke<VoiceInfo[]>('tts_list_voices');
+}
+
+/** Assigns (or clears, via `voiceId: null`) the voice a character speaks
+ *  with when TTS is enabled. Returns the updated character. */
+export async function ttsSetCharacterVoice(
+  characterId: string,
+  voiceId: string | null,
+): Promise<Character> {
+  return safeInvoke<Character>('tts_set_character_voice', { characterId, voiceId });
+}
+
+/** Synthesizes `text` immediately with `voiceId` and returns base64-encoded
+ *  WAV — for a "preview this voice" control, not part of a streamed reply. */
+export async function ttsTestSpeak(text: string, voiceId: string): Promise<string> {
+  return safeInvoke<string>('tts_test_speak', { text, voiceId });
+}
+
+/** Subscribes to per-sentence synthesized audio emitted during a streamed
+ *  chat response. Only fires for a conversation whose responding character
+ *  has a `voice_id` assigned. Returns an unlisten function. */
+export async function onTtsChunk(
+  callback: (event: TtsChunkEvent) => void
+): Promise<UnlistenFn> {
+  return listen<TtsChunkEvent>('tts-chunk', (event) => {
+    callback(event.payload);
+  });
+}
+
+/** Subscribes to model/voice-pack/runtime download progress. */
+export async function onTtsDownloadProgress(
+  callback: (event: TtsDownloadProgressEvent) => void
+): Promise<UnlistenFn> {
+  return listen<TtsDownloadProgressEvent>('tts-download-progress', (event) => {
     callback(event.payload);
   });
 }
