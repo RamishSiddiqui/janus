@@ -1,0 +1,78 @@
+name: CodeQL
+
+# Semantic analysis of Janus's own first-party code (injection, unsafe
+# patterns, etc.) -- a genuinely different layer from security-audit.yml's
+# cargo-audit/npm-audit, which only catch known-CVE dependency *versions*
+# and say nothing about vulnerabilities in code Janus itself wrote. Same
+# push+weekly-schedule cadence as security-audit.yml, for the same reason:
+# a query pack update can surface a new finding against unchanged code.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '0 7 * * 1' # every Monday 07:00 UTC (staggered after security-audit.yml's 06:00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, rust]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      # Rust needs an actual build for CodeQL's tracer to observe (same
+      # Tauri Linux system deps + frontend-dist prerequisite as ci.yml's
+      # backend job); JS/TS is analyzed statically with no build required.
+      - if: matrix.language == 'rust'
+        name: Install Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - if: matrix.language == 'rust'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - if: matrix.language == 'rust'
+        run: npm ci
+      - if: matrix.language == 'rust'
+        run: npm run build
+
+      - if: matrix.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+      - if: matrix.language == 'rust'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - if: matrix.language == 'rust'
+        working-directory: src-tauri
+        run: cargo build
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
