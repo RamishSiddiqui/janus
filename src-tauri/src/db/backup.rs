@@ -58,11 +58,21 @@ pub async fn export_to_file(db: &Surreal<Db>, dest: &Path) -> Result<(), MythicE
     Ok(())
 }
 
-/// Imports a `.surql` backup file into `db`. Safe to call against a
-/// datastore that already has its schema defined (`schema::define_schema`'s
-/// `IF NOT EXISTS` definitions no-op against matching ones the import
-/// brings) or against a freshly-created empty one (the import's own
-/// `DEFINE`/`CREATE` statements establish everything from scratch).
+/// Imports a `.surql` backup file into `db`, skipping every `DEFINE`
+/// statement the file contains and importing only the data (`INSERT`/
+/// `CREATE`/`UPDATE`/`UPSERT`) statements.
+///
+/// This is deliberate, not an oversight: `schema::define_schema` (already
+/// run by `init_database` before any import happens) is the sole source of
+/// truth for schema. A backup's own embedded `DEFINE` statements can't be
+/// trusted — confirmed in practice that a real backup's exported `DEFINE
+/// FIELD metadata ON messages ...` line was missing `FLEXIBLE` entirely and
+/// had no `IF NOT EXISTS` guard, so importing it verbatim silently
+/// overwrote the correct schema and broke every subsequent nested-object
+/// insert into that field. Since `DEFINE FIELD IF NOT EXISTS` in
+/// `schema::define_schema` no-ops once a field already exists, a bad
+/// definition from an import can't self-heal on a later app restart either
+/// — skipping the backup's `DEFINE`s entirely avoids the whole class of bug.
 pub async fn import_from_file(db: &Surreal<Db>, src: &Path) -> Result<(), MythicError> {
     if !src.exists() {
         return Err(MythicError::NotFound(format!(
@@ -70,9 +80,21 @@ pub async fn import_from_file(db: &Surreal<Db>, src: &Path) -> Result<(), Mythic
             src.display()
         )));
     }
-    db.import(src)
-        .await
-        .map_err(|e| MythicError::DatabaseOp(format!("import failed: {e}")))?;
+
+    let raw = tokio::fs::read_to_string(src).await?;
+    let data_only: String = raw
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("DEFINE"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let filtered_path = src.with_extension("data_only.surql");
+    tokio::fs::write(&filtered_path, &data_only).await?;
+
+    let result = db.import(&filtered_path).await;
+    let _ = tokio::fs::remove_file(&filtered_path).await;
+
+    result.map_err(|e| MythicError::DatabaseOp(format!("import failed: {e}")))?;
     info!("[backup] Imported datastore from {:?}", src);
     Ok(())
 }
