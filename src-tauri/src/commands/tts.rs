@@ -83,11 +83,12 @@ async fn ensure_engine_loaded(
 
     let model_path = download::model_path(&app_data_dir);
     let voices_path = download::voices_path(&app_data_dir);
+    let runtime_path = download::runtime_path(&app_data_dir);
     // ONNX session load + voice-pack parse is real, possibly multi-second
     // work — done inline here since this command is already expected to
     // block until the engine is ready (first-use latency is an accepted
     // tradeoff for never loading eagerly at app startup).
-    let engine = KokoroEngine::load(&model_path, &voices_path)?;
+    let engine = KokoroEngine::load(&model_path, &voices_path, &runtime_path)?;
     *guard = Some(engine);
     Ok(())
 }

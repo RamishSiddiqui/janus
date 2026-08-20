@@ -131,7 +131,32 @@ pub struct KokoroEngine {
 }
 
 impl KokoroEngine {
-    pub fn load(model_path: &Path, voices_path: &Path) -> Result<Self, MythicError> {
+    pub fn load(
+        model_path: &Path,
+        voices_path: &Path,
+        runtime_path: &Path,
+    ) -> Result<Self, MythicError> {
+        // Must happen before any other `ort` API call — loads
+        // `onnxruntime.dll` via `libloading` rather than linking ONNX
+        // Runtime into this binary at compile time (see the `ort`
+        // dependency comment in Cargo.toml for why: a static-link MSVC STL
+        // mismatch). Idempotent — `ort`'s internal `G_ORT_LIB` is a
+        // `OnceLock`, so a second call here (e.g. engine reload after a
+        // failed first attempt) is a cheap no-op rather than a re-load.
+        // `commit()` returns `bool` (not `Result`) — `false` only means an
+        // environment was already committed elsewhere (e.g. a prior load
+        // attempt this session), which is fine to ignore; the dylib-load
+        // itself is what `init_from`'s `?` above actually guards.
+        ort::init_from(runtime_path)
+            .map_err(|e| {
+                MythicError::Provider(format!(
+                    "Failed to load ONNX Runtime from {}: {}",
+                    runtime_path.display(),
+                    e
+                ))
+            })?
+            .commit();
+
         // `commit_from_file` isn't available in this build (only
         // `commit_from_memory` is, per the `ort` 2.0.0-rc.13 API actually
         // compiled against here) — read the ~90MB model into memory

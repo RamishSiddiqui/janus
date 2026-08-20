@@ -86,11 +86,26 @@ tokio-stream = "0.1"
 # Rust ONNX binding; `misaki-rs` with espeak disabled is the pure-Rust
 # phonemizer that avoids needing an `espeak-ng` system dependency, which
 # has no clean Windows story.
-ort = { version = "2.0.0-rc.13", default-features = false, features = ["download-binaries", "tls-rustls"] }
+#
+# `load-dynamic` (not `download-binaries`): `download-binaries` statically
+# links a prebuilt ONNX Runtime that was compiled against a newer MSVC STL
+# than this machine's linker has, producing ~20 unresolved
+# `__std_search_1`/`__std_max_element_f`-style externals at link time
+# (MSVC's vectorized <algorithm> helpers). `load-dynamic` instead loads
+# `onnxruntime.dll` at runtime via `ort::init_from(path)?.commit()`
+# (src/tts/engine.rs) — no ONNX Runtime C++ code gets linked into
+# janus_lib.dll at compile time, so the STL mismatch never applies. The
+# dll itself is fetched by `src/tts/download.rs` alongside the model/voice
+# pack, pinned to the exact ONNX Runtime release (1.28.0) that
+# `download-binaries` itself would have fetched for this ort-sys version
+# (see build/download/dist.tsv in the ort-sys source: `ms@1.28.0`) — same
+# ABI, just loaded dynamically instead of linked statically.
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
 ndarray = "0.16"
 ndarray-npy = { version = "0.9", default-features = false, features = ["npz"] }
 misaki-rs = { version = "0.3", default-features = false }
 hound = "3.5"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [features]
 default = ["custom-protocol"]
