@@ -632,7 +632,7 @@ pub async fn list_all_models(
             .ok()
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_default();
-        let provider_id = provider.id.id.to_raw();
+        let provider_id = crate::db::value_bridge::record_id_to_string(&provider.id);
         let provider_name = provider.name.clone();
         let provider_type = serde_json::to_value(&provider.provider_type)
             .ok()
@@ -1029,7 +1029,10 @@ pub async fn list_all_models(
     }
 
     for (provider_id, model_id, model_type) in &stale {
-        if let Some(provider) = providers.iter().find(|p| p.id.id.to_raw() == *provider_id) {
+        if let Some(provider) = providers
+            .iter()
+            .find(|p| crate::db::value_bridge::record_id_to_string(&p.id) == *provider_id)
+        {
             let adapter_str = serde_json::to_value(&provider.adapter)
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
@@ -1105,7 +1108,7 @@ pub async fn list_embedding_models(
             .ok()
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_default();
-        let provider_id = provider.id.id.to_raw();
+        let provider_id = crate::db::value_bridge::record_id_to_string(&provider.id);
         let provider_name = provider.name.clone();
         let http_c = http.clone();
 
@@ -1322,7 +1325,10 @@ pub async fn list_embedding_models(
     }
 
     for (provider_id, model_id, model_type) in &stale {
-        if let Some(provider) = providers.iter().find(|p| p.id.id.to_raw() == *provider_id) {
+        if let Some(provider) = providers
+            .iter()
+            .find(|p| crate::db::value_bridge::record_id_to_string(&p.id) == *provider_id)
+        {
             let adapter_str = serde_json::to_value(&provider.adapter)
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
@@ -1397,8 +1403,10 @@ pub async fn list_enabled_models(
     // one query per row (was N+1 for both — fine at today's scale, but
     // needlessly so).
     let providers = ProviderRepo::list(&state.db, None).await?;
-    let provider_map: HashMap<String, &ProviderConfig> =
-        providers.iter().map(|p| (p.id.id.to_raw(), p)).collect();
+    let provider_map: HashMap<String, &ProviderConfig> = providers
+        .iter()
+        .map(|p| (crate::db::value_bridge::record_id_to_string(&p.id), p))
+        .collect();
     let ai_horde_info: HashMap<String, AiHordeModelInfo> = AiHordeModelRepo::list(&state.db)
         .await
         .unwrap_or_default()

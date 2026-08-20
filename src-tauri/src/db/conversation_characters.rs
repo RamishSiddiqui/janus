@@ -15,12 +15,13 @@ impl ConversationCharacterRepo {
         let mut result = db
             .query(
                 "SELECT * FROM conversation_characters \
-                 WHERE conversation_id = type::thing('conversations', $conv_id) \
+                 WHERE conversation_id = type::record('conversations', $conv_id) \
                  ORDER BY role ASC, created_at ASC",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let chars: Vec<ConversationCharacter> = result.take(0)?;
+        let chars: Vec<ConversationCharacter> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(chars)
     }
 
@@ -38,9 +39,9 @@ impl ConversationCharacterRepo {
 
         let mut result = db
             .query(
-                "UPSERT type::thing('conversation_characters', $id) CONTENT { \
-                    conversation_id: type::thing('conversations', $conv_id), \
-                    character_id: type::thing('characters', $char_id), \
+                "UPSERT type::record('conversation_characters', $id) CONTENT { \
+                    conversation_id: type::record('conversations', $conv_id), \
+                    character_id: type::record('characters', $char_id), \
                     role: $role, \
                     talkativeness: $talkativeness, \
                     is_active: true, \
@@ -56,7 +57,8 @@ impl ConversationCharacterRepo {
             .bind(("char_name", character_name.to_string()))
             .await?;
 
-        let cc: Option<ConversationCharacter> = result.take(0)?;
+        let cc: Option<ConversationCharacter> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         cc.ok_or_else(|| MythicError::DatabaseOp("Failed to add conversation character".into()))
     }
 
@@ -68,8 +70,8 @@ impl ConversationCharacterRepo {
     ) -> Result<(), MythicError> {
         db.query(
             "DELETE FROM conversation_characters WHERE \
-             conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)",
+             conversation_id = type::record('conversations', $conv_id) AND \
+             character_id = type::record('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -87,8 +89,8 @@ impl ConversationCharacterRepo {
         let talkativeness = talkativeness.clamp(0, 100);
         db.query(
             "UPDATE conversation_characters SET talkativeness = $talk WHERE \
-             conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)",
+             conversation_id = type::record('conversations', $conv_id) AND \
+             character_id = type::record('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -108,8 +110,8 @@ impl ConversationCharacterRepo {
     ) -> Result<(), MythicError> {
         db.query(
             "UPDATE conversation_characters SET role = $role WHERE \
-             conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)",
+             conversation_id = type::record('conversations', $conv_id) AND \
+             character_id = type::record('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))
@@ -127,8 +129,8 @@ impl ConversationCharacterRepo {
     ) -> Result<(), MythicError> {
         db.query(
             "UPDATE conversation_characters SET is_active = $active WHERE \
-             conversation_id = type::thing('conversations', $conv_id) AND \
-             character_id = type::thing('characters', $char_id)",
+             conversation_id = type::record('conversations', $conv_id) AND \
+             character_id = type::record('characters', $char_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("char_id", character_id.to_string()))

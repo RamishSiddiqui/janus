@@ -33,6 +33,7 @@ import type {
   Persona_Serialize as Persona,
   ConnectionTestResult,
   ProfileRefreshResult,
+  BackupFileInfo,
 } from './bindings';
 
 // --- Error Handling ---
@@ -252,6 +253,21 @@ export async function getBackendLogsPage(cursor?: number, limit?: number): Promi
 /** Absolute path to the backend log file, for display/troubleshooting. */
 export async function getBackendLogPath(): Promise<string> {
   return safeInvoke<string>('get_backend_log_path');
+}
+
+/** Exports the entire datastore to a new timestamped backup file. Returns its absolute path. */
+export async function exportDataBackup(): Promise<string> {
+  return safeInvoke<string>('export_data_backup');
+}
+
+/** Imports a `.surql` backup file (from `exportDataBackup` or the automatic rolling backup) into the current datastore. */
+export async function importDataBackup(filePath: string): Promise<void> {
+  return safeInvoke<void>('import_data_backup', { filePath });
+}
+
+/** Lists available backup files, newest first. */
+export async function listDataBackups(): Promise<BackupFileInfo[]> {
+  return safeInvoke<BackupFileInfo[]>('list_data_backups');
 }
 
 export type { ProfileRefreshResult };

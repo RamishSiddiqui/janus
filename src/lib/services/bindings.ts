@@ -609,6 +609,22 @@ export const commands = {
 	 *  going through Export.
 	 */
 	getBackendLogPath: () => typedError<string, MythicError>(__TAURI_INVOKE("get_backend_log_path")),
+	/**
+	 *  Exports the entire datastore to a new timestamped file under
+	 *  `<app_data_dir>/backups/` and returns its absolute path, so the frontend
+	 *  can show it to the user (and offer to reveal it in the file manager).
+	 */
+	exportDataBackup: () => typedError<string, MythicError>(__TAURI_INVOKE("export_data_backup")),
+	/**
+	 *  Imports a `.surql` backup file (produced by [`export_data_backup`] or the
+	 *  automatic rolling backup) into the current datastore. Existing records
+	 *  with the same ID are left as-is by SurrealDB's import (it replays
+	 *  `CREATE`/`UPSERT`-shaped statements, which don't overwrite silently) —
+	 *  this is meant for restoring into a fresh/empty datastore, not merging
+	 *  into one with unrelated existing data.
+	 */
+	importDataBackup: (filePath: string) => typedError<null, MythicError>(__TAURI_INVOKE("import_data_backup", { filePath })),
+	listDataBackups: () => typedError<BackupFileInfo[], MythicError>(__TAURI_INVOKE("list_data_backups")),
 };
 
 /* Types */
@@ -617,6 +633,27 @@ export type AppInfo = {
 	name: string,
 	version: string,
 	description: string,
+};
+
+/**
+ *  Lists available backup files (both manual exports and the automatic
+ *  rolling backup) under `<app_data_dir>/backups/`, newest first.
+ */
+export type BackupFileInfo = {
+	path: string,
+	filename: string,
+	isAuto: boolean,
+	/**
+	 *  RFC 3339 timestamp of the file's last modification — a formatted
+	 *  string, not a raw epoch integer, since specta forbids exporting
+	 *  BigInt-style types (i64/u64) to TypeScript (precision-loss risk).
+	 */
+	modifiedAt: string,
+	/**
+	 *  File size in bytes, as a string for the same BigInt-export reason —
+	 *  a backup file can plausibly exceed u32's ~4GB ceiling.
+	 */
+	sizeBytes: string,
 };
 
 /**

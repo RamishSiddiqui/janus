@@ -54,7 +54,7 @@ pub async fn retry_failed_message(
         MythicError::Validation("User message not found — cannot retry".to_string())
     })?;
 
-    let msg_conv_id = user_msg.conversation_id.id.to_raw();
+    let msg_conv_id = crate::db::value_bridge::record_id_to_string(&user_msg.conversation_id);
     if msg_conv_id != conversation_id || user_msg.role != MessageRole::User {
         return Err(MythicError::Validation(
             "User message not found — cannot retry".to_string(),
@@ -73,7 +73,7 @@ pub async fn retry_failed_message(
     // Delete any empty/failed assistant messages that were children of this user message.
     // No repo method covers this specific pattern, so use raw SurrealQL.
     db.query(
-        "DELETE FROM messages WHERE parent_id = type::thing('messages', $parent_id) AND role = 'assistant' AND (content = '' OR content IS NONE)"
+        "DELETE FROM messages WHERE parent_id = type::record('messages', $parent_id) AND role = 'assistant' AND (content = '' OR content IS NONE)"
     )
     .bind(("parent_id", user_message_id.clone()))
     .await?;
@@ -96,7 +96,10 @@ pub async fn retry_failed_message(
     // badge (saved verbatim under the primary character). See the matching
     // block in `send_message` for the full rationale.
     let conv = ConversationRepo::get(&db, &conversation_id).await?;
-    let conv_character_id: Option<String> = conv.character_id.as_ref().map(|t| t.id.to_raw());
+    let conv_character_id: Option<String> = conv
+        .character_id
+        .as_ref()
+        .map(crate::db::value_bridge::record_id_to_string);
     let conv_chars = ConversationCharacterRepo::list(&db, &conversation_id)
         .await
         .unwrap_or_default();
@@ -109,7 +112,7 @@ pub async fn retry_failed_message(
         }
     }
     for c in conv_chars.iter().filter(|c| c.is_active) {
-        let id = c.character_id.id.to_raw();
+        let id = crate::db::value_bridge::record_id_to_string(&c.character_id);
         if multi_char_pairs.iter().any(|(_, existing)| existing == &id) {
             continue; // already added as the primary above
         }
@@ -174,7 +177,7 @@ pub async fn retry_failed_message(
         None,
     )
     .await?;
-    let assistant_msg_id = assistant_msg.id.id.to_raw();
+    let assistant_msg_id = crate::db::value_bridge::record_id_to_string(&assistant_msg.id);
 
     // Stream or generate
     let use_streaming = streaming.unwrap_or(true);
@@ -381,7 +384,10 @@ pub async fn regenerate_message(
 
     // Walk up through assistant-role ancestors to find the user parent.
     let mut root_user_id: Option<String> = None;
-    let mut walk_id = msg.parent_id.as_ref().map(|t| t.id.to_raw());
+    let mut walk_id = msg
+        .parent_id
+        .as_ref()
+        .map(crate::db::value_bridge::record_id_to_string);
     while let Some(ref pid) = walk_id {
         match MessageRepo::get(&db, pid).await {
             Ok(parent_msg) => {
@@ -390,7 +396,10 @@ pub async fn regenerate_message(
                     break;
                 }
                 turn_ids.push(pid.clone());
-                walk_id = parent_msg.parent_id.as_ref().map(|t| t.id.to_raw());
+                walk_id = parent_msg
+                    .parent_id
+                    .as_ref()
+                    .map(crate::db::value_bridge::record_id_to_string);
             }
             Err(_) => break,
         }
@@ -401,14 +410,15 @@ pub async fn regenerate_message(
     let mut frontier = vec![message_id.clone()];
     while let Some(current_id) = frontier.pop() {
         let mut result = db
-            .query("SELECT * FROM messages WHERE parent_id = type::thing('messages', $id)")
+            .query("SELECT * FROM messages WHERE parent_id = type::record('messages', $id)")
             .bind(("id", current_id))
             .await?;
+        let raw: Vec<surrealdb::types::Value> = result.take(0).unwrap_or_default();
         let children: Vec<crate::models::conversation::Message> =
-            result.take(0).unwrap_or_default();
+            crate::db::value_bridge::from_value_vec(raw).unwrap_or_default();
         for child in children {
             if child.role == MessageRole::Assistant {
-                let child_id = child.id.id.to_raw();
+                let child_id = crate::db::value_bridge::record_id_to_string(&child.id);
                 turn_ids.push(child_id.clone());
                 frontier.push(child_id);
             }

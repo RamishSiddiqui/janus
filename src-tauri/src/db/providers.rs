@@ -17,7 +17,8 @@ pub struct EnabledModelRow {
 /// Internal struct for deserializing enabled_models with the `enabled` flag.
 #[derive(Debug, Clone, serde::Deserialize)]
 struct EnabledModelFull {
-    provider_id: surrealdb::sql::Thing,
+    #[serde(deserialize_with = "crate::models::deserialize_thing")]
+    provider_id: surrealdb::types::RecordId,
     model_id: String,
     model_type: String,
     enabled: bool,
@@ -46,7 +47,7 @@ impl ProviderRepo {
 
         let mut result = db
             .query(
-                "CREATE type::thing('provider_configs', $id) CONTENT {
+                "CREATE type::record('provider_configs', $id) CONTENT {
                     name: $name,
                     provider_type: $ptype,
                     adapter: $adapter,
@@ -58,17 +59,19 @@ impl ProviderRepo {
             .bind(("name", name.to_string()))
             .bind(("ptype", provider_type.to_string()))
             .bind(("adapter", adapter.to_string()))
-            .bind(("config", config))
+            .bind(("config", crate::db::value_bridge::to_surreal_value(config)))
             .bind(("is_default", is_default))
             .await?;
 
-        let created: Option<ProviderConfig> = result.take(0)?;
+        let created: Option<ProviderConfig> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         created.ok_or_else(|| MythicError::DatabaseOp("Failed to create provider".into()))
     }
 
     /// Gets a single provider by ID.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<ProviderConfig, MythicError> {
-        let provider: Option<ProviderConfig> = db.select(("provider_configs", id)).await?;
+        let provider: Option<ProviderConfig> =
+            crate::db::value_bridge::from_value_opt(db.select(("provider_configs", id)).await?)?;
         provider.ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))
     }
 
@@ -82,13 +85,15 @@ impl ProviderRepo {
                 .query("SELECT * FROM provider_configs WHERE provider_type = $ptype ORDER BY is_default DESC, name ASC")
                 .bind(("ptype", ptype.to_string()))
                 .await?;
-            let rows: Vec<ProviderConfig> = result.take(0)?;
+            let rows: Vec<ProviderConfig> =
+                crate::db::value_bridge::from_value_vec(result.take(0)?)?;
             rows
         } else {
             let mut result = db
                 .query("SELECT * FROM provider_configs ORDER BY provider_type, is_default DESC, name ASC")
                 .await?;
-            let rows: Vec<ProviderConfig> = result.take(0)?;
+            let rows: Vec<ProviderConfig> =
+                crate::db::value_bridge::from_value_vec(result.take(0)?)?;
             rows
         };
         Ok(providers)
@@ -121,23 +126,27 @@ impl ProviderRepo {
         }
 
         let query = format!(
-            "UPDATE type::thing('provider_configs', $id) SET {}",
+            "UPDATE type::record('provider_configs', $id) SET {}",
             sets.join(", ")
         );
         bindings.insert("id".into(), serde_json::Value::String(id.to_string()));
 
         let mut result = db
             .query(&query)
-            .bind(serde_json::Value::Object(bindings))
+            .bind(crate::db::value_bridge::to_surreal_value(
+                serde_json::Value::Object(bindings),
+            ))
             .await?;
 
-        let updated: Option<ProviderConfig> = result.take(0)?;
+        let updated: Option<ProviderConfig> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))
     }
 
     /// Deletes a provider by ID.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        let result: Option<ProviderConfig> = db.delete(("provider_configs", id)).await?;
+        let result: Option<ProviderConfig> =
+            crate::db::value_bridge::from_value_opt(db.delete(("provider_configs", id)).await?)?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!("Provider not found: {}", id)));
         }
@@ -159,7 +168,7 @@ impl ProviderRepo {
             .await?;
 
         // Set this one as default
-        db.query("UPDATE type::thing('provider_configs', $id) SET is_default = true")
+        db.query("UPDATE type::record('provider_configs', $id) SET is_default = true")
             .bind(("id", id.to_string()))
             .await?;
 
@@ -175,7 +184,8 @@ impl ProviderRepo {
             .query("SELECT * FROM provider_configs WHERE provider_type = $ptype ORDER BY is_default DESC, name ASC LIMIT 1")
             .bind(("ptype", provider_type.to_string()))
             .await?;
-        let providers: Vec<ProviderConfig> = result.take(0)?;
+        let providers: Vec<ProviderConfig> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(providers.into_iter().next())
     }
 
@@ -201,8 +211,8 @@ impl ProviderRepo {
         // row's `created_at` (and anything else) is left untouched, while a
         // brand-new row still gets it from the schema's `DEFAULT time::now()`.
         db.query(
-            "UPSERT type::thing('enabled_models', $composite_id) MERGE {
-                provider_id: type::thing('provider_configs', $provider_id),
+            "UPSERT type::record('enabled_models', $composite_id) MERGE {
+                provider_id: type::record('provider_configs', $provider_id),
                 model_id: $model_id,
                 model_type: $model_type,
                 enabled: $enabled,
@@ -228,21 +238,21 @@ impl ProviderRepo {
     ) -> Result<Vec<EnabledModelRow>, MythicError> {
         let rows: Vec<EnabledModelFull> = if let Some(pid) = provider_id {
             let mut result = db
-                .query("SELECT * FROM enabled_models WHERE enabled = true AND provider_id = type::thing('provider_configs', $pid)")
+                .query("SELECT * FROM enabled_models WHERE enabled = true AND provider_id = type::record('provider_configs', $pid)")
                 .bind(("pid", pid.to_string()))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         } else {
             let mut result = db
                 .query("SELECT * FROM enabled_models WHERE enabled = true")
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         };
 
         Ok(rows
             .into_iter()
             .map(|r| EnabledModelRow {
-                provider_id: r.provider_id.id.to_raw(),
+                provider_id: crate::db::value_bridge::record_id_to_string(&r.provider_id),
                 model_id: r.model_id,
                 model_type: r.model_type,
             })
@@ -257,13 +267,18 @@ impl ProviderRepo {
         db: &Surreal<Db>,
     ) -> Result<HashMap<(String, String), (bool, String)>, MythicError> {
         let mut result = db.query("SELECT * FROM enabled_models").await?;
-        let rows: Vec<EnabledModelFull> = result.take(0).unwrap_or_default();
+        let raw: Vec<surrealdb::types::Value> = result.take(0).unwrap_or_default();
+        let rows: Vec<EnabledModelFull> =
+            crate::db::value_bridge::from_value_vec(raw).unwrap_or_default();
 
         Ok(rows
             .into_iter()
             .map(|r| {
                 (
-                    (r.provider_id.id.to_raw(), r.model_id),
+                    (
+                        crate::db::value_bridge::record_id_to_string(&r.provider_id),
+                        r.model_id,
+                    ),
                     (r.enabled, r.model_type),
                 )
             })

@@ -217,7 +217,7 @@ pub async fn generate_character_lorebook(
         .await?;
         let updated = LorebookRepo::update(
             &db,
-            &new_entry.id.id.to_raw(),
+            &crate::db::value_bridge::record_id_to_string(&new_entry.id),
             &entry.name,
             entry.keys,
             &entry.content,

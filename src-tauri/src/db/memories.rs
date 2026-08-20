@@ -18,21 +18,21 @@ impl MemoryRepo {
     ) -> Result<Vec<Memory>, MythicError> {
         let memories: Vec<Memory> = if let Some(char_id) = character_id {
             let mut result = db
-                .query("SELECT * FROM memories WHERE character_id = type::thing('characters', $char_id) ORDER BY created_at DESC")
+                .query("SELECT * FROM memories WHERE character_id = type::record('characters', $char_id) ORDER BY created_at DESC")
                 .bind(("char_id", char_id.to_string()))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         } else if let Some(conv_id) = conversation_id {
             let mut result = db
-                .query("SELECT * FROM memories WHERE conversation_id = type::thing('conversations', $conv_id) ORDER BY created_at DESC")
+                .query("SELECT * FROM memories WHERE conversation_id = type::record('conversations', $conv_id) ORDER BY created_at DESC")
                 .bind(("conv_id", conv_id.to_string()))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         } else {
             let mut result = db
                 .query("SELECT * FROM memories ORDER BY created_at DESC LIMIT 100")
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?
         };
 
         Ok(memories)
@@ -50,11 +50,11 @@ impl MemoryRepo {
         character_id: &str,
     ) -> Result<Vec<Memory>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM memories WHERE conversation_id = type::thing('conversations', $conv_id) OR (is_canon = true AND character_id = type::thing('characters', $char_id)) ORDER BY created_at DESC")
+            .query("SELECT * FROM memories WHERE conversation_id = type::record('conversations', $conv_id) OR (is_canon = true AND character_id = type::record('characters', $char_id)) ORDER BY created_at DESC")
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("char_id", character_id.to_string()))
             .await?;
-        let memories: Vec<Memory> = result.take(0)?;
+        let memories: Vec<Memory> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(memories)
     }
 
@@ -69,17 +69,17 @@ impl MemoryRepo {
         let mut result = db
             .query(
                 "SELECT * FROM memories WHERE \
-                    (character_id = type::thing('characters', $char_id) \
-                     AND conversation_id = type::thing('conversations', $conv_id)) \
+                    (character_id = type::record('characters', $char_id) \
+                     AND conversation_id = type::record('conversations', $conv_id)) \
                     OR \
-                    (character_id = type::thing('characters', $char_id) \
+                    (character_id = type::record('characters', $char_id) \
                      AND is_canon = true) \
                  ORDER BY is_canon DESC, created_at DESC",
             )
             .bind(("char_id", character_id.to_string()))
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let memories: Vec<Memory> = result.take(0)?;
+        let memories: Vec<Memory> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(memories)
     }
 
@@ -97,9 +97,9 @@ impl MemoryRepo {
             (Some(char_id), Some(conv_id)) => {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('memories', $id) CONTENT {
-                        character_id: type::thing('characters', $char_id),
-                        conversation_id: type::thing('conversations', $conv_id),
+                        "CREATE type::record('memories', $id) CONTENT {
+                        character_id: type::record('characters', $char_id),
+                        conversation_id: type::record('conversations', $conv_id),
                         content: $content,
                         source: $source,
                     }",
@@ -110,13 +110,13 @@ impl MemoryRepo {
                     .bind(("content", content.to_string()))
                     .bind(("source", source.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             }
             (Some(char_id), None) => {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('memories', $id) CONTENT {
-                        character_id: type::thing('characters', $char_id),
+                        "CREATE type::record('memories', $id) CONTENT {
+                        character_id: type::record('characters', $char_id),
                         content: $content,
                         source: $source,
                     }",
@@ -126,13 +126,13 @@ impl MemoryRepo {
                     .bind(("content", content.to_string()))
                     .bind(("source", source.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             }
             (None, Some(conv_id)) => {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('memories', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                        "CREATE type::record('memories', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         content: $content,
                         source: $source,
                     }",
@@ -142,12 +142,12 @@ impl MemoryRepo {
                     .bind(("content", content.to_string()))
                     .bind(("source", source.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             }
             (None, None) => {
                 let mut result = db
                     .query(
-                        "CREATE type::thing('memories', $id) CONTENT {
+                        "CREATE type::record('memories', $id) CONTENT {
                         content: $content,
                         source: $source,
                     }",
@@ -156,7 +156,7 @@ impl MemoryRepo {
                     .bind(("content", content.to_string()))
                     .bind(("source", source.to_string()))
                     .await?;
-                result.take(0)?
+                crate::db::value_bridge::from_value_opt(result.take(0)?)?
             }
         };
 
@@ -167,12 +167,12 @@ impl MemoryRepo {
     pub async fn update(db: &Surreal<Db>, id: &str, content: &str) -> Result<Memory, MythicError> {
         let mut result = db
             .query(
-                "UPDATE type::thing('memories', $id) SET content = $content, version = version + 1",
+                "UPDATE type::record('memories', $id) SET content = $content, version = version + 1",
             )
             .bind(("id", id.to_string()))
             .bind(("content", content.to_string()))
             .await?;
-        let updated: Option<Memory> = result.take(0)?;
+        let updated: Option<Memory> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))
     }
 
@@ -180,7 +180,7 @@ impl MemoryRepo {
     /// whenever a memory is actually surfaced to the LLM via retrieval, so
     /// frequently-relevant memories accrue a recency signal over time.
     pub async fn bump_access(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        db.query("UPDATE type::thing('memories', $id) SET access_count += 1, last_accessed = time::now()")
+        db.query("UPDATE type::record('memories', $id) SET access_count += 1, last_accessed = time::now()")
             .bind(("id", id.to_string()))
             .await?;
         Ok(())
@@ -195,17 +195,18 @@ impl MemoryRepo {
     ) -> Result<Memory, MythicError> {
         let clamped = importance.clamp(1, 10);
         let mut result = db
-            .query("UPDATE type::thing('memories', $id) SET importance = $importance")
+            .query("UPDATE type::record('memories', $id) SET importance = $importance")
             .bind(("id", id.to_string()))
             .bind(("importance", clamped))
             .await?;
-        let updated: Option<Memory> = result.take(0)?;
+        let updated: Option<Memory> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))
     }
 
     /// Deletes a memory.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        let result: Option<Memory> = db.delete(("memories", id)).await?;
+        let result: Option<Memory> =
+            crate::db::value_bridge::from_value_opt(db.delete(("memories", id)).await?)?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!("Memory not found: {}", id)));
         }
@@ -214,7 +215,8 @@ impl MemoryRepo {
 
     /// Gets a single memory by ID.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<Memory, MythicError> {
-        let memory: Option<Memory> = db.select(("memories", id)).await?;
+        let memory: Option<Memory> =
+            crate::db::value_bridge::from_value_opt(db.select(("memories", id)).await?)?;
         memory.ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))
     }
 
@@ -229,10 +231,10 @@ impl MemoryRepo {
         }
 
         let mut result = db
-            .query("UPDATE type::thing('memories', $id) SET is_canon = true")
+            .query("UPDATE type::record('memories', $id) SET is_canon = true")
             .bind(("id", id.to_string()))
             .await?;
-        let updated: Option<Memory> = result.take(0)?;
+        let updated: Option<Memory> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Memory not found: {}", id)))
     }
 
@@ -255,14 +257,14 @@ impl MemoryRepo {
             let copy_id = uuid::Uuid::new_v4().to_string();
 
             if let Some(ref char_thing) = source.character_id {
-                let char_id_raw = char_thing.id.to_raw();
+                let char_id_raw = crate::db::value_bridge::record_id_to_string(char_thing);
                 db.query(
-                    "CREATE type::thing('memories', $copy_id) CONTENT {
-                        character_id: type::thing('characters', $char_id),
-                        conversation_id: type::thing('conversations', $target_conv_id),
+                    "CREATE type::record('memories', $copy_id) CONTENT {
+                        character_id: type::record('characters', $char_id),
+                        conversation_id: type::record('conversations', $target_conv_id),
                         content: $content,
                         source: 'auto',
-                        parent_id: type::thing('memories', $source_mem_id),
+                        parent_id: type::record('memories', $source_mem_id),
                         version: 1,
                         is_canon: false,
                     }",
@@ -275,11 +277,11 @@ impl MemoryRepo {
                 .await?;
             } else {
                 db.query(
-                    "CREATE type::thing('memories', $copy_id) CONTENT {
-                        conversation_id: type::thing('conversations', $target_conv_id),
+                    "CREATE type::record('memories', $copy_id) CONTENT {
+                        conversation_id: type::record('conversations', $target_conv_id),
                         content: $content,
                         source: 'auto',
-                        parent_id: type::thing('memories', $source_mem_id),
+                        parent_id: type::record('memories', $source_mem_id),
                         version: 1,
                         is_canon: false,
                     }",
@@ -297,11 +299,11 @@ impl MemoryRepo {
         };
 
         // Create the RELATE edge
-        let src_thing = surrealdb::sql::Thing::from(("memories", source_memory_id));
-        let tgt_thing = surrealdb::sql::Thing::from(("conversations", target_conversation_id));
+        let src_thing = surrealdb::types::RecordId::new("memories", source_memory_id);
+        let tgt_thing = surrealdb::types::RecordId::new("conversations", target_conversation_id);
 
         let link: Option<MemoryLink> = if let Some(ref copy_id) = linked_memory_id {
-            let copy_thing = surrealdb::sql::Thing::from(("memories", copy_id.as_str()));
+            let copy_thing = surrealdb::types::RecordId::new("memories", copy_id.as_str());
             let mut result = db
                 .query(
                     "RELATE $src -> memory_link -> $tgt SET
@@ -317,7 +319,7 @@ impl MemoryRepo {
                 .bind(("sync_mode", sync_mode.to_string()))
                 .bind(("copy_thing", copy_thing))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?
         } else {
             let mut result = db
                 .query(
@@ -332,7 +334,7 @@ impl MemoryRepo {
                 .bind(("direction", direction.to_string()))
                 .bind(("sync_mode", sync_mode.to_string()))
                 .await?;
-            result.take(0)?
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?
         };
 
         link.ok_or_else(|| MythicError::DatabaseOp("Failed to create memory link".into()))
@@ -340,7 +342,8 @@ impl MemoryRepo {
 
     /// Removes a memory link (graph edge).
     pub async fn unlink(db: &Surreal<Db>, link_id: &str) -> Result<(), MythicError> {
-        let result: Option<MemoryLink> = db.delete(("memory_link", link_id)).await?;
+        let result: Option<MemoryLink> =
+            crate::db::value_bridge::from_value_opt(db.delete(("memory_link", link_id)).await?)?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Memory link not found: {}",
@@ -365,62 +368,68 @@ impl MemoryRepo {
         }
 
         let mut char_result = db
-            .query("SELECT name FROM type::thing('characters', $char_id)")
+            .query("SELECT name FROM type::record('characters', $char_id)")
             .bind(("char_id", character_id.to_string()))
             .await?;
-        let char_row: Option<CharNameRow> = char_result.take(0)?;
+        let char_row: Option<CharNameRow> =
+            crate::db::value_bridge::from_value_opt(char_result.take(0)?)?;
         let character_name = char_row.map(|r| r.name).ok_or_else(|| {
             MythicError::NotFound(format!("Character not found: {}", character_id))
         })?;
 
         // 2. All memories for this character
         let mut mem_result = db
-            .query("SELECT * FROM memories WHERE character_id = type::thing('characters', $char_id) ORDER BY created_at ASC")
+            .query("SELECT * FROM memories WHERE character_id = type::record('characters', $char_id) ORDER BY created_at ASC")
             .bind(("char_id", character_id.to_string()))
             .await?;
-        let memories: Vec<Memory> = mem_result.take(0)?;
+        let memories: Vec<Memory> = crate::db::value_bridge::from_value_vec(mem_result.take(0)?)?;
 
         // 3. Collect memory IDs for link query
-        let memory_ids: Vec<String> = memories.iter().map(|m| m.id.id.to_raw()).collect();
+        let memory_ids: Vec<String> = memories
+            .iter()
+            .map(|m| crate::db::value_bridge::record_id_to_string(&m.id))
+            .collect();
 
         // 4. All links from these memories
         let links: Vec<MemoryLink> = if memory_ids.is_empty() {
             Vec::new()
         } else {
             // Build Thing values for the IN query
-            let memory_things: Vec<surrealdb::sql::Thing> = memory_ids
+            let memory_things: Vec<surrealdb::types::RecordId> = memory_ids
                 .iter()
-                .map(|id| surrealdb::sql::Thing::from(("memories", id.as_str())))
+                .map(|id| surrealdb::types::RecordId::new("memories", id.as_str()))
                 .collect();
 
             let mut link_result = db
                 .query("SELECT * FROM memory_link WHERE in IN $memory_ids")
                 .bind(("memory_ids", memory_things))
                 .await?;
-            link_result.take(0)?
+            crate::db::value_bridge::from_value_vec(link_result.take(0)?)?
         };
 
         // 5. All conversations for this character
         #[derive(Debug, serde::Deserialize)]
         struct ConvRow {
-            id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            id: surrealdb::types::RecordId,
             title: String,
             #[serde(deserialize_with = "crate::models::deserialize_option_thing")]
-            parent_conversation_id: Option<surrealdb::sql::Thing>,
+            parent_conversation_id: Option<surrealdb::types::RecordId>,
         }
 
         let mut conv_result = db
-            .query("SELECT id, title, parent_conversation_id, updated_at FROM conversations WHERE character_id = type::thing('characters', $char_id) ORDER BY updated_at DESC")
+            .query("SELECT id, title, parent_conversation_id, updated_at FROM conversations WHERE character_id = type::record('characters', $char_id) ORDER BY updated_at DESC")
             .bind(("char_id", character_id.to_string()))
             .await?;
-        let conv_rows: Vec<ConvRow> = conv_result.take(0)?;
+        let conv_rows: Vec<ConvRow> =
+            crate::db::value_bridge::from_value_vec(conv_result.take(0)?)?;
 
         // 6. Count memories per conversation in Rust
         let mut conv_mem_counts: std::collections::HashMap<String, i32> =
             std::collections::HashMap::new();
         for mem in &memories {
             if let Some(ref conv_thing) = mem.conversation_id {
-                let conv_id_raw = conv_thing.id.to_raw();
+                let conv_id_raw = crate::db::value_bridge::record_id_to_string(conv_thing);
                 *conv_mem_counts.entry(conv_id_raw).or_insert(0) += 1;
             }
         }
@@ -428,14 +437,16 @@ impl MemoryRepo {
         let conversations = conv_rows
             .into_iter()
             .map(|row| {
-                let conv_id_raw = row.id.id.to_raw();
+                let conv_id_raw = crate::db::value_bridge::record_id_to_string(&row.id);
                 let memory_count = conv_mem_counts.get(&conv_id_raw).copied().unwrap_or(0);
                 MemoryGraphConversation {
                     id: conv_id_raw,
                     title: row.title,
                     character_id: character_id.to_string(),
                     memory_count,
-                    parent_conversation_id: row.parent_conversation_id.map(|t| t.id.to_raw()),
+                    parent_conversation_id: row
+                        .parent_conversation_id
+                        .map(|t| crate::db::value_bridge::record_id_to_string(&t)),
                 }
             })
             .collect();
@@ -461,12 +472,12 @@ impl MemoryRepo {
     ) -> Result<MemoryGraph, MythicError> {
         // 1. Cast members for this conversation
         let cast = ConversationCharacterRepo::list(db, conversation_id).await?;
-        let char_things: Vec<surrealdb::sql::Thing> =
+        let char_things: Vec<surrealdb::types::RecordId> =
             cast.iter().map(|c| c.character_id.clone()).collect();
         let characters: Vec<MemoryGraphCharacter> = cast
             .iter()
             .map(|c| MemoryGraphCharacter {
-                id: c.character_id.id.to_raw(),
+                id: crate::db::value_bridge::record_id_to_string(&c.character_id),
                 name: c.character_name.clone(),
             })
             .collect();
@@ -501,29 +512,32 @@ impl MemoryRepo {
         // match would silently drop a character's core traits/goals from
         // their own cast graph.
         let mut mem_result = db
-            .query("SELECT * FROM memories WHERE character_id IN $char_ids AND (conversation_id = type::thing('conversations', $conv_id) OR is_canon = true) ORDER BY created_at ASC")
+            .query("SELECT * FROM memories WHERE character_id IN $char_ids AND (conversation_id = type::record('conversations', $conv_id) OR is_canon = true) ORDER BY created_at ASC")
             .bind(("char_ids", char_things.clone()))
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let memories: Vec<Memory> = mem_result.take(0)?;
+        let memories: Vec<Memory> = crate::db::value_bridge::from_value_vec(mem_result.take(0)?)?;
 
         // 3. Collect memory IDs for link query
-        let memory_ids: Vec<String> = memories.iter().map(|m| m.id.id.to_raw()).collect();
+        let memory_ids: Vec<String> = memories
+            .iter()
+            .map(|m| crate::db::value_bridge::record_id_to_string(&m.id))
+            .collect();
 
         // 4. All links from these memories
         let links: Vec<MemoryLink> = if memory_ids.is_empty() {
             Vec::new()
         } else {
-            let memory_things: Vec<surrealdb::sql::Thing> = memory_ids
+            let memory_things: Vec<surrealdb::types::RecordId> = memory_ids
                 .iter()
-                .map(|id| surrealdb::sql::Thing::from(("memories", id.as_str())))
+                .map(|id| surrealdb::types::RecordId::new("memories", id.as_str()))
                 .collect();
 
             let mut link_result = db
                 .query("SELECT * FROM memory_link WHERE in IN $memory_ids")
                 .bind(("memory_ids", memory_things))
                 .await?;
-            link_result.take(0)?
+            crate::db::value_bridge::from_value_vec(link_result.take(0)?)?
         };
 
         // 5. Just this conversation (kept as a list — and the query still
@@ -532,24 +546,26 @@ impl MemoryRepo {
         // reshaping anything downstream).
         #[derive(Debug, serde::Deserialize)]
         struct ConvRow {
-            id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            id: surrealdb::types::RecordId,
             title: String,
             #[serde(deserialize_with = "crate::models::deserialize_option_thing")]
-            parent_conversation_id: Option<surrealdb::sql::Thing>,
+            parent_conversation_id: Option<surrealdb::types::RecordId>,
         }
 
         let mut conv_result = db
-            .query("SELECT id, title, parent_conversation_id, updated_at FROM conversations WHERE id = type::thing('conversations', $conv_id) ORDER BY updated_at DESC")
+            .query("SELECT id, title, parent_conversation_id, updated_at FROM conversations WHERE id = type::record('conversations', $conv_id) ORDER BY updated_at DESC")
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let conv_rows: Vec<ConvRow> = conv_result.take(0)?;
+        let conv_rows: Vec<ConvRow> =
+            crate::db::value_bridge::from_value_vec(conv_result.take(0)?)?;
 
         // 6. Count memories per conversation in Rust
         let mut conv_mem_counts: std::collections::HashMap<String, i32> =
             std::collections::HashMap::new();
         for mem in &memories {
             if let Some(ref conv_thing) = mem.conversation_id {
-                let conv_id_raw = conv_thing.id.to_raw();
+                let conv_id_raw = crate::db::value_bridge::record_id_to_string(conv_thing);
                 *conv_mem_counts.entry(conv_id_raw).or_insert(0) += 1;
             }
         }
@@ -558,14 +574,16 @@ impl MemoryRepo {
         let conversations = conv_rows
             .into_iter()
             .map(|row| {
-                let conv_id_raw = row.id.id.to_raw();
+                let conv_id_raw = crate::db::value_bridge::record_id_to_string(&row.id);
                 let memory_count = conv_mem_counts.get(&conv_id_raw).copied().unwrap_or(0);
                 MemoryGraphConversation {
                     id: conv_id_raw,
                     title: row.title,
                     character_id: primary.map(|p| p.id.clone()).unwrap_or_default(),
                     memory_count,
-                    parent_conversation_id: row.parent_conversation_id.map(|t| t.id.to_raw()),
+                    parent_conversation_id: row
+                        .parent_conversation_id
+                        .map(|t| crate::db::value_bridge::record_id_to_string(&t)),
                 }
             })
             .collect();

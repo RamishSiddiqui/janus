@@ -62,7 +62,7 @@ pub async fn run_pending(db: &Surreal<Db>) -> Result<(), MythicError> {
     .map_err(|e| MythicError::DatabaseOp(format!("schema:_migrations: {}", e)))?;
 
     let mut result = db.query("SELECT VALUE version FROM _migrations").await?;
-    let applied: Vec<i64> = result.take(0)?;
+    let applied: Vec<i64> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
     let applied: std::collections::HashSet<i64> = applied.into_iter().collect();
 
     for m in MIGRATIONS {

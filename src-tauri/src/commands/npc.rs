@@ -50,7 +50,7 @@ pub async fn list_conversation_npcs(
     let npc_ids: Vec<String> = cast
         .iter()
         .filter(|c| c.role == "npc" || c.role == "transient")
-        .map(|c| c.character_id.id.to_raw())
+        .map(|c| crate::db::value_bridge::record_id_to_string(&c.character_id))
         .collect();
 
     let mut npcs = Vec::with_capacity(npc_ids.len());
@@ -161,31 +161,40 @@ async fn linked_conversation_ids(
 
     #[derive(serde::Deserialize)]
     struct ConvIdRow {
-        conversation_id: surrealdb::sql::Thing,
+        #[serde(deserialize_with = "crate::models::deserialize_thing")]
+        conversation_id: surrealdb::types::RecordId,
     }
     if let Ok(mut result) = db
-        .query("SELECT conversation_id FROM conversation_characters WHERE character_id = type::thing('characters', $char_id)")
+        .query("SELECT conversation_id FROM conversation_characters WHERE character_id = type::record('characters', $char_id)")
         .bind(("char_id", character_id.to_string()))
         .await
     {
-        if let Ok(rows) = result.take::<Vec<ConvIdRow>>(0) {
-            ids.extend(rows.into_iter().map(|r| r.conversation_id.id.to_raw()));
+        if let Ok(raw) = result.take::<Vec<surrealdb::types::Value>>(0) {
+            if let Ok(rows) = crate::db::value_bridge::from_value_vec::<ConvIdRow>(raw) {
+                ids.extend(rows.into_iter().map(|r| crate::db::value_bridge::record_id_to_string(&r.conversation_id)));
+            }
         }
     }
 
     #[derive(serde::Deserialize)]
     struct ConvPrimaryRow {
-        id: surrealdb::sql::Thing,
+        #[serde(deserialize_with = "crate::models::deserialize_thing")]
+        id: surrealdb::types::RecordId,
     }
     if let Ok(mut result) = db
         .query(
-            "SELECT id FROM conversations WHERE character_id = type::thing('characters', $char_id)",
+            "SELECT id FROM conversations WHERE character_id = type::record('characters', $char_id)",
         )
         .bind(("char_id", character_id.to_string()))
         .await
     {
-        if let Ok(rows) = result.take::<Vec<ConvPrimaryRow>>(0) {
-            ids.extend(rows.into_iter().map(|r| r.id.id.to_raw()));
+        if let Ok(raw) = result.take::<Vec<surrealdb::types::Value>>(0) {
+            if let Ok(rows) = crate::db::value_bridge::from_value_vec::<ConvPrimaryRow>(raw) {
+                ids.extend(
+                    rows.into_iter()
+                        .map(|r| crate::db::value_bridge::record_id_to_string(&r.id)),
+                );
+            }
         }
     }
 
@@ -268,7 +277,7 @@ pub async fn gather_character_dialogue(
     let query_result = db
         .query(
             "SELECT role, content, character_name, created_at FROM messages \
-             WHERE conversation_id = type::thing('conversations', $conv_id) \
+             WHERE conversation_id = type::record('conversations', $conv_id) \
              ORDER BY created_at DESC LIMIT 200",
         )
         .bind(("conv_id", conversation_id.to_string()))
@@ -281,10 +290,13 @@ pub async fn gather_character_dialogue(
         );
     }
     if let Ok(mut result) = query_result {
-        let take_result = result.take::<Vec<MsgRow>>(0);
-        if let Err(ref e) = take_result {
+        let raw_take_result = result.take::<Vec<surrealdb::types::Value>>(0);
+        if let Err(ref e) = raw_take_result {
             tracing::warn!("[gather_character_dialogue] dialogue row deserialize failed for conversation {}: {}", conversation_id, e);
         }
+        let take_result = raw_take_result
+            .map_err(Into::into)
+            .and_then(crate::db::value_bridge::from_value_vec::<MsgRow>);
         if let Ok(all_rows) = take_result {
             info!(
                 "[gather_character_dialogue] dialogue query returned {} row(s) for conversation {}",
@@ -362,8 +374,11 @@ pub async fn perform_profile_refresh(
     let mut existing_cast: Vec<(String, String)> = Vec::new();
     if let Ok(conv) = ConversationRepo::get(db, conversation_id).await {
         if let Some(pc_id) = conv.character_id {
-            if pc_id.id.to_raw() != character_id {
-                if let Ok(pc) = CharacterRepo::get(db, &pc_id.id.to_raw()).await {
+            if crate::db::value_bridge::record_id_to_string(&pc_id) != character_id {
+                if let Ok(pc) =
+                    CharacterRepo::get(db, &crate::db::value_bridge::record_id_to_string(&pc_id))
+                        .await
+                {
                     let desc = pc
                         .data
                         .get("description")
@@ -376,7 +391,7 @@ pub async fn perform_profile_refresh(
         }
     }
     for member in &cast {
-        let member_id = member.character_id.id.to_raw();
+        let member_id = crate::db::value_bridge::record_id_to_string(&member.character_id);
         if member_id == character_id {
             continue;
         }

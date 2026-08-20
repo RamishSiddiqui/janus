@@ -57,10 +57,6 @@ jobs:
           # unic-ucd-ident, "unmaintained"): pulled in transitively via
           # tauri-utils -> urlpattern. No replacement shipped upstream yet.
           #
-          # RUSTSEC-2025-0141 (bincode 1.x "unmaintained"): pulled in
-          # transitively via surrealdb/surrealdb-core, not a direct dep —
-          # can't bump independently of a surrealdb upgrade.
-          #
           # RUSTSEC-2024-0436 (paste "unmaintained"): transitive via
           # image -> exr -> pulp, a proc-macro used only at compile time.
           #
@@ -74,13 +70,24 @@ jobs:
           # entry (via an orphaned heapless 0.7.17/rstar 0.9-0.11 record
           # that nothing depends on; the real rstar in use is 0.12.2). Drop
           # this ignore once a `cargo update` prunes the lockfile.
+          #
+          # RUSTSEC-2023-0071 (rsa "Marvin Attack" timing sidechannel): new
+          # as of the surrealdb 2.6.5 -> 3.2.4 bump. Reachable via
+          # surrealdb-core -> jsonwebtoken -> rsa (confirmed with `cargo
+          # tree -i rsa --target all`) — surrealdb-core's JWT/auth stack, an
+          # unconditional dependency regardless of Janus's enabled features
+          # (kv-rocksdb only, no remote/auth usage). No patched version
+          # exists upstream (`"patched":[]` in the advisory) — a full
+          # constant-time rewrite is still in progress. Revisit once either
+          # surrealdb-core updates its jsonwebtoken/rsa dependency or a
+          # patched rsa release ships.
           ignore: >-
             RUSTSEC-2026-0235,RUSTSEC-2024-0411,RUSTSEC-2024-0412,RUSTSEC-2024-0413,
             RUSTSEC-2024-0414,RUSTSEC-2024-0415,RUSTSEC-2024-0416,RUSTSEC-2024-0417,
             RUSTSEC-2024-0418,RUSTSEC-2024-0419,RUSTSEC-2024-0420,RUSTSEC-2024-0429,
             RUSTSEC-2025-0075,RUSTSEC-2025-0080,RUSTSEC-2025-0081,RUSTSEC-2025-0098,
-            RUSTSEC-2025-0100,RUSTSEC-2025-0141,RUSTSEC-2024-0436,RUSTSEC-2024-0370,
-            RUSTSEC-2023-0089
+            RUSTSEC-2025-0100,RUSTSEC-2024-0436,RUSTSEC-2024-0370,
+            RUSTSEC-2023-0089,RUSTSEC-2023-0071
 
   npm-audit:
     runs-on: ubuntu-latest

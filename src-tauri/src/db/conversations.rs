@@ -21,13 +21,13 @@ impl ConversationRepo {
 
         let mut fields = vec!["title: $title".to_string()];
         if character_id.is_some() {
-            fields.push("character_id: type::thing('characters', $char_id)".to_string());
+            fields.push("character_id: type::record('characters', $char_id)".to_string());
         }
         if persona_id.is_some() {
-            fields.push("persona_id: type::thing('personas', $persona_id)".to_string());
+            fields.push("persona_id: type::record('personas', $persona_id)".to_string());
         }
         let query_str = format!(
-            "CREATE type::thing('conversations', $id) CONTENT {{ {} }}",
+            "CREATE type::record('conversations', $id) CONTENT {{ {} }}",
             fields.join(", ")
         );
 
@@ -42,7 +42,7 @@ impl ConversationRepo {
             q = q.bind(("persona_id", pid.to_string()));
         }
         let mut result = q.await?;
-        let conv: Option<Conversation> = result.take(0)?;
+        let conv: Option<Conversation> = crate::db::value_bridge::from_value_opt(result.take(0)?)?;
 
         conv.ok_or_else(|| MythicError::DatabaseOp("Failed to create conversation".into()))
     }
@@ -54,7 +54,8 @@ impl ConversationRepo {
     /// should treat a trashed conversation as gone, the same as list()/
     /// count() already do, not silently keep it fully usable.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<Conversation, MythicError> {
-        let conversation: Option<Conversation> = db.select(("conversations", id)).await?;
+        let conversation: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(db.select(("conversations", id)).await?)?;
         let conversation = conversation
             .ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))?;
         if conversation.deleted_at.is_some() {
@@ -78,7 +79,8 @@ impl ConversationRepo {
             .bind(("limit", limit))
             .bind(("offset", offset))
             .await?;
-        let conversations: Vec<Conversation> = result.take(0)?;
+        let conversations: Vec<Conversation> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(conversations)
     }
 
@@ -88,7 +90,8 @@ impl ConversationRepo {
             .query("SELECT count() FROM conversations WHERE deleted_at IS NONE GROUP ALL")
             .await?;
         // SurrealDB returns [{ count: N }] from GROUP ALL
-        let count_row: Option<serde_json::Value> = result.take(0)?;
+        let count_row: Option<serde_json::Value> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         let count = count_row
             .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
             .unwrap_or(0);
@@ -103,9 +106,10 @@ impl ConversationRepo {
         // cast rows, ...) — retried on a transaction conflict rather than
         // failing silently when the user deletes several conversations in
         // quick succession. See `retry_on_conflict`.
-        let result: Option<Conversation> =
+        let result: Option<Conversation> = crate::db::value_bridge::from_value_opt(
             crate::error::retry_on_conflict(|| async { db.delete(("conversations", id)).await })
-                .await?;
+                .await?,
+        )?;
         if result.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -122,20 +126,22 @@ impl ConversationRepo {
     /// reloaded before the timer fired.
     pub async fn trash(db: &Surreal<Db>, id: &str) -> Result<Conversation, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('conversations', $id) SET deleted_at = time::now()")
+            .query("UPDATE type::record('conversations', $id) SET deleted_at = time::now()")
             .bind(("id", id.to_string()))
             .await?;
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))
     }
 
     /// Restores a trashed conversation.
     pub async fn restore(db: &Surreal<Db>, id: &str) -> Result<Conversation, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('conversations', $id) SET deleted_at = NONE")
+            .query("UPDATE type::record('conversations', $id) SET deleted_at = NONE")
             .bind(("id", id.to_string()))
             .await?;
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))
     }
 
@@ -146,7 +152,8 @@ impl ConversationRepo {
                 "SELECT * FROM conversations WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC",
             )
             .await?;
-        let conversations: Vec<Conversation> = result.take(0)?;
+        let conversations: Vec<Conversation> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(conversations)
     }
 
@@ -162,17 +169,19 @@ impl ConversationRepo {
     ) -> Result<Vec<Message>, MythicError> {
         // Strategy 1: standard conversation_id query
         let mut result = db
-            .query("SELECT * FROM messages WHERE conversation_id = type::thing('conversations', $conv_id) ORDER BY created_at ASC")
+            .query("SELECT * FROM messages WHERE conversation_id = type::record('conversations', $conv_id) ORDER BY created_at ASC")
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
-        let mut messages: Vec<Message> = result.take(0)?;
+        let mut messages: Vec<Message> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
 
         // Strategy 2: walk the branch from active_message_id to catch missing messages
         let conv = Self::get(db, conversation_id).await?;
         if let Some(ref active_msg_thing) = conv.active_message_id {
-            let active_id = active_msg_thing.id.to_raw();
-            let known_ids: std::collections::HashSet<String> =
-                messages.iter().map(|m| m.id.id.to_raw()).collect();
+            let active_id = crate::db::value_bridge::record_id_to_string(active_msg_thing);
+            let known_ids: std::collections::HashSet<String> = messages
+                .iter()
+                .map(|m| crate::db::value_bridge::record_id_to_string(&m.id))
+                .collect();
 
             // Walk backward from active_message_id following parent_id chain
             let mut current_id = Some(active_id);
@@ -187,12 +196,17 @@ impl ConversationRepo {
 
                 if !known_ids.contains(id) {
                     // This message is in the branch but wasn't returned by conv_id query
-                    let msg: Option<Message> = db.select(("messages", id.as_str())).await?;
+                    let msg: Option<Message> = crate::db::value_bridge::from_value_opt(
+                        db.select(("messages", id.as_str())).await?,
+                    )?;
                     if let Some(m) = msg {
-                        current_id = m.parent_id.as_ref().map(|t| t.id.to_raw());
+                        current_id = m
+                            .parent_id
+                            .as_ref()
+                            .map(crate::db::value_bridge::record_id_to_string);
                         info!(
                             "[get_messages] Recovered missing message {} (role={:?}, char={:?}) via branch walk",
-                            m.id.id.to_raw(), m.role, m.character_name
+                            crate::db::value_bridge::record_id_to_string(&m.id), m.role, m.character_name
                         );
                         missing.push(m);
                     } else {
@@ -200,8 +214,14 @@ impl ConversationRepo {
                     }
                 } else {
                     // Message exists in the query results — follow its parent
-                    if let Some(existing) = messages.iter().find(|m| m.id.id.to_raw() == *id) {
-                        current_id = existing.parent_id.as_ref().map(|t| t.id.to_raw());
+                    if let Some(existing) = messages
+                        .iter()
+                        .find(|m| crate::db::value_bridge::record_id_to_string(&m.id) == *id)
+                    {
+                        current_id = existing
+                            .parent_id
+                            .as_ref()
+                            .map(crate::db::value_bridge::record_id_to_string);
                     } else {
                         break;
                     }
@@ -230,11 +250,12 @@ impl ConversationRepo {
         message_id: &str,
     ) -> Result<(), MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('conversations', $conv_id) SET active_message_id = type::thing('messages', $msg_id), updated_at = time::now()")
+            .query("UPDATE type::record('conversations', $conv_id) SET active_message_id = type::record('messages', $msg_id), updated_at = time::now()")
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("msg_id", message_id.to_string()))
             .await?;
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         if updated.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -253,16 +274,17 @@ impl ConversationRepo {
     ) -> Result<(), MythicError> {
         let mut result = match preset_id {
             Some(pid) => db
-                .query("UPDATE type::thing('conversations', $conv_id) SET image_preset_id = type::thing('image_presets', $preset_id), updated_at = time::now()")
+                .query("UPDATE type::record('conversations', $conv_id) SET image_preset_id = type::record('image_presets', $preset_id), updated_at = time::now()")
                 .bind(("conv_id", conversation_id.to_string()))
                 .bind(("preset_id", pid.to_string()))
                 .await?,
             None => db
-                .query("UPDATE type::thing('conversations', $conv_id) SET image_preset_id = NONE, updated_at = time::now()")
+                .query("UPDATE type::record('conversations', $conv_id) SET image_preset_id = NONE, updated_at = time::now()")
                 .bind(("conv_id", conversation_id.to_string()))
                 .await?,
         };
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         if updated.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -281,16 +303,17 @@ impl ConversationRepo {
     ) -> Result<(), MythicError> {
         let mut result = match persona_id {
             Some(pid) => db
-                .query("UPDATE type::thing('conversations', $conv_id) SET persona_id = type::thing('personas', $persona_id), updated_at = time::now()")
+                .query("UPDATE type::record('conversations', $conv_id) SET persona_id = type::record('personas', $persona_id), updated_at = time::now()")
                 .bind(("conv_id", conversation_id.to_string()))
                 .bind(("persona_id", pid.to_string()))
                 .await?,
             None => db
-                .query("UPDATE type::thing('conversations', $conv_id) SET persona_id = NONE, updated_at = time::now()")
+                .query("UPDATE type::record('conversations', $conv_id) SET persona_id = NONE, updated_at = time::now()")
                 .bind(("conv_id", conversation_id.to_string()))
                 .await?,
         };
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         if updated.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -307,11 +330,12 @@ impl ConversationRepo {
         title: &str,
     ) -> Result<Conversation, MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('conversations', $id) SET title = $title, updated_at = time::now()")
+            .query("UPDATE type::record('conversations', $id) SET title = $title, updated_at = time::now()")
             .bind(("id", id.to_string()))
             .bind(("title", title.to_string()))
             .await?;
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Conversation not found: {}", id)))
     }
 
@@ -322,11 +346,12 @@ impl ConversationRepo {
         scope: &str,
     ) -> Result<(), MythicError> {
         let mut result = db
-            .query("UPDATE type::thing('conversations', $conv_id) SET memory_scope = $scope, updated_at = time::now()")
+            .query("UPDATE type::record('conversations', $conv_id) SET memory_scope = $scope, updated_at = time::now()")
             .bind(("conv_id", conversation_id.to_string()))
             .bind(("scope", scope.to_string()))
             .await?;
-        let updated: Option<Conversation> = result.take(0)?;
+        let updated: Option<Conversation> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         if updated.is_none() {
             return Err(MythicError::NotFound(format!(
                 "Conversation not found: {}",
@@ -353,21 +378,25 @@ impl ConversationRepo {
         // 2. Fetch all messages in parent conversation
         #[derive(Debug, Clone, serde::Deserialize)]
         struct MsgRow {
-            id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            id: surrealdb::types::RecordId,
             role: String,
             content: String,
-            parent_id: Option<surrealdb::sql::Thing>,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            parent_id: Option<surrealdb::types::RecordId>,
         }
 
         let mut msg_result = db
-            .query("SELECT id, role, content, parent_id FROM messages WHERE conversation_id = type::thing('conversations', $conv_id)")
+            .query("SELECT id, role, content, parent_id FROM messages WHERE conversation_id = type::record('conversations', $conv_id)")
             .bind(("conv_id", parent_id.to_string()))
             .await?;
-        let all_msgs: Vec<MsgRow> = msg_result.take(0)?;
+        let all_msgs: Vec<MsgRow> = crate::db::value_bridge::from_value_vec(msg_result.take(0)?)?;
 
         // Build lookup by raw ID string
-        let by_id: std::collections::HashMap<String, &MsgRow> =
-            all_msgs.iter().map(|m| (m.id.id.to_raw(), m)).collect();
+        let by_id: std::collections::HashMap<String, &MsgRow> = all_msgs
+            .iter()
+            .map(|m| (crate::db::value_bridge::record_id_to_string(&m.id), m))
+            .collect();
 
         // Walk backward from branch point to root
         let mut path_ids: Vec<String> = Vec::new();
@@ -379,7 +408,10 @@ impl ConversationRepo {
             }
             visited.insert(id.clone());
             path_ids.push(id.clone());
-            current = by_id[&id].parent_id.as_ref().map(|t| t.id.to_raw());
+            current = by_id[&id]
+                .parent_id
+                .as_ref()
+                .map(crate::db::value_bridge::record_id_to_string);
         }
         path_ids.reverse(); // now root → branch_point
 
@@ -388,16 +420,19 @@ impl ConversationRepo {
         let title = title.unwrap_or(&parent.title);
 
         // Extract character_id raw string if present
-        let char_id_str = parent.character_id.as_ref().map(|t| t.id.to_raw());
+        let char_id_str = parent
+            .character_id
+            .as_ref()
+            .map(crate::db::value_bridge::record_id_to_string);
 
         if let Some(ref char_id) = char_id_str {
             db.query(
-                "CREATE type::thing('conversations', $id) CONTENT {
+                "CREATE type::record('conversations', $id) CONTENT {
                     title: $title,
-                    character_id: type::thing('characters', $char_id),
+                    character_id: type::record('characters', $char_id),
                     memory_scope: $scope,
-                    parent_conversation_id: type::thing('conversations', $parent_id),
-                    branch_point_message_id: type::thing('messages', $branch_msg_id),
+                    parent_conversation_id: type::record('conversations', $parent_id),
+                    branch_point_message_id: type::record('messages', $branch_msg_id),
                 }",
             )
             .bind(("id", new_conv_id.clone()))
@@ -409,11 +444,11 @@ impl ConversationRepo {
             .await?;
         } else {
             db.query(
-                "CREATE type::thing('conversations', $id) CONTENT {
+                "CREATE type::record('conversations', $id) CONTENT {
                     title: $title,
                     memory_scope: $scope,
-                    parent_conversation_id: type::thing('conversations', $parent_id),
-                    branch_point_message_id: type::thing('messages', $branch_msg_id),
+                    parent_conversation_id: type::record('conversations', $parent_id),
+                    branch_point_message_id: type::record('messages', $branch_msg_id),
                 }",
             )
             .bind(("id", new_conv_id.clone()))
@@ -435,16 +470,16 @@ impl ConversationRepo {
             let new_parent_id = msg
                 .parent_id
                 .as_ref()
-                .and_then(|pid| old_to_new.get(&pid.id.to_raw()))
+                .and_then(|pid| old_to_new.get(&crate::db::value_bridge::record_id_to_string(pid)))
                 .cloned();
 
             if let Some(ref new_pid) = new_parent_id {
                 db.query(
-                    "CREATE type::thing('messages', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                    "CREATE type::record('messages', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         role: $role,
                         content: $content,
-                        parent_id: type::thing('messages', $parent_id),
+                        parent_id: type::record('messages', $parent_id),
                     }",
                 )
                 .bind(("id", new_msg_id.clone()))
@@ -455,8 +490,8 @@ impl ConversationRepo {
                 .await?;
             } else {
                 db.query(
-                    "CREATE type::thing('messages', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                    "CREATE type::record('messages', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         role: $role,
                         content: $content,
                     }",
@@ -474,7 +509,7 @@ impl ConversationRepo {
 
         // 5. Set active_message_id to the last copied message
         if !last_new_id.is_empty() {
-            db.query("UPDATE type::thing('conversations', $conv_id) SET active_message_id = type::thing('messages', $msg_id), updated_at = time::now()")
+            db.query("UPDATE type::record('conversations', $conv_id) SET active_message_id = type::record('messages', $msg_id), updated_at = time::now()")
                 .bind(("conv_id", new_conv_id.clone()))
                 .bind(("msg_id", last_new_id))
                 .await?;
@@ -483,31 +518,34 @@ impl ConversationRepo {
         // 6. Copy memories from parent conversation → new conversation
         #[derive(Debug, Clone, serde::Deserialize)]
         struct MemRow {
-            id: surrealdb::sql::Thing,
-            character_id: Option<surrealdb::sql::Thing>,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            id: surrealdb::types::RecordId,
+            #[serde(default, deserialize_with = "crate::models::deserialize_option_thing")]
+            character_id: Option<surrealdb::types::RecordId>,
             content: String,
         }
 
         let mut mem_result = db
-            .query("SELECT id, character_id, content FROM memories WHERE conversation_id = type::thing('conversations', $conv_id)")
+            .query("SELECT id, character_id, content FROM memories WHERE conversation_id = type::record('conversations', $conv_id)")
             .bind(("conv_id", parent_id.to_string()))
             .await?;
-        let parent_mems: Vec<MemRow> = mem_result.take(0)?;
+        let parent_mems: Vec<MemRow> =
+            crate::db::value_bridge::from_value_vec(mem_result.take(0)?)?;
 
         for mem in &parent_mems {
             let copy_id = uuid::Uuid::new_v4().to_string();
-            let source_mem_id = mem.id.id.to_raw();
+            let source_mem_id = crate::db::value_bridge::record_id_to_string(&mem.id);
 
             // Create a copy of the memory in the new conversation
             if let Some(ref char_thing) = mem.character_id {
-                let char_id_raw = char_thing.id.to_raw();
+                let char_id_raw = crate::db::value_bridge::record_id_to_string(char_thing);
                 db.query(
-                    "CREATE type::thing('memories', $id) CONTENT {
-                        character_id: type::thing('characters', $char_id),
-                        conversation_id: type::thing('conversations', $conv_id),
+                    "CREATE type::record('memories', $id) CONTENT {
+                        character_id: type::record('characters', $char_id),
+                        conversation_id: type::record('conversations', $conv_id),
                         content: $content,
                         source: 'auto',
-                        parent_id: type::thing('memories', $parent_mem_id),
+                        parent_id: type::record('memories', $parent_mem_id),
                         version: 1,
                         is_canon: false,
                     }",
@@ -520,11 +558,11 @@ impl ConversationRepo {
                 .await?;
             } else {
                 db.query(
-                    "CREATE type::thing('memories', $id) CONTENT {
-                        conversation_id: type::thing('conversations', $conv_id),
+                    "CREATE type::record('memories', $id) CONTENT {
+                        conversation_id: type::record('conversations', $conv_id),
                         content: $content,
                         source: 'auto',
-                        parent_id: type::thing('memories', $parent_mem_id),
+                        parent_id: type::record('memories', $parent_mem_id),
                         version: 1,
                         is_canon: false,
                     }",
@@ -537,11 +575,11 @@ impl ConversationRepo {
             }
 
             // Create the memory_link graph edge via RELATE
-            db.query("RELATE type::thing('memories', $source_mem_id) -> memory_link -> type::thing('conversations', $conv_id) SET
+            db.query("RELATE type::record('memories', $source_mem_id) -> memory_link -> type::record('conversations', $conv_id) SET
                     link_type = 'copy',
                     direction = 'one_way',
                     sync_mode = 'auto',
-                    linked_memory_id = type::thing('memories', $copy_id)")
+                    linked_memory_id = type::record('memories', $copy_id)")
                 .bind(("source_mem_id", source_mem_id))
                 .bind(("conv_id", new_conv_id.clone()))
                 .bind(("copy_id", copy_id))
@@ -592,8 +630,10 @@ impl ConversationRepo {
 
         #[derive(Debug, serde::Deserialize)]
         struct SearchRow {
-            message_id: surrealdb::sql::Thing,
-            conversation_id: surrealdb::sql::Thing,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            message_id: surrealdb::types::RecordId,
+            #[serde(deserialize_with = "crate::models::deserialize_thing")]
+            conversation_id: surrealdb::types::RecordId,
             role: String,
             content: String,
             snippet: Option<String>,
@@ -602,7 +642,7 @@ impl ConversationRepo {
             created_at: String,
         }
 
-        let rows: Vec<SearchRow> = result.take(0)?;
+        let rows: Vec<SearchRow> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
 
         Ok(rows
             .into_iter()
@@ -614,8 +654,10 @@ impl ConversationRepo {
                     _ => MessageRole::User,
                 };
                 SearchResult {
-                    message_id: row.message_id.id.to_raw(),
-                    conversation_id: row.conversation_id.id.to_raw(),
+                    message_id: crate::db::value_bridge::record_id_to_string(&row.message_id),
+                    conversation_id: crate::db::value_bridge::record_id_to_string(
+                        &row.conversation_id,
+                    ),
                     role,
                     content: row.content,
                     snippet: row.snippet.unwrap_or_default(),

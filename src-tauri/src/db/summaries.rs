@@ -16,13 +16,14 @@ impl SummaryRepo {
         let mut result = db
             .query(
                 "SELECT * FROM conversation_summaries \
-                 WHERE conversation_id = type::thing('conversations', $conv_id) \
+                 WHERE conversation_id = type::record('conversations', $conv_id) \
                  LIMIT 1",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
 
-        let summaries: Vec<ConversationSummary> = result.take(0)?;
+        let summaries: Vec<ConversationSummary> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(summaries.into_iter().next())
     }
 
@@ -38,17 +39,17 @@ impl SummaryRepo {
         window_start_message_id: Option<&str>,
     ) -> Result<(), MythicError> {
         let window_start_thing =
-            window_start_message_id.map(|id| surrealdb::sql::Thing::from(("messages", id)));
+            window_start_message_id.map(|id| surrealdb::types::RecordId::new("messages", id));
 
         db.query(
             "UPSERT conversation_summaries SET \
-                conversation_id = type::thing('conversations', $conv_id), \
+                conversation_id = type::record('conversations', $conv_id), \
                 summary_text = $text, \
                 covered_message_count = $count, \
                 token_count = $tokens, \
                 window_start_message_id = $window_start, \
                 updated_at = time::now() \
-             WHERE conversation_id = type::thing('conversations', $conv_id)",
+             WHERE conversation_id = type::record('conversations', $conv_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .bind(("text", summary_text.to_string()))
@@ -65,7 +66,7 @@ impl SummaryRepo {
     pub async fn delete(db: &Surreal<Db>, conversation_id: &str) -> Result<(), MythicError> {
         db.query(
             "DELETE FROM conversation_summaries \
-             WHERE conversation_id = type::thing('conversations', $conv_id)",
+             WHERE conversation_id = type::record('conversations', $conv_id)",
         )
         .bind(("conv_id", conversation_id.to_string()))
         .await?;

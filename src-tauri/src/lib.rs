@@ -196,6 +196,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::logs::get_backend_logs,
         commands::logs::get_backend_logs_page,
         commands::logs::get_backend_log_path,
+        commands::data_backup::export_data_backup,
+        commands::data_backup::import_data_backup,
+        commands::data_backup::list_data_backups,
     ])
 }
 
@@ -317,6 +320,19 @@ pub fn run() {
             let db =
                 tauri::async_runtime::block_on(async { db::init_database(&app_data_dir).await })
                     .expect("Failed to initialize database");
+
+            // Rolling automatic backup — cheap insurance so a recent, portable
+            // export always exists on disk without requiring the user to ever
+            // touch Settings > Data > Export. Spawned rather than awaited
+            // inline so a large datastore doesn't delay app startup; failure
+            // is logged, never fatal (see db::backup::run_auto_backup).
+            {
+                let backup_db = db.clone();
+                let backup_data_dir = app_data_dir.clone();
+                tauri::async_runtime::spawn(async move {
+                    db::backup::run_auto_backup(&backup_db, &backup_data_dir).await;
+                });
+            }
 
             // Copy bundled seed avatars to app data dir if not already present
             let avatars_dest = app_data_dir.join("avatars");
@@ -518,6 +534,9 @@ pub fn run() {
             commands::logs::get_backend_logs,
             commands::logs::get_backend_logs_page,
             commands::logs::get_backend_log_path,
+            commands::data_backup::export_data_backup,
+            commands::data_backup::import_data_backup,
+            commands::data_backup::list_data_backups,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Janus");

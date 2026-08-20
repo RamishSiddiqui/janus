@@ -129,7 +129,7 @@ pub async fn import_character_card(
     let character = CharacterRepo::create(&state_guard.db, &character_name, data_value).await?;
 
     // Extract the character ID for the avatar filename
-    let character_id = character.id.id.to_raw();
+    let character_id = crate::db::value_bridge::record_id_to_string(&character.id);
 
     // Import the card's embedded lorebook (if any) as real, persisted
     // entries — previously this data was only ever read back out for a
@@ -230,7 +230,7 @@ pub async fn import_persona_card(
     let state_guard = state.read().await;
     let persona = PersonaRepo::create(&state_guard.db, &persona_name, data_value).await?;
 
-    let persona_id = persona.id.id.to_raw();
+    let persona_id = crate::db::value_bridge::record_id_to_string(&persona.id);
 
     let app_data_dir = app
         .path()

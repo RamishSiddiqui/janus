@@ -328,7 +328,8 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                             .await
                             {
                                 Ok(created) => {
-                                    let segment_id = created.id.id.to_raw();
+                                    let segment_id =
+                                        crate::db::value_bridge::record_id_to_string(&created.id);
                                     prev_parent = segment_id.clone();
                                     created_segments.push(serde_json::json!({
                                         "character_name": full_name,
@@ -409,7 +410,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                                 char_name, suffix
                             );
                             if let Err(e) = db_for_save.query(
-                                "UPDATE type::thing('messages', $id) SET content = $content, character_id = type::thing('characters', $char_id), character_name = $char_name"
+                                "UPDATE type::record('messages', $id) SET content = $content, character_id = type::record('characters', $char_id), character_name = $char_name"
                             )
                                 .bind(("id", assist_id.clone()))
                                 .bind(("content", seg.content.clone()))
@@ -585,7 +586,9 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("default")
                                 .to_string();
-                            let window_start_id = branch.get(evicted_n).map(|m| m.id.id.to_raw());
+                            let window_start_id = branch
+                                .get(evicted_n)
+                                .map(|m| crate::db::value_bridge::record_id_to_string(&m.id));
 
                             if let Err(e) = generate_rolling_summary(
                                 &db_summary,

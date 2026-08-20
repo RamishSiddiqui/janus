@@ -16,7 +16,8 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
     let mut result = db
         .query("SELECT count() FROM provider_configs GROUP ALL")
         .await?;
-    let count: Option<serde_json::Value> = result.take(0)?;
+    let count: Option<serde_json::Value> =
+        crate::db::value_bridge::from_value_opt(result.take(0)?)?;
     let already_seeded = count
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
         .unwrap_or(0)
@@ -59,7 +60,8 @@ async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> 
     let mut result = db
         .query("SELECT count() FROM image_presets GROUP ALL")
         .await?;
-    let count: Option<serde_json::Value> = result.take(0)?;
+    let count: Option<serde_json::Value> =
+        crate::db::value_bridge::from_value_opt(result.take(0)?)?;
     let already_seeded = count
         .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
         .unwrap_or(0)
@@ -68,7 +70,7 @@ async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> 
         return Ok(());
     }
 
-    db.query("CREATE type::thing('image_presets', $id) CONTENT $data")
+    db.query("CREATE type::record('image_presets', $id) CONTENT $data")
         .bind(("id", "default-high-quality"))
         .bind((
             "data",
@@ -97,7 +99,7 @@ async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> 
 /// Seeds the 3 default provider configurations.
 async fn seed_providers(db: &Surreal<Db>) -> Result<(), MythicError> {
     // Use raw queries to avoid deserialization issues with Thing enum
-    db.query("CREATE type::thing('provider_configs', $id) CONTENT $data")
+    db.query("CREATE type::record('provider_configs', $id) CONTENT $data")
         .bind(("id", "default-openrouter"))
         .bind((
             "data",
@@ -117,7 +119,7 @@ async fn seed_providers(db: &Surreal<Db>) -> Result<(), MythicError> {
         ))
         .await?;
 
-    db.query("CREATE type::thing('provider_configs', $id) CONTENT $data")
+    db.query("CREATE type::record('provider_configs', $id) CONTENT $data")
         .bind(("id", "default-siliconflow-img"))
         .bind((
             "data",
@@ -135,7 +137,7 @@ async fn seed_providers(db: &Surreal<Db>) -> Result<(), MythicError> {
         ))
         .await?;
 
-    db.query("CREATE type::thing('provider_configs', $id) CONTENT $data")
+    db.query("CREATE type::record('provider_configs', $id) CONTENT $data")
         .bind(("id", "default-siliconflow-vid"))
         .bind((
             "data",
@@ -162,7 +164,7 @@ async fn create_character(
     id: &str,
     data: serde_json::Value,
 ) -> Result<(), MythicError> {
-    db.query("CREATE type::thing('characters', $id) CONTENT $data")
+    db.query("CREATE type::record('characters', $id) CONTENT $data")
         .bind(("id", id.to_string()))
         .bind(("data", data))
         .await?;
@@ -499,17 +501,17 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
         ),
     ];
     for (id, title, char_id) in &conversations {
-        db.query("CREATE type::thing('conversations', $id) CONTENT { title: $title, character_id: type::thing('characters', $char_id), updated_at: time::now() }")
+        db.query("CREATE type::record('conversations', $id) CONTENT { title: $title, character_id: type::record('characters', $char_id), updated_at: time::now() }")
             .bind(("id", id.to_string())).bind(("title", title.to_string())).bind(("char_id", char_id.to_string()))
             .await?;
     }
 
     // ── Set shared_character_ids for multi-character conversations ──
     // The Forge Alliance: Aria (primary) + Roran
-    db.query("UPDATE type::thing('conversations', 'conv-shared-forge') SET shared_character_ids = 'char-roran-ironfist'")
+    db.query("UPDATE type::record('conversations', 'conv-shared-forge') SET shared_character_ids = 'char-roran-ironfist'")
         .await?;
     // Midnight Heist: Aria (primary) + Finn
-    db.query("UPDATE type::thing('conversations', 'conv-shared-heist') SET shared_character_ids = 'char-finn-shadowcloak'")
+    db.query("UPDATE type::record('conversations', 'conv-shared-heist') SET shared_character_ids = 'char-finn-shadowcloak'")
         .await?;
 
     // ── Seed conversation_characters join table for multi-char conversations ──
@@ -550,9 +552,9 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
     ];
     for (id, conv_id, char_id, char_name, role, talk) in &mc_chars {
         db.query(
-            "CREATE type::thing('conversation_characters', $id) CONTENT {
-            conversation_id: type::thing('conversations', $conv_id),
-            character_id: type::thing('characters', $char_id),
+            "CREATE type::record('conversation_characters', $id) CONTENT {
+            conversation_id: type::record('conversations', $conv_id),
+            character_id: type::record('characters', $char_id),
             character_name: $char_name,
             role: $role,
             talkativeness: $talk,
@@ -587,7 +589,7 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
         ("mem-saff-c2", "char-saffron-emberheart", "[goal] Find the Codex Ignis — a legendary text believed to contain the secret of elemental fusion.", "user", 1),
     ];
     for (id, char_id, content, source, version) in &canon {
-        db.query("CREATE type::thing('memories', $id) CONTENT { character_id: type::thing('characters', $char_id), content: $content, source: $source, version: $version, is_canon: true }")
+        db.query("CREATE type::record('memories', $id) CONTENT { character_id: type::record('characters', $char_id), content: $content, source: $source, version: $version, is_canon: true }")
             .bind(("id", id.to_string())).bind(("char_id", char_id.to_string()))
             .bind(("content", content.to_string())).bind(("source", source.to_string())).bind(("version", *version))
             .await?;
@@ -642,12 +644,12 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
     ];
     for (id, char_id, conv_id, content, source, parent_id, version) in &mems {
         if let Some(pid) = parent_id {
-            db.query("CREATE type::thing('memories', $id) CONTENT { character_id: type::thing('characters', $char_id), conversation_id: type::thing('conversations', $conv_id), content: $content, source: $source, parent_id: type::thing('memories', $pid), version: $version, is_canon: false }")
+            db.query("CREATE type::record('memories', $id) CONTENT { character_id: type::record('characters', $char_id), conversation_id: type::record('conversations', $conv_id), content: $content, source: $source, parent_id: type::record('memories', $pid), version: $version, is_canon: false }")
                 .bind(("id", id.to_string())).bind(("char_id", char_id.to_string())).bind(("conv_id", conv_id.to_string()))
                 .bind(("content", content.to_string())).bind(("source", source.to_string())).bind(("pid", pid.to_string())).bind(("version", *version))
                 .await?;
         } else {
-            db.query("CREATE type::thing('memories', $id) CONTENT { character_id: type::thing('characters', $char_id), conversation_id: type::thing('conversations', $conv_id), content: $content, source: $source, version: $version, is_canon: false }")
+            db.query("CREATE type::record('memories', $id) CONTENT { character_id: type::record('characters', $char_id), conversation_id: type::record('conversations', $conv_id), content: $content, source: $source, version: $version, is_canon: false }")
                 .bind(("id", id.to_string())).bind(("char_id", char_id.to_string())).bind(("conv_id", conv_id.to_string()))
                 .bind(("content", content.to_string())).bind(("source", source.to_string())).bind(("version", *version))
                 .await?;
@@ -754,10 +756,10 @@ async fn seed_memories(db: &Surreal<Db>) -> Result<(), MythicError> {
         ),
     ];
     for (src, tgt, lt, dir, sm, lm) in &links {
-        let src_thing = surrealdb::sql::Thing::from(("memories", src.to_owned()));
-        let tgt_thing = surrealdb::sql::Thing::from(("conversations", tgt.to_owned()));
+        let src_thing = surrealdb::types::RecordId::new("memories", src.to_owned());
+        let tgt_thing = surrealdb::types::RecordId::new("conversations", tgt.to_owned());
         if let Some(linked) = lm {
-            let lm_thing = surrealdb::sql::Thing::from(("memories", linked.to_owned()));
+            let lm_thing = surrealdb::types::RecordId::new("memories", linked.to_owned());
             db.query("RELATE $src -> memory_link -> $tgt SET link_type=$lt, direction=$dir, sync_mode=$sm, linked_memory_id=$lm")
                 .bind(("src", src_thing)).bind(("tgt", tgt_thing))
                 .bind(("lt", lt.to_string())).bind(("dir", dir.to_string())).bind(("sm", sm.to_string())).bind(("lm", lm_thing))
@@ -794,12 +796,12 @@ async fn create_seed_message(
     if let (Some(pid), Some(cid), Some(cname)) = (parent_id, character_id, character_name) {
         // Message with parent + character attribution (multi-char segments)
         db.query(
-            "CREATE type::thing('messages', $id) CONTENT {
-            conversation_id: type::thing('conversations', $conv_id),
+            "CREATE type::record('messages', $id) CONTENT {
+            conversation_id: type::record('conversations', $conv_id),
             role: $role,
             content: $content,
-            parent_id: type::thing('messages', $parent_id),
-            character_id: type::thing('characters', $char_id),
+            parent_id: type::record('messages', $parent_id),
+            character_id: type::record('characters', $char_id),
             character_name: $char_name,
         }",
         )
@@ -814,11 +816,11 @@ async fn create_seed_message(
     } else if let Some(pid) = parent_id {
         // Message with parent, no character
         db.query(
-            "CREATE type::thing('messages', $id) CONTENT {
-            conversation_id: type::thing('conversations', $conv_id),
+            "CREATE type::record('messages', $id) CONTENT {
+            conversation_id: type::record('conversations', $conv_id),
             role: $role,
             content: $content,
-            parent_id: type::thing('messages', $parent_id),
+            parent_id: type::record('messages', $parent_id),
         }",
         )
         .bind(("id", id.to_string()))
@@ -830,8 +832,8 @@ async fn create_seed_message(
     } else {
         // Root message (greeting, no parent)
         db.query(
-            "CREATE type::thing('messages', $id) CONTENT {
-            conversation_id: type::thing('conversations', $conv_id),
+            "CREATE type::record('messages', $id) CONTENT {
+            conversation_id: type::record('conversations', $conv_id),
             role: $role,
             content: $content,
         }",
@@ -881,7 +883,7 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // Set active_message_id for conv-aria-main
-    db.query("UPDATE type::thing('conversations', 'conv-aria-main') SET active_message_id = type::thing('messages', 'msg-aria-main-5')")
+    db.query("UPDATE type::record('conversations', 'conv-aria-main') SET active_message_id = type::record('messages', 'msg-aria-main-5')")
         .await?;
 
     // ═══════════════════════════════════════════════════════════════
@@ -912,7 +914,7 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // Set active_message_id for conv-roran-main
-    db.query("UPDATE type::thing('conversations', 'conv-roran-main') SET active_message_id = type::thing('messages', 'msg-roran-main-3')")
+    db.query("UPDATE type::record('conversations', 'conv-roran-main') SET active_message_id = type::record('messages', 'msg-roran-main-3')")
         .await?;
 
     // ═══════════════════════════════════════════════════════════════
@@ -943,7 +945,7 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // Set active_message_id for conv-finn-main
-    db.query("UPDATE type::thing('conversations', 'conv-finn-main') SET active_message_id = type::thing('messages', 'msg-finn-main-3')")
+    db.query("UPDATE type::record('conversations', 'conv-finn-main') SET active_message_id = type::record('messages', 'msg-finn-main-3')")
         .await?;
 
     // ═══════════════════════════════════════════════════════════════
@@ -968,7 +970,7 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // Set active_message_id for conv-saff-main
-    db.query("UPDATE type::thing('conversations', 'conv-saff-main') SET active_message_id = type::thing('messages', 'msg-saff-main-3')")
+    db.query("UPDATE type::record('conversations', 'conv-saff-main') SET active_message_id = type::record('messages', 'msg-saff-main-3')")
         .await?;
 
     // ═══════════════════════════════════════════════════════════════
@@ -1013,7 +1015,7 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // Set active_message_id for conv-shared-forge
-    db.query("UPDATE type::thing('conversations', 'conv-shared-forge') SET active_message_id = type::thing('messages', 'msg-forge-3b')")
+    db.query("UPDATE type::record('conversations', 'conv-shared-forge') SET active_message_id = type::record('messages', 'msg-forge-3b')")
         .await?;
 
     // ═══════════════════════════════════════════════════════════════
@@ -1081,7 +1083,7 @@ async fn seed_messages(db: &Surreal<Db>) -> Result<(), MythicError> {
     ).await?;
 
     // Set active_message_id for conv-shared-heist
-    db.query("UPDATE type::thing('conversations', 'conv-shared-heist') SET active_message_id = type::thing('messages', 'msg-heist-5b')")
+    db.query("UPDATE type::record('conversations', 'conv-shared-heist') SET active_message_id = type::record('messages', 'msg-heist-5b')")
         .await?;
 
     let msg_count = 5 + 3 + 3 + 3 + 5 + 8; // aria, roran, finn, saff, forge, heist

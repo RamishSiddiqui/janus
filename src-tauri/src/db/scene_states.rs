@@ -15,12 +15,12 @@ impl SceneStateRepo {
         let mut result = db
             .query(
                 "SELECT * FROM scene_states
-                 WHERE conversation_id = type::thing('conversations', $conv_id)",
+                 WHERE conversation_id = type::record('conversations', $conv_id)",
             )
             .bind(("conv_id", conversation_id.to_string()))
             .await?;
 
-        let states: Vec<SceneState> = result.take(0)?;
+        let states: Vec<SceneState> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(states.into_iter().next())
     }
 
@@ -35,8 +35,8 @@ impl SceneStateRepo {
         let current = Self::get(db, conversation_id)
             .await?
             .unwrap_or_else(|| SceneState {
-                id: surrealdb::sql::Thing::from(("scene_states", conversation_id)),
-                conversation_id: surrealdb::sql::Thing::from(("conversations", conversation_id)),
+                id: surrealdb::types::RecordId::new("scene_states", conversation_id),
+                conversation_id: surrealdb::types::RecordId::new("conversations", conversation_id),
                 location_name: "Unknown".to_string(),
                 location_description: String::new(),
                 time_period: "unspecified".to_string(),
@@ -75,8 +75,8 @@ impl SceneStateRepo {
 
         let mut result = db
             .query(
-                "UPSERT type::thing('scene_states', $composite_id) CONTENT {
-                    conversation_id: type::thing('conversations', $conv_id),
+                "UPSERT type::record('scene_states', $composite_id) CONTENT {
+                    conversation_id: type::record('conversations', $conv_id),
                     location_name: $location_name,
                     location_description: $location_description,
                     time_period: $time_period,
@@ -98,14 +98,15 @@ impl SceneStateRepo {
             .bind(("scene_mood", scene_mood.to_string()))
             .await?;
 
-        let upserted: Option<SceneState> = result.take(0)?;
+        let upserted: Option<SceneState> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         upserted.ok_or_else(|| MythicError::DatabaseOp("Failed to upsert scene state".into()))
     }
 
     /// Deletes the scene state for a conversation (cleanup).
     pub async fn delete(db: &Surreal<Db>, conversation_id: &str) -> Result<(), MythicError> {
         db.query(
-            "DELETE FROM scene_states WHERE conversation_id = type::thing('conversations', $conv_id)"
+            "DELETE FROM scene_states WHERE conversation_id = type::record('conversations', $conv_id)"
         )
         .bind(("conv_id", conversation_id.to_string()))
         .await?;

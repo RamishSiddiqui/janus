@@ -21,7 +21,11 @@ pub async fn create_character(
     validate_required_string("Character name", &name, 200)?;
     let state = state.read().await;
     let character = CharacterRepo::create(&state.db, &name, data.0).await?;
-    info!("Created character: {} ({})", name, character.id);
+    info!(
+        "Created character: {} ({})",
+        name,
+        crate::db::value_bridge::record_id_to_string(&character.id)
+    );
     Ok(character)
 }
 

@@ -7,6 +7,7 @@ use tracing::info;
 use crate::error::MythicError;
 
 pub mod ai_horde_models;
+pub mod backup;
 pub mod character_state;
 pub mod characters;
 pub mod conversation_characters;
@@ -25,6 +26,7 @@ pub mod scenes;
 pub mod schema;
 pub mod seed;
 pub mod summaries;
+pub mod value_bridge;
 
 pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {
     let db_path = data_dir.join("mythic_surreal");

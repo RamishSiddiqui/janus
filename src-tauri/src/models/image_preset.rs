@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A reusable image-generation style bundle (sampler/cfg/steps/karras,
 /// optional AI Horde named style, optional negative prompt override).
@@ -14,7 +14,7 @@ pub struct ImagePreset {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     pub name: String,
     pub model: Option<String>,
     pub sampler_name: String,

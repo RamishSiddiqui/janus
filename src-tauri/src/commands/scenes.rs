@@ -112,9 +112,14 @@ pub async fn list_scene_cast_members(
 
     if let Ok(conv) = ConversationRepo::get(&state.db, &conversation_id).await {
         if let Some(char_id) = conv.character_id {
-            if let Ok(primary) = CharacterRepo::get(&state.db, &char_id.id.to_raw()).await {
+            if let Ok(primary) = CharacterRepo::get(
+                &state.db,
+                &crate::db::value_bridge::record_id_to_string(&char_id),
+            )
+            .await
+            {
                 members.push(SceneCastMember {
-                    character_id: primary.id.id.to_raw(),
+                    character_id: crate::db::value_bridge::record_id_to_string(&primary.id),
                     name: primary.name,
                     avatar_path: primary.avatar_path,
                     role: "primary".to_string(),
@@ -127,7 +132,7 @@ pub async fn list_scene_cast_members(
         .await
         .unwrap_or_default();
     for member in cast {
-        let char_id = member.character_id.id.to_raw();
+        let char_id = crate::db::value_bridge::record_id_to_string(&member.character_id);
         if let Ok(character) = CharacterRepo::get(&state.db, &char_id).await {
             members.push(SceneCastMember {
                 character_id: char_id,

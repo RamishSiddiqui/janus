@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A rolling summary of evicted conversation messages.
 ///
@@ -12,12 +12,12 @@ pub struct ConversationSummary {
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     pub summary_text: String,
     pub covered_message_count: u32,
     pub token_count: u32,
@@ -26,7 +26,7 @@ pub struct ConversationSummary {
         serialize_with = "crate::models::serialize_option_thing",
         deserialize_with = "crate::models::deserialize_option_thing"
     )]
-    pub window_start_message_id: Option<Thing>,
+    pub window_start_message_id: Option<RecordId>,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]
     pub created_at: String,
     #[serde(default, deserialize_with = "crate::models::deserialize_datetime")]

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A character's membership in a conversation — tracks role, talkativeness, and active status.
 /// Each character in a multi-character conversation gets one record.
@@ -11,19 +11,19 @@ pub struct ConversationCharacter {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub character_id: Thing,
+    pub character_id: RecordId,
     /// "primary" | "secondary" | "npc"
     pub role: String,
     /// 0-100: how often the AI should include this character's response

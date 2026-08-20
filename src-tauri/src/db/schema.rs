@@ -15,7 +15,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE FIELD IF NOT EXISTS name       ON characters TYPE string ASSERT $value != NONE;
         DEFINE FIELD IF NOT EXISTS spec       ON characters TYPE string DEFAULT 'chara_card_v2';
-        DEFINE FIELD IF NOT EXISTS data       ON characters FLEXIBLE TYPE object;
+        DEFINE FIELD IF NOT EXISTS data       ON characters TYPE object FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS avatar_path ON characters TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS created_at ON characters TYPE datetime DEFAULT time::now();
         DEFINE FIELD IF NOT EXISTS updated_at ON characters TYPE datetime DEFAULT time::now();
@@ -106,7 +106,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE FIELD IF NOT EXISTS name        ON personas TYPE string ASSERT $value != NONE;
         DEFINE FIELD IF NOT EXISTS spec        ON personas TYPE string DEFAULT 'chara_card_v2';
-        DEFINE FIELD IF NOT EXISTS data        ON personas FLEXIBLE TYPE object;
+        DEFINE FIELD IF NOT EXISTS data        ON personas TYPE object FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS avatar_path ON personas TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS created_at  ON personas TYPE datetime DEFAULT time::now();
         DEFINE FIELD IF NOT EXISTS updated_at  ON personas TYPE datetime DEFAULT time::now();
@@ -161,7 +161,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
             ASSERT $value IN ['user', 'assistant', 'system'];
         DEFINE FIELD IF NOT EXISTS content          ON messages TYPE string;
         DEFINE FIELD IF NOT EXISTS parent_id        ON messages TYPE option<record<messages>>;
-        DEFINE FIELD IF NOT EXISTS metadata         ON messages FLEXIBLE TYPE option<object>;
+        DEFINE FIELD IF NOT EXISTS metadata         ON messages TYPE option<object> FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS character_id     ON messages TYPE option<record<characters>>;
         DEFINE FIELD IF NOT EXISTS character_name   ON messages TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS created_at       ON messages TYPE datetime DEFAULT time::now();
@@ -180,7 +180,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     db.query("
         DEFINE ANALYZER IF NOT EXISTS msg_analyzer TOKENIZERS class FILTERS lowercase, edgengram(2, 15);
         DEFINE INDEX IF NOT EXISTS idx_messages_fts ON messages FIELDS content
-            SEARCH ANALYZER msg_analyzer BM25;
+            FULLTEXT ANALYZER msg_analyzer BM25;
     ")
     .await?
     .check()
@@ -220,7 +220,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     db.query(
         "
         DEFINE INDEX IF NOT EXISTS idx_memories_fts ON memories FIELDS content
-            SEARCH ANALYZER msg_analyzer BM25;
+            FULLTEXT ANALYZER msg_analyzer BM25;
     ",
     )
     .await?
@@ -288,7 +288,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS provider_type ON provider_configs TYPE string
             ASSERT $value IN ['llm', 'image', 'video'];
         DEFINE FIELD IF NOT EXISTS adapter       ON provider_configs TYPE string;
-        DEFINE FIELD IF NOT EXISTS config        ON provider_configs FLEXIBLE TYPE object;
+        DEFINE FIELD IF NOT EXISTS config        ON provider_configs TYPE object FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS is_default    ON provider_configs TYPE bool DEFAULT false;
 
         DEFINE INDEX IF NOT EXISTS idx_provider_type ON provider_configs FIELDS provider_type;
@@ -327,7 +327,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS prompt           ON scenes TYPE string;
         DEFINE FIELD IF NOT EXISTS file_path        ON scenes TYPE string;
         DEFINE FIELD IF NOT EXISTS caption          ON scenes TYPE option<string>;
-        DEFINE FIELD IF NOT EXISTS metadata         ON scenes FLEXIBLE TYPE option<object>;
+        DEFINE FIELD IF NOT EXISTS metadata         ON scenes TYPE option<object> FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS created_at       ON scenes TYPE datetime DEFAULT time::now();
 
         DEFINE INDEX IF NOT EXISTS idx_scenes_conversation ON scenes FIELDS conversation_id;
@@ -346,7 +346,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS location_description ON scene_states TYPE string DEFAULT '';
         DEFINE FIELD IF NOT EXISTS time_period          ON scene_states TYPE string DEFAULT 'unspecified';
         DEFINE FIELD IF NOT EXISTS weather              ON scene_states TYPE string DEFAULT 'clear';
-        DEFINE FIELD IF NOT EXISTS characters_present   ON scene_states FLEXIBLE TYPE array DEFAULT [];
+        DEFINE FIELD IF NOT EXISTS characters_present   ON scene_states TYPE array DEFAULT [];
         DEFINE FIELD IF NOT EXISTS ambient_details      ON scene_states TYPE string DEFAULT '';
         DEFINE FIELD IF NOT EXISTS scene_mood           ON scene_states TYPE string DEFAULT 'neutral';
         DEFINE FIELD IF NOT EXISTS updated_at           ON scene_states TYPE datetime DEFAULT time::now();
@@ -501,7 +501,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:message_embeddings_rag: {}", e)))?;
 
-    // NOTE: MTREE index is created dynamically via `ensure_mtree_index()`
+    // NOTE: HNSW index is created dynamically via `ensure_vector_index()`
     // when the first embedding is stored, using the actual vector dimension.
 
     // ── Cascade delete events ───────────────────────────────────────────

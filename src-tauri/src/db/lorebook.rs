@@ -15,14 +15,14 @@ impl LorebookRepo {
         let mut result = db
             .query(
                 "SELECT * FROM lorebook_entries
-                 WHERE character_id = type::thing('characters', $char_id)
+                 WHERE character_id = type::record('characters', $char_id)
                     OR character_id IS NONE
                  ORDER BY priority DESC, insertion_order ASC",
             )
             .bind(("char_id", character_id.to_string()))
             .await?;
 
-        let entries: Vec<LorebookEntry> = result.take(0)?;
+        let entries: Vec<LorebookEntry> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(entries)
     }
 
@@ -43,8 +43,8 @@ impl LorebookRepo {
             None => serde_json::Value::Null,
         };
 
-        let query = "CREATE type::thing('lorebook_entries', $id) CONTENT {
-            character_id: IF $char_id != NONE THEN type::thing('characters', $char_id) ELSE NONE END,
+        let query = "CREATE type::record('lorebook_entries', $id) CONTENT {
+            character_id: IF $char_id != NONE THEN type::record('characters', $char_id) ELSE NONE END,
             name: $name,
             keys: $keys,
             content: $content,
@@ -57,20 +57,24 @@ impl LorebookRepo {
         let mut result = db
             .query(query)
             .bind(("id", id))
-            .bind(("char_id", char_binding))
+            .bind((
+                "char_id",
+                crate::db::value_bridge::to_surreal_value(char_binding),
+            ))
             .bind(("name", name.to_string()))
             .bind(("keys", keys))
             .bind(("content", content.to_string()))
             .bind(("always_active", always_active))
             .await?;
 
-        let created: Option<LorebookEntry> = result.take(0)?;
+        let created: Option<LorebookEntry> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         created.ok_or_else(|| MythicError::DatabaseOp("Failed to create lorebook entry".into()))
     }
 
     /// Toggles the enabled state of a lorebook entry.
     pub async fn toggle(db: &Surreal<Db>, id: &str, enabled: bool) -> Result<(), MythicError> {
-        db.query("UPDATE type::thing('lorebook_entries', $id) SET enabled = $enabled")
+        db.query("UPDATE type::record('lorebook_entries', $id) SET enabled = $enabled")
             .bind(("id", id.to_string()))
             .bind(("enabled", enabled))
             .await?;
@@ -96,7 +100,7 @@ impl LorebookRepo {
     ) -> Result<LorebookEntry, MythicError> {
         let mut result = db
             .query(
-                "UPDATE type::thing('lorebook_entries', $id) SET \
+                "UPDATE type::record('lorebook_entries', $id) SET \
                     name = $name, keys = $keys, content = $content, \
                     always_active = $always_active, priority = $priority, \
                     insertion_order = $insertion_order",
@@ -110,7 +114,8 @@ impl LorebookRepo {
             .bind(("insertion_order", insertion_order))
             .await?;
 
-        let updated: Option<LorebookEntry> = result.take(0)?;
+        let updated: Option<LorebookEntry> =
+            crate::db::value_bridge::from_value_opt(result.take(0)?)?;
         updated.ok_or_else(|| MythicError::NotFound(format!("Lorebook entry not found: {}", id)))
     }
 
@@ -157,7 +162,7 @@ impl LorebookRepo {
             let mut final_entry = if needs_update {
                 Self::update(
                     db,
-                    &created.id.id.to_raw(),
+                    &crate::db::value_bridge::record_id_to_string(&created.id),
                     &name,
                     entry.keys.clone(),
                     &entry.content,
@@ -170,7 +175,12 @@ impl LorebookRepo {
                 created
             };
             if !entry.enabled {
-                Self::toggle(db, &final_entry.id.id.to_raw(), false).await?;
+                Self::toggle(
+                    db,
+                    &crate::db::value_bridge::record_id_to_string(&final_entry.id),
+                    false,
+                )
+                .await?;
                 final_entry.enabled = false;
             }
             imported.push(final_entry);
@@ -180,7 +190,8 @@ impl LorebookRepo {
 
     /// Deletes a lorebook entry by ID.
     pub async fn delete(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
-        let _: Option<LorebookEntry> = db.delete(("lorebook_entries", id)).await?;
+        let _: Option<LorebookEntry> =
+            crate::db::value_bridge::from_value_opt(db.delete(("lorebook_entries", id)).await?)?;
         Ok(())
     }
 }

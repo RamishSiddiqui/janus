@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 /// A user-controlled persona — the player's own stand-in for a conversation.
 /// Shares the same CharacterCardV2-shaped `data` JSON as `characters`
@@ -14,7 +14,7 @@ pub struct Persona {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     pub name: String,
     pub spec: String,
 

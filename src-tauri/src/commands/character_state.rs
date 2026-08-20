@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::Arc;
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 use tauri::State;
 use tokio::sync::RwLock;
 
@@ -21,19 +21,19 @@ pub struct CharacterState {
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub id: Thing,
+    pub id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub character_id: Thing,
+    pub character_id: RecordId,
     #[serde(
         serialize_with = "crate::models::serialize_thing",
         deserialize_with = "crate::models::deserialize_thing"
     )]
     #[specta(type = String)]
-    pub conversation_id: Thing,
+    pub conversation_id: RecordId,
     /// 0 = devastated, 50 = neutral, 100 = elated
     pub mood: i32,
     /// 0 = hostile, 50 = wary, 100 = devoted

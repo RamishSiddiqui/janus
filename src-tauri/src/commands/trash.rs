@@ -46,7 +46,7 @@ pub async fn list_trash(
     let mut items: Vec<TrashItem> = Vec::new();
     for c in conversations {
         items.push(TrashItem {
-            id: c.id.id.to_raw(),
+            id: crate::db::value_bridge::record_id_to_string(&c.id),
             item_type: "conversation".to_string(),
             name: c.title,
             avatar_path: None,
@@ -55,7 +55,7 @@ pub async fn list_trash(
     }
     for c in characters {
         items.push(TrashItem {
-            id: c.id.id.to_raw(),
+            id: crate::db::value_bridge::record_id_to_string(&c.id),
             item_type: "character".to_string(),
             name: c.name,
             avatar_path: c.avatar_path,
@@ -64,7 +64,7 @@ pub async fn list_trash(
     }
     for p in personas {
         items.push(TrashItem {
-            id: p.id.id.to_raw(),
+            id: crate::db::value_bridge::record_id_to_string(&p.id),
             item_type: "persona".to_string(),
             name: p.name,
             avatar_path: p.avatar_path,
@@ -87,7 +87,7 @@ pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), 
 
     let conversations = ConversationRepo::list_trashed(db).await?;
     for c in &conversations {
-        let id = c.id.id.to_raw();
+        let id = crate::db::value_bridge::record_id_to_string(&c.id);
         if let Err(e) = ConversationRepo::delete(db, &id).await {
             tracing::warn!("[empty_trash] Failed to delete conversation {}: {}", id, e);
         }
@@ -95,7 +95,7 @@ pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), 
 
     let characters = CharacterRepo::list_trashed(db).await?;
     for c in &characters {
-        let id = c.id.id.to_raw();
+        let id = crate::db::value_bridge::record_id_to_string(&c.id);
         if let Err(e) = CharacterRepo::delete(db, &id).await {
             tracing::warn!("[empty_trash] Failed to delete character {}: {}", id, e);
         }
@@ -103,7 +103,7 @@ pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), 
 
     let personas = PersonaRepo::list_trashed(db).await?;
     for p in &personas {
-        let id = p.id.id.to_raw();
+        let id = crate::db::value_bridge::record_id_to_string(&p.id);
         if let Err(e) = PersonaRepo::delete(db, &id).await {
             tracing::warn!("[empty_trash] Failed to delete persona {}: {}", id, e);
         }
