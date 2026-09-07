@@ -18,22 +18,69 @@ Every other AI roleplay app hits the same wall: your character forgets who they 
 
 It's a native desktop app, not a browser tab pointed at someone else's server. No account, no subscription, nothing phoning home. Your conversations live in a database on your own disk. Bring your own API key — or use a free provider that needs zero signup — and you're writing in under a minute.
 
+### See it in action
+
 <div align="center">
+
+<a href="#shot-1">1 · Chat</a> ·
+<a href="#shot-2">2 · Character</a> ·
+<a href="#shot-3">3 · Memory Graph</a> ·
+<a href="#shot-4">4 · Voice</a> ·
+<a href="#shot-5">5 · Cast Chat</a> ·
+<a href="#shot-6">6 · Scenes</a> ·
+<a href="#shot-7">7 · Voice Models</a>
+
+<br/><br/>
+
+<a id="shot-1"></a>
 <img src="branding/screenshots/chat.png" width="720" alt="Janus chat view — a roleplay conversation mid-scene, with formatted action text and dialogue" />
 <br/>
-<sub>Streaming chat with a character — action text and dialogue render distinctly, no manual formatting.</sub>
+<sub><b>1 / 7 — Chat.</b> Action text and dialogue render distinctly, no manual formatting.<br/>
+← <a href="#shot-7">Prev</a> &nbsp;|&nbsp; <a href="#shot-2">Next →</a></sub>
 <br/><br/>
+
+<a id="shot-2"></a>
 <img src="branding/screenshots/character-profile.png" width="720" alt="Janus character profile page — description, personality, scenario, and first message on a two-tone branded layout" />
 <br/>
-<sub>A character's profile — full card detail, at a glance.</sub>
+<sub><b>2 / 7 — Character profile.</b> Full card detail, at a glance.<br/>
+← <a href="#shot-1">Prev</a> &nbsp;|&nbsp; <a href="#shot-3">Next →</a></sub>
 <br/><br/>
+
+<a id="shot-3"></a>
 <img src="branding/screenshots/memory-graph.png" width="720" alt="Janus memory graph — a character node linked to timeline conversations and typed, canon-flagged memory entries" />
 <br/>
-<sub>The memory graph — every fact, relationship, and event Janus has extracted from your story, browsable and editable.</sub>
-</div>
+<sub><b>3 / 7 — Memory graph.</b> Every fact, relationship, and event Janus extracted from your story — browsable and editable.<br/>
+← <a href="#shot-2">Prev</a> &nbsp;|&nbsp; <a href="#shot-4">Next →</a></sub>
+<br/><br/>
 
-<!-- TODO(screenshots): a Scene Gallery shot would round this out (generated
-image + the glassmorphic gallery backdrop) — optional, not blocking. -->
+<a id="shot-4"></a>
+<img src="branding/screenshots/voice-playback.png" width="720" alt="A Janus message from character Aria Silverleaf, showing the Delighted mood tag alongside the play/waveform control for its native TTS voice" />
+<br/>
+<sub><b>4 / 7 — Voice.</b> Every reply gets a play button for native, offline text-to-speech — streamed in sentence-by-sentence as the reply generates, right next to the live mood tag tracking the scene.<br/>
+← <a href="#shot-3">Prev</a> &nbsp;|&nbsp; <a href="#shot-5">Next →</a></sub>
+<br/><br/>
+
+<a id="shot-5"></a>
+<img src="branding/screenshots/cast-chat.png" width="720" alt="Janus multi-character cast chat — several characters replying in one conversation" />
+<br/>
+<sub><b>5 / 7 — Cast chat.</b> Group conversations with automatic NPC detection — new speakers get registered without you lifting a finger.<br/>
+← <a href="#shot-4">Prev</a> &nbsp;|&nbsp; <a href="#shot-6">Next →</a></sub>
+<br/><br/>
+
+<a id="shot-6"></a>
+<img src="branding/screenshots/scene-gallery.png" width="720" alt="Janus scene gallery — generated character art in a glassmorphic gallery layout" />
+<br/>
+<sub><b>6 / 7 — Scene gallery.</b> Generated art from AI Horde, ComfyUI, or any OpenAI-images-compatible endpoint.<br/>
+← <a href="#shot-5">Prev</a> &nbsp;|&nbsp; <a href="#shot-7">Next →</a></sub>
+<br/><br/>
+
+<a id="shot-7"></a>
+<img src="branding/screenshots/voice-models.png" width="720" alt="Janus Voice Models page — Kokoro and cloud TTS voices, expandable with inline preview" />
+<br/>
+<sub><b>7 / 7 — Voice models.</b> Browse every configured voice source and preview a voice before assigning it to a character.<br/>
+← <a href="#shot-6">Prev</a> &nbsp;|&nbsp; <a href="#shot-1">Next →</a></sub>
+
+</div>
 
 ## Why Janus
 
@@ -42,6 +89,7 @@ image + the glassmorphic gallery backdrop) — optional, not blocking. -->
 - **Real characters, not scripts.** Full SillyTavern-compatible character card import (V1/V2, embedded lorebook included), a persona system for how *you* show up in the story, and an emotional state tracker that follows mood/trust/arousal across the conversation.
 - **Multi-character scenes that work.** Group cast conversations with automatic NPC detection — new speakers the model introduces get registered and tracked without you lifting a finger.
 - **See your scenes.** Generate scene art through AI Horde (free), a local ComfyUI instance (with placeholder-token workflow templating), or any OpenAI-images-compatible endpoint. Attach an image to a message — paste a screenshot straight from your clipboard — and vision-capable models actually see it.
+- **Hear your characters.** A native Kokoro-82M text-to-speech engine runs fully offline and in-process — no external service, no API key — and streams sentence-by-sentence as replies generate. Prefer a cloud voice? Bring your own ElevenLabs or Google Cloud TTS key and assign it per-character.
 - **Private by construction.** Everything lives in an embedded SurrealDB database on your machine. No telemetry, no cloud sync, no accounts — export/import gives you a portable backup whenever you want one.
 
 ## A quick tour
@@ -53,7 +101,8 @@ image + the glassmorphic gallery backdrop) — optional, not blocking. -->
 | **Cast & NPCs** | Group-cast conversations, automatic speaker detection with a two-pass confirmation debounce, cast relationship graph |
 | **Memory** | Auto-extracted facts with canon flags, timeline + graph views, cross-character sharing, semantic (vector) search |
 | **Scenes** | AI Horde / ComfyUI / generic image providers, multimodal image *input* for vision models, scene gallery |
-| **Providers** | 14+ LLM adapters via [rig-core](https://github.com/0xPlaygrounds/rig), separate LLM / image-video / embedding model management |
+| **Voice** | Offline native TTS (Kokoro-82M, 54 voices) with streamed sentence-by-sentence playback, or BYOK cloud voices (ElevenLabs, Google Cloud TTS) assigned per-character |
+| **Providers** | 14+ LLM adapters via [rig-core](https://github.com/0xPlaygrounds/rig), separate LLM / image-video / embedding / voice model management |
 | **Data** | Soft-delete trash (conversations, characters, personas), full export/import backup, local-only mode |
 
 ## Supported providers
@@ -64,6 +113,7 @@ Janus talks to providers through [`rig-core`](https://github.com/0xPlaygrounds/r
 |---|---|
 | **LLM** | OpenAI-compatible (LM Studio, KoboldCPP, vLLM, **Puter free tier**), OpenRouter, Anthropic, Gemini, Ollama, Cohere, DeepSeek, Groq, Perplexity, xAI, HuggingFace, Hyperbolic, Moonshot, Together |
 | **Image** | AI Horde *(free, crowdsourced, no signup)*, ComfyUI *(local, template-driven workflows)*, SiliconFlow, any OpenAI-images-compatible endpoint |
+| **Voice** | Kokoro-82M *(built-in, offline, no signup)*, ElevenLabs, Google Cloud TTS |
 
 ## Installation
 
@@ -126,14 +176,15 @@ Janus starts with no provider configured. Open **AI Studio → Providers**, add 
 src-tauri/           Rust backend
 ├── src/commands/    Tauri IPC command handlers, grouped by feature
 ├── src/context/     Prompt-building pipeline: budget, window, summary, RAG, NPC detection
-├── src/providers/   LLM (rig-core) + image (AI Horde, ComfyUI) provider clients
+├── src/providers/   LLM (rig-core) + image (AI Horde, ComfyUI) + cloud TTS provider clients
+├── src/tts/         Native Kokoro-82M engine (ONNX Runtime), sentence chunking, model download
 ├── src/db/          SurrealDB repository layer
 └── src/models/      Shared data structures
 
 src/                 SvelteKit frontend
-├── routes/          Pages: chat, gallery, personas, memories, providers, models, settings, trash
+├── routes/          Pages: chat, gallery, personas, memories, providers, models, voice-models, settings, trash
 ├── lib/components/  UI components
-├── lib/stores/      Client-side state (chat, personas, scenes, logs)
+├── lib/stores/      Client-side state (chat, personas, scenes, TTS playback, logs)
 └── lib/services/    IPC bridge + client-side extraction/emotion services
 ```
 
