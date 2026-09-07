@@ -1,6 +1,6 @@
 [package]
 name = "janus"
-version = "0.1.0"
+version = "0.1.2"
 description = "Open-source LLM-powered role-playing desktop app with image and video generation"
 authors = ["Janus Contributors"]
 license = "AGPL-3.0-or-later"
@@ -79,6 +79,38 @@ regex = "1"
 # Streaming
 futures = "0.3"
 tokio-stream = "0.1"
+
+# Native TTS (Kokoro-82M, embedded in-process via ONNX Runtime — no
+# external server, see src/tts/ and GitHub issue #66). `ort` is still
+# pre-1.0 (rc) but has been for a long time and is the de facto standard
+# Rust ONNX binding; `misaki-rs` with espeak disabled is the pure-Rust
+# phonemizer that avoids needing an `espeak-ng` system dependency, which
+# has no clean Windows story.
+#
+# `load-dynamic` (not `download-binaries`): `download-binaries` statically
+# links a prebuilt ONNX Runtime that was compiled against a newer MSVC STL
+# than this machine's linker has, producing ~20 unresolved
+# `__std_search_1`/`__std_max_element_f`-style externals at link time
+# (MSVC's vectorized <algorithm> helpers). `load-dynamic` instead loads
+# `onnxruntime.dll` at runtime via `ort::init_from(path)?.commit()`
+# (src/tts/engine.rs) — no ONNX Runtime C++ code gets linked into
+# janus_lib.dll at compile time, so the STL mismatch never applies. The
+# dll itself is fetched by `src/tts/download.rs` alongside the model/voice
+# pack, pinned to the exact ONNX Runtime release (1.28.0) that
+# `download-binaries` itself would have fetched for this ort-sys version
+# (see build/download/dist.tsv in the ort-sys source: `ms@1.28.0`) — same
+# ABI, just loaded dynamically instead of linked statically.
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
+ndarray = "0.16"
+ndarray-npy = { version = "0.9", default-features = false, features = ["npz"] }
+misaki-rs = { version = "0.3", default-features = false }
+hound = "3.5"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Current process's own CPU/memory usage, surfaced in Settings so
+# resource-heavy features (starting with native TTS above) can be visually
+# sanity-checked as not going haywire — see GitHub issue #77.
+sysinfo = "0.39"
 
 [features]
 default = ["custom-protocol"]

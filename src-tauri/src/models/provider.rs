@@ -12,6 +12,9 @@ pub enum ProviderType {
     Image,
     /// Video generation
     Video,
+    /// Text-to-speech (cloud BYOK adapters only — the built-in Kokoro
+    /// engine isn't a `ProviderConfig` row at all, see issue #78)
+    Tts,
 }
 
 /// The specific adapter implementation for a provider.
@@ -59,6 +62,18 @@ pub enum ProviderAdapter {
     Moonshot,
     /// Together API (open-source models)
     Together,
+    /// ElevenLabs cloud TTS — `config: { "api_key": "..." }`, no `base_url`
+    /// (single well-known endpoint, no self-hosted variant). Voice IDs come
+    /// from ElevenLabs' own `GET /v2/voices` catalog, not the Kokoro pack.
+    ElevenLabs,
+    /// Google Cloud Text-to-Speech — `config: { "api_key": "..." }`, no
+    /// `base_url`. Uses a plain API key (`?key=` query param, the same
+    /// simple-key path Cloud Console's "Create API Key" button enables for
+    /// this API), not full OAuth2/service-account auth — the right fit for
+    /// a BYOK desktop app. Voice IDs are Google's own `voices.name` values
+    /// (e.g. "en-US-Neural2-F"), whose language code is embedded as the
+    /// leading `xx-YY-` segment — no separate language field is stored.
+    GoogleCloudTts,
 }
 
 /// Configuration for a specific AI provider connection.

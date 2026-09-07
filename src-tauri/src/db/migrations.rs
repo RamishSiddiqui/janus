@@ -28,22 +28,89 @@ struct Migration {
     run: MigrationRun,
 }
 
-/// Registered migrations, in ascending version order. Empty today — nothing
-/// shipped so far has needed anything beyond additive DDL. Example shape for
-/// the next one that does:
-///
-/// ```ignore
-/// Migration {
-///     version: 1,
-///     description: "rename memories.foo to memories.bar",
-///     run: |db| async move {
-///         db.query("UPDATE memories SET bar = foo").await?;
-///         db.query("REMOVE FIELD foo ON memories").await?;
-///         Ok(())
-///     }.boxed(),
-/// },
-/// ```
-const MIGRATIONS: &[Migration] = &[];
+/// Registered migrations, in ascending version order.
+const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    description: "backfill characters.origin/portrait_status/profile_reviewed for rows that predate those fields",
+    run: |db| {
+        use futures::FutureExt;
+        async move {
+            // `DEFINE FIELD ... DEFAULT` only applies on INSERT/CREATE — it
+            // never backfills rows written before the field existed. Those
+            // rows store a genuine NONE for `origin` (a `TYPE string`
+            // field), which fails SurrealDB's schema coercion on *any*
+            // future UPDATE to the row (not just one touching `origin`
+            // itself) — first surfaced by `CharacterRepo::set_voice` erroring
+            // on a seeded demo character with "Expected `string` but found
+            // `NONE`" for a field the query never even set. Backfill to the
+            // same defaults `schema.rs`'s DEFAULT clauses and the Rust
+            // model's serde defaults already assume for pre-existing rows.
+            //
+            // Must set all three fields in ONE statement, not three separate
+            // ones — SurrealDB validates a row's *entire* schema on every
+            // write, not just the touched fields, so a first statement that
+            // fixes only `origin` still leaves `portrait_status`/
+            // `profile_reviewed` as NONE, and the very next statement's
+            // write to the same row fails the same coercion check all over
+            // again (confirmed the hard way: this crashed the app on
+            // startup on the first attempt). Each field only overwrites
+            // itself when it's actually NONE (`IF x = NONE THEN default ELSE
+            // x END`) rather than blanket-setting all three — a row missing
+            // only `portrait_status` must keep whatever `origin` it already
+            // has (e.g. a real 'npc'), not get reset to 'gallery'.
+            db.query(
+                "
+                UPDATE characters SET
+                    origin = IF origin = NONE THEN 'gallery' ELSE origin END,
+                    portrait_status = IF portrait_status = NONE THEN 'approved' ELSE portrait_status END,
+                    profile_reviewed = IF profile_reviewed = NONE THEN true ELSE profile_reviewed END
+                WHERE origin = NONE OR portrait_status = NONE OR profile_reviewed = NONE;
+                ",
+            )
+            .await?
+            .check()
+            .map_err(|e| MythicError::DatabaseOp(format!("migration 1: {}", e)))?;
+            Ok(())
+        }
+        .boxed()
+    },
+    },
+    Migration {
+        version: 2,
+        description: "widen provider_configs.provider_type's ASSERT to allow 'tts' (issue #78)",
+        run: |db| {
+            use futures::FutureExt;
+            async move {
+                // `DEFINE FIELD IF NOT EXISTS` in schema.rs never re-applies
+                // once a database has already defined this field on an
+                // earlier boot — adding `ProviderType::Tts` to the Rust enum
+                // did nothing for any existing database, so `create_provider`
+                // with `provider_type: "tts"` fails SurrealDB's own ASSERT
+                // check ("must conform to: $value INSIDE ['llm', 'image',
+                // 'video']") even though the Rust side happily accepts it.
+                // `OVERWRITE` is required here, not just a bare `DEFINE
+                // FIELD` — confirmed the hard way: a plain `DEFINE FIELD`
+                // (no `IF NOT EXISTS`, no `OVERWRITE`) *errors* on this
+                // SurrealDB version ("The field 'provider_type' already
+                // exists") rather than silently redefining it. `OVERWRITE`
+                // forces the redefinition; no data backfill needed, since
+                // every existing row's provider_type ('llm'/'image'/'video')
+                // still satisfies the widened constraint.
+                db.query(
+                    "
+                    DEFINE FIELD OVERWRITE provider_type ON provider_configs TYPE string
+                        ASSERT $value IN ['llm', 'image', 'video', 'tts'];
+                    ",
+                )
+                .await?
+                .check()
+                .map_err(|e| MythicError::DatabaseOp(format!("migration 2: {}", e)))?;
+                Ok(())
+            }
+            .boxed()
+        },
+    },
+];
 
 /// Runs any migrations not yet recorded as applied, in version order.
 /// Safe to call on every startup — already-applied migrations are skipped.

@@ -9,9 +9,11 @@
   import PersonaPicker from "$lib/components/PersonaPicker.svelte";
   import SplitHeading from "$lib/components/SplitHeading.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import WaveformBars from "$lib/components/WaveformBars.svelte";
   import { selectedPersonaId } from "$lib/stores/personas";
   import { get } from "svelte/store";
-  import type { MemoryGraph as MemoryGraphData } from "$lib/services/ipc";
+  import { playBase64Wav, primeAudioPreviewContext } from "$lib/utils/audioPreview";
+  import type { MemoryGraph as MemoryGraphData, VoiceInfo, ProviderConfig } from "$lib/services/ipc";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
   const charId = $derived($page.params.id);
@@ -67,6 +69,20 @@
   let editTags = $state("");
   let isSaving = $state(false);
 
+  let voiceId = $state<string | null>(null);
+  /** `null` = built-in Kokoro (unchanged default); a ProviderConfig id =
+   *  a cloud provider, always paired with `voiceId` (see issue #78). */
+  let voiceProviderId = $state<string | null>(null);
+  let ttsProviders = $state<ProviderConfig[]>([]);
+  let voices = $state<VoiceInfo[]>([]);
+  let voicesLoaded = $state(false);
+  let savingVoice = $state(false);
+  let previewingVoice = $state(false);
+  let voiceName = $derived(
+    voices.find((v) => v.id === voiceId)?.name ?? voiceId ?? "",
+  );
+  let previewAnalyser = $state<AnalyserNode | null>(null);
+
   $effect(() => {
     const id = charId;
     if (id && isTauri) {
@@ -78,6 +94,15 @@
   $effect(() => {
     if (activeTab === "memories" && charId && isTauri) loadMemoryGraph(charId);
     if (activeTab === "lore" && charId && isTauri) loadLore(charId);
+    // Load lazily (not on every character page view) so browsing characters
+    // that don't use TTS never triggers an engine load — but do it whenever
+    // a voice is actually assigned (not just on the Edit tab) so the
+    // sidebar's "Change" flow and voice-name display work without forcing
+    // the user into Edit first.
+    if ((activeTab === "edit" || voiceId) && isTauri) {
+      loadTtsProviders();
+      loadVoices();
+    }
     if (activeTab === "edit" && charData) {
       editName = charName;
       editDesc = charData.description;
@@ -118,6 +143,8 @@
         system_prompt: (parsed.system_prompt as string) || "",
       };
       avatarUrl = await resolveAvatar(char.avatar_path);
+      voiceId = char.voice_id;
+      voiceProviderId = char.voice_provider_id ?? null;
     } catch {
       toastError("Failed to load character");
       goto("/gallery");
@@ -186,6 +213,74 @@
     }
     isLoadingLore = false;
     loreLoaded = true;
+  }
+
+  async function loadTtsProviders() {
+    if (!isTauri) return;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      ttsProviders = await ipc.listProviders("tts");
+    } catch {
+      ttsProviders = [];
+    }
+  }
+
+  async function loadVoices() {
+    if (voicesLoaded || !isTauri) return;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      voices = await ipc.ttsListVoices(voiceProviderId ?? undefined);
+      voicesLoaded = true;
+    } catch {
+      voices = [];
+    }
+  }
+
+  /** Switching provider invalidates the previously-loaded voice list (a
+   *  different provider's voice ids mean nothing under the old one) and
+   *  clears whichever voice was selected, rather than silently keeping an
+   *  id that no longer resolves to anything real. */
+  async function handleProviderChange() {
+    voiceId = null;
+    voicesLoaded = false;
+    await loadVoices();
+    await handleVoiceChange();
+  }
+
+  async function handleVoiceChange() {
+    if (!isTauri || !charId) return;
+    savingVoice = true;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      await ipc.ttsSetCharacterVoice(charId, voiceId, voiceProviderId);
+    } catch {
+      toastError("Failed to save voice");
+    }
+    savingVoice = false;
+  }
+
+  async function previewVoice() {
+    if (!isTauri || !voiceId || previewingVoice) return;
+    // Must run synchronously here, before the first `await` below — see
+    // the doc comment on primeAudioPreviewContext for why.
+    primeAudioPreviewContext();
+    previewingVoice = true;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      const audio = await ipc.ttsTestSpeak(
+        `Hello, I'm ${editName || charName}.`,
+        voiceId,
+        voiceProviderId ?? undefined,
+      );
+      const playback = await playBase64Wav(audio);
+      previewAnalyser = playback.analyser;
+      await playback.ended;
+    } catch (err) {
+      toastError("Preview failed");
+      console.error(err);
+    }
+    previewAnalyser = null;
+    previewingVoice = false;
   }
 
   async function startNewChat() {
@@ -335,6 +430,32 @@
           {/each}
         </div>
       {/if}
+
+      <div class="hero-voice">
+        <Icon name="volume-2" size={12} color="var(--fg-muted)" />
+        <span class="hero-voice-name">{voiceId ? voiceName : "Default voice"}</span>
+        {#if voiceId}
+          <button
+            class="hero-voice-preview"
+            onclick={previewVoice}
+            disabled={previewingVoice}
+            title="Preview voice"
+          >
+            {#if previewingVoice}
+              <WaveformBars analyser={previewAnalyser} active={previewingVoice} color="var(--accent-primary, #8b5cf6)" />
+            {:else}
+              ▶
+            {/if}
+          </button>
+        {/if}
+        <button
+          class="hero-voice-edit"
+          onclick={() => (activeTab = "edit")}
+          title="Change voice"
+        >
+          Change
+        </button>
+      </div>
 
       <div class="hero-actions">
         <PersonaPicker />
@@ -565,6 +686,51 @@
                 placeholder="Fantasy, Adventure"
               />
             </div>
+            {#if ttsProviders.length > 0}
+              <div class="edit-field">
+                <label class="edit-label" for="ef-voice-provider">Voice provider</label>
+                <select
+                  id="ef-voice-provider"
+                  class="edit-input"
+                  bind:value={voiceProviderId}
+                  onchange={handleProviderChange}
+                >
+                  <option value={null}>Kokoro (built-in, offline)</option>
+                  {#each ttsProviders as provider (provider.id)}
+                    <option value={provider.id}>{provider.name}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
+            <div class="edit-field">
+              <label class="edit-label" for="ef-voice">Voice</label>
+              <div class="edit-actions" style="justify-content: flex-start; gap: 8px;">
+                <select
+                  id="ef-voice"
+                  class="edit-input"
+                  bind:value={voiceId}
+                  onchange={handleVoiceChange}
+                  disabled={savingVoice}
+                >
+                  <option value={null}>Use default voice</option>
+                  {#each voices as v (v.id)}
+                    <option value={v.id}>{v.name}</option>
+                  {/each}
+                </select>
+                <button
+                  class="btn-cancel"
+                  onclick={previewVoice}
+                  disabled={!voiceId || previewingVoice}
+                  type="button"
+                  style="display:inline-flex;align-items:center;gap:6px;"
+                >
+                  {#if previewingVoice}
+                    <WaveformBars analyser={previewAnalyser} active={previewingVoice} color="var(--accent-primary, #8b5cf6)" />
+                  {/if}
+                  {previewingVoice ? "Playing…" : "Preview"}
+                </button>
+              </div>
+            </div>
             <div class="edit-actions">
               <button class="btn-cancel" onclick={() => (activeTab = "profile")}
                 >Cancel</button
@@ -663,6 +829,18 @@
     background:rgba(255,255,255,0.04); border:1px solid var(--border-subtle); color:var(--fg-muted);
   }
   .hero-tag-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+  .hero-voice {
+    display:flex; align-items:center; gap:6px; padding:6px 12px; margin:0 14px 14px;
+    border-radius:var(--rounded-md); background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle);
+    font-size:11px; color:var(--fg-muted);
+  }
+  .hero-voice-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:capitalize; }
+  .hero-voice-preview, .hero-voice-edit {
+    background:none; border:none; cursor:pointer; color:var(--fg-muted); font-size:10px;
+    padding:2px 6px; border-radius:var(--rounded-sm); transition:color var(--duration-fast),background var(--duration-fast);
+  }
+  .hero-voice-preview:hover:not(:disabled), .hero-voice-edit:hover { color:var(--fg); background:rgba(255,255,255,0.06); }
+  .hero-voice-preview:disabled { opacity:0.5; cursor:default; }
   .hero-actions { padding:0 14px; display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
   .btn-primary {
     height:38px; width:100%; border:none; border-radius:var(--rounded-md); cursor:pointer;
@@ -805,6 +983,11 @@
     transition:border-color var(--duration-normal),box-shadow var(--duration-normal);
   }
   .edit-input:focus { border-color:rgba(139,92,246,0.35); box-shadow:0 0 0 3px rgba(139,92,246,0.08); }
+  select.edit-input {
+    appearance:none; -webkit-appearance:none; cursor:pointer; padding-right:32px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238b8ba7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 10px center; background-size:14px;
+  }
   .edit-textarea {
     padding:10px 13px; border-radius:var(--rounded-md);
     background:var(--surface-input); border:1px solid rgba(139,92,246,0.1);

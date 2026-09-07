@@ -14,6 +14,8 @@ pub mod messages;
 pub mod npc;
 pub mod personas;
 pub mod providers;
+pub mod resource_monitor;
 pub mod scene_states;
 pub mod scenes;
 pub mod trash;
+pub mod tts;

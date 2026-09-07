@@ -10,7 +10,7 @@ Thanks for considering it. This document covers the dev workflow, how the codeba
 
 ## Dev setup
 
-See the [README's Getting Started section](README.md#getting-started) for prerequisites and how to run the app. In short:
+See the [README's Installation section](README.md#installation) for prerequisites and how to run the app. In short:
 
 ```bash
 npm install
@@ -52,14 +52,14 @@ These patterns are consistent throughout the codebase — matching them makes a 
 
 ## Cutting a release
 
-Releases are fully automated — pushing a `v*` tag (e.g. `v0.2.0`) to `master` is the only manual step:
+Releases are fully automated — pushing a `v*` tag (e.g. `v0.1.2`) is the only manual step:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
-That triggers `.github/workflows/release.yml`, which builds installers for macOS (Apple Silicon + Intel), Windows, and Linux, generates the changelog from commit messages since the last tag (via [git-cliff](https://git-cliff.org/), reading `cliff.toml`), commits the updated `CHANGELOG.md` back to `master`, creates the GitHub Release with every installer attached, and publishes it — no draft to manually approve. Commit message prefixes (`feat:`, `fix:`, `docs:`, etc.) control which changelog section an entry lands in, so keeping to that convention (see below) matters more once this is wired up.
+That triggers `.github/workflows/release.yml`, which builds installers for macOS (Apple Silicon + Intel), Windows, and Linux, generates release notes from commit messages since the last tag (via [git-cliff](https://git-cliff.org/), reading `cliff.toml`), creates a draft GitHub Release with every installer attached, then publishes it — no manual "publish" click required. The changelog text is only used for the release notes; it's deliberately **not** committed back to `master` as a `CHANGELOG.md` file, since `master` only accepts changes via reviewed PR and a bot push would either be blocked by that or undercut it. Commit message prefixes (`feat:`, `fix:`, `docs:`, etc.) control which changelog section an entry lands in, so keeping to that convention (see below) matters.
 
 ## Commit messages
 

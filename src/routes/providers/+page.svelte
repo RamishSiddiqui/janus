@@ -70,7 +70,7 @@
   const cloudAdapters = new Set([
     'open_router', 'anthropic', 'gemini', 'cohere', 'deepseek',
     'groq', 'perplexity', 'xai', 'hugging_face', 'hyperbolic', 'moonshot', 'together',
-    'ai_horde',
+    'ai_horde', 'eleven_labs', 'google_cloud_tts',
   ]);
   let adapterNeedsBaseUrl = $derived(!cloudAdapters.has(newAdapter));
 
@@ -323,6 +323,7 @@
               <option value="llm">Chat (LLM)</option>
               <option value="image">Image</option>
               <option value="video">Video</option>
+              <option value="tts">Voice</option>
             </select>
           </div>
           <div class="form-field">
@@ -356,6 +357,10 @@
               </optgroup>
               <optgroup label="Video">
                 <option value="wan_gp">WanGP</option>
+              </optgroup>
+              <optgroup label="Voice">
+                <option value="eleven_labs">ElevenLabs</option>
+                <option value="google_cloud_tts">Google Cloud TTS</option>
               </optgroup>
             </select>
           </div>

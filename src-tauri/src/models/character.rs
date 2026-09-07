@@ -204,6 +204,22 @@ pub struct Character {
     )]
     #[specta(type = Option<String>)]
     pub deleted_at: Option<String>,
+
+    /// Voice id this character speaks with when TTS is enabled — a Kokoro
+    /// pack id (e.g. "af_heart") when `voice_provider_id` is `None`, or a
+    /// voice id *within* that provider's own catalog otherwise (an
+    /// ElevenLabs `voice_id`, a Google Cloud `voices.name`). `None` means no
+    /// voice assigned — the character stays silent rather than falling back
+    /// to some default voice, since an unwanted voice being wrong is worse
+    /// than no audio at all.
+    #[serde(default)]
+    pub voice_id: Option<String>,
+    /// Which TTS provider `voice_id` belongs to — `None` means the built-in
+    /// Kokoro engine (issue #66, unchanged default for every existing
+    /// character), `Some(provider_config_id)` routes synthesis through that
+    /// cloud `ProviderConfig` instead (issue #78).
+    #[serde(default)]
+    pub voice_provider_id: Option<String>,
 }
 
 fn default_character_origin() -> String {

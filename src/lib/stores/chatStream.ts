@@ -18,6 +18,7 @@ import {
 } from './chat';
 import { runEmotionUpdatePipeline } from './chatEmotion';
 import { loadMessages } from './chatMessages';
+import { primeTtsAudioContext } from './ttsPlayback';
 
 const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -140,6 +141,9 @@ export async function sendMessage(
   model?: string,
   attachments?: { relativePath: string; mimeType: string }[],
 ) {
+  // Must run synchronously here, before the first `await` below — see
+  // primeTtsAudioContext's doc comment for why.
+  primeTtsAudioContext();
   if (!isTauri) {
     // Dev mode — just add user message locally
     messages.update(msgs => [...msgs, {
@@ -354,6 +358,9 @@ export async function sendMessage(
  * falls back to a fresh sendMessage call.
  */
 export async function retryLastMessage(model?: string) {
+  // Must run synchronously here, before the first `await` below — see
+  // primeTtsAudioContext's doc comment for why.
+  primeTtsAudioContext();
   const err = get(lastStreamError);
   if (!err) return;
   lastStreamError.set(null);
@@ -474,6 +481,9 @@ export async function retryLastMessage(model?: string) {
 /** Regenerates the last assistant response, streaming the new content. */
 export async function regenerateMessage(conversationId: string, messageId: string, model?: string) {
   if (!isTauri || get(isStreaming)) return;
+  // Must run synchronously here, before the first `await` below — see
+  // primeTtsAudioContext's doc comment for why.
+  primeTtsAudioContext();
 
   const ipc = await import('$lib/services/ipc');
   isStreaming.set(true);

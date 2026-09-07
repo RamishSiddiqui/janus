@@ -3,6 +3,8 @@
   import { browser } from '$app/environment';
   import Icon from './Icon.svelte';
   import JanusMark from './JanusMark.svelte';
+  import { settings } from '$lib/stores/settings';
+  import { isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
 
   let { onToggleSidebar }: { onToggleSidebar: () => void } = $props();
 
@@ -57,6 +59,17 @@
     <button class="tb-icon-btn" onclick={onToggleSidebar} aria-label="Toggle sidebar" title="Toggle sidebar (Ctrl+B)">
       <Icon name="menu" size={16} color="#8b8ba7" />
     </button>
+    {#if $settings.ttsEnabled}
+      <button
+        class="tb-icon-btn"
+        class:tb-speaking={$isSpeaking}
+        onclick={() => stopTtsPlayback()}
+        aria-label={$isSpeaking ? 'Stop voice playback' : 'Voice playback idle'}
+        title={$isSpeaking ? 'Stop voice playback' : 'Voice output enabled'}
+      >
+        <Icon name={$isSpeaking ? 'volume-2' : 'volume-x'} size={15} color={$isSpeaking ? '#9075F2' : '#5a5a7a'} />
+      </button>
+    {/if}
   </div>
 
   <div class="tb-center" data-tauri-drag-region>
@@ -126,6 +139,14 @@
   }
   .tb-icon-btn:hover {
     background: rgba(139, 92, 246, 0.1);
+  }
+  .tb-speaking {
+    background: rgba(139, 92, 246, 0.12);
+    animation: tb-speaking-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes tb-speaking-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
   }
 
   .tb-center {

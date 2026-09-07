@@ -12,6 +12,14 @@
   import { settings } from '$lib/stores/settings';
   import { success, error as toastError } from '$lib/stores/toast';
   import { get } from 'svelte/store';
+  import WaveformBars from './WaveformBars.svelte';
+  import {
+    currentlyPlayingMessageId,
+    currentlyPlayingSentence,
+    primeTtsAudioContext,
+    getTtsPlaybackAnalyser,
+    stop as stopTtsPlayback,
+  } from '$lib/stores/ttsPlayback';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -61,6 +69,35 @@
   );
   let isMultiChar = $derived(!!message.character_name || !!liveMarker.name);
   let displayName = $derived(message.character_name || liveMarker.name || characterName);
+
+  // "Glow while speaking" — sentence-level, not word-level: Kokoro's raw
+  // audio carries no per-word timing to sync against, only which sentence
+  // (a whole tts-chunk) is audible right now. Only meaningful when THIS
+  // message is the one currently playing.
+  let activeSentenceText = $derived(
+    $currentlyPlayingMessageId === message.id ? ($currentlyPlayingSentence?.text ?? null) : null,
+  );
+
+  // Markers survive every step of formatRoleplayContent (its own HTML
+  // escaping runs first, so a real <span> injected into raw text here
+  // would just get escaped back into text) — swapped for a real span
+  // AFTER formatting+sanitizing, never fed back through sanitizeHtml
+  // itself, so this is the only place in the render path that emits HTML
+  // without an intervening sanitize pass; the tag is fixed/hardcoded here,
+  // never derived from message content, so there's nothing for it to
+  // inject.
+  const GLOW_START = 'TTSGLOWSTART';
+  const GLOW_END = 'TTSGLOWEND';
+  function renderWithGlow(content: string, activeSentence: string | null): string {
+    if (!activeSentence) return formatRoleplayContent(content);
+    const idx = content.indexOf(activeSentence);
+    if (idx === -1) return formatRoleplayContent(content);
+    const marked =
+      content.slice(0, idx) + GLOW_START + activeSentence + GLOW_END + content.slice(idx + activeSentence.length);
+    return formatRoleplayContent(marked)
+      .split(GLOW_START).join('<span class="tts-glow">')
+      .split(GLOW_END).join('</span>');
+  }
   // `avatarUrl` is the conversation's primary character's avatar — only a
   // valid fallback for a plain single-character message (no character_name
   // at all). A multi-char message with no avatar of its own (e.g. a
@@ -78,6 +115,20 @@
   let editContent = $state('');
   let copied = $state(false);
   let isSwitching = $state(false);
+  // Derived from the shared playback queue, not owned locally — several
+  // ChatMessage instances exist at once (one per message in the list), and
+  // only whichever one's message_id matches is actually "playing" right now.
+  let isPlayingVoice = $derived($currentlyPlayingMessageId === message.id);
+  // Synthesis of the first sentence takes real time (~several seconds,
+  // measured) before the first tts-chunk ever arrives and isPlayingVoice
+  // can go true — with no separate state for that gap, the button gave
+  // zero feedback on click and looked stuck/unresponsive. Cleared as soon
+  // as real playback starts (the $effect below) or the request fails.
+  let isRequestingVoice = $state(false);
+  let isBusyVoice = $derived(isRequestingVoice || isPlayingVoice);
+  $effect(() => {
+    if (isPlayingVoice) isRequestingVoice = false;
+  });
 
   // ── Attached images (user messages only) ──
   // Loaded as blob: URLs the same way avatars/scenes are (see blobUrl.ts) —
@@ -285,6 +336,90 @@
     }
   }
 
+  /** Replays this message's voice on demand — the live streamed playback
+   *  (see ttsPlayback.ts) only ever plays a response once, as it arrives;
+   *  this is the only way to hear an already-finished message again.
+   *  Resolves the character's assigned voice fresh on each click rather
+   *  than caching it, since it's a rare action, not worth pre-loading for
+   *  every message in a long history.
+   *
+   *  Goes through `ttsReplayMessage` (chunk-by-chunk, same event/queue as
+   *  live streaming), not `ttsTestSpeak` (single WAV, whole message before
+   *  any sound) — measured the difference directly on a 4-sentence message:
+   *  42s of silence with the single-WAV approach vs. first audible sound at
+   *  ~8s here. `isPlayingVoice` (derived below) tracks the shared playback
+   *  queue's state, not this function's own promise — the promise resolves
+   *  once synthesis of every sentence is *requested*, well before the
+   *  audio finishes playing. */
+  async function handlePlayVoice() {
+    if (!isTauri || isBusyVoice) return;
+    const conversationId = get(activeConversationId);
+    if (!conversationId) return;
+    // Must run synchronously here, before the first `await` below —
+    // browsers only reliably honor AudioContext.resume() as tied to a
+    // user gesture within the same synchronous call stack.
+    primeTtsAudioContext();
+    isRequestingVoice = true;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      let voiceId: string | null = get(settings).ttsDefaultVoiceId;
+      // `voiceProviderId` always travels paired with `voiceId` — a cloud
+      // provider's voice id means nothing under a different provider (or
+      // under built-in Kokoro), so whichever source below supplies the
+      // voice also supplies the provider, never mixed across sources.
+      let voiceProviderId: string | null = get(settings).ttsDefaultProviderId;
+      if (message.character_id) {
+        try {
+          const character = await ipc.getCharacter(message.character_id);
+          if (character.voice_id) {
+            voiceId = character.voice_id;
+            voiceProviderId = character.voice_provider_id ?? null;
+          }
+        } catch {
+          // Fall through to the default voice.
+        }
+      }
+      if (!voiceId) {
+        toastError('No voice assigned — set one in Settings or on this character');
+        isRequestingVoice = false;
+        return;
+      }
+      // `liveMarker.rest`, not raw `message.content` — that's the exact
+      // text actually rendered/highlighted (a leading `[Name]:` marker for
+      // multi-char messages is stripped for display), so the sentence text
+      // each tts-chunk carries back matches what's on screen for the glow.
+      await ipc.ttsReplayMessage(conversationId, message.id, liveMarker.rest, voiceId, voiceProviderId ?? undefined);
+      // Normally the $effect watching isPlayingVoice clears this once the
+      // first chunk actually starts playing — but if nothing ever ends up
+      // playing (e.g. the text produced zero real sentences), nothing
+      // would otherwise turn isRequestingVoice back off.
+      if (!isPlayingVoice) isRequestingVoice = false;
+    } catch (err) {
+      toastError('Playback failed');
+      console.error(err);
+      isRequestingVoice = false;
+    }
+  }
+
+  /** Stops this message's playback (or cancels an in-flight request before
+   *  any audio has started) — the button now doubles as pause/stop while
+   *  busy instead of just sitting disabled and unclickable, which is what
+   *  a play control is expected to do. */
+  function handleStopVoice() {
+    stopTtsPlayback();
+    isRequestingVoice = false;
+  }
+
+  /** Routes a click to start or stop depending on current state — the
+   *  button's single click target either way. */
+  function handleVoiceButtonClick() {
+    if (isBusyVoice) {
+      handleStopVoice();
+    } else {
+      void handlePlayVoice();
+    }
+  }
+
   // Auto-grows to fit content instead of exposing the browser's native
   // drag-to-resize handle — same technique as the main compose box
   // (ChatInput.svelte's autoResize), just with a taller cap since edited
@@ -405,7 +540,7 @@
               <span class="streaming-cursor cursor-blink" aria-label="Generating">▍</span>
             {:else}
               <!-- After streaming: use normal Svelte {@html} for proper formatting -->
-              {@html formatRoleplayContent(liveMarker.rest)}
+              {@html renderWithGlow(liveMarker.rest, activeSentenceText)}
             {/if}
           </div>
         {/if}
@@ -481,10 +616,31 @@
 
         <!-- Action Buttons -->
         <div class="action-group" class:visible={showActions}>
-          <button 
-            class="action-btn" 
+          {#if isTauri && $settings.ttsEnabled}
+            <button
+              class="action-btn"
+              title={isPlayingVoice ? 'Stop' : isRequestingVoice ? 'Synthesizing… (click to cancel)' : 'Play voice'}
+              aria-label={isBusyVoice ? "Stop this message's voice" : "Play this message's voice"}
+              onclick={handleVoiceButtonClick}
+            >
+              {#if isBusyVoice}
+                <!-- Full opacity for the whole busy span (active={true}),
+                     not just once real audio starts — dimming it during the
+                     synthesizing phase read as the button having gone blank/
+                     unresponsive, since rest-level bars are tiny to begin
+                     with. Amplitude only becomes real once audio's actually
+                     flowing through the analyser; before that it's a flat
+                     rest-state pulse, but it stays visible either way. -->
+                <WaveformBars analyser={getTtsPlaybackAnalyser()} active={true} color="var(--fg-muted)" />
+              {:else}
+                <Icon name="volume-2" size={13} color="var(--fg-muted)" />
+              {/if}
+            </button>
+          {/if}
+          <button
+            class="action-btn"
             class:spin={isRegenerating}
-            title="Regenerate" 
+            title="Regenerate"
             aria-label="Regenerate response"
             onclick={handleRegenerate}
           >
@@ -838,6 +994,23 @@
     transition: opacity 300ms ease;
   }
   .msg-text.dim { opacity: 0.2; filter: blur(1px); }
+
+  /* "Glow while speaking" — the sentence currently audible during TTS
+     playback (live streaming or the replay button). Sentence-level only;
+     see renderWithGlow's doc comment for why word-level isn't feasible. */
+  .msg-text :global(.tts-glow) {
+    background: rgba(139, 92, 246, 0.16);
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2);
+    animation: ttsGlowPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes ttsGlowPulse {
+    0%, 100% { background: rgba(139, 92, 246, 0.12); }
+    50% { background: rgba(139, 92, 246, 0.24); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .msg-text :global(.tts-glow) { animation: none; }
+  }
 
   /* Roleplay action text — italic, muted */
   .msg-text :global(.rp-action) {

@@ -370,6 +370,25 @@ pub async fn test_provider_connection(
                     .await;
                 Ok(summarize_http_result(resp).await)
             }
+            ProviderAdapter::ElevenLabs => {
+                match crate::providers::elevenlabs::test_connection(&provider, &state.http_client)
+                    .await
+                {
+                    Ok(()) => Ok(ok_result()),
+                    Err(e) => Ok(fail_result(e.to_string())),
+                }
+            }
+            ProviderAdapter::GoogleCloudTts => {
+                match crate::providers::google_cloud_tts::test_connection(
+                    &provider,
+                    &state.http_client,
+                )
+                .await
+                {
+                    Ok(()) => Ok(ok_result()),
+                    Err(e) => Ok(fail_result(e.to_string())),
+                }
+            }
             _ => Ok(ok_result()),
         };
     }
@@ -1476,6 +1495,7 @@ fn parse_provider_type(s: &str) -> Result<ProviderType, MythicError> {
         "llm" => Ok(ProviderType::Llm),
         "image" => Ok(ProviderType::Image),
         "video" => Ok(ProviderType::Video),
+        "tts" => Ok(ProviderType::Tts),
         _ => Err(MythicError::Validation(format!(
             "Invalid provider type: {}",
             s
@@ -1503,6 +1523,8 @@ fn parse_adapter(s: &str) -> Result<ProviderAdapter, MythicError> {
         "hyperbolic" => Ok(ProviderAdapter::Hyperbolic),
         "moonshot" => Ok(ProviderAdapter::Moonshot),
         "together" => Ok(ProviderAdapter::Together),
+        "eleven_labs" => Ok(ProviderAdapter::ElevenLabs),
+        "google_cloud_tts" => Ok(ProviderAdapter::GoogleCloudTts),
         _ => Err(MythicError::Validation(format!("Invalid adapter: {}", s))),
     }
 }

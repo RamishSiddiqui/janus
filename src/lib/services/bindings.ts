@@ -625,6 +625,73 @@ export const commands = {
 	 */
 	importDataBackup: (filePath: string) => typedError<null, MythicError>(__TAURI_INVOKE("import_data_backup", { filePath })),
 	listDataBackups: () => typedError<BackupFileInfo[], MythicError>(__TAURI_INVOKE("list_data_backups")),
+	/**
+	 *  Whether the Kokoro model + voice pack are already cached on disk. Pure
+	 *  filesystem check — doesn't load the engine.
+	 */
+	ttsModelStatus: () => typedError<TtsModelStatus, MythicError>(__TAURI_INVOKE("tts_model_status")),
+	/**
+	 *  Downloads the model + voice pack if not already cached, emitting
+	 *  `tts-download-progress` events as it goes. A no-op (returns
+	 *  immediately) if already downloaded — callers don't need to check
+	 *  `tts_model_status` first.
+	 */
+	ttsDownloadModel: () => typedError<null, MythicError>(__TAURI_INVOKE("tts_download_model")),
+	/**
+	 *  Warms the TTS engine in the background if the model's already
+	 *  downloaded — called from the frontend on app start when TTS is enabled,
+	 *  so the ~4-5s load cost is paid once, quietly, before the user's first
+	 *  real interaction rather than stacked onto it. A no-op, not an error,
+	 *  when the model isn't downloaded yet (nothing to preload) or the engine
+	 *  is already loaded — safe to call unconditionally on every app launch.
+	 */
+	ttsPreloadEngine: () => typedError<null, MythicError>(__TAURI_INVOKE("tts_preload_engine")),
+	/**
+	 *  Lists available voices — the built-in Kokoro pack when `provider_id` is
+	 *  `None` (loading the engine first if needed, unchanged from before issue
+	 *  #78), or a cloud provider's own catalog when `Some`.
+	 */
+	ttsListVoices: (providerId: string | null) => typedError<VoiceInfo[], MythicError>(__TAURI_INVOKE("tts_list_voices", { providerId })),
+	/**
+	 *  Assigns (or clears, via `voice_id: None`) the voice a character speaks
+	 *  with. `voice_provider_id: None` means the built-in Kokoro engine
+	 *  (unchanged default); `Some(id)` routes through that cloud provider
+	 *  instead — always set together, since a voice id from one provider's
+	 *  catalog means nothing under a different one (see issue #78).
+	 */
+	ttsSetCharacterVoice: (characterId: string, voiceId: string | null, voiceProviderId: string | null) => typedError<Character_Serialize, MythicError>(__TAURI_INVOKE("tts_set_character_voice", { characterId, voiceId, voiceProviderId })),
+	/**
+	 *  Synthesizes `text` immediately and returns WAV bytes — for a "preview
+	 *  this voice" button in the character editor. Base64-encoded rather than
+	 *  raw `Vec<u8>`: a plain `Vec<u8>` return still serializes as a JSON
+	 *  array of numbers over Tauri IPC (3-5x the byte size in JSON text),
+	 *  while base64 is ~1.33x — meaningfully cheaper for a payload that can be
+	 *  several hundred KB.
+	 */
+	ttsTestSpeak: (text: string, voiceId: string, providerId: string | null) => typedError<string, MythicError>(__TAURI_INVOKE("tts_test_speak", { text, voiceId, providerId })),
+	/**
+	 *  Replays an already-saved chat message's voice, sentence by sentence —
+	 *  emits one `tts-chunk` event per completed sentence (same event, same
+	 *  shape, as the live-streaming path in `commands::chat::streaming`), so
+	 *  the frontend's existing `ttsPlayback.ts` queue starts playing the first
+	 *  sentence as soon as it's ready instead of waiting for the whole message.
+	 *  Measured the difference directly: a 4-sentence, ~700-character message
+	 *  took 42s end-to-end through `tts_test_speak`'s single-WAV-then-return
+	 *  design (silence the entire time) versus first audible sound at ~8s here
+	 *  (first sentence done), with the rest arriving progressively.
+	 * 
+	 *  Fire-and-forget from the frontend's perspective — it doesn't need to
+	 *  await this to know playback started; `ttsPlayback.ts`'s `isSpeaking`/
+	 *  `currentMessageId` already track that live. Still returns `Result` so a
+	 *  genuine failure (bad voice_id, engine not loaded) surfaces as an error
+	 *  rather than silently doing nothing.
+	 */
+	ttsReplayMessage: (conversationId: string, messageId: string, text: string, voiceId: string, providerId: string | null) => typedError<null, MythicError>(__TAURI_INVOKE("tts_replay_message", { conversationId, messageId, text, voiceId, providerId })),
+	/**
+	 *  Reads this process's own current memory/CPU usage. Cheap — a targeted
+	 *  refresh of one PID, not a full system scan.
+	 */
+	getResourceUsage: () => typedError<ResourceUsage, MythicError>(__TAURI_INVOKE("get_resource_usage")),
 };
 
 /* Types */
@@ -750,6 +817,23 @@ export type Character_Deserialize = {
 	profile_reviewed?: boolean,
 	/**  Set when the character is in the Trash; None means it's live. */
 	deleted_at?: string | null,
+	/**
+	 *  Voice id this character speaks with when TTS is enabled — a Kokoro
+	 *  pack id (e.g. "af_heart") when `voice_provider_id` is `None`, or a
+	 *  voice id *within* that provider's own catalog otherwise (an
+	 *  ElevenLabs `voice_id`, a Google Cloud `voices.name`). `None` means no
+	 *  voice assigned — the character stays silent rather than falling back
+	 *  to some default voice, since an unwanted voice being wrong is worse
+	 *  than no audio at all.
+	 */
+	voice_id?: string | null,
+	/**
+	 *  Which TTS provider `voice_id` belongs to — `None` means the built-in
+	 *  Kokoro engine (issue #66, unchanged default for every existing
+	 *  character), `Some(provider_config_id)` routes synthesis through that
+	 *  cloud `ProviderConfig` instead (issue #78).
+	 */
+	voice_provider_id?: string | null,
 };
 
 /**
@@ -785,6 +869,23 @@ export type Character_Serialize = {
 	profile_reviewed: boolean,
 	/**  Set when the character is in the Trash; None means it's live. */
 	deleted_at: string | null,
+	/**
+	 *  Voice id this character speaks with when TTS is enabled — a Kokoro
+	 *  pack id (e.g. "af_heart") when `voice_provider_id` is `None`, or a
+	 *  voice id *within* that provider's own catalog otherwise (an
+	 *  ElevenLabs `voice_id`, a Google Cloud `voices.name`). `None` means no
+	 *  voice assigned — the character stays silent rather than falling back
+	 *  to some default voice, since an unwanted voice being wrong is worse
+	 *  than no audio at all.
+	 */
+	voice_id: string | null,
+	/**
+	 *  Which TTS provider `voice_id` belongs to — `None` means the built-in
+	 *  Kokoro engine (issue #66, unchanged default for every existing
+	 *  character), `Some(provider_config_id)` routes synthesis through that
+	 *  cloud `ProviderConfig` instead (issue #78).
+	 */
+	voice_provider_id: string | null,
 };
 
 /**
@@ -1750,7 +1851,23 @@ export type ProviderAdapter =
 /**  Moonshot API (Kimi) */
 "moonshot" | 
 /**  Together API (open-source models) */
-"together";
+"together" | 
+/**
+ *  ElevenLabs cloud TTS — `config: { "api_key": "..." }`, no `base_url`
+ *  (single well-known endpoint, no self-hosted variant). Voice IDs come
+ *  from ElevenLabs' own `GET /v2/voices` catalog, not the Kokoro pack.
+ */
+"eleven_labs" | 
+/**
+ *  Google Cloud Text-to-Speech — `config: { "api_key": "..." }`, no
+ *  `base_url`. Uses a plain API key (`?key=` query param, the same
+ *  simple-key path Cloud Console's "Create API Key" button enables for
+ *  this API), not full OAuth2/service-account auth — the right fit for
+ *  a BYOK desktop app. Voice IDs are Google's own `voices.name` values
+ *  (e.g. "en-US-Neural2-F"), whose language code is embedded as the
+ *  leading `xx-YY-` segment — no separate language field is stored.
+ */
+"google_cloud_tts";
 
 /**
  *  Configuration for a specific AI provider connection.
@@ -1843,7 +1960,25 @@ export type ProviderType =
 /**  Image generation */
 "image" | 
 /**  Video generation */
-"video";
+"video" | 
+/**
+ *  Text-to-speech (cloud BYOK adapters only — the built-in Kokoro
+ *  engine isn't a `ProviderConfig` row at all, see issue #78)
+ */
+"tts";
+
+export type ResourceUsage = {
+	/**  Resident memory used by this process, in MB. */
+	memory_mb: number,
+	/**
+	 *  CPU usage percentage since the *previous* call to this command —
+	 *  `sysinfo` computes this as a delta, not an instantaneous snapshot,
+	 *  so the first call after app start reads as 0% (nothing to diff
+	 *  against yet) and settles into a real number once the frontend's
+	 *  poll has fired a couple of times.
+	 */
+	cpu_percent: number | null,
+};
 
 /**  A generated or imported scene (image/video) tied to a conversation. */
 export type Scene = Scene_Serialize | Scene_Deserialize;
@@ -2009,6 +2144,10 @@ export type TrashItem = {
 	deleted_at: string,
 };
 
+export type TtsModelStatus = {
+	downloaded: boolean,
+};
+
 /**
  *  Bundled fields for `update_image_preset` — same "None (unsent) means
  *  leave as-is" convention as `ImagePresetRepo::update`; for `clip_skip`,
@@ -2027,6 +2166,11 @@ export type UpdateImagePresetFields = {
 	postProcessing: string[] | null,
 	hiresFix: boolean | null,
 	hiresFixDenoisingStrength: number | null,
+};
+
+export type VoiceInfo = {
+	id: string,
+	name: string,
 };
 
 /**

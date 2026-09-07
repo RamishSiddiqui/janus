@@ -10,6 +10,7 @@
   import ToastContainer from '$lib/components/ToastContainer.svelte';
   import { settings } from '$lib/stores/settings';
   import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
+  import { initTtsPlaybackListener, cleanupTtsPlaybackListener, isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
   import { initFrontendLogCapture } from '$lib/stores/logs';
   import type { NavItem } from '$lib/types';
 
@@ -42,6 +43,7 @@
     { path: '/models',     label: 'LLM Models',     icon: 'layers', group: 'ai-studio' },
     { path: '/media-models', label: 'Image/Video Models', icon: 'image', group: 'ai-studio' },
     { path: '/embedders',  label: 'Embedding Models',  icon: 'zap',    group: 'ai-studio' },
+    { path: '/voice-models', label: 'Voice Models', icon: 'volume-2', group: 'ai-studio' },
     { path: '/trash',     label: 'Trash',     icon: 'trash-2' },
     { path: '/settings',  label: 'Settings',  icon: 'settings' },
   ] as const satisfies readonly NavItem[];
@@ -84,6 +86,28 @@
     if (!browser) return;
     initMultiCharListener();
     return () => cleanupMultiCharListener();
+  });
+
+  // Initialize the TTS streamed-playback listener (a no-op subscription
+  // when TTS is disabled — the listener itself gates on $settings.ttsEnabled
+  // per chunk, see ttsPlayback.ts).
+  $effect(() => {
+    if (!browser) return;
+    initTtsPlaybackListener();
+    return () => cleanupTtsPlaybackListener();
+  });
+
+  // Warm the TTS engine at startup (fire-and-forget, non-blocking) when the
+  // feature is enabled — the ONNX session + G2P engine load is a real ~4-5s
+  // cost measured in practice, and paying it here means it's already done
+  // by the time the user's first message/preview needs it, instead of
+  // stacking on top of that first interaction. `tts_preload_engine` itself
+  // no-ops quietly if the model isn't downloaded yet.
+  $effect(() => {
+    if (!browser || !('__TAURI_INTERNALS__' in window) || !$settings.ttsEnabled) return;
+    import('$lib/services/ipc').then((ipc) => {
+      ipc.ttsPreloadEngine().catch((err) => console.error('[tts] Preload failed:', err));
+    });
   });
 
   /** Global keyboard shortcuts */
