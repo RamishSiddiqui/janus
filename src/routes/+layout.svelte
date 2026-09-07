@@ -43,6 +43,7 @@
     { path: '/models',     label: 'LLM Models',     icon: 'layers', group: 'ai-studio' },
     { path: '/media-models', label: 'Image/Video Models', icon: 'image', group: 'ai-studio' },
     { path: '/embedders',  label: 'Embedding Models',  icon: 'zap',    group: 'ai-studio' },
+    { path: '/voice-models', label: 'Voice Models', icon: 'volume-2', group: 'ai-studio' },
     { path: '/trash',     label: 'Trash',     icon: 'trash-2' },
     { path: '/settings',  label: 'Settings',  icon: 'settings' },
   ] as const satisfies readonly NavItem[];
