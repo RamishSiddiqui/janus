@@ -290,7 +290,7 @@ impl KokoroEngine {
                 continue;
             }
             if i > 0 && !all_samples.is_empty() {
-                all_samples.extend(std::iter::repeat(0.0f32).take(GAP_SAMPLES));
+                all_samples.extend(std::iter::repeat_n(0.0f32, GAP_SAMPLES));
             }
             let chunk_samples = self.synthesize_samples(sentence, voice_id, speed)?;
             all_samples.extend(chunk_samples);
