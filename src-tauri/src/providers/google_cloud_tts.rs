@@ -73,7 +73,9 @@ pub async fn list_voices(
         .query(&[("key", key)])
         .send()
         .await
-        .map_err(|e| MythicError::Provider(format!("Google Cloud TTS voice list request failed: {e}")))?;
+        .map_err(|e| {
+            MythicError::Provider(format!("Google Cloud TTS voice list request failed: {e}"))
+        })?;
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -81,10 +83,11 @@ pub async fn list_voices(
             "Google Cloud TTS voice list failed: HTTP {status} — {body}"
         )));
     }
-    let parsed: VoicesResponse = resp
-        .json()
-        .await
-        .map_err(|e| MythicError::Provider(format!("Google Cloud TTS voice list response parse failed: {e}")))?;
+    let parsed: VoicesResponse = resp.json().await.map_err(|e| {
+        MythicError::Provider(format!(
+            "Google Cloud TTS voice list response parse failed: {e}"
+        ))
+    })?;
     Ok(parsed
         .voices
         .into_iter()
@@ -129,7 +132,9 @@ pub async fn synthesize(
         }))
         .send()
         .await
-        .map_err(|e| MythicError::Provider(format!("Google Cloud TTS synthesis request failed: {e}")))?;
+        .map_err(|e| {
+            MythicError::Provider(format!("Google Cloud TTS synthesis request failed: {e}"))
+        })?;
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -137,13 +142,18 @@ pub async fn synthesize(
             "Google Cloud TTS synthesis failed: HTTP {status} — {body}"
         )));
     }
-    let parsed: SynthesizeResponse = resp
-        .json()
-        .await
-        .map_err(|e| MythicError::Provider(format!("Google Cloud TTS synthesis response parse failed: {e}")))?;
+    let parsed: SynthesizeResponse = resp.json().await.map_err(|e| {
+        MythicError::Provider(format!(
+            "Google Cloud TTS synthesis response parse failed: {e}"
+        ))
+    })?;
     base64::engine::general_purpose::STANDARD
         .decode(parsed.audio_content)
-        .map_err(|e| MythicError::Provider(format!("Google Cloud TTS audioContent wasn't valid base64: {e}")))
+        .map_err(|e| {
+            MythicError::Provider(format!(
+                "Google Cloud TTS audioContent wasn't valid base64: {e}"
+            ))
+        })
 }
 
 /// Bare liveness/auth check for "Test Connection".

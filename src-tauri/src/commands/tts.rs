@@ -15,7 +15,9 @@ use crate::error::MythicError;
 use crate::models::character::Character;
 use crate::models::provider::ProviderAdapter;
 use crate::providers::{elevenlabs, google_cloud_tts};
-use crate::tts::{chunker::split_complete_sentences, download, engine::VoiceInfo, KokoroEngine, TtsChunkEvent};
+use crate::tts::{
+    chunker::split_complete_sentences, download, engine::VoiceInfo, KokoroEngine, TtsChunkEvent,
+};
 use crate::AppState;
 
 /// Lists voices for a cloud provider (issue #78) — dispatches on the
@@ -33,7 +35,9 @@ async fn list_voices_for_provider(
     let provider = ProviderRepo::get(&db, provider_id).await?;
     match provider.adapter {
         ProviderAdapter::ElevenLabs => elevenlabs::list_voices(&provider, &http_client).await,
-        ProviderAdapter::GoogleCloudTts => google_cloud_tts::list_voices(&provider, &http_client).await,
+        ProviderAdapter::GoogleCloudTts => {
+            google_cloud_tts::list_voices(&provider, &http_client).await
+        }
         other => Err(MythicError::Validation(format!(
             "{other:?} is not a TTS provider"
         ))),
@@ -234,12 +238,18 @@ pub async fn tts_test_speak(
 ) -> Result<String, MythicError> {
     if let Some(provider_id) = provider_id {
         let bytes = synthesize_via_provider(&state, &provider_id, &text, &voice_id).await?;
-        return Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes));
+        return Ok(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            bytes,
+        ));
     }
 
     let t0 = std::time::Instant::now();
     ensure_engine_loaded(&app, &state).await?;
-    tracing::info!("[tts] tts_test_speak: ensure_engine_loaded took {:?}", t0.elapsed());
+    tracing::info!(
+        "[tts] tts_test_speak: ensure_engine_loaded took {:?}",
+        t0.elapsed()
+    );
 
     let t1 = std::time::Instant::now();
     let tts_engine = state.read().await.tts_engine.clone();
@@ -256,7 +266,10 @@ pub async fn tts_test_speak(
     // making the user wait for the entire (possibly multi-sentence, tens
     // of seconds of) message to finish before any audio plays.
     let wav = engine.synthesize_long(&text, &voice_id, 1.0)?;
-    tracing::info!("[tts] tts_test_speak: synthesize_long() took {:?}", t1.elapsed());
+    tracing::info!(
+        "[tts] tts_test_speak: synthesize_long() took {:?}",
+        t1.elapsed()
+    );
 
     let t2 = std::time::Instant::now();
     let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wav);
@@ -302,7 +315,8 @@ pub async fn tts_replay_message(
     if let Some(provider_id) = provider_id {
         let result = synthesize_via_provider(&state, &provider_id, &text, &voice_id).await;
         if let Ok(bytes) = &result {
-            let audio = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes.clone());
+            let audio =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes.clone());
             let _ = app.emit(
                 "tts-chunk",
                 TtsChunkEvent {

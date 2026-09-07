@@ -64,10 +64,9 @@ pub async fn list_voices(
             "ElevenLabs voice list failed: HTTP {status} — {body}"
         )));
     }
-    let parsed: VoicesResponse = resp
-        .json()
-        .await
-        .map_err(|e| MythicError::Provider(format!("ElevenLabs voice list response parse failed: {e}")))?;
+    let parsed: VoicesResponse = resp.json().await.map_err(|e| {
+        MythicError::Provider(format!("ElevenLabs voice list response parse failed: {e}"))
+    })?;
     Ok(parsed
         .voices
         .into_iter()

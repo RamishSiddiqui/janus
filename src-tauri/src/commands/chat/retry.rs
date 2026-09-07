@@ -197,8 +197,9 @@ pub async fn retry_failed_message(
             None => None,
         };
         let tts_voice_id: Option<String> = tts_character.as_ref().and_then(|c| c.voice_id.clone());
-        let tts_voice_provider_id: Option<String> =
-            tts_character.as_ref().and_then(|c| c.voice_provider_id.clone());
+        let tts_voice_provider_id: Option<String> = tts_character
+            .as_ref()
+            .and_then(|c| c.voice_provider_id.clone());
         let stream_mc_names = multi_char_names.clone();
         let stream_mc_pairs = multi_char_pairs.clone();
         let stream_user_msg_id = user_message_id.clone();

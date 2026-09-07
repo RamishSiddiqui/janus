@@ -39,9 +39,9 @@ impl VoicePack {
         let mut npz = ndarray_npy::NpzReader::new(file)
             .map_err(|e| MythicError::Provider(format!("Failed to open voice pack: {}", e)))?;
 
-        let names = npz
-            .names()
-            .map_err(|e| MythicError::Provider(format!("Failed to list voice pack entries: {}", e)))?;
+        let names = npz.names().map_err(|e| {
+            MythicError::Provider(format!("Failed to list voice pack entries: {}", e))
+        })?;
 
         let mut voices = std::collections::HashMap::new();
         for name in names {
@@ -74,7 +74,10 @@ impl VoicePack {
             .voices
             .get(voice_id)
             .ok_or_else(|| MythicError::NotFound(format!("Unknown TTS voice '{}'", voice_id)))?;
-        let max_row = mat.nrows().saturating_sub(1).min(MAX_STYLE_ROWS.saturating_sub(1));
+        let max_row = mat
+            .nrows()
+            .saturating_sub(1)
+            .min(MAX_STYLE_ROWS.saturating_sub(1));
         let row = token_len.min(max_row);
         Ok(mat.row(row).to_owned())
     }
@@ -198,11 +201,11 @@ impl KokoroEngine {
                 MythicError::Provider(format!("Failed to create ONNX session builder: {}", e))
             })?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
-            .map_err(|e| {
-                MythicError::Provider(format!("Failed to set optimization level: {}", e))
-            })?
+            .map_err(|e| MythicError::Provider(format!("Failed to set optimization level: {}", e)))?
             .commit_from_memory(&model_bytes)
-            .map_err(|e| MythicError::Provider(format!("Failed to load Kokoro ONNX model: {}", e)))?;
+            .map_err(|e| {
+                MythicError::Provider(format!("Failed to load Kokoro ONNX model: {}", e))
+            })?;
         tracing::info!(
             "[tts] ONNX session committed (default threading, opt level 3) in {:?}",
             t2.elapsed()

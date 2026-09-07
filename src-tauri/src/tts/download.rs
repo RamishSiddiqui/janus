@@ -20,7 +20,8 @@ use crate::error::MythicError;
 // repo) is much closer to that benchmark's likely source and worth trying
 // instead — the local cache filename below already said "int8", which
 // `model_quantized.onnx` never actually was.
-const MODEL_URL: &str = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx";
+const MODEL_URL: &str =
+    "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx";
 // The onnx-community HF repo only ships 59 *individual* per-voice files
 // (voices/af_heart.bin, voices/am_adam.bin, ...), not a combined pack — the
 // combined voices-v1.0.bin (28MB, all 54 v1.0 voices, numpy-format style
@@ -108,7 +109,10 @@ pub async fn download_all(
         download_runtime(app, http_client, &runtime_dest).await?;
     }
 
-    info!("[tts] Model, voice pack, and ONNX Runtime downloaded to {:?}", dir);
+    info!(
+        "[tts] Model, voice pack, and ONNX Runtime downloaded to {:?}",
+        dir
+    );
     Ok(())
 }
 
@@ -132,8 +136,9 @@ async fn download_runtime(
     // Zip extraction is blocking/CPU work — off the async runtime thread.
     tokio::task::spawn_blocking(move || -> Result<(), MythicError> {
         let file = std::fs::File::open(&tmp_zip_read)?;
-        let mut archive = zip::ZipArchive::new(file)
-            .map_err(|e| MythicError::Provider(format!("Failed to open ONNX Runtime archive: {}", e)))?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+            MythicError::Provider(format!("Failed to open ONNX Runtime archive: {}", e))
+        })?;
         let mut entry = archive.by_name(RUNTIME_ZIP_INNER_PATH).map_err(|e| {
             MythicError::Provider(format!(
                 "ONNX Runtime archive is missing expected entry '{}': {}",
@@ -142,8 +147,9 @@ async fn download_runtime(
         })?;
         let tmp_dll = dest_owned.with_extension("dll.part");
         let mut out = std::fs::File::create(&tmp_dll)?;
-        std::io::copy(&mut entry, &mut out)
-            .map_err(|e| MythicError::Provider(format!("Failed to extract onnxruntime.dll: {}", e)))?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| {
+            MythicError::Provider(format!("Failed to extract onnxruntime.dll: {}", e))
+        })?;
         drop(out);
         std::fs::rename(&tmp_dll, &dest_owned)?;
         Ok(())
@@ -182,8 +188,8 @@ async fn download_one(
     let mut stream = resp.bytes_stream();
     let mut last_emitted_percent: u32 = u32::MAX;
     while let Some(chunk) = stream.next().await {
-        let chunk =
-            chunk.map_err(|e| MythicError::Provider(format!("TTS download stream error: {}", e)))?;
+        let chunk = chunk
+            .map_err(|e| MythicError::Provider(format!("TTS download stream error: {}", e)))?;
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
         let percent = if total > 0 {

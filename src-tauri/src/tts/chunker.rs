@@ -39,7 +39,11 @@ pub fn split_complete_sentences(buffer: &str) -> (Vec<String>, String) {
                 while k < chars.len() && chars[k].1.is_whitespace() {
                     k += 1;
                 }
-                start = if k < chars.len() { chars[k].0 } else { buffer.len() };
+                start = if k < chars.len() {
+                    chars[k].0
+                } else {
+                    buffer.len()
+                };
                 i = k;
                 continue;
             }
@@ -63,7 +67,10 @@ mod tests {
             split_complete_sentences("Hello there, friend. How are you today? I am ");
         assert_eq!(
             sentences,
-            vec!["Hello there, friend.".to_string(), "How are you today?".to_string()]
+            vec![
+                "Hello there, friend.".to_string(),
+                "How are you today?".to_string()
+            ]
         );
         assert_eq!(remainder, "I am ");
     }

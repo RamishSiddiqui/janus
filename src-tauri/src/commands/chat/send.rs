@@ -107,8 +107,9 @@ pub async fn send_message(
         None => None,
     };
     let tts_voice_id: Option<String> = tts_character.as_ref().and_then(|c| c.voice_id.clone());
-    let tts_voice_provider_id: Option<String> =
-        tts_character.as_ref().and_then(|c| c.voice_provider_id.clone());
+    let tts_voice_provider_id: Option<String> = tts_character
+        .as_ref()
+        .and_then(|c| c.voice_provider_id.clone());
 
     // Resolve multi-character list for this conversation (empty = single-char mode).
     // Always prepend the conversation's own primary character — conv_chars has no

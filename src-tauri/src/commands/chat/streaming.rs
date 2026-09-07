@@ -185,7 +185,9 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 // `StreamCompletionCtx::tts_voice_id`'s doc comment.
                 if let Some(voice_id) = tts_voice_id.as_deref() {
                     let complete_sentences = {
-                        let mut buf = tts_sentence_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut buf = tts_sentence_buffer
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         buf.push_str(&text);
                         let (sentences, remainder) = split_complete_sentences(&buf);
                         *buf = remainder;
@@ -235,7 +237,9 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 // synthesized.
                 if let Some(voice_id) = tts_voice_id.as_deref() {
                     let leftover = {
-                        let mut buf = tts_sentence_buffer.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut buf = tts_sentence_buffer
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         std::mem::take(&mut *buf)
                     };
                     let trimmed = leftover.trim();
