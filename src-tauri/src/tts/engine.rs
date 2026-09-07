@@ -128,6 +128,14 @@ fn display_name(voice_id: &str) -> String {
 pub struct KokoroEngine {
     session: Session,
     voices: VoicePack,
+    /// Built once here, not per `synthesize()` call — `G2P::new()`'s
+    /// lexicon/POS-tagger data is compiled into the binary (no disk I/O),
+    /// but constructing the engine from it still isn't free. Recreating it
+    /// on every single preview/sentence was the actual cause of a
+    /// consistent multi-second-per-call delay that a smaller WAV payload
+    /// alone didn't fix — this is real inference-adjacent setup cost, not
+    /// I/O, so caching it here is the correct fix, not a workaround.
+    g2p: misaki_rs::G2P,
 }
 
 impl KokoroEngine {
@@ -136,6 +144,8 @@ impl KokoroEngine {
         voices_path: &Path,
         runtime_path: &Path,
     ) -> Result<Self, MythicError> {
+        let t0 = std::time::Instant::now();
+
         // Must happen before any other `ort` API call — loads
         // `onnxruntime.dll` via `libloading` rather than linking ONNX
         // Runtime into this binary at compile time (see the `ort`
@@ -156,21 +166,65 @@ impl KokoroEngine {
                 ))
             })?
             .commit();
+        tracing::info!("[tts] ONNX Runtime dylib loaded in {:?}", t0.elapsed());
 
         // `commit_from_file` isn't available in this build (only
         // `commit_from_memory` is, per the `ort` 2.0.0-rc.13 API actually
         // compiled against here) — read the ~90MB model into memory
         // ourselves and commit from bytes instead. One-time cost at engine
         // load, not per synthesis call.
+        let t1 = std::time::Instant::now();
         let model_bytes = std::fs::read(model_path)?;
+        tracing::info!(
+            "[tts] Model file read ({} bytes) in {:?}",
+            model_bytes.len(),
+            t1.elapsed()
+        );
+
+        let t2 = std::time::Instant::now();
+        // Deliberately NOT setting `.with_intra_threads(...)` — tried
+        // pinning it to `available_parallelism()` (12 on this machine,
+        // likely a logical/hyperthread count, not physical cores) and it
+        // measurably made inference *slower* (4.48s vs. 3.65s baseline for
+        // the same clip) — Kokoro is a small model (82M params) with many
+        // small ops, and ONNX Runtime's own docs confirm intra-op thread
+        // *coordination* overhead can dominate over the actual compute at
+        // that scale. The untouched default (0 = ORT's own physical-core
+        // heuristic) already outperformed every explicit override tried
+        // here, so leave it alone rather than re-guess a "better" number.
+        // Optimization level 3 is independent of that regression and kept.
         let session = Session::builder()
             .map_err(|e| {
                 MythicError::Provider(format!("Failed to create ONNX session builder: {}", e))
             })?
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
+            .map_err(|e| {
+                MythicError::Provider(format!("Failed to set optimization level: {}", e))
+            })?
             .commit_from_memory(&model_bytes)
             .map_err(|e| MythicError::Provider(format!("Failed to load Kokoro ONNX model: {}", e)))?;
+        tracing::info!(
+            "[tts] ONNX session committed (default threading, opt level 3) in {:?}",
+            t2.elapsed()
+        );
+
+        let t3 = std::time::Instant::now();
         let voices = VoicePack::load(voices_path)?;
-        Ok(Self { session, voices })
+        tracing::info!("[tts] Voice pack loaded in {:?}", t3.elapsed());
+
+        // Built once here (see the `g2p` field doc comment) — this is the
+        // step that was silently costing several seconds on *every*
+        // synthesize() call before this fix.
+        let t4 = std::time::Instant::now();
+        let g2p = misaki_rs::G2P::new(misaki_rs::language::Language::EnglishUS);
+        tracing::info!("[tts] G2P engine built in {:?}", t4.elapsed());
+
+        tracing::info!("[tts] KokoroEngine::load total: {:?}", t0.elapsed());
+        Ok(Self {
+            session,
+            voices,
+            g2p,
+        })
     }
 
     pub fn list_voices(&self) -> Vec<VoiceInfo> {
@@ -179,7 +233,13 @@ impl KokoroEngine {
 
     /// Synthesizes `text` in `voice_id`'s voice at `speed` (1.0 = normal),
     /// returning WAV-encoded bytes at Kokoro's native 24kHz mono output —
-    /// no resampling.
+    /// no resampling. `text` must be short enough to phonemize under the
+    /// model's own `input_ids` limit (its card documents shape `(1, <=512)`)
+    /// — for anything that might be a full multi-sentence message, use
+    /// `synthesize_long` instead, which chunks by sentence first. A real
+    /// "Non-zero status code ... invalid expand shape" ONNX error surfaced
+    /// exactly this: a full chat message synthesized in one call here
+    /// overran that limit and the encoder's Expand node choked on it.
     ///
     /// `&mut self`: `ort::session::Session::run` requires mutable access
     /// (it's not a read-only call despite inference conceptually being
@@ -192,15 +252,81 @@ impl KokoroEngine {
         voice_id: &str,
         speed: f32,
     ) -> Result<Vec<u8>, MythicError> {
-        let g2p = misaki_rs::G2P::new(misaki_rs::language::Language::EnglishUS);
-        let (phonemes, _tokens) = g2p
+        let samples = self.synthesize_samples(text, voice_id, speed)?;
+        encode_wav(&samples)
+    }
+
+    /// Synthesizes arbitrarily long `text` by splitting it into sentences
+    /// (reusing the same chunker the live-streaming path already relies on
+    /// for exactly this reason) and running each one through the model
+    /// separately, joined by a brief silence — then encodes the whole
+    /// concatenated result as one WAV. Used for replaying an already-saved
+    /// chat message (see `commands::chat` — replay), which can be
+    /// arbitrarily long, unlike a short "preview this voice" phrase.
+    pub fn synthesize_long(
+        &mut self,
+        text: &str,
+        voice_id: &str,
+        speed: f32,
+    ) -> Result<Vec<u8>, MythicError> {
+        let (mut sentences, remainder) = crate::tts::chunker::split_complete_sentences(text);
+        let trimmed_remainder = remainder.trim();
+        if !trimmed_remainder.is_empty() {
+            sentences.push(trimmed_remainder.to_string());
+        }
+        if sentences.is_empty() {
+            // Nothing looked like a sentence (e.g. a single short fragment
+            // with no terminator) — still worth trying as one chunk rather
+            // than silently returning empty audio.
+            sentences.push(text.trim().to_string());
+        }
+
+        // ~200ms of silence between sentences reads as a natural pause,
+        // not a stitching artifact, without the whole thing dragging.
+        const GAP_SAMPLES: usize = (SAMPLE_RATE / 5) as usize;
+        let mut all_samples: Vec<f32> = Vec::new();
+        for (i, sentence) in sentences.iter().enumerate() {
+            if sentence.is_empty() {
+                continue;
+            }
+            if i > 0 && !all_samples.is_empty() {
+                all_samples.extend(std::iter::repeat(0.0f32).take(GAP_SAMPLES));
+            }
+            let chunk_samples = self.synthesize_samples(sentence, voice_id, speed)?;
+            all_samples.extend(chunk_samples);
+        }
+        encode_wav(&all_samples)
+    }
+
+    /// The actual inference call, returning raw f32 PCM samples rather
+    /// than WAV-encoded bytes — shared by `synthesize` (single WAV) and
+    /// `synthesize_long` (concatenates several of these before encoding
+    /// once at the end, so there's exactly one WAV header for the whole
+    /// reply instead of one per sentence).
+    fn synthesize_samples(
+        &mut self,
+        text: &str,
+        voice_id: &str,
+        speed: f32,
+    ) -> Result<Vec<f32>, MythicError> {
+        let t0 = std::time::Instant::now();
+        let (phonemes, _tokens) = self
+            .g2p
             .g2p(text)
             .map_err(|e| MythicError::Provider(format!("Phonemization failed: {}", e)))?;
         let token_ids = phonemes_to_tokens(&phonemes);
         let n_tokens = token_ids.len();
+        tracing::debug!(
+            "[tts] Phonemized {} chars -> {} tokens in {:?}",
+            text.len(),
+            n_tokens,
+            t0.elapsed()
+        );
 
+        let t1 = std::time::Instant::now();
         let style = self.voices.style_for(voice_id, n_tokens)?;
         let style_data: Vec<f32> = style.into_iter().collect();
+        tracing::debug!("[tts] Voice style resolved in {:?}", t1.elapsed());
 
         // Built as (shape, flat Vec<T>) rather than passing `ndarray`
         // array types directly to `TensorRef::from_array_view` — `ort`'s
@@ -217,37 +343,52 @@ impl KokoroEngine {
         let speed_ref = TensorRef::from_array_view((vec![1usize], speed_data.as_slice()))
             .map_err(|e| MythicError::Provider(format!("speed tensor error: {}", e)))?;
 
+        let t2 = std::time::Instant::now();
         let outputs = self
             .session
             .run(ort::inputs![
-                "tokens" => tokens_ref,
+                "input_ids" => tokens_ref,
                 "style" => style_ref,
                 "speed" => speed_ref,
             ])
             .map_err(|e| MythicError::Provider(format!("Kokoro inference failed: {}", e)))?;
+        tracing::debug!("[tts] ONNX inference ran in {:?}", t2.elapsed());
 
-        let (_shape, samples) = outputs["waveform"]
+        // Indexed positionally, not by name ("waveform"/"audio" — the
+        // model's own reference Python code (`sess.run(None, ...)[0]`)
+        // never names it either, and this graph only has one output, so
+        // position 0 is unambiguous and doesn't depend on guessing a name.
+        let (_shape, samples) = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| MythicError::Provider(format!("Failed to read waveform output: {}", e)))?;
-
-        encode_wav(samples)
+        tracing::debug!(
+            "[tts] {} samples produced; total synthesize_samples() {:?}",
+            samples.len(),
+            t0.elapsed()
+        );
+        Ok(samples.to_vec())
     }
 }
 
 fn encode_wav(samples: &[f32]) -> Result<Vec<u8>, MythicError> {
+    // 16-bit PCM, not 32-bit float — halves the payload that then has to go
+    // through base64 + JSON + Tauri IPC on every synthesis call, with no
+    // audible quality loss for speech. decodeAudioData() on the frontend
+    // reads standard PCM16 WAV natively, no changes needed there.
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: SAMPLE_RATE,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
     };
     let mut cursor = Cursor::new(Vec::new());
     {
         let mut writer = hound::WavWriter::new(&mut cursor, spec)
             .map_err(|e| MythicError::Provider(format!("WAV encode failed: {}", e)))?;
         for &s in samples {
+            let clamped = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
             writer
-                .write_sample(s)
+                .write_sample(clamped)
                 .map_err(|e| MythicError::Provider(format!("WAV encode failed: {}", e)))?;
         }
         writer

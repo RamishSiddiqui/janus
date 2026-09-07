@@ -12,8 +12,23 @@ use tracing::info;
 
 use crate::error::MythicError;
 
-const MODEL_URL: &str = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx";
-const VOICES_URL: &str = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/voices-v1.0.bin";
+// `model_quantized.onnx` (92.4MB, generic dynamic quantization) measured a
+// real 3.6s of pure inference time for a 2.9s clip on this machine — RTF
+// ~1.25x, slower than real-time, not the ~2x-faster figure the original
+// research cited for "the int8 variant." `model_q8f16.onnx` (86MB, actual
+// int8-weights/fp16-activations quantization, the smallest file in this
+// repo) is much closer to that benchmark's likely source and worth trying
+// instead — the local cache filename below already said "int8", which
+// `model_quantized.onnx` never actually was.
+const MODEL_URL: &str = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx";
+// The onnx-community HF repo only ships 59 *individual* per-voice files
+// (voices/af_heart.bin, voices/am_adam.bin, ...), not a combined pack — the
+// combined voices-v1.0.bin (28MB, all 54 v1.0 voices, numpy-format style
+// vectors) that the whole Rust Kokoro ecosystem (kokoroxide, Kokoros, this
+// engine's own VoicePack parser) is built against instead lives in
+// thewh1teagle/kokoro-onnx's GitHub releases. Verified this URL resolves
+// (200, Content-Length 28214398) before fixing the original 404.
+const VOICES_URL: &str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin";
 // Pinned to the exact ONNX Runtime release `ort-sys` 2.0.0-rc.13's own
 // `download-binaries` feature fetches (see build/download/dist.tsv in the
 // ort-sys source: `pyke:ort-rs/ms@1.28.0`) — same ABI, fetched from
@@ -77,16 +92,21 @@ pub async fn download_all(
     let dir = tts_dir(&app_data_dir);
     tokio::fs::create_dir_all(&dir).await?;
 
-    download_one(app, http_client, MODEL_URL, &model_path(&app_data_dir), "model").await?;
-    download_one(
-        app,
-        http_client,
-        VOICES_URL,
-        &voices_path(&app_data_dir),
-        "voices",
-    )
-    .await?;
-    download_runtime(app, http_client, &runtime_path(&app_data_dir)).await?;
+    // Skip any file that already landed successfully — without this, a
+    // retry after one phase fails (e.g. voices 404s after model already
+    // downloaded fine) would needlessly re-fetch the ~90MB model too.
+    let model_dest = model_path(&app_data_dir);
+    if !model_dest.exists() {
+        download_one(app, http_client, MODEL_URL, &model_dest, "model").await?;
+    }
+    let voices_dest = voices_path(&app_data_dir);
+    if !voices_dest.exists() {
+        download_one(app, http_client, VOICES_URL, &voices_dest, "voices").await?;
+    }
+    let runtime_dest = runtime_path(&app_data_dir);
+    if !runtime_dest.exists() {
+        download_runtime(app, http_client, &runtime_dest).await?;
+    }
 
     info!("[tts] Model, voice pack, and ONNX Runtime downloaded to {:?}", dir);
     Ok(())

@@ -96,6 +96,19 @@
     return () => cleanupTtsPlaybackListener();
   });
 
+  // Warm the TTS engine at startup (fire-and-forget, non-blocking) when the
+  // feature is enabled — the ONNX session + G2P engine load is a real ~4-5s
+  // cost measured in practice, and paying it here means it's already done
+  // by the time the user's first message/preview needs it, instead of
+  // stacking on top of that first interaction. `tts_preload_engine` itself
+  // no-ops quietly if the model isn't downloaded yet.
+  $effect(() => {
+    if (!browser || !('__TAURI_INTERNALS__' in window) || !$settings.ttsEnabled) return;
+    import('$lib/services/ipc').then((ipc) => {
+      ipc.ttsPreloadEngine().catch((err) => console.error('[tts] Preload failed:', err));
+    });
+  });
+
   /** Global keyboard shortcuts */
   function handleKeydown(e: KeyboardEvent) {
     // Ctrl/Cmd + N → New chat

@@ -107,6 +107,11 @@ misaki-rs = { version = "0.3", default-features = false }
 hound = "3.5"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# Current process's own CPU/memory usage, surfaced in Settings so
+# resource-heavy features (starting with native TTS above) can be visually
+# sanity-checked as not going haywire — see GitHub issue #77.
+sysinfo = "0.39"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

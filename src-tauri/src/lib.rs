@@ -74,6 +74,13 @@ pub struct AppState {
     /// synthesis calls are infrequent enough that exclusive access per
     /// call is fine — this isn't a hot concurrent-read path like `db`.
     pub tts_engine: Arc<AsyncMutex<Option<crate::tts::KokoroEngine>>>,
+
+    /// Kept alive across calls (not recreated per-request) — `sysinfo`'s
+    /// CPU-usage numbers are a delta since the *previous* refresh, so a
+    /// fresh `System` on every poll would always read ~0%. The frontend's
+    /// periodic Settings poll naturally provides the "refresh a few
+    /// seconds apart" cadence `sysinfo` expects for meaningful readings.
+    pub resource_monitor: Arc<AsyncMutex<sysinfo::System>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -211,9 +218,12 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         // TTS
         commands::tts::tts_model_status,
         commands::tts::tts_download_model,
+        commands::tts::tts_preload_engine,
         commands::tts::tts_list_voices,
         commands::tts::tts_set_character_voice,
         commands::tts::tts_test_speak,
+        commands::tts::tts_replay_message,
+        commands::resource_monitor::get_resource_usage,
     ])
 }
 
@@ -404,6 +414,7 @@ pub fn run() {
                 active_generations: Arc::new(AsyncMutex::new(HashMap::new())),
                 active_scene_generations: Arc::new(AsyncMutex::new(HashMap::new())),
                 tts_engine: Arc::new(AsyncMutex::new(None)),
+                resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new_all())),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
@@ -556,9 +567,12 @@ pub fn run() {
             // TTS
             commands::tts::tts_model_status,
             commands::tts::tts_download_model,
+            commands::tts::tts_preload_engine,
             commands::tts::tts_list_voices,
             commands::tts::tts_set_character_voice,
             commands::tts::tts_test_speak,
+            commands::tts::tts_replay_message,
+            commands::resource_monitor::get_resource_usage,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Janus");

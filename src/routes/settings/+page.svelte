@@ -10,6 +10,7 @@
   import SettingsPromptsSection from '$lib/components/SettingsPromptsSection.svelte';
   import SettingsLoggingSection from '$lib/components/SettingsLoggingSection.svelte';
   import { settings } from '$lib/stores/settings';
+  import { browser } from '$app/environment';
 
   // ── Sidebar navigation ──
   // Settings grew to 8 sections crammed into a two-column masonry layout
@@ -43,6 +44,46 @@
   // to remount and re-read fresh from the now-updated store, instead of
   // reaching into their locals directly the way the old monolithic page did.
   let importGeneration = $state(0);
+
+  // Live resource usage — Janus's own process, not system-wide. Polling
+  // (not a one-shot read) is required for cpu_percent to mean anything:
+  // sysinfo computes CPU% as a delta since the previous refresh, so a
+  // single read always shows 0%. Only runs while Settings is open.
+  const isTauri = browser && '__TAURI_INTERNALS__' in window;
+  let memoryMb = $state<number | null>(null);
+  let cpuPercent = $state<number | null>(null);
+  $effect(() => {
+    if (!isTauri) return;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const ipc = await import('$lib/services/ipc');
+        const usage = await ipc.getResourceUsage();
+        if (!cancelled) {
+          memoryMb = usage.memory_mb;
+          cpuPercent = usage.cpu_percent;
+        }
+      } catch (err) {
+        console.error('[resource-monitor] Failed to read usage:', err);
+      }
+    }
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  });
+  // Severity bands, not just raw numbers — a legitimate CPU burst during
+  // active TTS synthesis can genuinely spike past 300% (sysinfo reports
+  // %-of-one-core, so multi-core work adds up past 100%), so "high" here
+  // means "worth a look," not "definitely broken."
+  let memorySeverity = $derived(
+    memoryMb === null ? 'normal' : memoryMb > 1200 ? 'high' : memoryMb > 500 ? 'elevated' : 'normal',
+  );
+  let cpuSeverity = $derived(
+    cpuPercent === null ? 'normal' : cpuPercent > 250 ? 'high' : cpuPercent > 100 ? 'elevated' : 'normal',
+  );
 </script>
 
 <svelte:head>
@@ -57,6 +98,20 @@
       <span class="settings-subtitle">Customize your Janus experience</span>
     </div>
     <div class="settings-header-about">
+      {#if memoryMb !== null}
+        <div class="resource-meter" title="Janus's own process usage — not system-wide">
+          <span class="resource-stat sev-{memorySeverity}">
+            <Icon name="server" size={12} />
+            <span class="resource-value">{memoryMb.toLocaleString()}</span>
+            <span class="resource-unit">MB</span>
+          </span>
+          <span class="resource-stat sev-{cpuSeverity}">
+            <Icon name="cpu" size={12} />
+            <span class="resource-value">{cpuPercent?.toFixed(0) ?? '0'}</span>
+            <span class="resource-unit">% CPU</span>
+          </span>
+        </div>
+      {/if}
       <span class="about-name">Janus v0.1.0</span>
       <span class="about-dot" aria-hidden="true">·</span>
       <span class="about-desc">{$settings.localStorageOnly ? '🔒 Private' : '⚠️ Privacy Relaxed'}</span>
@@ -160,6 +215,23 @@
   .settings-header-about .about-name { font-size: var(--text-sm); font-weight: 700; color: #8b8ba7; }
   .settings-header-about .about-dot { color: #3a3a52; }
   .settings-header-about .about-desc { font-size: 11px; color: #4a4a6a; font-family: var(--font-mono); letter-spacing: 0.3px; }
+
+  /* Resource meter — two labeled, color-coded stat chips rather than a
+     cramped inline string, so memory/CPU read at a glance instead of
+     requiring the viewer to parse a dense "612 MB · 356.0%" fragment. */
+  .resource-meter { display: flex; align-items: center; gap: 6px; margin-right: 4px; }
+  .resource-stat {
+    display: inline-flex; align-items: baseline; gap: 3px;
+    padding: 3px 8px; border-radius: var(--rounded-full);
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle);
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  }
+  .resource-stat :global(svg) { align-self: center; }
+  .resource-value { font-size: 12px; font-weight: 700; }
+  .resource-unit { font-size: 9.5px; font-weight: 600; letter-spacing: 0.03em; opacity: 0.75; }
+  .resource-stat.sev-normal { color: #6a6a8a; }
+  .resource-stat.sev-elevated { color: #fbbf24; border-color: rgba(251,191,36,0.25); background: rgba(251,191,36,0.06); }
+  .resource-stat.sev-high { color: #fb7185; border-color: rgba(251,113,133,0.3); background: rgba(251,113,133,0.08); }
 
   /* ── Section nav: floating carousel, not a second sidebar ── */
   .settings-carousel {

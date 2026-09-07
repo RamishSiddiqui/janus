@@ -22,7 +22,7 @@ use crate::models::conversation::{ChatMessage, GenerationParams};
 use crate::models::provider::ProviderConfig;
 use crate::providers::resolve::{create_rig_provider, get_default_llm_provider};
 use crate::providers::traits::StreamChunk;
-use crate::tts::{chunker::split_complete_sentences, KokoroEngine};
+use crate::tts::{chunker::split_complete_sentences, KokoroEngine, TtsChunkEvent};
 
 /// Payload emitted to the frontend via Tauri events during streaming.
 #[derive(Clone, serde::Serialize)]
@@ -229,6 +229,28 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                             tts_sequence,
                         );
                     }
+                    // Every prior chunk this response ever produces was
+                    // dispatched (fire-and-forget) by the time we reach
+                    // here — this is the only place that knows "no more
+                    // chunks are coming for this message" for the live-
+                    // streaming path, same role `tts_replay_message`'s
+                    // end-of-loop emit plays for a replay. Without it,
+                    // the per-message "Play voice" button/glow state
+                    // never clears once a response finishes: nothing else
+                    // ever tells the frontend the stream is over. Emitted
+                    // as soon as dispatch is done, not once synthesis
+                    // finishes (fire-and-forget doesn't wait for that) —
+                    // a very late-arriving final chunk racing past this
+                    // signal is possible but rare and non-destructive: the
+                    // frontend just drops it as stray, same as any other
+                    // late chunk.
+                    let _ = app.emit(
+                        "tts-stream-end",
+                        crate::tts::TtsStreamEndEvent {
+                            conversation_id: conv_id.clone(),
+                            message_id: assist_id.clone(),
+                        },
+                    );
                 }
 
                 // Some providers fail "quietly" under load — the stream
@@ -699,19 +721,6 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
     }
 }
 
-/// Payload emitted per synthesized sentence during a streamed response.
-/// `audio` is base64-encoded WAV — a raw `Vec<u8>` field would still
-/// serialize as a JSON array of numbers over Tauri's IPC (3-5x the byte
-/// size in JSON text for a payload that's routinely a few hundred KB per
-/// sentence), while base64 is ~1.33x.
-#[derive(Clone, serde::Serialize)]
-struct TtsChunkEvent {
-    conversation_id: String,
-    message_id: String,
-    sequence: u32,
-    audio: String,
-}
-
 /// Synthesizes one sentence and emits it as a `tts-chunk` event.
 /// Fire-and-forget, matching `spawn_embed_message`/`spawn_scene_extraction`
 /// — failures (including "engine not loaded yet") are logged, never
@@ -745,6 +754,7 @@ fn spawn_tts_chunk(
                         message_id,
                         sequence,
                         audio,
+                        text,
                     },
                 );
             }

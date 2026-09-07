@@ -10,17 +10,29 @@
 
 let previewContext: AudioContext | null = null;
 
-function getPreviewContext(): AudioContext {
+/** Creates (once) and resumes the shared preview AudioContext. Must be
+ *  called synchronously, directly inside a click handler, before any
+ *  `await` — Chromium's autoplay policy only reliably honors
+ *  `resume()` as tied to a user gesture while it's still in that same
+ *  synchronous call stack. Calling this only after an `await ipc.foo()`
+ *  (as the previous version did, lazily inside `playBase64Wav`) lets the
+ *  context silently stay "suspended": playback schedules and completes
+ *  with no error, but produces no sound, and only a *second* click
+ *  (closer to a still-live user-activation window) actually unlocks it —
+ *  exactly the "first click does nothing, second click plays" bug this
+ *  fixes. */
+export function primeAudioPreviewContext(): void {
   if (!previewContext) {
     previewContext = new AudioContext();
   }
   if (previewContext.state === 'suspended') {
-    // Browsers require a user-gesture to start/resume an AudioContext —
-    // safe to call unconditionally since this is only ever invoked from a
-    // click handler.
     void previewContext.resume();
   }
-  return previewContext;
+}
+
+function getPreviewContext(): AudioContext {
+  primeAudioPreviewContext();
+  return previewContext!;
 }
 
 /** Decodes a base64-encoded WAV string into an AudioBuffer. */
@@ -33,13 +45,37 @@ export async function decodeBase64Wav(base64: string, ctx: AudioContext): Promis
   return ctx.decodeAudioData(bytes.buffer);
 }
 
-/** Decodes and immediately plays a base64 WAV clip. Returns once playback
- *  has been scheduled (not once it finishes). */
-export async function playBase64Wav(base64: string): Promise<void> {
+export interface WavPlayback {
+  /** Live amplitude data for a level-meter/waveform visualizer — read via
+   *  `analyser.getByteFrequencyData()` on a rAF loop while `ended` is
+   *  still pending. */
+  analyser: AnalyserNode;
+  /** Resolves once the clip finishes playing. */
+  ended: Promise<void>;
+}
+
+/** Decodes and immediately plays a base64 WAV clip, routed through an
+ *  AnalyserNode so callers can drive a waveform visualizer during
+ *  playback. Returns once playback has been scheduled (not once it
+ *  finishes) — await `.ended` for that. */
+export async function playBase64Wav(base64: string): Promise<WavPlayback> {
   const ctx = getPreviewContext();
+  // Belt-and-suspenders: by now `primeAudioPreviewContext()` should already
+  // have resolved this (called synchronously before the IPC round-trip
+  // that got us here), but await it explicitly rather than assume timing.
+  if (ctx.state === 'suspended') {
+    await ctx.resume();
+  }
   const buffer = await decodeBase64Wav(base64, ctx);
   const source = ctx.createBufferSource();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 64;
   source.buffer = buffer;
-  source.connect(ctx.destination);
+  source.connect(analyser);
+  analyser.connect(ctx.destination);
+  const ended = new Promise<void>((resolve) => {
+    source.onended = () => resolve();
+  });
   source.start();
+  return { analyser, ended };
 }

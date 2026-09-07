@@ -1,9 +1,10 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import WaveformBars from './WaveformBars.svelte';
   import { settings } from '$lib/stores/settings';
   import { error as toastError } from '$lib/stores/toast';
   import { browser } from '$app/environment';
-  import { playBase64Wav } from '$lib/utils/audioPreview';
+  import { playBase64Wav, primeAudioPreviewContext } from '$lib/utils/audioPreview';
   import type { VoiceInfo, TtsDownloadProgressEvent } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -31,6 +32,7 @@
   let voices = $state<VoiceInfo[]>([]);
   let loadingVoices = $state(false);
   let previewing = $state(false);
+  let previewAnalyser = $state<AnalyserNode | null>(null);
 
   let unlistenProgress: (() => void) | null = null;
 
@@ -88,15 +90,21 @@
 
   async function handlePreview() {
     if (!isTauri || !ttsDefaultVoiceId || previewing) return;
+    // Must run synchronously here, before the first `await` below — see
+    // the doc comment on primeAudioPreviewContext for why.
+    primeAudioPreviewContext();
     previewing = true;
     try {
       const ipc = await import('$lib/services/ipc');
       const audio = await ipc.ttsTestSpeak('Hello, this is a preview of this voice.', ttsDefaultVoiceId);
-      await playBase64Wav(audio);
+      const playback = await playBase64Wav(audio);
+      previewAnalyser = playback.analyser;
+      await playback.ended;
     } catch (err) {
       toastError('Preview failed');
       console.error(err);
     }
+    previewAnalyser = null;
     previewing = false;
   }
 
@@ -178,7 +186,11 @@
         {/each}
       </select>
       <button class="settings-btn outline sm" onclick={handlePreview} disabled={!ttsDefaultVoiceId || previewing}>
-        <Icon name="volume-2" size={13} color="var(--fg-secondary)" />
+        {#if previewing}
+          <WaveformBars analyser={previewAnalyser} active={previewing} />
+        {:else}
+          <Icon name="volume-2" size={13} color="var(--fg-secondary)" />
+        {/if}
         <span>{previewing ? 'Playing…' : 'Preview'}</span>
       </button>
     </div>
@@ -189,12 +201,19 @@
   select.edit-input {
     flex: 1;
     height: 34px;
-    padding: 0 10px;
+    padding: 0 32px 0 10px;
     border-radius: 10px;
     background: rgba(14,14,30,0.6);
     border: 1px solid rgba(139,92,246,0.08);
     color: #e0e0f0;
     font-size: 12.5px;
     font-family: var(--font-body);
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238b8ba7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 14px;
   }
 </style>

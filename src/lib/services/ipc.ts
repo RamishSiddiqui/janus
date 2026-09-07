@@ -673,6 +673,18 @@ export interface TtsChunkEvent {
   sequence: number;
   /** Base64-encoded WAV. */
   audio: string;
+  /** The exact sentence this chunk's audio was synthesized from — used to
+   *  highlight the matching text while it plays. */
+  text: string;
+}
+
+/** Fires once all chunks for a message have been dispatched — no audio,
+ *  just identifies which message is done. Doesn't by itself mean playback
+ *  has finished (audio already scheduled can still be playing) — combine
+ *  with "nothing left scheduled" before treating a message as truly over. */
+export interface TtsStreamEndEvent {
+  conversation_id: string;
+  message_id: string;
 }
 
 export interface TtsDownloadProgressEvent {
@@ -691,6 +703,31 @@ export async function ttsModelStatus(): Promise<TtsModelStatus> {
  *  `onTtsDownloadProgress` before calling this to see live progress. */
 export async function ttsDownloadModel(): Promise<void> {
   return safeInvoke<void>('tts_download_model');
+}
+
+/** Warms the ONNX engine in the background if the model's already
+ *  downloaded — a quiet no-op otherwise. Call on app startup (when TTS is
+ *  enabled) so the ~4-5s load cost is paid before the user's first real
+ *  interaction, not stacked on top of it. */
+export async function ttsPreloadEngine(): Promise<void> {
+  return safeInvoke<void>('tts_preload_engine');
+}
+
+// --- Resource Monitor ---
+
+export interface ResourceUsage {
+  /** Resident memory used by Janus's own process, in MB. */
+  memory_mb: number;
+  /** CPU usage % since the previous call — a delta, not an instantaneous
+   *  snapshot, so the first read after app start is always 0%. */
+  cpu_percent: number;
+}
+
+/** Janus's own process memory/CPU usage — not system-wide. Poll this
+ *  periodically (a few seconds apart) for `cpu_percent` to read as a real
+ *  number rather than 0. */
+export async function getResourceUsage(): Promise<ResourceUsage> {
+  return safeInvoke<ResourceUsage>('get_resource_usage');
 }
 
 /** Lists the 54 bundled Kokoro voices. Loads the ONNX engine into memory on
@@ -712,6 +749,22 @@ export async function ttsSetCharacterVoice(
  *  WAV — for a "preview this voice" control, not part of a streamed reply. */
 export async function ttsTestSpeak(text: string, voiceId: string): Promise<string> {
   return safeInvoke<string>('tts_test_speak', { text, voiceId });
+}
+
+/** Replays an already-saved message's voice, sentence by sentence — emits
+ *  `tts-chunk` events (the same ones `onTtsChunk`/the ttsPlayback queue
+ *  already handle) as each sentence finishes, rather than making the
+ *  caller wait for the whole message before any audio plays. Fire-and-
+ *  forget from the caller's perspective; watch `isSpeaking`/
+ *  `currentlyPlayingMessageId` (ttsPlayback.ts) for playback state, not
+ *  this promise resolving. */
+export async function ttsReplayMessage(
+  conversationId: string,
+  messageId: string,
+  text: string,
+  voiceId: string,
+): Promise<void> {
+  return safeInvoke<void>('tts_replay_message', { conversationId, messageId, text, voiceId });
 }
 
 /** Subscribes to per-sentence synthesized audio emitted during a streamed
