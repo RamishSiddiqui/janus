@@ -292,7 +292,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
 
         DEFINE FIELD IF NOT EXISTS name          ON provider_configs TYPE string;
         DEFINE FIELD IF NOT EXISTS provider_type ON provider_configs TYPE string
-            ASSERT $value IN ['llm', 'image', 'video'];
+            ASSERT $value IN ['llm', 'image', 'video', 'tts'];
         DEFINE FIELD IF NOT EXISTS adapter       ON provider_configs TYPE string;
         DEFINE FIELD IF NOT EXISTS config        ON provider_configs TYPE object FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS is_default    ON provider_configs TYPE bool DEFAULT false;

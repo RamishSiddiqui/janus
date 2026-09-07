@@ -74,7 +74,43 @@ const MIGRATIONS: &[Migration] = &[Migration {
         }
         .boxed()
     },
-}];
+    },
+    Migration {
+        version: 2,
+        description: "widen provider_configs.provider_type's ASSERT to allow 'tts' (issue #78)",
+        run: |db| {
+            use futures::FutureExt;
+            async move {
+                // `DEFINE FIELD IF NOT EXISTS` in schema.rs never re-applies
+                // once a database has already defined this field on an
+                // earlier boot — adding `ProviderType::Tts` to the Rust enum
+                // did nothing for any existing database, so `create_provider`
+                // with `provider_type: "tts"` fails SurrealDB's own ASSERT
+                // check ("must conform to: $value INSIDE ['llm', 'image',
+                // 'video']") even though the Rust side happily accepts it.
+                // `OVERWRITE` is required here, not just a bare `DEFINE
+                // FIELD` — confirmed the hard way: a plain `DEFINE FIELD`
+                // (no `IF NOT EXISTS`, no `OVERWRITE`) *errors* on this
+                // SurrealDB version ("The field 'provider_type' already
+                // exists") rather than silently redefining it. `OVERWRITE`
+                // forces the redefinition; no data backfill needed, since
+                // every existing row's provider_type ('llm'/'image'/'video')
+                // still satisfies the widened constraint.
+                db.query(
+                    "
+                    DEFINE FIELD OVERWRITE provider_type ON provider_configs TYPE string
+                        ASSERT $value IN ['llm', 'image', 'video', 'tts'];
+                    ",
+                )
+                .await?
+                .check()
+                .map_err(|e| MythicError::DatabaseOp(format!("migration 2: {}", e)))?;
+                Ok(())
+            }
+            .boxed()
+        },
+    },
+];
 
 /// Runs any migrations not yet recorded as applied, in version order.
 /// Safe to call on every startup — already-applied migrations are skipped.
