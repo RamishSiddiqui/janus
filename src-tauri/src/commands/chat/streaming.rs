@@ -96,6 +96,19 @@ pub(crate) struct StreamCompletionCtx {
     /// no-op in that case (see issue #66: this must add zero overhead to
     /// the hot streaming path when TTS isn't in use).
     pub(crate) tts_voice_id: Option<String>,
+    /// `Some(provider_config_id)` when `tts_voice_id` belongs to a cloud
+    /// provider (issue #78) rather than the built-in Kokoro engine. Live
+    /// incremental per-sentence streaming stays Kokoro-only for now — a
+    /// cloud provider has no ~512-token limit forcing sentence-sized
+    /// chunks the way Kokoro does, so the right chunking strategy for
+    /// low-latency cloud streaming is a different design question, not
+    /// reused as-is here. When this is `Some`, the entire TTS block in the
+    /// `Delta`/`Done` arms below is skipped (true no-op, matching
+    /// `tts_voice_id`'s own no-op guarantee) — the message still saves
+    /// normally, and its voice is still reachable afterward via
+    /// `tts_replay_message`'s cloud path (a single whole-message call,
+    /// no chunking needed there).
+    pub(crate) tts_voice_provider_id: Option<String>,
     /// Shared with the caller only so it starts empty and consistent;
     /// owned exclusively by this function afterward.
     pub(crate) tts_sentence_buffer: Arc<std::sync::Mutex<String>>,
@@ -145,7 +158,16 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
     let retry_gen_params = ctx.retry_gen_params;
     let retry_messages = ctx.retry_messages;
     let retry_images = ctx.retry_images;
-    let tts_voice_id = ctx.tts_voice_id;
+    // A cloud-provider voice (issue #78) makes this whole block a no-op —
+    // see `StreamCompletionCtx::tts_voice_provider_id`'s doc comment for
+    // why live incremental streaming stays Kokoro-only for now. Folding the
+    // check in here (rather than touching either `if let Some(voice_id) =
+    // tts_voice_id...` block below) means neither needs to change at all.
+    let tts_voice_id = if ctx.tts_voice_provider_id.is_some() {
+        None
+    } else {
+        ctx.tts_voice_id
+    };
     let tts_sentence_buffer = ctx.tts_sentence_buffer;
     let tts_engine = ctx.tts_engine;
     let mut tts_sequence: u32 = 0;

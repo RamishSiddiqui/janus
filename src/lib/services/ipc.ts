@@ -732,8 +732,11 @@ export async function getResourceUsage(): Promise<ResourceUsage> {
 
 /** Lists the 54 bundled Kokoro voices. Loads the ONNX engine into memory on
  *  first call if it isn't already loaded — can take a few seconds. */
-export async function ttsListVoices(): Promise<VoiceInfo[]> {
-  return safeInvoke<VoiceInfo[]>('tts_list_voices');
+/** `providerId` of `undefined`/omitted lists the built-in Kokoro pack
+ *  (unchanged); a `ProviderConfig` id lists that cloud provider's own
+ *  voice catalog instead (issue #78). */
+export async function ttsListVoices(providerId?: string): Promise<VoiceInfo[]> {
+  return safeInvoke<VoiceInfo[]>('tts_list_voices', { providerId: providerId ?? null });
 }
 
 /** Assigns (or clears, via `voiceId: null`) the voice a character speaks
@@ -741,14 +744,19 @@ export async function ttsListVoices(): Promise<VoiceInfo[]> {
 export async function ttsSetCharacterVoice(
   characterId: string,
   voiceId: string | null,
+  voiceProviderId?: string | null,
 ): Promise<Character> {
-  return safeInvoke<Character>('tts_set_character_voice', { characterId, voiceId });
+  return safeInvoke<Character>('tts_set_character_voice', {
+    characterId,
+    voiceId,
+    voiceProviderId: voiceProviderId ?? null,
+  });
 }
 
 /** Synthesizes `text` immediately with `voiceId` and returns base64-encoded
  *  WAV — for a "preview this voice" control, not part of a streamed reply. */
-export async function ttsTestSpeak(text: string, voiceId: string): Promise<string> {
-  return safeInvoke<string>('tts_test_speak', { text, voiceId });
+export async function ttsTestSpeak(text: string, voiceId: string, providerId?: string): Promise<string> {
+  return safeInvoke<string>('tts_test_speak', { text, voiceId, providerId: providerId ?? null });
 }
 
 /** Replays an already-saved message's voice, sentence by sentence — emits
@@ -763,8 +771,15 @@ export async function ttsReplayMessage(
   messageId: string,
   text: string,
   voiceId: string,
+  providerId?: string,
 ): Promise<void> {
-  return safeInvoke<void>('tts_replay_message', { conversationId, messageId, text, voiceId });
+  return safeInvoke<void>('tts_replay_message', {
+    conversationId,
+    messageId,
+    text,
+    voiceId,
+    providerId: providerId ?? null,
+  });
 }
 
 /** Subscribes to per-sentence synthesized audio emitted during a streamed

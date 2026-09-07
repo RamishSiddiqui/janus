@@ -363,10 +363,18 @@
     try {
       const ipc = await import('$lib/services/ipc');
       let voiceId: string | null = get(settings).ttsDefaultVoiceId;
+      // `voiceProviderId` always travels paired with `voiceId` — a cloud
+      // provider's voice id means nothing under a different provider (or
+      // under built-in Kokoro), so whichever source below supplies the
+      // voice also supplies the provider, never mixed across sources.
+      let voiceProviderId: string | null = get(settings).ttsDefaultProviderId;
       if (message.character_id) {
         try {
           const character = await ipc.getCharacter(message.character_id);
-          if (character.voice_id) voiceId = character.voice_id;
+          if (character.voice_id) {
+            voiceId = character.voice_id;
+            voiceProviderId = character.voice_provider_id ?? null;
+          }
         } catch {
           // Fall through to the default voice.
         }
@@ -380,7 +388,7 @@
       // text actually rendered/highlighted (a leading `[Name]:` marker for
       // multi-char messages is stripped for display), so the sentence text
       // each tts-chunk carries back matches what's on screen for the glow.
-      await ipc.ttsReplayMessage(conversationId, message.id, liveMarker.rest, voiceId);
+      await ipc.ttsReplayMessage(conversationId, message.id, liveMarker.rest, voiceId, voiceProviderId ?? undefined);
       // Normally the $effect watching isPlayingVoice clears this once the
       // first chunk actually starts playing — but if nothing ever ends up
       // playing (e.g. the text produced zero real sentences), nothing

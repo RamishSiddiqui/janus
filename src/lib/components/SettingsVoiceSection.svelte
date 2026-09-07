@@ -5,23 +5,46 @@
   import { error as toastError } from '$lib/stores/toast';
   import { browser } from '$app/environment';
   import { playBase64Wav, primeAudioPreviewContext } from '$lib/utils/audioPreview';
-  import type { VoiceInfo, TtsDownloadProgressEvent } from '$lib/services/ipc';
+  import type { VoiceInfo, TtsDownloadProgressEvent, ProviderConfig } from '$lib/services/ipc';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   let ttsEnabled = $state($settings.ttsEnabled);
   let ttsDefaultVoiceId = $state($settings.ttsDefaultVoiceId);
+  /** `null` = built-in Kokoro (unchanged default); a ProviderConfig id =
+   *  a cloud provider (issue #78). */
+  let ttsDefaultProviderId = $state<string | null>($settings.ttsDefaultProviderId);
+  let ttsProviders = $state<ProviderConfig[]>([]);
 
   // Persist changes back to store (debounced to avoid infinite loop) —
   // same pattern as every other Settings*Section.svelte.
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
-    const snapshot = { ttsEnabled, ttsDefaultVoiceId };
+    const snapshot = { ttsEnabled, ttsDefaultVoiceId, ttsDefaultProviderId };
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       settings.update(prev => ({ ...prev, ...snapshot }));
     }, 50);
   });
+
+  async function loadTtsProviders() {
+    if (!isTauri) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      ttsProviders = await ipc.listProviders('tts');
+    } catch (err) {
+      console.error('Failed to load TTS providers:', err);
+    }
+  }
+
+  /** Switching provider invalidates the previously-loaded voice list (a
+   *  different provider's voice ids mean nothing under the old one) and
+   *  clears whichever voice was selected, rather than silently keeping an
+   *  id that no longer resolves to anything real. */
+  async function handleProviderChange() {
+    ttsDefaultVoiceId = null;
+    await loadVoices();
+  }
 
   let modelDownloaded = $state(false);
   let checkingStatus = $state(true);
@@ -39,11 +62,15 @@
   async function refreshStatus() {
     if (!isTauri) { checkingStatus = false; return; }
     checkingStatus = true;
+    await loadTtsProviders();
     try {
       const ipc = await import('$lib/services/ipc');
       const status = await ipc.ttsModelStatus();
       modelDownloaded = status.downloaded;
-      if (modelDownloaded) await loadVoices();
+      // A cloud provider's voice list doesn't need the Kokoro model
+      // downloaded at all — only load eagerly here when either the model's
+      // already there, or a cloud provider is already selected.
+      if (modelDownloaded || ttsDefaultProviderId) await loadVoices();
     } catch (err) {
       console.error('Failed to check TTS model status:', err);
     }
@@ -55,7 +82,7 @@
     loadingVoices = true;
     try {
       const ipc = await import('$lib/services/ipc');
-      voices = await ipc.ttsListVoices();
+      voices = await ipc.ttsListVoices(ttsDefaultProviderId ?? undefined);
     } catch (err) {
       toastError('Failed to load voice list');
       console.error(err);
@@ -96,7 +123,7 @@
     previewing = true;
     try {
       const ipc = await import('$lib/services/ipc');
-      const audio = await ipc.ttsTestSpeak('Hello, this is a preview of this voice.', ttsDefaultVoiceId);
+      const audio = await ipc.ttsTestSpeak('Hello, this is a preview of this voice.', ttsDefaultVoiceId, ttsDefaultProviderId ?? undefined);
       const playback = await playBase64Wav(audio);
       previewAnalyser = playback.analyser;
       await playback.ended;
@@ -137,6 +164,23 @@
   </div>
 </section>
 
+{#if ttsProviders.length > 0}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-4">
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">Voice provider</span>
+        <span class="setting-desc">Built-in Kokoro runs fully offline; a configured provider uses your own API key instead</span>
+      </div>
+    </div>
+    <select class="edit-input" bind:value={ttsDefaultProviderId} onchange={handleProviderChange}>
+      <option value={null}>Kokoro (built-in, offline)</option>
+      {#each ttsProviders as provider (provider.id)}
+        <option value={provider.id}>{provider.name}</option>
+      {/each}
+    </select>
+  </section>
+{/if}
+
 <section class="settings-section settings-section-bounded animate-fade-in-up stagger-4">
   <div class="section-header">
     <div class="section-header-left">
@@ -147,6 +191,36 @@
 
   {#if checkingStatus}
     <span class="setting-desc">Checking model status…</span>
+  {:else if ttsDefaultProviderId}
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">{ttsProviders.find(p => p.id === ttsDefaultProviderId)?.name ?? 'Cloud provider'}</span>
+        <span class="setting-desc">{voices.length} voices available</span>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">Default voice</span>
+        <span class="setting-desc">Used for any character without their own voice assigned</span>
+      </div>
+    </div>
+    <div class="button-row">
+      <select class="edit-input" bind:value={ttsDefaultVoiceId} disabled={loadingVoices}>
+        <option value={null}>None</option>
+        {#each voices as voice (voice.id)}
+          <option value={voice.id}>{voice.name}</option>
+        {/each}
+      </select>
+      <button class="settings-btn outline sm" onclick={handlePreview} disabled={!ttsDefaultVoiceId || previewing}>
+        {#if previewing}
+          <WaveformBars analyser={previewAnalyser} active={previewing} />
+        {:else}
+          <Icon name="volume-2" size={13} color="var(--fg-secondary)" />
+        {/if}
+        <span>{previewing ? 'Playing…' : 'Preview'}</span>
+      </button>
+    </div>
   {:else if !modelDownloaded}
     <div class="setting-row">
       <div class="setting-label">

@@ -10,10 +10,64 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 
 use crate::db::characters::CharacterRepo;
+use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
 use crate::models::character::Character;
+use crate::models::provider::ProviderAdapter;
+use crate::providers::{elevenlabs, google_cloud_tts};
 use crate::tts::{chunker::split_complete_sentences, download, engine::VoiceInfo, KokoroEngine, TtsChunkEvent};
 use crate::AppState;
+
+/// Lists voices for a cloud provider (issue #78) — dispatches on the
+/// `ProviderConfig`'s adapter. Kokoro never goes through this: callers
+/// only reach here when `provider_id` is `Some`, keeping the built-in
+/// engine's own path (`tts_list_voices` below) completely untouched.
+async fn list_voices_for_provider(
+    state: &State<'_, Arc<RwLock<AppState>>>,
+    provider_id: &str,
+) -> Result<Vec<VoiceInfo>, MythicError> {
+    let (db, http_client) = {
+        let state = state.read().await;
+        (state.db.clone(), state.http_client.clone())
+    };
+    let provider = ProviderRepo::get(&db, provider_id).await?;
+    match provider.adapter {
+        ProviderAdapter::ElevenLabs => elevenlabs::list_voices(&provider, &http_client).await,
+        ProviderAdapter::GoogleCloudTts => google_cloud_tts::list_voices(&provider, &http_client).await,
+        other => Err(MythicError::Validation(format!(
+            "{other:?} is not a TTS provider"
+        ))),
+    }
+}
+
+/// Synthesizes `text` via a cloud provider — same dispatch shape as
+/// `list_voices_for_provider`. Returns raw audio bytes (MP3 from either
+/// adapter today) — never WAV-encoded the way Kokoro's output is; the
+/// frontend's `decodeAudioData` auto-detects format from the byte stream,
+/// so nothing downstream needs to know or care which provider produced it.
+async fn synthesize_via_provider(
+    state: &State<'_, Arc<RwLock<AppState>>>,
+    provider_id: &str,
+    text: &str,
+    voice_id: &str,
+) -> Result<Vec<u8>, MythicError> {
+    let (db, http_client) = {
+        let state = state.read().await;
+        (state.db.clone(), state.http_client.clone())
+    };
+    let provider = ProviderRepo::get(&db, provider_id).await?;
+    match provider.adapter {
+        ProviderAdapter::ElevenLabs => {
+            elevenlabs::synthesize(&provider, &http_client, text, voice_id).await
+        }
+        ProviderAdapter::GoogleCloudTts => {
+            google_cloud_tts::synthesize(&provider, &http_client, text, voice_id).await
+        }
+        other => Err(MythicError::Validation(format!(
+            "{other:?} is not a TTS provider"
+        ))),
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct TtsModelStatus {
@@ -118,14 +172,19 @@ pub async fn tts_preload_engine(
     ensure_engine_loaded(&app, &state).await
 }
 
-/// Lists all voices in the loaded voice pack (loading the engine first if
-/// needed).
+/// Lists available voices — the built-in Kokoro pack when `provider_id` is
+/// `None` (loading the engine first if needed, unchanged from before issue
+/// #78), or a cloud provider's own catalog when `Some`.
 #[tauri::command]
 #[specta::specta]
 pub async fn tts_list_voices(
     app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
+    provider_id: Option<String>,
 ) -> Result<Vec<VoiceInfo>, MythicError> {
+    if let Some(provider_id) = provider_id {
+        return list_voices_for_provider(&state, &provider_id).await;
+    }
     ensure_engine_loaded(&app, &state).await?;
     let tts_engine = state.read().await.tts_engine.clone();
     let guard = tts_engine.lock().await;
@@ -136,16 +195,26 @@ pub async fn tts_list_voices(
 }
 
 /// Assigns (or clears, via `voice_id: None`) the voice a character speaks
-/// with.
+/// with. `voice_provider_id: None` means the built-in Kokoro engine
+/// (unchanged default); `Some(id)` routes through that cloud provider
+/// instead — always set together, since a voice id from one provider's
+/// catalog means nothing under a different one (see issue #78).
 #[tauri::command]
 #[specta::specta]
 pub async fn tts_set_character_voice(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
     voice_id: Option<String>,
+    voice_provider_id: Option<String>,
 ) -> Result<Character, MythicError> {
     let db = state.read().await.db.clone();
-    CharacterRepo::set_voice(&db, &character_id, voice_id.as_deref()).await
+    CharacterRepo::set_voice(
+        &db,
+        &character_id,
+        voice_id.as_deref(),
+        voice_provider_id.as_deref(),
+    )
+    .await
 }
 
 /// Synthesizes `text` immediately and returns WAV bytes — for a "preview
@@ -161,7 +230,13 @@ pub async fn tts_test_speak(
     state: State<'_, Arc<RwLock<AppState>>>,
     text: String,
     voice_id: String,
+    provider_id: Option<String>,
 ) -> Result<String, MythicError> {
+    if let Some(provider_id) = provider_id {
+        let bytes = synthesize_via_provider(&state, &provider_id, &text, &voice_id).await?;
+        return Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes));
+    }
+
     let t0 = std::time::Instant::now();
     ensure_engine_loaded(&app, &state).await?;
     tracing::info!("[tts] tts_test_speak: ensure_engine_loaded took {:?}", t0.elapsed());
@@ -217,7 +292,38 @@ pub async fn tts_replay_message(
     message_id: String,
     text: String,
     voice_id: String,
+    provider_id: Option<String>,
 ) -> Result<(), MythicError> {
+    // Cloud providers skip sentence-chunking entirely — that splitting
+    // exists specifically to stay under Kokoro's ~512-token ONNX input
+    // limit; ElevenLabs/Google have no such constraint, and chunking would
+    // just add latency and extra API calls for no benefit. One call, one
+    // chunk (sequence 0), then the same end signal Kokoro's path emits.
+    if let Some(provider_id) = provider_id {
+        let result = synthesize_via_provider(&state, &provider_id, &text, &voice_id).await;
+        if let Ok(bytes) = &result {
+            let audio = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes.clone());
+            let _ = app.emit(
+                "tts-chunk",
+                TtsChunkEvent {
+                    conversation_id: conversation_id.clone(),
+                    message_id: message_id.clone(),
+                    sequence: 0,
+                    audio,
+                    text: text.clone(),
+                },
+            );
+        }
+        let _ = app.emit(
+            "tts-stream-end",
+            crate::tts::TtsStreamEndEvent {
+                conversation_id,
+                message_id,
+            },
+        );
+        return result.map(|_| ());
+    }
+
     ensure_engine_loaded(&app, &state).await?;
     let tts_engine = state.read().await.tts_engine.clone();
 

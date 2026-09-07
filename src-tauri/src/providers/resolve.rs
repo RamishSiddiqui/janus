@@ -90,6 +90,16 @@ pub(crate) fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider
                 "WanGP is an image/video provider, not an LLM provider".to_string(),
             ))
         }
+        ProviderAdapter::ElevenLabs => {
+            return Err(MythicError::Config(
+                "ElevenLabs is a TTS provider, not an LLM provider".to_string(),
+            ))
+        }
+        ProviderAdapter::GoogleCloudTts => {
+            return Err(MythicError::Config(
+                "Google Cloud TTS is a TTS provider, not an LLM provider".to_string(),
+            ))
+        }
     };
 
     let api_key = config.config.get("api_key").and_then(|v| v.as_str());

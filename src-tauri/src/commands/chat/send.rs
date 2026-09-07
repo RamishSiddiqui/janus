@@ -98,14 +98,17 @@ pub async fn send_message(
 
     // Resolved once per send, not per stream delta — see
     // `StreamCompletionCtx::tts_voice_id`'s doc comment for why this stays
-    // a true no-op when no voice is assigned.
-    let tts_voice_id: Option<String> = match &conv_character_id {
-        Some(char_id) => CharacterRepo::get(&db, char_id)
-            .await
-            .ok()
-            .and_then(|c| c.voice_id),
+    // a true no-op when no voice is assigned. `voice_provider_id` comes
+    // from the same lookup (issue #78) — `None` means the built-in Kokoro
+    // engine, `Some` a cloud provider (see `tts_voice_provider_id`'s doc
+    // comment for why that makes live streaming a no-op too, for now).
+    let tts_character: Option<crate::models::character::Character> = match &conv_character_id {
+        Some(char_id) => CharacterRepo::get(&db, char_id).await.ok(),
         None => None,
     };
+    let tts_voice_id: Option<String> = tts_character.as_ref().and_then(|c| c.voice_id.clone());
+    let tts_voice_provider_id: Option<String> =
+        tts_character.as_ref().and_then(|c| c.voice_provider_id.clone());
 
     // Resolve multi-character list for this conversation (empty = single-char mode).
     // Always prepend the conversation's own primary character — conv_chars has no
@@ -300,6 +303,7 @@ pub async fn send_message(
             context_stats: Some(context_stats.clone()),
             origin: StreamOrigin::Send,
             tts_voice_id,
+            tts_voice_provider_id,
             tts_sentence_buffer: Arc::new(std::sync::Mutex::new(String::new())),
             tts_engine,
         };

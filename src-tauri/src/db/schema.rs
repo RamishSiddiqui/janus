@@ -35,9 +35,12 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         -- out by default so trashed characters vanish from Gallery without
         -- actually losing data until the user empties the Trash.
         DEFINE FIELD IF NOT EXISTS deleted_at ON characters TYPE option<datetime>;
-        -- Kokoro voice id this character speaks with when TTS is enabled;
+        -- Voice id this character speaks with when TTS is enabled (a Kokoro
+        -- pack id, or a voice id within voice_provider_id's own catalog);
         -- NONE means silent, not a fallback default voice.
         DEFINE FIELD IF NOT EXISTS voice_id ON characters TYPE option<string>;
+        -- Which TTS provider voice_id belongs to; NONE means built-in Kokoro.
+        DEFINE FIELD IF NOT EXISTS voice_provider_id ON characters TYPE option<string>;
 
         DEFINE INDEX IF NOT EXISTS idx_characters_updated ON characters FIELDS updated_at;
         DEFINE INDEX IF NOT EXISTS idx_characters_origin ON characters FIELDS origin;

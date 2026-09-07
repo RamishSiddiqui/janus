@@ -13,7 +13,7 @@
   import { selectedPersonaId } from "$lib/stores/personas";
   import { get } from "svelte/store";
   import { playBase64Wav, primeAudioPreviewContext } from "$lib/utils/audioPreview";
-  import type { MemoryGraph as MemoryGraphData, VoiceInfo } from "$lib/services/ipc";
+  import type { MemoryGraph as MemoryGraphData, VoiceInfo, ProviderConfig } from "$lib/services/ipc";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
   const charId = $derived($page.params.id);
@@ -70,6 +70,10 @@
   let isSaving = $state(false);
 
   let voiceId = $state<string | null>(null);
+  /** `null` = built-in Kokoro (unchanged default); a ProviderConfig id =
+   *  a cloud provider, always paired with `voiceId` (see issue #78). */
+  let voiceProviderId = $state<string | null>(null);
+  let ttsProviders = $state<ProviderConfig[]>([]);
   let voices = $state<VoiceInfo[]>([]);
   let voicesLoaded = $state(false);
   let savingVoice = $state(false);
@@ -95,7 +99,10 @@
     // a voice is actually assigned (not just on the Edit tab) so the
     // sidebar's "Change" flow and voice-name display work without forcing
     // the user into Edit first.
-    if ((activeTab === "edit" || voiceId) && isTauri) loadVoices();
+    if ((activeTab === "edit" || voiceId) && isTauri) {
+      loadTtsProviders();
+      loadVoices();
+    }
     if (activeTab === "edit" && charData) {
       editName = charName;
       editDesc = charData.description;
@@ -137,6 +144,7 @@
       };
       avatarUrl = await resolveAvatar(char.avatar_path);
       voiceId = char.voice_id;
+      voiceProviderId = char.voice_provider_id ?? null;
     } catch {
       toastError("Failed to load character");
       goto("/gallery");
@@ -207,15 +215,36 @@
     loreLoaded = true;
   }
 
+  async function loadTtsProviders() {
+    if (!isTauri) return;
+    try {
+      const ipc = await import("$lib/services/ipc");
+      ttsProviders = await ipc.listProviders("tts");
+    } catch {
+      ttsProviders = [];
+    }
+  }
+
   async function loadVoices() {
     if (voicesLoaded || !isTauri) return;
     try {
       const ipc = await import("$lib/services/ipc");
-      voices = await ipc.ttsListVoices();
+      voices = await ipc.ttsListVoices(voiceProviderId ?? undefined);
       voicesLoaded = true;
     } catch {
       voices = [];
     }
+  }
+
+  /** Switching provider invalidates the previously-loaded voice list (a
+   *  different provider's voice ids mean nothing under the old one) and
+   *  clears whichever voice was selected, rather than silently keeping an
+   *  id that no longer resolves to anything real. */
+  async function handleProviderChange() {
+    voiceId = null;
+    voicesLoaded = false;
+    await loadVoices();
+    await handleVoiceChange();
   }
 
   async function handleVoiceChange() {
@@ -223,7 +252,7 @@
     savingVoice = true;
     try {
       const ipc = await import("$lib/services/ipc");
-      await ipc.ttsSetCharacterVoice(charId, voiceId);
+      await ipc.ttsSetCharacterVoice(charId, voiceId, voiceProviderId);
     } catch {
       toastError("Failed to save voice");
     }
@@ -241,6 +270,7 @@
       const audio = await ipc.ttsTestSpeak(
         `Hello, I'm ${editName || charName}.`,
         voiceId,
+        voiceProviderId ?? undefined,
       );
       const playback = await playBase64Wav(audio);
       previewAnalyser = playback.analyser;
@@ -656,6 +686,22 @@
                 placeholder="Fantasy, Adventure"
               />
             </div>
+            {#if ttsProviders.length > 0}
+              <div class="edit-field">
+                <label class="edit-label" for="ef-voice-provider">Voice provider</label>
+                <select
+                  id="ef-voice-provider"
+                  class="edit-input"
+                  bind:value={voiceProviderId}
+                  onchange={handleProviderChange}
+                >
+                  <option value={null}>Kokoro (built-in, offline)</option>
+                  {#each ttsProviders as provider (provider.id)}
+                    <option value={provider.id}>{provider.name}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
             <div class="edit-field">
               <label class="edit-label" for="ef-voice">Voice</label>
               <div class="edit-actions" style="justify-content: flex-start; gap: 8px;">

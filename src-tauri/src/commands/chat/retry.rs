@@ -190,14 +190,15 @@ pub async fn retry_failed_message(
         let stream_images = images.clone();
         let stream_char_id = conv_character_id.clone();
         // Resolved once per retry, not per stream delta — see
-        // `StreamCompletionCtx::tts_voice_id`'s doc comment.
-        let tts_voice_id: Option<String> = match &stream_char_id {
-            Some(char_id) => CharacterRepo::get(&db, char_id)
-                .await
-                .ok()
-                .and_then(|c| c.voice_id),
+        // `StreamCompletionCtx::tts_voice_id`'s doc comment. `voice_provider_id`
+        // from the same lookup — see `tts_voice_provider_id`'s doc comment.
+        let tts_character: Option<crate::models::character::Character> = match &stream_char_id {
+            Some(char_id) => CharacterRepo::get(&db, char_id).await.ok(),
             None => None,
         };
+        let tts_voice_id: Option<String> = tts_character.as_ref().and_then(|c| c.voice_id.clone());
+        let tts_voice_provider_id: Option<String> =
+            tts_character.as_ref().and_then(|c| c.voice_provider_id.clone());
         let stream_mc_names = multi_char_names.clone();
         let stream_mc_pairs = multi_char_pairs.clone();
         let stream_user_msg_id = user_message_id.clone();
@@ -268,6 +269,7 @@ pub async fn retry_failed_message(
             context_stats: None,
             origin: StreamOrigin::Retry,
             tts_voice_id,
+            tts_voice_provider_id,
             tts_sentence_buffer: Arc::new(std::sync::Mutex::new(String::new())),
             tts_engine,
         };
