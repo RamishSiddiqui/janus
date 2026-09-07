@@ -74,6 +74,12 @@ pub enum ProviderAdapter {
     /// (e.g. "en-US-Neural2-F"), whose language code is embedded as the
     /// leading `xx-YY-` segment — no separate language field is stored.
     GoogleCloudTts,
+    /// Fish Audio cloud TTS — `config: { "api_key": "..." }`, no `base_url`.
+    /// Voice IDs are Fish Audio voice-model ids (its own `_id` field) from
+    /// `GET /model`, the same id passed back as `reference_id` to `POST
+    /// /v1/tts`. Bearer-token auth, unlike ElevenLabs' header key or
+    /// Google's query-param key — see `providers::fish_audio`.
+    FishAudio,
 }
 
 /// Configuration for a specific AI provider connection.

@@ -100,6 +100,11 @@ pub(crate) fn create_rig_provider(config: &ProviderConfig) -> Result<RigProvider
                 "Google Cloud TTS is a TTS provider, not an LLM provider".to_string(),
             ))
         }
+        ProviderAdapter::FishAudio => {
+            return Err(MythicError::Config(
+                "Fish Audio is a TTS provider, not an LLM provider".to_string(),
+            ))
+        }
     };
 
     let api_key = config.config.get("api_key").and_then(|v| v.as_str());
