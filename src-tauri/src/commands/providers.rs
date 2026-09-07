@@ -389,6 +389,14 @@ pub async fn test_provider_connection(
                     Err(e) => Ok(fail_result(e.to_string())),
                 }
             }
+            ProviderAdapter::FishAudio => {
+                match crate::providers::fish_audio::test_connection(&provider, &state.http_client)
+                    .await
+                {
+                    Ok(()) => Ok(ok_result()),
+                    Err(e) => Ok(fail_result(e.to_string())),
+                }
+            }
             _ => Ok(ok_result()),
         };
     }
@@ -1525,6 +1533,7 @@ fn parse_adapter(s: &str) -> Result<ProviderAdapter, MythicError> {
         "together" => Ok(ProviderAdapter::Together),
         "eleven_labs" => Ok(ProviderAdapter::ElevenLabs),
         "google_cloud_tts" => Ok(ProviderAdapter::GoogleCloudTts),
+        "fish_audio" => Ok(ProviderAdapter::FishAudio),
         _ => Err(MythicError::Validation(format!("Invalid adapter: {}", s))),
     }
 }

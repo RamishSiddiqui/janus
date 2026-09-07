@@ -70,7 +70,7 @@
   const cloudAdapters = new Set([
     'open_router', 'anthropic', 'gemini', 'cohere', 'deepseek',
     'groq', 'perplexity', 'xai', 'hugging_face', 'hyperbolic', 'moonshot', 'together',
-    'ai_horde', 'eleven_labs', 'google_cloud_tts',
+    'ai_horde', 'eleven_labs', 'google_cloud_tts', 'fish_audio',
   ]);
   let adapterNeedsBaseUrl = $derived(!cloudAdapters.has(newAdapter));
 
@@ -361,6 +361,7 @@
               <optgroup label="Voice">
                 <option value="eleven_labs">ElevenLabs</option>
                 <option value="google_cloud_tts">Google Cloud TTS</option>
+                <option value="fish_audio">Fish Audio</option>
               </optgroup>
             </select>
           </div>

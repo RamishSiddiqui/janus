@@ -14,7 +14,7 @@ use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
 use crate::models::character::Character;
 use crate::models::provider::ProviderAdapter;
-use crate::providers::{elevenlabs, google_cloud_tts};
+use crate::providers::{elevenlabs, fish_audio, google_cloud_tts};
 use crate::tts::{
     chunker::split_complete_sentences, download, engine::VoiceInfo, KokoroEngine, TtsChunkEvent,
 };
@@ -38,6 +38,7 @@ async fn list_voices_for_provider(
         ProviderAdapter::GoogleCloudTts => {
             google_cloud_tts::list_voices(&provider, &http_client).await
         }
+        ProviderAdapter::FishAudio => fish_audio::list_voices(&provider, &http_client).await,
         other => Err(MythicError::Validation(format!(
             "{other:?} is not a TTS provider"
         ))),
@@ -66,6 +67,9 @@ async fn synthesize_via_provider(
         }
         ProviderAdapter::GoogleCloudTts => {
             google_cloud_tts::synthesize(&provider, &http_client, text, voice_id).await
+        }
+        ProviderAdapter::FishAudio => {
+            fish_audio::synthesize(&provider, &http_client, text, voice_id).await
         }
         other => Err(MythicError::Validation(format!(
             "{other:?} is not a TTS provider"

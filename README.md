@@ -89,7 +89,7 @@ It's a native desktop app, not a browser tab pointed at someone else's server. N
 - **Real characters, not scripts.** Full SillyTavern-compatible character card import (V1/V2, embedded lorebook included), a persona system for how *you* show up in the story, and an emotional state tracker that follows mood/trust/arousal across the conversation.
 - **Multi-character scenes that work.** Group cast conversations with automatic NPC detection — new speakers the model introduces get registered and tracked without you lifting a finger.
 - **See your scenes.** Generate scene art through AI Horde (free), a local ComfyUI instance (with placeholder-token workflow templating), or any OpenAI-images-compatible endpoint. Attach an image to a message — paste a screenshot straight from your clipboard — and vision-capable models actually see it.
-- **Hear your characters.** A native Kokoro-82M text-to-speech engine runs fully offline and in-process — no external service, no API key — and streams sentence-by-sentence as replies generate. Prefer a cloud voice? Bring your own ElevenLabs or Google Cloud TTS key and assign it per-character.
+- **Hear your characters.** A native Kokoro-82M text-to-speech engine runs fully offline and in-process — no external service, no API key — and streams sentence-by-sentence as replies generate. Prefer a cloud voice? Bring your own ElevenLabs, Google Cloud TTS, or Fish Audio key and assign it per-character.
 - **Private by construction.** Everything lives in an embedded SurrealDB database on your machine. No telemetry, no cloud sync, no accounts — export/import gives you a portable backup whenever you want one.
 
 ## A quick tour
@@ -101,7 +101,7 @@ It's a native desktop app, not a browser tab pointed at someone else's server. N
 | **Cast & NPCs** | Group-cast conversations, automatic speaker detection with a two-pass confirmation debounce, cast relationship graph |
 | **Memory** | Auto-extracted facts with canon flags, timeline + graph views, cross-character sharing, semantic (vector) search |
 | **Scenes** | AI Horde / ComfyUI / generic image providers, multimodal image *input* for vision models, scene gallery |
-| **Voice** | Offline native TTS (Kokoro-82M, 54 voices) with streamed sentence-by-sentence playback, or BYOK cloud voices (ElevenLabs, Google Cloud TTS) assigned per-character |
+| **Voice** | Offline native TTS (Kokoro-82M, 54 voices) with streamed sentence-by-sentence playback, or BYOK cloud voices (ElevenLabs, Google Cloud TTS, Fish Audio) assigned per-character |
 | **Providers** | 14+ LLM adapters via [rig-core](https://github.com/0xPlaygrounds/rig), separate LLM / image-video / embedding / voice model management |
 | **Data** | Soft-delete trash (conversations, characters, personas), full export/import backup, local-only mode |
 
@@ -113,7 +113,7 @@ Janus talks to providers through [`rig-core`](https://github.com/0xPlaygrounds/r
 |---|---|
 | **LLM** | OpenAI-compatible (LM Studio, KoboldCPP, vLLM, **Puter free tier**), OpenRouter, Anthropic, Gemini, Ollama, Cohere, DeepSeek, Groq, Perplexity, xAI, HuggingFace, Hyperbolic, Moonshot, Together |
 | **Image** | AI Horde *(free, crowdsourced, no signup)*, ComfyUI *(local, template-driven workflows)*, SiliconFlow, any OpenAI-images-compatible endpoint |
-| **Voice** | Kokoro-82M *(built-in, offline, no signup)*, ElevenLabs, Google Cloud TTS |
+| **Voice** | Kokoro-82M *(built-in, offline, no signup)*, ElevenLabs, Google Cloud TTS, Fish Audio |
 
 ## Installation
 
