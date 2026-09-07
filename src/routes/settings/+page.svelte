@@ -84,6 +84,23 @@
   let cpuSeverity = $derived(
     cpuPercent === null ? 'normal' : cpuPercent > 250 ? 'high' : cpuPercent > 100 ? 'elevated' : 'normal',
   );
+
+  // Real app version from the backend (CARGO_PKG_VERSION), not a hardcoded
+  // string that silently goes stale every release.
+  let appVersion = $state<string | null>(null);
+  $effect(() => {
+    if (!isTauri) return;
+    let cancelled = false;
+    import('$lib/services/ipc').then(async (ipc) => {
+      try {
+        const info = await ipc.getAppInfo();
+        if (!cancelled) appVersion = info.version;
+      } catch (err) {
+        console.error('[settings] Failed to read app info:', err);
+      }
+    });
+    return () => { cancelled = true; };
+  });
 </script>
 
 <svelte:head>
@@ -112,7 +129,7 @@
           </span>
         </div>
       {/if}
-      <span class="about-name">Janus v0.1.0</span>
+      <span class="about-name">Janus{appVersion ? ` v${appVersion}` : ''}</span>
       <span class="about-dot" aria-hidden="true">·</span>
       <span class="about-desc">{$settings.localStorageOnly ? '🔒 Private' : '⚠️ Privacy Relaxed'}</span>
       <button class="about-link-btn" title="GitHub">
