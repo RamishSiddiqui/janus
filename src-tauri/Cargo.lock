@@ -3390,7 +3390,7 @@ dependencies = [
  "hound",
  "image",
  "misaki-rs",
- "ndarray 0.16.1",
+ "ndarray 0.17.2",
  "ndarray-npy",
  "ort",
  "png 0.18.1",
