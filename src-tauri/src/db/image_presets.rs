@@ -32,11 +32,13 @@ impl ImagePresetRepo {
         post_processing: &[String],
         hires_fix: bool,
         hires_fix_denoising_strength: Option<f64>,
+        owner: &str,
     ) -> Result<ImagePreset, MythicError> {
         let id = uuid::Uuid::new_v4().to_string();
 
         if is_default {
-            db.query("UPDATE image_presets SET is_default = false")
+            db.query("UPDATE image_presets SET is_default = false WHERE owner_id = $owner")
+                .bind(("owner", owner.to_string()))
                 .await?;
         }
 
@@ -85,9 +87,16 @@ impl ImagePresetRepo {
         preset.ok_or_else(|| MythicError::NotFound(format!("Image preset not found: {}", id)))
     }
 
-    pub async fn list(db: &Surreal<Db>) -> Result<Vec<ImagePreset>, MythicError> {
+    pub async fn list(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Vec<ImagePreset>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM image_presets ORDER BY is_default DESC, name ASC")
+            .query(format!(
+                "SELECT * FROM image_presets WHERE true{} ORDER BY is_default DESC, name ASC",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let rows: Vec<ImagePreset> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(rows)
@@ -231,7 +240,11 @@ impl ImagePresetRepo {
     pub async fn set_default(db: &Surreal<Db>, id: &str) -> Result<(), MythicError> {
         Self::get(db, id).await?;
 
-        db.query("UPDATE image_presets SET is_default = false")
+        let owner = crate::db::users::OwnershipRepo::owner_of(db, "image_presets", id)
+            .await?
+            .unwrap_or_default();
+        db.query("UPDATE image_presets SET is_default = false WHERE owner_id = $owner")
+            .bind(("owner", owner))
             .await?;
         db.query("UPDATE type::record('image_presets', $id) SET is_default = true")
             .bind(("id", id.to_string()))
@@ -241,9 +254,16 @@ impl ImagePresetRepo {
     }
 
     /// Gets the global default preset, if one is set.
-    pub async fn get_default(db: &Surreal<Db>) -> Result<Option<ImagePreset>, MythicError> {
+    pub async fn get_default(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Option<ImagePreset>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM image_presets WHERE is_default = true LIMIT 1")
+            .query(format!(
+                "SELECT * FROM image_presets WHERE is_default = true{} LIMIT 1",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let rows: Vec<ImagePreset> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(rows.into_iter().next())
@@ -255,6 +275,7 @@ impl ImagePresetRepo {
     pub async fn resolve_for_conversation(
         db: &Surreal<Db>,
         conversation_id: &str,
+        owner: Option<&str>,
     ) -> Result<Option<ImagePreset>, MythicError> {
         let mut result = db
             .query("SELECT image_preset_id FROM type::record('conversations', $id)")
@@ -279,6 +300,6 @@ impl ImagePresetRepo {
             }
         }
 
-        Self::get_default(db).await
+        Self::get_default(db, owner).await
     }
 }

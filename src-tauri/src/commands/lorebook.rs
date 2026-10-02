@@ -22,8 +22,9 @@ pub async fn list_lorebook_entries(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<Vec<LorebookEntry>, MythicError> {
-    let state_guard = state.read().await;
-    LorebookRepo::list(&state_guard.db, &character_id).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
+    LorebookRepo::list(&db, &character_id).await
 }
 
 /// Creates a new lorebook entry.
@@ -37,14 +38,18 @@ pub async fn create_lorebook_entry(
     content: String,
     always_active: bool,
 ) -> Result<LorebookEntry, MythicError> {
-    let state_guard = state.read().await;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    if let Some(cid) = character_id.as_deref() {
+        crate::auth::access::ensure_character(&db, &actor, cid).await?;
+    }
     LorebookRepo::create(
-        &state_guard.db,
+        &db,
         character_id.as_deref(),
         &name,
         keys,
         &content,
         always_active,
+        actor.owner(),
     )
     .await
 }
@@ -57,8 +62,9 @@ pub async fn toggle_lorebook_entry(
     id: String,
     enabled: bool,
 ) -> Result<(), MythicError> {
-    let state_guard = state.read().await;
-    LorebookRepo::toggle(&state_guard.db, &id, enabled).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "lorebook_entries", &id).await?;
+    LorebookRepo::toggle(&db, &id, enabled).await
 }
 
 /// Deletes a lorebook entry.
@@ -68,8 +74,9 @@ pub async fn delete_lorebook_entry(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state_guard = state.read().await;
-    LorebookRepo::delete(&state_guard.db, &id).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "lorebook_entries", &id).await?;
+    LorebookRepo::delete(&db, &id).await
 }
 
 /// Updates a lorebook entry's editable fields — previously entries could
@@ -87,9 +94,10 @@ pub async fn update_lorebook_entry(
     priority: i32,
     insertion_order: i32,
 ) -> Result<LorebookEntry, MythicError> {
-    let state_guard = state.read().await;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "lorebook_entries", &id).await?;
     LorebookRepo::update(
-        &state_guard.db,
+        &db,
         &id,
         &name,
         keys,
@@ -115,9 +123,8 @@ pub async fn import_character_book_entries(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<Vec<LorebookEntry>, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
 
     let character = CharacterRepo::get(&db, &character_id).await?;
     let data: CharacterData = serde_json::from_value(character.data)
@@ -125,7 +132,7 @@ pub async fn import_character_book_entries(
 
     match data.character_book {
         Some(book) if !book.entries.is_empty() => {
-            LorebookRepo::import_from_character_book(&db, &character_id, &book).await
+            LorebookRepo::import_from_character_book(&db, &character_id, &book, actor.owner()).await
         }
         _ => Ok(Vec::new()),
     }
@@ -144,11 +151,11 @@ pub async fn generate_character_lorebook(
     character_id: String,
     conversation_id: String,
 ) -> Result<Vec<LorebookEntry>, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
 
-    let provider_config = get_default_llm_provider(&db).await?;
+    let provider_config = get_default_llm_provider(&db, actor.owner_filter()).await?;
     let provider = create_rig_provider(&provider_config)?;
     let model_id = resolve_model_id(None, &provider_config, &db).await?;
 
@@ -213,6 +220,7 @@ pub async fn generate_character_lorebook(
             entry.keys.clone(),
             &entry.content,
             entry.always_active,
+            actor.owner(),
         )
         .await?;
         let updated = LorebookRepo::update(

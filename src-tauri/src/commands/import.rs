@@ -144,6 +144,7 @@ pub async fn import_character_card(
                 &db,
                 &character_id,
                 book,
+                actor.owner(),
             )
             .await
             {

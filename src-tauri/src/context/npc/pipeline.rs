@@ -58,7 +58,8 @@ pub async fn run_npc_detection(
         conversation_id, forced
     );
 
-    let provider_config = get_default_llm_provider(db).await?;
+    let owner = crate::auth::access::owner_filter_for_conversation(db, conversation_id).await?;
+    let provider_config = get_default_llm_provider(db, owner.as_deref()).await?;
     let provider = create_rig_provider(&provider_config)?;
     // Same resolution real chat completions use — falls back to the first
     // enabled non-embedding model when the provider config has no `model`

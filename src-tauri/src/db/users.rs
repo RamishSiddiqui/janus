@@ -433,3 +433,38 @@ impl OwnershipRepo {
         }))
     }
 }
+
+impl OwnershipRepo {
+    /// Deletes everything an account owns: its chats (and, through the
+    /// cascade events, their messages, scenes, summaries and embeddings),
+    /// characters, personas, memories, lorebook entries, image presets, and
+    /// providers with their stored API keys. Used when an account is deleted.
+    pub async fn delete_all_owned(db: &Surreal<Db>, user_id: &str) -> Result<(), MythicError> {
+        // enabled_models point at providers; remove them before the providers.
+        let statements = [
+            "DELETE enabled_models WHERE provider_id.owner_id = $u".to_string(),
+            "DELETE conversations WHERE owner_id = $u".to_string(),
+            "DELETE characters WHERE owner_id = $u".to_string(),
+            "DELETE personas WHERE owner_id = $u".to_string(),
+            "DELETE memories WHERE owner_id = $u".to_string(),
+            "DELETE lorebook_entries WHERE owner_id = $u".to_string(),
+            "DELETE image_presets WHERE owner_id = $u".to_string(),
+            "DELETE provider_configs WHERE owner_id = $u".to_string(),
+        ];
+        for sql in statements {
+            let mut attempt = 0;
+            loop {
+                match rows(db, &sql, serde_json::json!({ "u": user_id })).await {
+                    Ok(_) => break,
+                    // Cascading deletes can hit a retryable write conflict.
+                    Err(e) if e.to_string().contains("can be retried") && attempt < 3 => {
+                        attempt += 1;
+                        tokio::time::sleep(std::time::Duration::from_millis(150 * attempt)).await;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        Ok(())
+    }
+}

@@ -113,6 +113,7 @@ pub async fn register(
         // Everything that existed before accounts becomes the admin's.
         OwnershipRepo::claim_unowned(db, &user.id).await?;
     }
+    crate::db::seed::seed_default_image_preset_for_owner(db, &user.id).await?;
     Ok((user, key))
 }
 
@@ -128,7 +129,10 @@ pub async fn admin_create_user(
     let username = normalize_username(username)?;
     validate_passphrase(temporary_passphrase)?;
     let _guard = CREATE_LOCK.lock().await;
-    create_account(db, &username, temporary_passphrase, Role::Member, true).await
+    let (user, key) =
+        create_account(db, &username, temporary_passphrase, Role::Member, true).await?;
+    crate::db::seed::seed_default_image_preset_for_owner(db, &user.id).await?;
+    Ok((user, key))
 }
 
 /// Counts a wrong secret against the account, locking it after
@@ -343,6 +347,8 @@ pub async fn delete_user(
             "There has to be at least one admin.".to_string(),
         ));
     }
+    // Their data goes with them, so nothing is left behind unowned.
+    OwnershipRepo::delete_all_owned(db, target_id).await?;
     UserRepo::delete(db, target_id).await
 }
 

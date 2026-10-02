@@ -58,8 +58,8 @@ pub struct UpdateImagePresetFields {
 pub async fn list_image_presets(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<ImagePreset>, MythicError> {
-    let state = state.read().await;
-    ImagePresetRepo::list(&state.db).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    ImagePresetRepo::list(&db, actor.owner_filter()).await
 }
 
 #[tauri::command]
@@ -69,9 +69,9 @@ pub async fn create_image_preset(
     name: String,
     fields: CreateImagePresetFields,
 ) -> Result<ImagePreset, MythicError> {
-    let state = state.read().await;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
     let preset = ImagePresetRepo::create(
-        &state.db,
+        &db,
         &name,
         fields.model.as_deref(),
         &fields.sampler_name,
@@ -85,6 +85,7 @@ pub async fn create_image_preset(
         &fields.post_processing,
         fields.hires_fix,
         fields.hires_fix_denoising_strength,
+        actor.owner(),
     )
     .await?;
     info!("Created image preset: {}", preset.name);
@@ -98,9 +99,10 @@ pub async fn update_image_preset(
     id: String,
     fields: UpdateImagePresetFields,
 ) -> Result<ImagePreset, MythicError> {
-    let state = state.read().await;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "image_presets", &id).await?;
     ImagePresetRepo::update(
-        &state.db,
+        &db,
         &id,
         fields.name.as_deref(),
         fields.model.as_deref(),
@@ -124,8 +126,9 @@ pub async fn delete_image_preset(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ImagePresetRepo::delete(&state.db, &id).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "image_presets", &id).await?;
+    ImagePresetRepo::delete(&db, &id).await
 }
 
 #[tauri::command]
@@ -134,6 +137,7 @@ pub async fn set_default_image_preset(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ImagePresetRepo::set_default(&state.db, &id).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "image_presets", &id).await?;
+    ImagePresetRepo::set_default(&db, &id).await
 }

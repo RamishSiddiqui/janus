@@ -38,6 +38,71 @@ impl MemoryRepo {
         Ok(memories)
     }
 
+    /// Most recent memories across everything the owner has — the no-id
+    /// variant of the memory list. `None` is legacy mode (no filter).
+    pub async fn list_recent(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Vec<Memory>, MythicError> {
+        let mut result = db
+            .query(format!(
+                "SELECT * FROM memories WHERE true{} ORDER BY created_at DESC LIMIT 100",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
+            .await?;
+        crate::db::value_bridge::from_value_vec(result.take(0)?)
+    }
+
+    /// Gives a newly created memory the owner of the conversation it belongs
+    /// to, else of its character, so every memory row has an owner no matter
+    /// which pipeline created it.
+    async fn inherit_owner(
+        db: &Surreal<Db>,
+        memory_id: &str,
+        character_id: Option<&str>,
+        conversation_id: Option<&str>,
+    ) -> Result<(), MythicError> {
+        use crate::db::users::OwnershipRepo;
+        let mut owner = String::new();
+        if let Some(conv) = conversation_id {
+            owner = OwnershipRepo::owner_of(db, "conversations", conv)
+                .await?
+                .unwrap_or_default();
+        }
+        if owner.is_empty() {
+            if let Some(ch) = character_id {
+                owner = OwnershipRepo::owner_of(db, "characters", ch)
+                    .await?
+                    .unwrap_or_default();
+            }
+        }
+        if owner.is_empty() {
+            return Ok(());
+        }
+        OwnershipRepo::set_owner(db, "memories", memory_id, &owner).await
+    }
+
+    /// The owner of the memory a link starts from (links have no owner of
+    /// their own). `None` if the link doesn't exist.
+    pub async fn link_owner(
+        db: &Surreal<Db>,
+        link_id: &str,
+    ) -> Result<Option<String>, MythicError> {
+        let mut result = db
+            .query("SELECT in.owner_id AS owner_id FROM type::record('memory_link', $id)")
+            .bind(("id", link_id.to_string()))
+            .await?;
+        let rows: Vec<serde_json::Value> =
+            crate::db::value_bridge::from_value_vec(result.take(0)?)?;
+        Ok(rows.first().map(|v| {
+            v.get("owner_id")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .to_string()
+        }))
+    }
+
     /// Lists memories for a conversation, plus this specific character's
     /// canon memories. This ensures canon facts are always available
     /// regardless of memory scope, without leaking an unrelated character's
@@ -160,7 +225,10 @@ impl MemoryRepo {
             }
         };
 
-        created.ok_or_else(|| MythicError::DatabaseOp("Failed to create memory".into()))
+        let created =
+            created.ok_or_else(|| MythicError::DatabaseOp("Failed to create memory".into()))?;
+        Self::inherit_owner(db, &id, character_id, conversation_id).await?;
+        Ok(created)
     }
 
     /// Updates a memory's content and increments version.
@@ -291,6 +359,15 @@ impl MemoryRepo {
                 .bind(("content", source.content.clone()))
                 .bind(("source_mem_id", source_memory_id.to_string()))
                 .await?;
+            }
+
+            // The copy belongs to whoever owns the source memory.
+            let owner = crate::db::users::OwnershipRepo::owner_of(db, "memories", source_memory_id)
+                .await?
+                .unwrap_or_default();
+            if !owner.is_empty() {
+                crate::db::users::OwnershipRepo::set_owner(db, "memories", &copy_id, &owner)
+                    .await?;
             }
 
             Some(copy_id)

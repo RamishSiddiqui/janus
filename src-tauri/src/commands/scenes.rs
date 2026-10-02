@@ -251,12 +251,17 @@ pub async fn generate_scene(
     let state_guard = state.read().await;
 
     // Try to find a configured image provider and generate the image
-    let provider = ProviderRepo::get_default(&state_guard.db, "image").await?;
+    let provider =
+        ProviderRepo::get_default(&state_guard.db, "image", actor.owner_filter()).await?;
     // This conversation's chosen preset, falling back to the global default —
     // `None` means "no presets configured at all", so the AI Horde path
     // falls further back to the provider's own raw config fields.
-    let preset =
-        ImagePresetRepo::resolve_for_conversation(&state_guard.db, &conversation_id).await?;
+    let preset = ImagePresetRepo::resolve_for_conversation(
+        &state_guard.db,
+        &conversation_id,
+        actor.owner_filter(),
+    )
+    .await?;
 
     let (caption, metadata) = match &provider {
         Some(p) if p.adapter == ProviderAdapter::AiHorde => {
@@ -473,7 +478,8 @@ pub async fn generate_video_scene(
     tokio::fs::create_dir_all(&scenes_dir).await?;
 
     let state_guard = state.read().await;
-    let provider = ProviderRepo::get_default(&state_guard.db, "video").await?;
+    let provider =
+        ProviderRepo::get_default(&state_guard.db, "video", actor.owner_filter()).await?;
 
     let Some(p) = provider.filter(|p| p.adapter == ProviderAdapter::WanGp) else {
         return Err(MythicError::Validation(

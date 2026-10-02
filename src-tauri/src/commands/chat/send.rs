@@ -144,7 +144,7 @@ pub async fn send_message(
     debug!("[send_message] building prompt...");
 
     // Get the active LLM provider early — we need context_length for the budget
-    let provider_config = get_default_llm_provider(&db).await?;
+    let provider_config = get_default_llm_provider(&db, actor.owner_filter()).await?;
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     // Background: embed user message for vector RAG

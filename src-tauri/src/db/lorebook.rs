@@ -7,19 +7,24 @@ use crate::models::lorebook::LorebookEntry;
 pub struct LorebookRepo;
 
 impl LorebookRepo {
-    /// Lists lorebook entries for a character (+ global entries where character_id IS NONE).
+    /// Lists lorebook entries for a character (+ the same owner's global
+    /// entries where character_id IS NONE — never another account's).
     pub async fn list(
         db: &Surreal<Db>,
         character_id: &str,
     ) -> Result<Vec<LorebookEntry>, MythicError> {
+        let owner = crate::db::users::OwnershipRepo::owner_of(db, "characters", character_id)
+            .await?
+            .unwrap_or_default();
         let mut result = db
             .query(
                 "SELECT * FROM lorebook_entries
                  WHERE character_id = type::record('characters', $char_id)
-                    OR character_id IS NONE
+                    OR (character_id IS NONE AND owner_id = $owner)
                  ORDER BY priority DESC, insertion_order ASC",
             )
             .bind(("char_id", character_id.to_string()))
+            .bind(("owner", owner))
             .await?;
 
         let entries: Vec<LorebookEntry> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
@@ -34,6 +39,7 @@ impl LorebookRepo {
         keys: Vec<String>,
         content: &str,
         always_active: bool,
+        owner: &str,
     ) -> Result<LorebookEntry, MythicError> {
         let id = uuid::Uuid::new_v4().to_string();
 
@@ -52,6 +58,7 @@ impl LorebookRepo {
             always_active: $always_active,
             priority: 10,
             insertion_order: 100,
+            owner_id: $owner,
         }";
 
         let mut result = db
@@ -65,6 +72,7 @@ impl LorebookRepo {
             .bind(("keys", keys))
             .bind(("content", content.to_string()))
             .bind(("always_active", always_active))
+            .bind(("owner", owner.to_string()))
             .await?;
 
         let created: Option<LorebookEntry> =
@@ -134,6 +142,7 @@ impl LorebookRepo {
         db: &Surreal<Db>,
         character_id: &str,
         book: &crate::models::character::CharacterBook,
+        owner: &str,
     ) -> Result<Vec<LorebookEntry>, MythicError> {
         let mut imported = Vec::with_capacity(book.entries.len());
         for (i, entry) in book.entries.iter().enumerate() {
@@ -153,6 +162,7 @@ impl LorebookRepo {
                 entry.keys.clone(),
                 &entry.content,
                 entry.constant,
+                owner,
             )
             .await?;
             // `create` always sets enabled=true/priority=10/insertion_order=100 —

@@ -209,3 +209,106 @@ async fn one_account_cannot_reach_another_accounts_data() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn deleting_an_account_deletes_its_data_and_only_its_data() {
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+
+    let (ada_row, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    let ada_info = UserInfo::from(&ada_row);
+    auth::set_signup_mode(&db, &ada_info, SignupMode::Open)
+        .await
+        .unwrap();
+    let (bob_row, _) = auth::register(&db, "bob", PASS).await.unwrap();
+    let ada = resolve_actor(&db, Some(&ada_row.id)).await.unwrap();
+    let bob = resolve_actor(&db, Some(&bob_row.id)).await.unwrap();
+
+    // Each account has a character and a chat.
+    let mut ids = Vec::new();
+    for (actor, name) in [(&ada, "AdaChar"), (&bob, "BobChar")] {
+        let ch = CharacterRepo::create(&db, name, serde_json::json!({"name": name}))
+            .await
+            .unwrap();
+        let ch_id = record_id_to_string(&ch.id);
+        stamp_owner(&db, actor, "characters", &ch_id).await.unwrap();
+        let conv = ConversationRepo::create(&db, Some(&ch_id), Some(name), None)
+            .await
+            .unwrap();
+        let conv_id = record_id_to_string(&conv.id);
+        stamp_owner(&db, actor, "conversations", &conv_id)
+            .await
+            .unwrap();
+        MessageRepo::create(&db, &conv_id, "user", "hello there", None, None)
+            .await
+            .unwrap();
+        ids.push((ch_id, conv_id));
+    }
+    let ada_chars_before = CharacterRepo::list(&db, ada.owner_filter())
+        .await
+        .unwrap()
+        .len();
+
+    auth::delete_user(&db, &ada_info, &bob_row.id)
+        .await
+        .unwrap();
+
+    // Bob's rows are gone (not just hidden); Ada's are untouched.
+    for (table, id) in [("characters", &ids[1].0), ("conversations", &ids[1].1)] {
+        let mut r = db
+            .query("SELECT VALUE owner_id FROM type::record($t, $id)")
+            .bind(("t", table))
+            .bind(("id", id.clone()))
+            .await
+            .unwrap();
+        let found: Vec<surrealdb::types::Value> = r.take(0).unwrap();
+        assert!(found.is_empty(), "{table} row should be deleted");
+    }
+    ensure_character(&db, &ada, &ids[0].0).await.unwrap();
+    ensure_conversation(&db, &ada, &ids[0].1).await.unwrap();
+    assert_eq!(
+        CharacterRepo::list(&db, ada.owner_filter())
+            .await
+            .unwrap()
+            .len(),
+        ada_chars_before
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn every_account_gets_exactly_one_default_image_preset() {
+    use janus_lib::db::image_presets::ImagePresetRepo;
+
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+
+    let (ada_row, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&ada_row), SignupMode::Open)
+        .await
+        .unwrap();
+    let (bob_row, _) = auth::register(&db, "bob", PASS).await.unwrap();
+
+    // Ada inherited the one that existed before accounts (no duplicate), Bob got his own.
+    for id in [&ada_row.id, &bob_row.id] {
+        let presets = ImagePresetRepo::list(&db, Some(id)).await.unwrap();
+        assert_eq!(presets.len(), 1, "presets for account {id}");
+        assert!(presets[0].is_default);
+    }
+    // And they are different rows.
+    let a = ImagePresetRepo::get_default(&db, Some(&ada_row.id))
+        .await
+        .unwrap()
+        .unwrap();
+    let b = ImagePresetRepo::get_default(&db, Some(&bob_row.id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        janus_lib::db::value_bridge::record_id_to_string(&a.id),
+        janus_lib::db::value_bridge::record_id_to_string(&b.id)
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}
