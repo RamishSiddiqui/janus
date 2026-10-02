@@ -201,3 +201,56 @@ async fn admin_adds_members_and_account_guards_hold() {
 
     cleanup(dir);
 }
+
+#[tokio::test]
+async fn first_account_claims_everything_that_existed_before() {
+    use janus_lib::auth::access::{ensure_character, resolve_actor, Actor};
+    use janus_lib::db::characters::CharacterRepo;
+
+    let (db, dir) = test_db().await;
+
+    // Before any account: legacy mode, nothing is filtered, rows are unowned.
+    let character = CharacterRepo::create(&db, "Elara", serde_json::json!({"name": "Elara"}))
+        .await
+        .unwrap();
+    let char_id = janus_lib::db::value_bridge::record_id_to_string(&character.id);
+    assert!(matches!(
+        resolve_actor(&db, None).await.unwrap(),
+        Actor::Legacy
+    ));
+    let mut r = db
+        .query("SELECT VALUE owner_id FROM characters")
+        .await
+        .unwrap();
+    let owners: Vec<surrealdb::types::Value> = r.take(0).unwrap();
+    assert!(owners
+        .into_iter()
+        .all(|v| v.into_json_value() == serde_json::json!("")));
+
+    // The first account claims it.
+    let (admin, _) = auth::register(&db, "ramish", PASS).await.unwrap();
+    let actor = resolve_actor(&db, Some(&admin.id)).await.unwrap();
+    assert_eq!(actor.owner(), admin.id);
+    ensure_character(&db, &actor, &char_id).await.unwrap();
+
+    // A second account does not see it, and "not yours" looks like "not found".
+    let admin_info = UserInfo::from(&admin);
+    auth::set_signup_mode(&db, &admin_info, SignupMode::Open)
+        .await
+        .unwrap();
+    let (other, _) = auth::register(&db, "guest", PASS).await.unwrap();
+    let other_actor = resolve_actor(&db, Some(&other.id)).await.unwrap();
+    let err = ensure_character(&db, &other_actor, &char_id)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MythicError::NotFound(_)));
+    let err = ensure_character(&db, &other_actor, "does-not-exist")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MythicError::NotFound(_)));
+
+    // Once accounts exist, acting while signed out is refused.
+    assert!(resolve_actor(&db, None).await.is_err());
+
+    cleanup(dir);
+}

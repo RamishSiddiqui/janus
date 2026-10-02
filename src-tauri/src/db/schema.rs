@@ -547,6 +547,34 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     // NOTE: HNSW index is created dynamically via `ensure_vector_index()`
     // when the first embedding is stored, using the actual vector dimension.
 
+    // ── Ownership (issue #94) ───────────────────────────────────────────
+    // Root entities belong to one account; children (messages, scenes, ...)
+    // are reached through their root. '' means unowned: either no account
+    // exists yet, or the row predates accounts (the first account created
+    // claims every unowned row).
+    info!("  schema: ownership...");
+    db.query(
+        "
+        DEFINE FIELD IF NOT EXISTS owner_id ON characters      TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS owner_id ON personas        TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS owner_id ON conversations   TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS owner_id ON provider_configs TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS owner_id ON image_presets   TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS owner_id ON lorebook_entries TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS owner_id ON memories        TYPE string DEFAULT '';
+        DEFINE INDEX IF NOT EXISTS idx_characters_owner      ON characters      FIELDS owner_id;
+        DEFINE INDEX IF NOT EXISTS idx_personas_owner        ON personas        FIELDS owner_id;
+        DEFINE INDEX IF NOT EXISTS idx_conversations_owner   ON conversations   FIELDS owner_id;
+        DEFINE INDEX IF NOT EXISTS idx_provider_configs_owner ON provider_configs FIELDS owner_id;
+        DEFINE INDEX IF NOT EXISTS idx_image_presets_owner   ON image_presets   FIELDS owner_id;
+        DEFINE INDEX IF NOT EXISTS idx_lorebook_owner        ON lorebook_entries FIELDS owner_id;
+        DEFINE INDEX IF NOT EXISTS idx_memories_owner        ON memories        FIELDS owner_id;
+    ",
+    )
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:ownership: {}", e)))?;
+
     // ── Cascade delete events ───────────────────────────────────────────
     info!("  schema: cascade events...");
     db.query(

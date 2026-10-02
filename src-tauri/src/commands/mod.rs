@@ -1,3 +1,4 @@
+pub mod actor;
 pub mod auth;
 pub mod character_state;
 pub mod characters;

@@ -110,6 +110,37 @@ const MIGRATIONS: &[Migration] = &[Migration {
             .boxed()
         },
     },
+    Migration {
+        version: 3,
+        description: "backfill owner_id = '' on root tables for rows that predate accounts (issue #94)",
+        run: |db| {
+            use futures::FutureExt;
+            async move {
+                // `DEFINE FIELD ... DEFAULT` never backfills existing rows
+                // (see migration 1), and a NONE in a `TYPE string` field
+                // breaks every later UPDATE of that row. One statement per
+                // table is safe here since owner_id is the only new field.
+                for table in [
+                    "characters",
+                    "personas",
+                    "conversations",
+                    "provider_configs",
+                    "image_presets",
+                    "lorebook_entries",
+                    "memories",
+                ] {
+                    db.query(format!(
+                        "UPDATE {table} SET owner_id = '' WHERE owner_id = NONE;"
+                    ))
+                    .await?
+                    .check()
+                    .map_err(|e| MythicError::DatabaseOp(format!("migration 3 ({table}): {}", e)))?;
+                }
+                Ok(())
+            }
+            .boxed()
+        },
+    },
 ];
 
 /// Runs any migrations not yet recorded as applied, in version order.

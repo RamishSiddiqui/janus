@@ -5,6 +5,7 @@
 //! touches the database; `db::users` stores the results and `service` ties
 //! them together into the sign-up / sign-in / reset flows.
 
+pub mod access;
 pub mod service;
 
 use argon2::password_hash::rand_core::{OsRng, RngCore};
