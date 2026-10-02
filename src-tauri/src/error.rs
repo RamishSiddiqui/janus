@@ -30,6 +30,11 @@ pub enum MythicError {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    /// Bad credentials, a locked account, an expired session, or an action
+    /// the signed-in account is not allowed to take.
+    #[error("{0}")]
+    Unauthorized(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -206,6 +211,7 @@ impl serde::Serialize for MythicError {
             MythicError::Image(_) => "image",
             MythicError::Provider(_) => "provider",
             MythicError::Validation(_) => "validation",
+            MythicError::Unauthorized(_) => "unauthorized",
             MythicError::NotFound(_) => "not_found",
             MythicError::Config(_) => "config",
             MythicError::Cancelled => "cancelled",

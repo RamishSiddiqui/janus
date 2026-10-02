@@ -692,14 +692,47 @@ export const commands = {
 	 *  refresh of one PID, not a full system scan.
 	 */
 	getResourceUsage: () => typedError<ResourceUsage, MythicError>(__TAURI_INVOKE("get_resource_usage")),
+	authStatus: () => typedError<AuthStatus, MythicError>(__TAURI_INVOKE("auth_status")),
+	/**
+	 *  Creates an account. The first one becomes the admin. The new account
+	 *  becomes the one the desktop acts as.
+	 */
+	authRegister: (username: string, passphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_register", { username, passphrase })),
+	authLogin: (username: string, passphrase: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_login", { username, passphrase })),
+	authLogout: () => typedError<null, MythicError>(__TAURI_INVOKE("auth_logout")),
+	authResetWithRecovery: (username: string, recoveryKey: string, newPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_reset_with_recovery", { username, recoveryKey, newPassphrase })),
+	authChangePassphrase: (currentPassphrase: string, newPassphrase: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_change_passphrase", { currentPassphrase, newPassphrase })),
+	authSetSignupMode: (mode: SignupMode) => typedError<null, MythicError>(__TAURI_INVOKE("auth_set_signup_mode", { mode })),
+	authListUsers: () => typedError<UserInfo[], MythicError>(__TAURI_INVOKE("auth_list_users")),
+	/**
+	 *  Admin adds a member with a temporary passphrase they must replace on
+	 *  first sign-in. The desktop keeps acting as the admin.
+	 */
+	authCreateUser: (username: string, temporaryPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_create_user", { username, temporaryPassphrase })),
+	authDeleteUser: (userId: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_delete_user", { userId })),
 };
 
 /* Types */
+/**  Returned by the desktop's account commands, which need no token. */
+export type AccountCreated = {
+	user: UserInfo,
+	recovery_key: string,
+};
+
 /**  Basic app metadata surfaced to the frontend (About screen, etc.). */
 export type AppInfo = {
 	name: string,
 	version: string,
 	description: string,
+};
+
+/**  What the sign-in page needs to know before anyone has typed anything. */
+export type AuthStatus = {
+	/**  False until the first account exists; the first account becomes admin. */
+	has_users: boolean,
+	signup_mode: SignupMode,
+	/**  The signed-in account, if any. */
+	user: UserInfo | null,
 };
 
 /**
@@ -1988,6 +2021,8 @@ export type ResourceUsage = {
 	cpu_percent: number | null,
 };
 
+export type Role = "admin" | "member";
+
 /**  A generated or imported scene (image/video) tied to a conversation. */
 export type Scene = Scene_Serialize | Scene_Deserialize;
 
@@ -2139,6 +2174,13 @@ export type SendMessageResult = {
 	assistant_message_id: string,
 };
 
+/**  Who may create accounts once the first (admin) account exists. */
+export type SignupMode = 
+/**  Anyone who can reach Janus may create a member account. */
+"open" | 
+/**  Only the admin creates accounts. */
+"admin_only";
+
 /**
  *  A single row in the unified Trash view. `item_type` is one of
  *  "conversation" | "character" | "persona" — the frontend uses it to pick
@@ -2174,6 +2216,19 @@ export type UpdateImagePresetFields = {
 	postProcessing: string[] | null,
 	hiresFix: boolean | null,
 	hiresFixDenoisingStrength: number | null,
+};
+
+/**  The account as the frontend sees it. */
+export type UserInfo = {
+	id: string,
+	username: string,
+	role: Role,
+	/**
+	 *  True after an admin created the account with a temporary passphrase;
+	 *  the user must choose their own before doing anything else.
+	 */
+	must_change: boolean,
+	created_at: string,
 };
 
 export type VoiceInfo = {

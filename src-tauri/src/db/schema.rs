@@ -284,6 +284,43 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
     .check()
     .map_err(|e| MythicError::DatabaseOp(format!("schema:lorebook: {}", e)))?;
 
+    // ── accounts (issue #94) ────────────────────────────────────────────
+    info!("  schema: users / sessions / auth_settings...");
+    db.query(
+        "
+        DEFINE TABLE IF NOT EXISTS users SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS uid             ON users TYPE string;
+        DEFINE FIELD IF NOT EXISTS username        ON users TYPE string;
+        DEFINE FIELD IF NOT EXISTS role            ON users TYPE string ASSERT $value IN ['admin', 'member'];
+        DEFINE FIELD IF NOT EXISTS passphrase_hash ON users TYPE string;
+        DEFINE FIELD IF NOT EXISTS recovery_hash   ON users TYPE string;
+        DEFINE FIELD IF NOT EXISTS failed_attempts ON users TYPE int DEFAULT 0;
+        DEFINE FIELD IF NOT EXISTS locked_until    ON users TYPE int DEFAULT 0;
+        DEFINE FIELD IF NOT EXISTS must_change     ON users TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS created_at      ON users TYPE datetime DEFAULT time::now();
+        DEFINE INDEX IF NOT EXISTS idx_users_username ON users FIELDS username UNIQUE;
+
+        DEFINE TABLE IF NOT EXISTS sessions SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS uid        ON sessions TYPE string;
+        DEFINE FIELD IF NOT EXISTS user_id    ON sessions TYPE string;
+        DEFINE FIELD IF NOT EXISTS token_hash ON sessions TYPE string;
+        DEFINE FIELD IF NOT EXISTS label      ON sessions TYPE string DEFAULT '';
+        DEFINE FIELD IF NOT EXISTS trusted    ON sessions TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS created_at ON sessions TYPE datetime DEFAULT time::now();
+        DEFINE FIELD IF NOT EXISTS last_seen  ON sessions TYPE int DEFAULT 0;
+        DEFINE FIELD IF NOT EXISTS expires_at ON sessions TYPE int;
+        DEFINE INDEX IF NOT EXISTS idx_sessions_token ON sessions FIELDS token_hash UNIQUE;
+        DEFINE INDEX IF NOT EXISTS idx_sessions_user ON sessions FIELDS user_id;
+
+        DEFINE TABLE IF NOT EXISTS auth_settings SCHEMAFULL;
+        DEFINE FIELD IF NOT EXISTS signup_mode ON auth_settings TYPE string DEFAULT 'admin_only'
+            ASSERT $value IN ['open', 'admin_only'];
+    ",
+    )
+    .await?
+    .check()
+    .map_err(|e| MythicError::DatabaseOp(format!("schema:accounts: {}", e)))?;
+
     // ── 7. provider_configs ─────────────────────────────────────────────
     info!("  schema: provider_configs...");
     db.query(
