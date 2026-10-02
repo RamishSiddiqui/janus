@@ -4,6 +4,8 @@ use tauri::{AppHandle, Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::auth::access::{ensure_character, stamp_owner};
+use crate::commands::actor::acting;
 use crate::db::characters::CharacterRepo;
 use crate::error::{validate_required_string, MythicError};
 use crate::models::character::Character;
@@ -19,13 +21,11 @@ pub async fn create_character(
     data: DynamicJson,
 ) -> Result<Character, MythicError> {
     validate_required_string("Character name", &name, 200)?;
-    let state = state.read().await;
-    let character = CharacterRepo::create(&state.db, &name, data.0).await?;
-    info!(
-        "Created character: {} ({})",
-        name,
-        crate::db::value_bridge::record_id_to_string(&character.id)
-    );
+    let (db, actor) = acting(&state).await?;
+    let character = CharacterRepo::create(&db, &name, data.0).await?;
+    let id = crate::db::value_bridge::record_id_to_string(&character.id);
+    stamp_owner(&db, &actor, "characters", &id).await?;
+    info!("Created character: {} ({})", name, id);
     Ok(character)
 }
 
@@ -39,8 +39,9 @@ pub async fn get_character(
     if id.is_empty() {
         return Err(MythicError::Validation("Character ID is required".into()));
     }
-    let state = state.read().await;
-    CharacterRepo::get(&state.db, &id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_character(&db, &actor, &id).await?;
+    CharacterRepo::get(&db, &id).await
 }
 
 /// Lists all characters, ordered by most recently updated.
@@ -49,8 +50,8 @@ pub async fn get_character(
 pub async fn list_characters(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<Character>, MythicError> {
-    let state = state.read().await;
-    CharacterRepo::list(&state.db).await
+    let (db, actor) = acting(&state).await?;
+    CharacterRepo::list(&db, actor.owner_filter()).await
 }
 
 /// Updates an existing character's data.
@@ -69,9 +70,10 @@ pub async fn update_character(
     if let Some(ref name) = name {
         validate_required_string("Character name", name, 200)?;
     }
-    let state = state.read().await;
+    let (db, actor) = acting(&state).await?;
+    ensure_character(&db, &actor, &id).await?;
     let character = CharacterRepo::update(
-        &state.db,
+        &db,
         &id,
         name.as_deref(),
         data.map(|d| d.0),
@@ -94,8 +96,9 @@ pub async fn delete_character(
     if id.is_empty() {
         return Err(MythicError::Validation("Character ID is required".into()));
     }
-    let state = state.read().await;
-    CharacterRepo::delete(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_character(&db, &actor, &id).await?;
+    CharacterRepo::delete(&db, &id).await?;
     info!("Deleted character: {}", id);
     Ok(())
 }
@@ -110,8 +113,9 @@ pub async fn trash_character(
     if id.is_empty() {
         return Err(MythicError::Validation("Character ID is required".into()));
     }
-    let state = state.read().await;
-    let character = CharacterRepo::trash(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_character(&db, &actor, &id).await?;
+    let character = CharacterRepo::trash(&db, &id).await?;
     info!("Trashed character: {}", id);
     Ok(character)
 }
@@ -126,8 +130,9 @@ pub async fn restore_character(
     if id.is_empty() {
         return Err(MythicError::Validation("Character ID is required".into()));
     }
-    let state = state.read().await;
-    let character = CharacterRepo::restore(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_character(&db, &actor, &id).await?;
+    let character = CharacterRepo::restore(&db, &id).await?;
     info!("Restored character: {}", id);
     Ok(character)
 }
@@ -149,6 +154,8 @@ pub async fn upload_character_avatar(
     if character_id.is_empty() {
         return Err(MythicError::Validation("Character ID is required".into()));
     }
+    let (db, actor) = acting(&state).await?;
+    ensure_character(&db, &actor, &character_id).await?;
     let source = std::path::PathBuf::from(&file_path);
     if !source.exists() {
         return Err(MythicError::NotFound(format!(
@@ -169,10 +176,8 @@ pub async fn upload_character_avatar(
     tokio::fs::write(&dest, &image_bytes).await?;
     let relative_path = format!("portraits/{}", filename);
 
-    let state = state.read().await;
     let updated =
-        CharacterRepo::set_portrait(&state.db, &character_id, Some(&relative_path), "approved")
-            .await?;
+        CharacterRepo::set_portrait(&db, &character_id, Some(&relative_path), "approved").await?;
     info!("Uploaded portrait for character: {}", character_id);
     Ok(updated)
 }

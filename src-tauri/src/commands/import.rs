@@ -11,6 +11,8 @@ use tauri::{AppHandle, Manager, State};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+use crate::auth::access::stamp_owner;
+use crate::commands::actor::acting;
 use crate::db::characters::CharacterRepo;
 use crate::db::personas::PersonaRepo;
 use crate::error::MythicError;
@@ -125,11 +127,12 @@ pub async fn import_character_card(
     let data_value = serde_json::to_value(&card.data)?;
 
     // Create the character via repo (spec is hardcoded in create, avatar set via update)
-    let state_guard = state.read().await;
-    let character = CharacterRepo::create(&state_guard.db, &character_name, data_value).await?;
+    let (db, actor) = acting(&state).await?;
+    let character = CharacterRepo::create(&db, &character_name, data_value).await?;
 
     // Extract the character ID for the avatar filename
     let character_id = crate::db::value_bridge::record_id_to_string(&character.id);
+    stamp_owner(&db, &actor, "characters", &character_id).await?;
 
     // Import the card's embedded lorebook (if any) as real, persisted
     // entries — previously this data was only ever read back out for a
@@ -138,7 +141,7 @@ pub async fn import_character_card(
     if let Some(ref book) = card.data.character_book {
         if !book.entries.is_empty() {
             match crate::db::lorebook::LorebookRepo::import_from_character_book(
-                &state_guard.db,
+                &db,
                 &character_id,
                 book,
             )
@@ -174,7 +177,7 @@ pub async fn import_character_card(
 
     // Update the character with the avatar path
     let updated = CharacterRepo::update(
-        &state_guard.db,
+        &db,
         &character_id,
         None, // name unchanged
         None, // data unchanged
@@ -227,10 +230,11 @@ pub async fn import_persona_card(
 
     let data_value = serde_json::to_value(&card.data)?;
 
-    let state_guard = state.read().await;
-    let persona = PersonaRepo::create(&state_guard.db, &persona_name, data_value).await?;
+    let (db, actor) = acting(&state).await?;
+    let persona = PersonaRepo::create(&db, &persona_name, data_value).await?;
 
     let persona_id = crate::db::value_bridge::record_id_to_string(&persona.id);
+    stamp_owner(&db, &actor, "personas", &persona_id).await?;
 
     let app_data_dir = app
         .path()
@@ -246,14 +250,7 @@ pub async fn import_persona_card(
 
     let relative_avatar = format!("personas/{}", avatar_filename);
 
-    let updated = PersonaRepo::update(
-        &state_guard.db,
-        &persona_id,
-        None,
-        None,
-        Some(&relative_avatar),
-    )
-    .await?;
+    let updated = PersonaRepo::update(&db, &persona_id, None, None, Some(&relative_avatar)).await?;
 
     info!(
         "Imported persona: {} ({}) with avatar at {}",

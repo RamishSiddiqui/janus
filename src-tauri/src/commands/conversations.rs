@@ -4,6 +4,11 @@ use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::auth::access::{
+    ensure_character, ensure_conversation, ensure_message, ensure_owned, ensure_persona,
+    stamp_owner,
+};
+use crate::commands::actor::acting;
 use crate::db::conversations::ConversationRepo;
 use crate::error::MythicError;
 use crate::models::conversation::{Conversation, Message, SearchResult};
@@ -18,12 +23,25 @@ pub async fn create_conversation(
     title: Option<String>,
     persona_id: Option<String>,
 ) -> Result<Conversation, MythicError> {
-    let state = state.read().await;
+    let (db, actor) = acting(&state).await?;
+    if let Some(cid) = character_id.as_deref() {
+        ensure_character(&db, &actor, cid).await?;
+    }
+    if let Some(pid) = persona_id.as_deref() {
+        ensure_persona(&db, &actor, pid).await?;
+    }
     let conversation = ConversationRepo::create(
-        &state.db,
+        &db,
         character_id.as_deref(),
         title.as_deref(),
         persona_id.as_deref(),
+    )
+    .await?;
+    stamp_owner(
+        &db,
+        &actor,
+        "conversations",
+        &crate::db::value_bridge::record_id_to_string(&conversation.id),
     )
     .await?;
     info!(
@@ -40,8 +58,9 @@ pub async fn get_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Conversation, MythicError> {
-    let state = state.read().await;
-    ConversationRepo::get(&state.db, &id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &id).await?;
+    ConversationRepo::get(&db, &id).await
 }
 
 /// Lists conversations with pagination, ordered by most recently updated.
@@ -56,10 +75,10 @@ pub async fn list_conversations(
         "[CMD] list_conversations called (limit={:?}, offset={:?})",
         limit, offset
     );
-    let state = state.read().await;
+    let (db, actor) = acting(&state).await?;
     let limit = limit.unwrap_or(50).min(200);
     let offset = offset.unwrap_or(0);
-    match ConversationRepo::list(&state.db, limit, offset).await {
+    match ConversationRepo::list(&db, limit, offset, actor.owner_filter()).await {
         Ok(convos) => {
             info!(
                 "[CMD] list_conversations OK — returned {} conversations",
@@ -81,8 +100,8 @@ pub async fn count_conversations(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<u32, MythicError> {
     info!("[CMD] count_conversations called");
-    let state = state.read().await;
-    match ConversationRepo::count(&state.db).await {
+    let (db, actor) = acting(&state).await?;
+    match ConversationRepo::count(&db, actor.owner_filter()).await {
         Ok(count) => {
             info!("[CMD] count_conversations OK — count={}", count);
             Ok(count)
@@ -104,8 +123,9 @@ pub async fn delete_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ConversationRepo::delete(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &id).await?;
+    ConversationRepo::delete(&db, &id).await?;
     info!("Deleted conversation: {}", id);
     // The cascade event wipes this conversation's message_embeddings along
     // with everything else, but nothing tells the Settings page's Memory
@@ -125,8 +145,9 @@ pub async fn trash_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Conversation, MythicError> {
-    let state = state.read().await;
-    let conv = ConversationRepo::trash(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &id).await?;
+    let conv = ConversationRepo::trash(&db, &id).await?;
     info!("Trashed conversation: {}", id);
     Ok(conv)
 }
@@ -138,8 +159,9 @@ pub async fn restore_conversation(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Conversation, MythicError> {
-    let state = state.read().await;
-    let conv = ConversationRepo::restore(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &id).await?;
+    let conv = ConversationRepo::restore(&db, &id).await?;
     info!("Restored conversation: {}", id);
     Ok(conv)
 }
@@ -152,8 +174,9 @@ pub async fn get_conversation_messages(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<Vec<Message>, MythicError> {
-    let state = state.read().await;
-    ConversationRepo::get_messages(&state.db, &conversation_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    ConversationRepo::get_messages(&db, &conversation_id).await
 }
 
 /// Updates the active message pointer for branch navigation.
@@ -164,8 +187,10 @@ pub async fn set_active_message(
     conversation_id: String,
     message_id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ConversationRepo::set_active_message(&state.db, &conversation_id, &message_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    ensure_message(&db, &actor, &message_id).await?;
+    ConversationRepo::set_active_message(&db, &conversation_id, &message_id).await
 }
 
 /// Sets (or clears, passing `null`) this conversation's chosen
@@ -177,8 +202,12 @@ pub async fn set_conversation_image_preset(
     conversation_id: String,
     preset_id: Option<String>,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ConversationRepo::set_image_preset(&state.db, &conversation_id, preset_id.as_deref()).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    if let Some(pid) = preset_id.as_deref() {
+        ensure_owned(&db, &actor, "image_presets", pid).await?;
+    }
+    ConversationRepo::set_image_preset(&db, &conversation_id, preset_id.as_deref()).await
 }
 
 /// Sets (or clears, passing `null`) this conversation's chosen persona.
@@ -189,8 +218,12 @@ pub async fn set_conversation_persona(
     conversation_id: String,
     persona_id: Option<String>,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ConversationRepo::set_persona(&state.db, &conversation_id, persona_id.as_deref()).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    if let Some(pid) = persona_id.as_deref() {
+        ensure_persona(&db, &actor, pid).await?;
+    }
+    ConversationRepo::set_persona(&db, &conversation_id, persona_id.as_deref()).await
 }
 
 /// Updates a conversation's title.
@@ -201,8 +234,9 @@ pub async fn update_conversation(
     id: String,
     title: String,
 ) -> Result<Conversation, MythicError> {
-    let state = state.read().await;
-    let conversation = ConversationRepo::update_title(&state.db, &id, &title).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &id).await?;
+    let conversation = ConversationRepo::update_title(&db, &id, &title).await?;
     info!("Updated conversation title: {} -> {}", id, title);
     Ok(conversation)
 }
@@ -223,8 +257,9 @@ pub async fn set_memory_scope(
         )));
     }
 
-    let state = state.read().await;
-    ConversationRepo::set_memory_scope(&state.db, &conversation_id, &scope).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    ConversationRepo::set_memory_scope(&db, &conversation_id, &scope).await?;
     info!(
         "Set memory scope for conversation {} to '{}'",
         conversation_id, scope
@@ -247,14 +282,24 @@ pub async fn branch_conversation(
     branch_point_message_id: String,
     new_title: Option<String>,
 ) -> Result<Conversation, MythicError> {
-    let state = state.read().await;
-    ConversationRepo::branch(
-        &state.db,
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &parent_conversation_id).await?;
+    ensure_message(&db, &actor, &branch_point_message_id).await?;
+    let branch = ConversationRepo::branch(
+        &db,
         &parent_conversation_id,
         &branch_point_message_id,
         new_title.as_deref(),
     )
-    .await
+    .await?;
+    stamp_owner(
+        &db,
+        &actor,
+        "conversations",
+        &crate::db::value_bridge::record_id_to_string(&branch.id),
+    )
+    .await?;
+    Ok(branch)
 }
 
 /// Searches message content using SurrealDB full-text search.
@@ -268,7 +313,7 @@ pub async fn search_messages(
     query: String,
     limit: Option<u32>,
 ) -> Result<Vec<SearchResult>, MythicError> {
-    let state = state.read().await;
+    let (db, actor) = acting(&state).await?;
     let limit = limit.unwrap_or(20).min(100);
 
     let query = query.trim().to_string();
@@ -276,5 +321,5 @@ pub async fn search_messages(
         return Ok(Vec::new());
     }
 
-    ConversationRepo::search_messages(&state.db, &query, limit).await
+    ConversationRepo::search_messages(&db, &query, limit, actor.owner_filter()).await
 }

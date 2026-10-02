@@ -335,6 +335,20 @@ pub async fn run_npc_detection(
         };
 
         let char_id = crate::db::value_bridge::record_id_to_string(&character.id);
+        // The NPC belongs to whoever owns the conversation it appeared in.
+        if let Err(e) = crate::auth::access::inherit_owner_from_conversation(
+            db,
+            conversation_id,
+            "characters",
+            &char_id,
+        )
+        .await
+        {
+            debug!(
+                "[npc_pipeline] Failed to set NPC owner for {}: {}",
+                char_id, e
+            );
+        }
         match &candidate.resulting_character_id {
             Some(_) => {
                 // A placeholder already exists in the cast (role 'transient')
@@ -555,6 +569,20 @@ async fn register_placeholder(
         };
 
     let char_id = crate::db::value_bridge::record_id_to_string(&character.id);
+    // The NPC belongs to whoever owns the conversation it appeared in.
+    if let Err(e) = crate::auth::access::inherit_owner_from_conversation(
+        db,
+        conversation_id,
+        "characters",
+        &char_id,
+    )
+    .await
+    {
+        debug!(
+            "[npc_pipeline] Failed to set NPC owner for {}: {}",
+            char_id, e
+        );
+    }
     if let Err(e) = ConversationCharacterRepo::add(
         db,
         conversation_id,
@@ -647,6 +675,20 @@ pub async fn register_transient_speaker(
         }
     };
     let char_id = crate::db::value_bridge::record_id_to_string(&character.id);
+    // The NPC belongs to whoever owns the conversation it appeared in.
+    if let Err(e) = crate::auth::access::inherit_owner_from_conversation(
+        db,
+        conversation_id,
+        "characters",
+        &char_id,
+    )
+    .await
+    {
+        debug!(
+            "[npc_pipeline] Failed to set NPC owner for {}: {}",
+            char_id, e
+        );
+    }
 
     if let Err(e) = ConversationCharacterRepo::add(
         db,

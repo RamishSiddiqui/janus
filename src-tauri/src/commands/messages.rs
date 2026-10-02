@@ -4,6 +4,8 @@ use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::auth::access::{ensure_conversation, ensure_message};
+use crate::commands::actor::acting;
 use crate::db::messages::MessageRepo;
 use crate::error::MythicError;
 use crate::models::conversation::Message;
@@ -26,9 +28,13 @@ pub async fn create_message(
         _ => return Err(MythicError::Validation(format!("Invalid role: {}", role))),
     };
 
-    let state = state.read().await;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    if let Some(pid) = parent_id.as_deref() {
+        ensure_message(&db, &actor, pid).await?;
+    }
     let message = MessageRepo::create(
-        &state.db,
+        &db,
         &conversation_id,
         role_str,
         &content,
@@ -52,8 +58,9 @@ pub async fn update_message(
     id: String,
     content: String,
 ) -> Result<Message, MythicError> {
-    let state = state.read().await;
-    let message = MessageRepo::update(&state.db, &id, &content).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_message(&db, &actor, &id).await?;
+    let message = MessageRepo::update(&db, &id, &content).await?;
     info!("Updated message: {}", id);
     Ok(message)
 }
@@ -65,8 +72,9 @@ pub async fn delete_message(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    MessageRepo::delete(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_message(&db, &actor, &id).await?;
+    MessageRepo::delete(&db, &id).await?;
     info!("Deleted message: {}", id);
     Ok(())
 }
@@ -79,8 +87,9 @@ pub async fn get_message_branch(
     state: State<'_, Arc<RwLock<AppState>>>,
     message_id: String,
 ) -> Result<Vec<Message>, MythicError> {
-    let state = state.read().await;
-    MessageRepo::get_branch(&state.db, &message_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_message(&db, &actor, &message_id).await?;
+    MessageRepo::get_branch(&db, &message_id).await
 }
 
 /// Returns all sibling messages (messages sharing the same parent_id).
@@ -91,6 +100,7 @@ pub async fn get_message_siblings(
     state: State<'_, Arc<RwLock<AppState>>>,
     message_id: String,
 ) -> Result<Vec<Message>, MythicError> {
-    let state = state.read().await;
-    MessageRepo::get_siblings(&state.db, &message_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_message(&db, &actor, &message_id).await?;
+    MessageRepo::get_siblings(&db, &message_id).await
 }

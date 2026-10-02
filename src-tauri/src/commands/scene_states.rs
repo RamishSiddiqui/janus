@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
 
+use crate::auth::access::ensure_conversation;
+use crate::commands::actor::acting;
 use crate::db::scene_states::SceneStateRepo;
 use crate::error::MythicError;
 use crate::models::scene_state::SceneState;
@@ -18,8 +20,9 @@ pub async fn get_scene_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<Option<SceneState>, MythicError> {
-    let g = state.read().await;
-    SceneStateRepo::get(&g.db, &conversation_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    SceneStateRepo::get(&db, &conversation_id).await
 }
 
 /// Manually upserts the scene state for a conversation.
@@ -49,8 +52,9 @@ pub async fn upsert_scene_state(
         scene_changed: false,
         notable_character_event: false,
     };
-    let g = state.read().await;
-    SceneStateRepo::upsert(&g.db, &conversation_id, &update).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    SceneStateRepo::upsert(&db, &conversation_id, &update).await
 }
 
 /// Deletes the scene state for a conversation.
@@ -60,6 +64,7 @@ pub async fn delete_scene_state(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<(), MythicError> {
-    let g = state.read().await;
-    SceneStateRepo::delete(&g.db, &conversation_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    SceneStateRepo::delete(&db, &conversation_id).await
 }

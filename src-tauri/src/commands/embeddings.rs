@@ -11,6 +11,8 @@ use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+use crate::auth::access::ensure_conversation;
+use crate::commands::actor::acting;
 use crate::db::embeddings::EmbeddingRepo;
 use crate::db::providers::ProviderRepo;
 use crate::error::MythicError;
@@ -123,24 +125,38 @@ pub(crate) fn get_model_dimension(model_id: &str) -> Option<usize> {
     None
 }
 
+/// `AND` clause limiting an unscoped (all conversations) query to the acting
+/// account's conversations; empty in legacy mode.
+fn owner_and(owner: Option<&str>) -> &'static str {
+    if owner.is_some() {
+        " AND conversation_id.owner_id = $owner"
+    } else {
+        ""
+    }
+}
+
 /// Inner helper that operates on a raw `Surreal<Db>` reference.
 /// Shared between the Tauri command and `rebuild_embedding_index`.
 async fn get_embedding_index_status_inner(
     db: &Surreal<Db>,
     conversation_id: Option<String>,
     selected_model: Option<String>,
+    owner: Option<&str>,
 ) -> Result<EmbeddingIndexStatus, MythicError> {
     // Bound unconditionally — harmless when the query text for the `None`
     // branch doesn't reference $conv_id at all.
     let conv_bind = conversation_id.clone().unwrap_or_default();
+    let owner_bind = owner.unwrap_or("").to_string();
+    let own = owner_and(owner);
 
     // Count total user/assistant messages (optionally filtered by conversation)
     let total_query = match &conversation_id {
-        Some(_) => "SELECT count() FROM messages WHERE conversation_id = type::record('conversations', $conv_id) AND role IN ['user', 'assistant'] GROUP ALL",
-        None => "SELECT count() FROM messages WHERE role IN ['user', 'assistant'] GROUP ALL",
+        Some(_) => "SELECT count() FROM messages WHERE conversation_id = type::record('conversations', $conv_id) AND role IN ['user', 'assistant'] GROUP ALL".to_string(),
+        None => format!("SELECT count() FROM messages WHERE role IN ['user', 'assistant']{own} GROUP ALL"),
     };
     let mut total_result = db
         .query(total_query)
+        .bind(("owner", owner_bind.clone()))
         .bind(("conv_id", conv_bind.clone()))
         .await?;
     let total_val: Option<serde_json::Value> =
@@ -155,11 +171,12 @@ async fn get_embedding_index_status_inner(
     // would otherwise count them as if they were embedded messages and
     // inflate "coverage" above what's actually indexed.
     let embedded_query = match &conversation_id {
-        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message' GROUP ALL",
-        None => "SELECT count() FROM message_embeddings WHERE entry_type = 'message' GROUP ALL",
+        Some(_) => "SELECT count() FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message' GROUP ALL".to_string(),
+        None => format!("SELECT count() FROM message_embeddings WHERE entry_type = 'message'{own} GROUP ALL"),
     };
     let mut embedded_result = db
         .query(embedded_query)
+        .bind(("owner", owner_bind.clone()))
         .bind(("conv_id", conv_bind.clone()))
         .await?;
     let embedded_val: Option<serde_json::Value> =
@@ -170,11 +187,12 @@ async fn get_embedding_index_status_inner(
 
     // Get the model used for existing embeddings (check first row)
     let model_query = match &conversation_id {
-        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message' LIMIT 1",
-        None => "SELECT model_name FROM message_embeddings WHERE entry_type = 'message' LIMIT 1",
+        Some(_) => "SELECT model_name FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message' LIMIT 1".to_string(),
+        None => format!("SELECT model_name FROM message_embeddings WHERE entry_type = 'message'{own} LIMIT 1"),
     };
     let mut model_result = db
         .query(model_query)
+        .bind(("owner", owner_bind.clone()))
         .bind(("conv_id", conv_bind.clone()))
         .await?;
 
@@ -235,11 +253,13 @@ pub async fn get_embedding_index_status(
     conversation_id: Option<String>,
     selected_model: Option<String>,
 ) -> Result<EmbeddingIndexStatus, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = acting(&state).await?;
+    if let Some(cid) = conversation_id.as_deref() {
+        ensure_conversation(&db, &actor, cid).await?;
+    }
 
-    get_embedding_index_status_inner(&db, conversation_id, selected_model).await
+    get_embedding_index_status_inner(&db, conversation_id, selected_model, actor.owner_filter())
+        .await
 }
 
 /// Rebuilds the embedding index by deleting existing embeddings and
@@ -254,9 +274,12 @@ pub async fn rebuild_embedding_index(
     conversation_id: Option<String>,
     embedding_model: String,
 ) -> Result<EmbeddingIndexStatus, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = acting(&state).await?;
+    if let Some(cid) = conversation_id.as_deref() {
+        ensure_conversation(&db, &actor, cid).await?;
+    }
+    let own = owner_and(actor.owner_filter());
+    let owner_bind = actor.owner().to_string();
 
     // Find the provider that has this embedding model enabled
     // (NOT the default LLM provider, which may not support embeddings)
@@ -282,8 +305,11 @@ pub async fn rebuild_embedding_index(
             EmbeddingRepo::delete_for_conversation(&db, conv_id).await?;
         }
         None => {
-            db.query("DELETE FROM message_embeddings WHERE entry_type = 'message'")
-                .await?;
+            db.query(format!(
+                "DELETE FROM message_embeddings WHERE entry_type = 'message'{own}"
+            ))
+            .bind(("owner", owner_bind.clone()))
+            .await?;
         }
     }
 
@@ -295,21 +321,21 @@ pub async fn rebuild_embedding_index(
 
     // Fetch all user/assistant messages in scope
     let messages_query = match &conversation_id {
-        Some(_) => {
-            "SELECT id, conversation_id, content, created_at FROM messages \
+        Some(_) => "SELECT id, conversation_id, content, created_at FROM messages \
              WHERE conversation_id = type::record('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              ORDER BY created_at"
-        }
-        None => {
+            .to_string(),
+        None => format!(
             "SELECT id, conversation_id, content, created_at FROM messages \
-             WHERE role IN ['user', 'assistant'] \
+             WHERE role IN ['user', 'assistant']{own} \
              ORDER BY created_at"
-        }
+        ),
     };
 
     let mut result = db
         .query(messages_query)
+        .bind(("owner", owner_bind.clone()))
         .bind(("conv_id", conversation_id.clone().unwrap_or_default()))
         .await?;
 
@@ -397,7 +423,13 @@ pub async fn rebuild_embedding_index(
     );
 
     // Return updated status
-    get_embedding_index_status_inner(&db, conversation_id, Some(embedding_model)).await
+    get_embedding_index_status_inner(
+        &db,
+        conversation_id,
+        Some(embedding_model),
+        actor.owner_filter(),
+    )
+    .await
 }
 
 /// Finds messages that don't have embeddings yet and embeds them in batches.
@@ -412,9 +444,12 @@ pub async fn backfill_missing_embeddings(
     app: tauri::AppHandle,
     conversation_id: Option<String>,
 ) -> Result<EmbeddingIndexStatus, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = acting(&state).await?;
+    if let Some(cid) = conversation_id.as_deref() {
+        ensure_conversation(&db, &actor, cid).await?;
+    }
+    let own = owner_and(actor.owner_filter());
+    let owner_bind = actor.owner().to_string();
 
     // Find the enabled embedding model
     let all_enabled = ProviderRepo::list_enabled_models(&db, None).await?;
@@ -531,11 +566,14 @@ pub async fn backfill_missing_embeddings(
     // would make backfill re-request embeddings for every message, every
     // time it runs).
     let embedded_ids_query = match &conversation_id {
-        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message'",
-        None => "SELECT VALUE message_id FROM message_embeddings WHERE entry_type = 'message'",
+        Some(_) => "SELECT VALUE message_id FROM message_embeddings WHERE conversation_id = type::record('conversations', $conv_id) AND entry_type = 'message'".to_string(),
+        None => format!(
+            "SELECT VALUE message_id FROM message_embeddings WHERE entry_type = 'message'{own}"
+        ),
     };
     let mut embedded_result = db
         .query(embedded_ids_query)
+        .bind(("owner", owner_bind.clone()))
         .bind(("conv_id", conv_bind.clone()))
         .await?;
     let embedded_things: Vec<surrealdb::types::RecordId> = embedded_result.take(0).unwrap_or_else(|e| {
@@ -555,23 +593,23 @@ pub async fn backfill_missing_embeddings(
 
     // 2) Get all user/assistant messages
     let all_msgs_query = match &conversation_id {
-        Some(_) => {
-            "SELECT id, conversation_id, character_id, content, created_at FROM messages \
+        Some(_) => "SELECT id, conversation_id, character_id, content, created_at FROM messages \
              WHERE conversation_id = type::record('conversations', $conv_id) \
              AND role IN ['user', 'assistant'] \
              AND content != '' \
              ORDER BY created_at"
-        }
-        None => {
+            .to_string(),
+        None => format!(
             "SELECT id, conversation_id, character_id, content, created_at FROM messages \
-             WHERE role IN ['user', 'assistant'] \
+             WHERE role IN ['user', 'assistant']{own} \
              AND content != '' \
              ORDER BY created_at"
-        }
+        ),
     };
 
     let mut result = db
         .query(all_msgs_query)
+        .bind(("owner", owner_bind.clone()))
         .bind(("conv_id", conv_bind))
         .await?;
 
@@ -605,7 +643,13 @@ pub async fn backfill_missing_embeddings(
 
     if total_missing == 0 {
         info!("[backfill] No missing embeddings found — index is complete");
-        return get_embedding_index_status_inner(&db, conversation_id, Some(embedding_model)).await;
+        return get_embedding_index_status_inner(
+            &db,
+            conversation_id,
+            Some(embedding_model),
+            actor.owner_filter(),
+        )
+        .await;
     }
 
     info!(
@@ -671,5 +715,11 @@ pub async fn backfill_missing_embeddings(
         embedded, total_missing
     );
 
-    get_embedding_index_status_inner(&db, conversation_id, Some(embedding_model)).await
+    get_embedding_index_status_inner(
+        &db,
+        conversation_id,
+        Some(embedding_model),
+        actor.owner_filter(),
+    )
+    .await
 }

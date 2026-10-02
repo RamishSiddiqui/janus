@@ -40,8 +40,10 @@ pub async fn retry_failed_message(
     streaming: Option<bool>,
     post_history_instructions: Option<String>,
 ) -> Result<SendMessageResult, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    crate::auth::access::ensure_message(&db, &actor, &user_message_id).await?;
     let state_guard = state.read().await;
-    let db = state_guard.db.clone();
     let tts_engine = state_guard.tts_engine.clone();
     drop(state_guard);
 
@@ -367,9 +369,9 @@ pub async fn regenerate_message(
     streaming: Option<bool>,
     post_history_instructions: Option<String>,
 ) -> Result<SendMessageResult, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    crate::auth::access::ensure_message(&db, &actor, &message_id).await?;
 
     // A multi-character reply is stored as a chain of assistant messages —
     // user -> segment[0] -> segment[1] -> ... — all belonging to the SAME
@@ -514,6 +516,8 @@ pub async fn cancel_generation(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<(), MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let (db, handle) = {
         let state_guard = state.read().await;
         let db = state_guard.db.clone();

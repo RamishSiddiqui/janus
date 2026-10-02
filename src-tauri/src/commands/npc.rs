@@ -45,6 +45,8 @@ pub async fn list_conversation_npcs(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<Vec<Character>, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state = state.read().await;
     let cast = ConversationCharacterRepo::list(&state.db, &conversation_id).await?;
     let npc_ids: Vec<String> = cast
@@ -74,6 +76,8 @@ pub async fn promote_npc_to_gallery(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<Character, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
     let state = state.read().await;
     let character = CharacterRepo::set_origin(&state.db, &character_id, "gallery").await?;
     info!(
@@ -98,6 +102,9 @@ pub async fn confirm_npc(
     conversation_id: String,
     character_id: String,
 ) -> Result<(), MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
     let state = state.read().await;
     ConversationCharacterRepo::set_role(&state.db, &conversation_id, &character_id, "npc").await?;
     // Best-effort: resolve any still-pending candidate row too, so a later
@@ -128,6 +135,8 @@ pub async fn mark_npc_reviewed(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<Character, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
     let state = state.read().await;
     CharacterRepo::mark_reviewed(&state.db, &character_id).await
 }
@@ -223,9 +232,9 @@ pub async fn refresh_character_profile(
     // frontend settings to read) falls back to the built-in default.
     system_prompt: Option<String>,
 ) -> Result<ProfileRefreshResult, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
 
     let provider_config = get_default_llm_provider(&db).await?;
     let provider = create_rig_provider(&provider_config)?;
@@ -508,6 +517,9 @@ pub async fn generate_npc_portrait(
     conversation_id: String,
     auto_approve: bool,
 ) -> Result<Character, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state_guard = state.read().await;
     let character = CharacterRepo::get(&state_guard.db, &character_id).await?;
 
@@ -632,6 +644,8 @@ pub async fn approve_npc_portrait(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<Character, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
     let state = state.read().await;
     let character = CharacterRepo::get(&state.db, &character_id).await?;
     CharacterRepo::set_portrait(
@@ -651,6 +665,8 @@ pub async fn reject_npc_portrait(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<Character, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
     let state = state.read().await;
     CharacterRepo::set_portrait(&state.db, &character_id, None, "approved").await
 }
@@ -666,6 +682,8 @@ pub async fn get_cast_memory_graph(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<MemoryGraph, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state = state.read().await;
     MemoryRepo::get_cast_graph(&state.db, &conversation_id).await
 }
@@ -683,7 +701,8 @@ pub async fn debug_run_npc_detection(
     conversation_id: String,
     ai_response: String,
 ) -> Result<(), MythicError> {
-    let db = state.read().await.db.clone();
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     // Fresh id each call so the cadence dedup guard never blocks a manual
     // debug invocation regardless of how many times it's been called before.
     let message_id = uuid::Uuid::new_v4().to_string();

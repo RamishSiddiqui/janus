@@ -7,6 +7,8 @@ use surrealdb::types::RecordId;
 use tauri::State;
 use tokio::sync::RwLock;
 
+use crate::auth::access::{ensure_character, ensure_conversation, ensure_message};
+use crate::commands::actor::acting;
 use crate::db::character_state::CharacterStateRepo;
 use crate::db::messages::MessageRepo;
 use crate::error::MythicError;
@@ -56,8 +58,10 @@ pub async fn get_character_state(
     character_id: String,
     conversation_id: String,
 ) -> Result<Option<CharacterState>, MythicError> {
-    let g = state.read().await;
-    CharacterStateRepo::get(&g.db, &character_id, &conversation_id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    ensure_character(&db, &actor, &character_id).await?;
+    CharacterStateRepo::get(&db, &character_id, &conversation_id).await
 }
 
 /// Upserts the emotional state for a character in a conversation.
@@ -78,9 +82,11 @@ pub async fn upsert_character_state(
     let trust = trust.clamp(0, 100);
     let arousal = arousal.clamp(0, 100);
 
-    let g = state.read().await;
+    let (db, actor) = acting(&state).await?;
+    ensure_conversation(&db, &actor, &conversation_id).await?;
+    ensure_character(&db, &actor, &character_id).await?;
     CharacterStateRepo::upsert(
-        &g.db,
+        &db,
         &character_id,
         &conversation_id,
         mood,
@@ -108,9 +114,10 @@ pub async fn set_message_emotional_snapshot(
     message_id: String,
     states: DynamicJson,
 ) -> Result<(), MythicError> {
-    let g = state.read().await;
+    let (db, actor) = acting(&state).await?;
+    ensure_message(&db, &actor, &message_id).await?;
     MessageRepo::merge_metadata(
-        &g.db,
+        &db,
         &message_id,
         serde_json::json!({ "emotional_states": states.0 }),
     )
