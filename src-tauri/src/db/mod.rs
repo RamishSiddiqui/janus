@@ -26,6 +26,7 @@ pub mod scenes;
 pub mod schema;
 pub mod seed;
 pub mod summaries;
+pub mod users;
 pub mod value_bridge;
 
 pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {

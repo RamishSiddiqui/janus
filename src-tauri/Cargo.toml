@@ -67,6 +67,10 @@ image = "0.25"
 png = "0.18"
 base64 = "0.23"
 
+# Accounts: password hashing + session-token hashing
+argon2 = "0.5"
+sha2 = "0.10"
+
 # Async traits
 async-trait = "0.1"
 
@@ -124,6 +128,13 @@ custom-protocol = ["tauri/custom-protocol"]
 # source-level debugger, so trading rich debug symbols for a build that
 # actually completes is the right call here.
 debug = 0
+
+# Argon2 is deliberately slow; unoptimized it makes every sign-in take
+# seconds in dev builds and tests. Optimize just this crate.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
 
 [profile.release]
 opt-level = "z"       # Optimize for binary size

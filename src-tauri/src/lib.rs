@@ -10,6 +10,7 @@
     clippy::type_complexity
 )]
 
+pub mod auth;
 pub mod commands;
 pub mod context;
 pub mod db;
@@ -81,6 +82,12 @@ pub struct AppState {
     /// periodic Settings poll naturally provides the "refresh a few
     /// seconds apart" cadence `sysinfo` expects for meaningful readings.
     pub resource_monitor: Arc<AsyncMutex<sysinfo::System>>,
+
+    /// Id of the account the desktop window is acting as. Starts as the
+    /// admin (if any account exists), is cleared by sign-out, and set again
+    /// by signing in. Before any account exists it stays `None` and the app
+    /// behaves as it did before accounts. See issue #94.
+    pub desktop_user: Arc<AsyncMutex<Option<String>>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -224,6 +231,16 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::tts::tts_test_speak,
         commands::tts::tts_replay_message,
         commands::resource_monitor::get_resource_usage,
+        commands::auth::auth_status,
+        commands::auth::auth_register,
+        commands::auth::auth_login,
+        commands::auth::auth_logout,
+        commands::auth::auth_reset_with_recovery,
+        commands::auth::auth_change_passphrase,
+        commands::auth::auth_set_signup_mode,
+        commands::auth::auth_list_users,
+        commands::auth::auth_create_user,
+        commands::auth::auth_delete_user,
     ])
 }
 
@@ -407,6 +424,14 @@ pub fn run() {
                 .build()
                 .expect("Failed to build HTTP client");
 
+            // The desktop starts signed in as the admin, if accounts exist.
+            let desktop_user = tauri::async_runtime::block_on(async {
+                db::users::UserRepo::first_admin(&db).await
+            })
+            .ok()
+            .flatten()
+            .map(|u| u.id);
+
             // Register global app state
             let state = AppState {
                 db,
@@ -415,6 +440,7 @@ pub fn run() {
                 active_scene_generations: Arc::new(AsyncMutex::new(HashMap::new())),
                 tts_engine: Arc::new(AsyncMutex::new(None)),
                 resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new_all())),
+                desktop_user: Arc::new(AsyncMutex::new(desktop_user)),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
@@ -573,6 +599,16 @@ pub fn run() {
             commands::tts::tts_test_speak,
             commands::tts::tts_replay_message,
             commands::resource_monitor::get_resource_usage,
+            commands::auth::auth_status,
+            commands::auth::auth_register,
+            commands::auth::auth_login,
+            commands::auth::auth_logout,
+            commands::auth::auth_reset_with_recovery,
+            commands::auth::auth_change_passphrase,
+            commands::auth::auth_set_signup_mode,
+            commands::auth::auth_list_users,
+            commands::auth::auth_create_user,
+            commands::auth::auth_delete_user,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Janus");

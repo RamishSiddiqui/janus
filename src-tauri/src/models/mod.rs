@@ -11,6 +11,7 @@ pub mod provider;
 pub mod scene;
 pub mod scene_state;
 pub mod summary;
+pub mod user;
 
 use serde::{Deserialize, Deserializer, Serializer};
 use surrealdb::types::{RecordId, RecordIdKey};
