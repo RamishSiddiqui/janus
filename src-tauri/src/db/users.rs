@@ -325,3 +325,61 @@ impl AuthSettingsRepo {
         Ok(())
     }
 }
+
+/// Tables whose rows belong to one account (their `owner_id` column).
+/// Everything else is reached through one of these.
+pub const OWNED_TABLES: [&str; 7] = [
+    "characters",
+    "personas",
+    "conversations",
+    "provider_configs",
+    "image_presets",
+    "lorebook_entries",
+    "memories",
+];
+
+pub struct OwnershipRepo;
+
+impl OwnershipRepo {
+    /// Gives every unowned row (`owner_id = ''`) to `user_id`. Run when the
+    /// first account is created so the data that existed before accounts
+    /// becomes that account's.
+    pub async fn claim_unowned(db: &Surreal<Db>, user_id: &str) -> Result<(), MythicError> {
+        for table in OWNED_TABLES {
+            rows(
+                db,
+                &format!("UPDATE {table} SET owner_id = $u WHERE owner_id = ''"),
+                serde_json::json!({ "u": user_id }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// The `owner_id` of one row, or `None` if the row doesn't exist.
+    pub async fn owner_of(
+        db: &Surreal<Db>,
+        table: &str,
+        id: &str,
+    ) -> Result<Option<String>, MythicError> {
+        if !OWNED_TABLES.contains(&table) {
+            return Err(MythicError::Validation(format!(
+                "{table} has no owner column"
+            )));
+        }
+        let found: Vec<serde_json::Value> = from_value_vec(
+            rows(
+                db,
+                "SELECT owner_id FROM type::record($t, $id)",
+                serde_json::json!({ "t": table, "id": id }),
+            )
+            .await?,
+        )?;
+        Ok(found.first().map(|v| {
+            v.get("owner_id")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .to_string()
+        }))
+    }
+}

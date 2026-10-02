@@ -6,7 +6,7 @@ use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
 
 use super::*;
-use crate::db::users::{AuthSettingsRepo, SessionRepo, UserRepo};
+use crate::db::users::{AuthSettingsRepo, OwnershipRepo, SessionRepo, UserRepo};
 use crate::models::user::{DbSession, DbUser, Role, SessionInfo, SignupMode, UserInfo};
 
 const BAD_CREDENTIALS: &str = "That username and passphrase don't match.";
@@ -108,7 +108,12 @@ pub async fn register(
         ));
     }
     let role = if first { Role::Admin } else { Role::Member };
-    create_account(db, &username, passphrase, role, false).await
+    let (user, key) = create_account(db, &username, passphrase, role, false).await?;
+    if first {
+        // Everything that existed before accounts becomes the admin's.
+        OwnershipRepo::claim_unowned(db, &user.id).await?;
+    }
+    Ok((user, key))
 }
 
 /// Admin adds a member with a temporary passphrase they must replace on
