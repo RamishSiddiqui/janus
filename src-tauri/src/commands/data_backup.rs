@@ -27,14 +27,15 @@ pub async fn export_data_backup(
     app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<String, MythicError> {
+    // The backup is the whole datastore, every account's data included.
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    actor.require_admin()?;
     let data_dir = app_data_dir(&app)?;
     let dest = data_dir
         .join(backup::BACKUP_DIR_NAME)
         .join(backup::timestamped_backup_filename());
 
-    let state = state.read().await;
-    backup::export_to_file(&state.db, &dest).await?;
-    drop(state);
+    backup::export_to_file(&db, &dest).await?;
 
     backup::prune_old_manual_backups(&data_dir).await?;
 
@@ -53,9 +54,10 @@ pub async fn import_data_backup(
     state: State<'_, Arc<RwLock<AppState>>>,
     file_path: String,
 ) -> Result<(), MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    actor.require_admin()?;
     let source = std::path::PathBuf::from(&file_path);
-    let state = state.read().await;
-    backup::import_from_file(&state.db, &source).await
+    backup::import_from_file(&db, &source).await
 }
 
 /// Lists available backup files (both manual exports and the automatic
@@ -77,7 +79,12 @@ pub struct BackupFileInfo {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn list_data_backups(app: AppHandle) -> Result<Vec<BackupFileInfo>, MythicError> {
+pub async fn list_data_backups(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+) -> Result<Vec<BackupFileInfo>, MythicError> {
+    let (_, actor) = crate::commands::actor::acting(&state).await?;
+    actor.require_admin()?;
     let dir = app_data_dir(&app)?.join(backup::BACKUP_DIR_NAME);
     if !dir.exists() {
         return Ok(vec![]);

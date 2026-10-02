@@ -35,13 +35,15 @@ impl ProviderRepo {
         adapter: &str,
         config: serde_json::Value,
         is_default: bool,
+        owner: &str,
     ) -> Result<ProviderConfig, MythicError> {
         let id = uuid::Uuid::new_v4().to_string();
 
-        // If this is set as default, unset any existing default for this type
+        // If this is set as default, unset the owner's existing default for this type
         if is_default {
-            db.query("UPDATE provider_configs SET is_default = false WHERE provider_type = $ptype")
+            db.query("UPDATE provider_configs SET is_default = false WHERE provider_type = $ptype AND owner_id = $owner")
                 .bind(("ptype", provider_type.to_string()))
+                .bind(("owner", owner.to_string()))
                 .await?;
         }
 
@@ -53,8 +55,10 @@ impl ProviderRepo {
                     adapter: $adapter,
                     config: $config,
                     is_default: $is_default,
+                    owner_id: $owner,
                 }",
             )
+            .bind(("owner", owner.to_string()))
             .bind(("id", id.clone()))
             .bind(("name", name.to_string()))
             .bind(("ptype", provider_type.to_string()))
@@ -79,18 +83,22 @@ impl ProviderRepo {
     pub async fn list(
         db: &Surreal<Db>,
         provider_type: Option<&str>,
+        owner: Option<&str>,
     ) -> Result<Vec<ProviderConfig>, MythicError> {
+        let own = crate::db::owner_clause(owner);
         let providers = if let Some(ptype) = provider_type {
             let mut result = db
-                .query("SELECT * FROM provider_configs WHERE provider_type = $ptype ORDER BY is_default DESC, name ASC")
+                .query(format!("SELECT * FROM provider_configs WHERE provider_type = $ptype{own} ORDER BY is_default DESC, name ASC"))
                 .bind(("ptype", ptype.to_string()))
+                .bind(("owner", owner.unwrap_or("").to_string()))
                 .await?;
             let rows: Vec<ProviderConfig> =
                 crate::db::value_bridge::from_value_vec(result.take(0)?)?;
             rows
         } else {
             let mut result = db
-                .query("SELECT * FROM provider_configs ORDER BY provider_type, is_default DESC, name ASC")
+                .query(format!("SELECT * FROM provider_configs WHERE true{own} ORDER BY provider_type, is_default DESC, name ASC"))
+                .bind(("owner", owner.unwrap_or("").to_string()))
                 .await?;
             let rows: Vec<ProviderConfig> =
                 crate::db::value_bridge::from_value_vec(result.take(0)?)?;
@@ -162,9 +170,13 @@ impl ProviderRepo {
         })?;
         let ptype_str = ptype.as_str().unwrap_or("llm");
 
-        // Unset all defaults for this type
-        db.query("UPDATE provider_configs SET is_default = false WHERE provider_type = $ptype")
+        // Unset this owner's other defaults for this type (never another account's)
+        let owner = crate::db::users::OwnershipRepo::owner_of(db, "provider_configs", id)
+            .await?
+            .unwrap_or_default();
+        db.query("UPDATE provider_configs SET is_default = false WHERE provider_type = $ptype AND owner_id = $owner")
             .bind(("ptype", ptype_str.to_string()))
+            .bind(("owner", owner))
             .await?;
 
         // Set this one as default
@@ -179,10 +191,12 @@ impl ProviderRepo {
     pub async fn get_default(
         db: &Surreal<Db>,
         provider_type: &str,
+        owner: Option<&str>,
     ) -> Result<Option<ProviderConfig>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM provider_configs WHERE provider_type = $ptype ORDER BY is_default DESC, name ASC LIMIT 1")
+            .query(format!("SELECT * FROM provider_configs WHERE provider_type = $ptype{} ORDER BY is_default DESC, name ASC LIMIT 1", crate::db::owner_clause(owner)))
             .bind(("ptype", provider_type.to_string()))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let providers: Vec<ProviderConfig> =
             crate::db::value_bridge::from_value_vec(result.take(0)?)?;
@@ -235,16 +249,26 @@ impl ProviderRepo {
     pub async fn list_enabled_models(
         db: &Surreal<Db>,
         provider_id: Option<&str>,
+        owner: Option<&str>,
     ) -> Result<Vec<EnabledModelRow>, MythicError> {
+        let own = if owner.is_some() {
+            " AND provider_id.owner_id = $owner"
+        } else {
+            ""
+        };
         let rows: Vec<EnabledModelFull> = if let Some(pid) = provider_id {
             let mut result = db
-                .query("SELECT * FROM enabled_models WHERE enabled = true AND provider_id = type::record('provider_configs', $pid)")
+                .query(format!("SELECT * FROM enabled_models WHERE enabled = true AND provider_id = type::record('provider_configs', $pid){own}"))
                 .bind(("pid", pid.to_string()))
+                .bind(("owner", owner.unwrap_or("").to_string()))
                 .await?;
             crate::db::value_bridge::from_value_vec(result.take(0)?)?
         } else {
             let mut result = db
-                .query("SELECT * FROM enabled_models WHERE enabled = true")
+                .query(format!(
+                    "SELECT * FROM enabled_models WHERE enabled = true{own}"
+                ))
+                .bind(("owner", owner.unwrap_or("").to_string()))
                 .await?;
             crate::db::value_bridge::from_value_vec(result.take(0)?)?
         };
@@ -265,8 +289,17 @@ impl ProviderRepo {
     /// longer appear in the provider's live catalog (e.g. delisted upstream).
     pub async fn get_all_enabled_states(
         db: &Surreal<Db>,
+        owner: Option<&str>,
     ) -> Result<HashMap<(String, String), (bool, String)>, MythicError> {
-        let mut result = db.query("SELECT * FROM enabled_models").await?;
+        let own = if owner.is_some() {
+            " WHERE provider_id.owner_id = $owner"
+        } else {
+            ""
+        };
+        let mut result = db
+            .query(format!("SELECT * FROM enabled_models{own}"))
+            .bind(("owner", owner.unwrap_or("").to_string()))
+            .await?;
         let raw: Vec<surrealdb::types::Value> = result.take(0).unwrap_or_default();
         let rows: Vec<EnabledModelFull> =
             crate::db::value_bridge::from_value_vec(raw).unwrap_or_default();

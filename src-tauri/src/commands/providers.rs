@@ -157,14 +157,15 @@ pub async fn create_provider(
     let _padapter = parse_adapter(&adapter)?;
     let is_default = is_default.unwrap_or(false);
 
-    let state = state.read().await;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
     let provider = ProviderRepo::create(
-        &state.db,
+        &db,
         &name,
         &provider_type,
         &adapter,
         config.0,
         is_default,
+        actor.owner(),
     )
     .await?;
 
@@ -182,8 +183,9 @@ pub async fn get_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<ProviderConfig, MythicError> {
-    let state = state.read().await;
-    ProviderRepo::get(&state.db, &id).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, &id).await?;
+    ProviderRepo::get(&db, &id).await
 }
 
 /// Lists all providers, optionally filtered by type.
@@ -193,8 +195,8 @@ pub async fn list_providers(
     state: State<'_, Arc<RwLock<AppState>>>,
     provider_type: Option<String>,
 ) -> Result<Vec<ProviderConfig>, MythicError> {
-    let state = state.read().await;
-    ProviderRepo::list(&state.db, provider_type.as_deref()).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    ProviderRepo::list(&db, provider_type.as_deref(), actor.owner_filter()).await
 }
 
 /// Updates an existing provider configuration.
@@ -210,9 +212,9 @@ pub async fn update_provider(
         validate_required_string("Provider name", name, 100)?;
     }
 
-    let state = state.read().await;
-    let provider =
-        ProviderRepo::update(&state.db, &id, name.as_deref(), config.map(|c| c.0)).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, &id).await?;
+    let provider = ProviderRepo::update(&db, &id, name.as_deref(), config.map(|c| c.0)).await?;
     info!("Updated provider: {}", id);
     Ok(provider)
 }
@@ -224,8 +226,9 @@ pub async fn delete_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ProviderRepo::delete(&state.db, &id).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, &id).await?;
+    ProviderRepo::delete(&db, &id).await?;
     info!("Deleted provider: {}", id);
     Ok(())
 }
@@ -237,8 +240,9 @@ pub async fn set_default_provider(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ProviderRepo::set_default(&state.db, &id).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, &id).await?;
+    ProviderRepo::set_default(&db, &id).await?;
     info!("Set default provider: {}", id);
     Ok(())
 }
@@ -314,6 +318,8 @@ pub async fn test_provider_connection(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<ConnectionTestResult, MythicError> {
+    let (acting_db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&acting_db, &actor, &id).await?;
     let state = state.read().await;
     let provider = ProviderRepo::get(&state.db, &id).await?;
 
@@ -455,6 +461,8 @@ pub async fn list_wangp_models(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Vec<crate::providers::wangp::WangpModelInfo>, MythicError> {
+    let (acting_db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&acting_db, &actor, &id).await?;
     let state = state.read().await;
     let provider = ProviderRepo::get(&state.db, &id).await?;
     let base_url = provider
@@ -473,6 +481,8 @@ pub async fn list_provider_models(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Vec<String>, MythicError> {
+    let (acting_db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&acting_db, &actor, &id).await?;
     let state = state.read().await;
     let provider = ProviderRepo::get(&state.db, &id).await?;
 
@@ -631,11 +641,13 @@ pub struct ModelEntry {
 pub async fn list_all_models(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<ModelEntry>, MythicError> {
-    // 1. Fetch all providers and enabled states while holding the lock
+    // 1. Fetch the acting account's providers and enabled states while holding the lock
+    let (_, actor) = crate::commands::actor::acting(&state).await?;
     let (providers, enabled_map, http, db) = {
         let state_guard = state.read().await;
-        let providers = ProviderRepo::list(&state_guard.db, None).await?;
-        let enabled_map = ProviderRepo::get_all_enabled_states(&state_guard.db).await?;
+        let providers = ProviderRepo::list(&state_guard.db, None, actor.owner_filter()).await?;
+        let enabled_map =
+            ProviderRepo::get_all_enabled_states(&state_guard.db, actor.owner_filter()).await?;
         let http = state_guard.http_client.clone();
         let db = state_guard.db.clone();
         (providers, enabled_map, http, db)
@@ -1110,10 +1122,12 @@ pub async fn list_all_models(
 pub async fn list_embedding_models(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<ModelEntry>, MythicError> {
+    let (_, actor) = crate::commands::actor::acting(&state).await?;
     let (providers, enabled_map, http) = {
         let state_guard = state.read().await;
-        let providers = ProviderRepo::list(&state_guard.db, None).await?;
-        let enabled_map = ProviderRepo::get_all_enabled_states(&state_guard.db).await?;
+        let providers = ProviderRepo::list(&state_guard.db, None, actor.owner_filter()).await?;
+        let enabled_map =
+            ProviderRepo::get_all_enabled_states(&state_guard.db, actor.owner_filter()).await?;
         let http = state_guard.http_client.clone();
         (providers, enabled_map, http)
     };
@@ -1407,8 +1421,9 @@ pub async fn toggle_model_enabled(
     model_type: String,
     enabled: bool,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    ProviderRepo::toggle_model(&state.db, &provider_id, &model_id, &model_type, enabled).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, &provider_id).await?;
+    ProviderRepo::toggle_model(&db, &provider_id, &model_id, &model_type, enabled).await?;
     info!(
         "Model {} on provider {} -> enabled={}",
         model_id, provider_id, enabled
@@ -1423,13 +1438,19 @@ pub async fn list_enabled_models(
     state: State<'_, Arc<RwLock<AppState>>>,
     provider_id: Option<String>,
 ) -> Result<Vec<ModelEntry>, MythicError> {
+    let (acting_db, actor) = crate::commands::actor::acting(&state).await?;
+    if let Some(pid) = provider_id.as_deref() {
+        crate::auth::access::ensure_provider(&acting_db, &actor, pid).await?;
+    }
     let state = state.read().await;
-    let rows = ProviderRepo::list_enabled_models(&state.db, provider_id.as_deref()).await?;
+    let rows =
+        ProviderRepo::list_enabled_models(&state.db, provider_id.as_deref(), actor.owner_filter())
+            .await?;
 
     // Batch-fetch providers and AI Horde capability info once instead of
     // one query per row (was N+1 for both — fine at today's scale, but
     // needlessly so).
-    let providers = ProviderRepo::list(&state.db, None).await?;
+    let providers = ProviderRepo::list(&state.db, None, actor.owner_filter()).await?;
     let provider_map: HashMap<String, &ProviderConfig> = providers
         .iter()
         .map(|p| (crate::db::value_bridge::record_id_to_string(&p.id), p))

@@ -185,3 +185,29 @@ pub async fn ensure_scene_file(
         )))
     }
 }
+
+/// The owner filter to use for work done on behalf of a conversation but
+/// outside any command (RAG lookups, summaries, NPC detection): the
+/// conversation's owner when it has one, otherwise `None` (legacy mode).
+pub async fn owner_filter_for_conversation(
+    db: &Surreal<Db>,
+    conversation_id: &str,
+) -> Result<Option<String>, MythicError> {
+    Ok(
+        OwnershipRepo::owner_of(db, "conversations", conversation_id)
+            .await?
+            .filter(|o| !o.is_empty()),
+    )
+}
+
+/// Like `owner_filter_for_conversation`, for any owned row (e.g. the memory
+/// a background embedding job was started for).
+pub async fn owner_filter_for_row(
+    db: &Surreal<Db>,
+    table: &str,
+    id: &str,
+) -> Result<Option<String>, MythicError> {
+    Ok(OwnershipRepo::owner_of(db, table, id)
+        .await?
+        .filter(|o| !o.is_empty()))
+}

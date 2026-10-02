@@ -283,7 +283,7 @@ pub async fn rebuild_embedding_index(
 
     // Find the provider that has this embedding model enabled
     // (NOT the default LLM provider, which may not support embeddings)
-    let all_enabled = ProviderRepo::list_enabled_models(&db, None).await?;
+    let all_enabled = ProviderRepo::list_enabled_models(&db, None, actor.owner_filter()).await?;
     let embedding_entry = all_enabled
         .iter()
         .find(|m| m.model_id == embedding_model && m.model_type == "embedding")
@@ -452,7 +452,7 @@ pub async fn backfill_missing_embeddings(
     let owner_bind = actor.owner().to_string();
 
     // Find the enabled embedding model
-    let all_enabled = ProviderRepo::list_enabled_models(&db, None).await?;
+    let all_enabled = ProviderRepo::list_enabled_models(&db, None, actor.owner_filter()).await?;
     let embedding_entry = all_enabled
         .iter()
         .find(|m| m.model_type == "embedding")

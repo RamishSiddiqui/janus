@@ -124,7 +124,7 @@ pub async fn retry_failed_message(
     }
 
     // Get LLM provider + model (needed for context budget)
-    let provider_config = get_default_llm_provider(&db).await?;
+    let provider_config = get_default_llm_provider(&db, actor.owner_filter()).await?;
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     let gen_params = GenerationParams {
