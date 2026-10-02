@@ -36,9 +36,13 @@ impl PersonaRepo {
     }
 
     /// Lists all non-trashed personas ordered by updated_at DESC.
-    pub async fn list(db: &Surreal<Db>) -> Result<Vec<Persona>, MythicError> {
+    pub async fn list(db: &Surreal<Db>, owner: Option<&str>) -> Result<Vec<Persona>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM personas WHERE deleted_at IS NONE ORDER BY updated_at DESC")
+            .query(format!(
+                "SELECT * FROM personas WHERE deleted_at IS NONE{} ORDER BY updated_at DESC",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let personas: Vec<Persona> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(personas)
@@ -145,9 +149,16 @@ impl PersonaRepo {
     }
 
     /// Lists trashed personas, most recently trashed first.
-    pub async fn list_trashed(db: &Surreal<Db>) -> Result<Vec<Persona>, MythicError> {
+    pub async fn list_trashed(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Vec<Persona>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM personas WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC")
+            .query(format!(
+                "SELECT * FROM personas WHERE deleted_at IS NOT NONE{} ORDER BY deleted_at DESC",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let personas: Vec<Persona> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
         Ok(personas)

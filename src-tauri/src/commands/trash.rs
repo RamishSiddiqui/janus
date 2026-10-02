@@ -10,6 +10,7 @@ use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::commands::actor::acting;
 use crate::db::characters::CharacterRepo;
 use crate::db::conversations::ConversationRepo;
 use crate::db::personas::PersonaRepo;
@@ -36,12 +37,12 @@ pub struct TrashItem {
 pub async fn list_trash(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<TrashItem>, MythicError> {
-    let state = state.read().await;
-    let db = &state.db;
+    let (db, actor) = acting(&state).await?;
+    let owner = actor.owner_filter();
 
-    let conversations = ConversationRepo::list_trashed(db).await?;
-    let characters = CharacterRepo::list_trashed(db).await?;
-    let personas = PersonaRepo::list_trashed(db).await?;
+    let conversations = ConversationRepo::list_trashed(&db, owner).await?;
+    let characters = CharacterRepo::list_trashed(&db, owner).await?;
+    let personas = PersonaRepo::list_trashed(&db, owner).await?;
 
     let mut items: Vec<TrashItem> = Vec::new();
     for c in conversations {
@@ -82,10 +83,11 @@ pub async fn list_trash(
 #[tauri::command]
 #[specta::specta]
 pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), MythicError> {
-    let state = state.read().await;
-    let db = &state.db;
+    let (db, actor) = acting(&state).await?;
+    let db = &db;
+    let owner = actor.owner_filter();
 
-    let conversations = ConversationRepo::list_trashed(db).await?;
+    let conversations = ConversationRepo::list_trashed(db, owner).await?;
     for c in &conversations {
         let id = crate::db::value_bridge::record_id_to_string(&c.id);
         if let Err(e) = ConversationRepo::delete(db, &id).await {
@@ -93,7 +95,7 @@ pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), 
         }
     }
 
-    let characters = CharacterRepo::list_trashed(db).await?;
+    let characters = CharacterRepo::list_trashed(db, owner).await?;
     for c in &characters {
         let id = crate::db::value_bridge::record_id_to_string(&c.id);
         if let Err(e) = CharacterRepo::delete(db, &id).await {
@@ -101,7 +103,7 @@ pub async fn empty_trash(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), 
         }
     }
 
-    let personas = PersonaRepo::list_trashed(db).await?;
+    let personas = PersonaRepo::list_trashed(db, owner).await?;
     for p in &personas {
         let id = crate::db::value_bridge::record_id_to_string(&p.id);
         if let Err(e) = PersonaRepo::delete(db, &id).await {

@@ -29,6 +29,16 @@ pub mod summaries;
 pub mod users;
 pub mod value_bridge;
 
+/// Extra WHERE clause that limits a list to one account's rows. `None` is the
+/// pre-accounts (legacy) mode: no limit.
+pub fn owner_clause(owner: Option<&str>) -> &'static str {
+    if owner.is_some() {
+        " AND owner_id = $owner"
+    } else {
+        ""
+    }
+}
+
 pub async fn init_database(data_dir: &Path) -> Result<Surreal<Db>, MythicError> {
     let db_path = data_dir.join("mythic_surreal");
     info!("Initializing SurrealDB at: {:?}", db_path);

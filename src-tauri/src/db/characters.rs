@@ -44,9 +44,13 @@ impl CharacterRepo {
     /// retroactively to rows that existed before this field was added — so
     /// every character created before this migration has no stored `origin`
     /// at all and must be matched explicitly here.
-    pub async fn list(db: &Surreal<Db>) -> Result<Vec<Character>, MythicError> {
+    pub async fn list(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Vec<Character>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM characters WHERE (origin = 'gallery' OR origin = NONE) AND deleted_at IS NONE ORDER BY updated_at DESC")
+            .query(format!("SELECT * FROM characters WHERE (origin = 'gallery' OR origin = NONE) AND deleted_at IS NONE{} ORDER BY updated_at DESC", crate::db::owner_clause(owner)))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let raw: Vec<Value> = result.take(0)?;
         from_value_vec(raw)
@@ -276,9 +280,16 @@ impl CharacterRepo {
     }
 
     /// Lists trashed characters, most recently trashed first.
-    pub async fn list_trashed(db: &Surreal<Db>) -> Result<Vec<Character>, MythicError> {
+    pub async fn list_trashed(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Vec<Character>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM characters WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC")
+            .query(format!(
+                "SELECT * FROM characters WHERE deleted_at IS NOT NONE{} ORDER BY deleted_at DESC",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let raw: Vec<Value> = result.take(0)?;
         from_value_vec(raw)

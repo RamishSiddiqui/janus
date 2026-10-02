@@ -43,8 +43,9 @@ pub async fn send_message(
     post_history_instructions: Option<String>,
     attachments: Option<Vec<crate::models::conversation::MessageAttachment>>,
 ) -> Result<SendMessageResult, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state_guard = state.read().await;
-    let db = state_guard.db.clone();
     let _http = state_guard.http_client.clone(); // retained for image providers
     let tts_engine = state_guard.tts_engine.clone();
     drop(state_guard);

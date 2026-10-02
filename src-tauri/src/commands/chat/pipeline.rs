@@ -202,7 +202,8 @@ pub async fn extract_initial_scene(
     conversation_id: String,
     text: String,
 ) -> Result<(), MythicError> {
-    let db = state.read().await.db.clone();
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     // Greetings fire only once per conversation lifetime, so cadence-dedup
     // precision doesn't matter here — a fresh id per call is sufficient.
     let message_id = uuid::Uuid::new_v4().to_string();
@@ -296,8 +297,8 @@ pub async fn generate_raw(
     max_tokens: Option<u32>,
     temperature: Option<f32>,
 ) -> Result<String, MythicError> {
+    let (db, _actor) = crate::commands::actor::acting(&state).await?;
     let state_guard = state.read().await;
-    let db = state_guard.db.clone();
     let _http = state_guard.http_client.clone(); // retained for image providers
     drop(state_guard);
 
@@ -340,9 +341,9 @@ pub async fn get_context_stats(
     system_prompt: Option<String>,
     post_history_instructions: Option<String>,
 ) -> Result<ContextStats, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    crate::auth::access::ensure_message(&db, &actor, &message_id).await?;
 
     let provider_config = get_default_llm_provider(&db).await?;
     let max_context = provider_config

@@ -27,6 +27,15 @@ impl Actor {
         }
     }
 
+    /// For list queries: `None` (no filter) in legacy mode, otherwise the
+    /// account whose rows to return.
+    pub fn owner_filter(&self) -> Option<&str> {
+        match self {
+            Actor::Legacy => None,
+            Actor::User(u) => Some(&u.id),
+        }
+    }
+
     pub fn is_legacy(&self) -> bool {
         matches!(self, Actor::Legacy)
     }
@@ -85,6 +94,56 @@ pub async fn ensure_owned(
     }
 }
 
+/// Stamps a row the actor just created with their id. A no-op in legacy mode
+/// (rows stay unowned until the first account claims them).
+pub async fn stamp_owner(
+    db: &Surreal<Db>,
+    actor: &Actor,
+    table: &str,
+    id: &str,
+) -> Result<(), MythicError> {
+    if actor.is_legacy() {
+        return Ok(());
+    }
+    OwnershipRepo::set_owner(db, table, id, actor.owner()).await
+}
+
+/// Gives a row created by a background pipeline (NPC detection, ...) the
+/// same owner as the conversation it came from.
+pub async fn inherit_owner_from_conversation(
+    db: &Surreal<Db>,
+    conversation_id: &str,
+    table: &str,
+    id: &str,
+) -> Result<(), MythicError> {
+    match OwnershipRepo::owner_of(db, "conversations", conversation_id).await? {
+        Some(owner) if !owner.is_empty() => OwnershipRepo::set_owner(db, table, id, &owner).await,
+        _ => Ok(()),
+    }
+}
+
+/// A message or scene is yours if its conversation is.
+pub async fn ensure_child_of_conversation(
+    db: &Surreal<Db>,
+    actor: &Actor,
+    table: &str,
+    id: &str,
+) -> Result<(), MythicError> {
+    if actor.is_legacy() {
+        return Ok(());
+    }
+    match OwnershipRepo::owner_via_conversation(db, table, id).await? {
+        Some(owner) if owner == actor.owner() => Ok(()),
+        _ => Err(MythicError::NotFound(format!("{table} not found: {id}"))),
+    }
+}
+pub async fn ensure_message(db: &Surreal<Db>, a: &Actor, id: &str) -> Result<(), MythicError> {
+    ensure_child_of_conversation(db, a, "messages", id).await
+}
+pub async fn ensure_scene(db: &Surreal<Db>, a: &Actor, id: &str) -> Result<(), MythicError> {
+    ensure_child_of_conversation(db, a, "scenes", id).await
+}
+
 pub async fn ensure_character(db: &Surreal<Db>, a: &Actor, id: &str) -> Result<(), MythicError> {
     ensure_owned(db, a, "characters", id).await
 }
@@ -96,4 +155,33 @@ pub async fn ensure_conversation(db: &Surreal<Db>, a: &Actor, id: &str) -> Resul
 }
 pub async fn ensure_provider(db: &Surreal<Db>, a: &Actor, id: &str) -> Result<(), MythicError> {
     ensure_owned(db, a, "provider_configs", id).await
+}
+
+/// A scene media file (`scenes/<id>.png`) is yours if the scene row that
+/// points at it belongs to one of your conversations. Missing and not-yours
+/// give the same "not found".
+pub async fn ensure_scene_file(
+    db: &Surreal<Db>,
+    actor: &Actor,
+    file_relative: &str,
+) -> Result<(), MythicError> {
+    if actor.is_legacy() {
+        return Ok(());
+    }
+    let mut result = db
+        .query("SELECT conversation_id.owner_id AS owner_id FROM scenes WHERE file_path = $p")
+        .bind(("p", file_relative.to_string()))
+        .await?;
+    let raw: Vec<surrealdb::types::Value> = result.take(0)?;
+    let rows: Vec<serde_json::Value> = crate::db::value_bridge::from_value_vec(raw)?;
+    let owned = rows
+        .iter()
+        .any(|v| v.get("owner_id").and_then(|o| o.as_str()) == Some(actor.owner()));
+    if owned {
+        Ok(())
+    } else {
+        Err(MythicError::NotFound(format!(
+            "scene file not found: {file_relative}"
+        )))
+    }
 }

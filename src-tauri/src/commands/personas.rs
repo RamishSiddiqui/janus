@@ -11,6 +11,8 @@ use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::auth::access::{ensure_conversation, ensure_persona, stamp_owner};
+use crate::commands::actor::acting;
 use crate::commands::scenes::generate_via_generic_provider;
 use crate::db::image_presets::ImagePresetRepo;
 use crate::db::personas::PersonaRepo;
@@ -31,13 +33,11 @@ pub async fn create_persona(
     data: DynamicJson,
 ) -> Result<Persona, MythicError> {
     validate_required_string("Persona name", &name, 200)?;
-    let state = state.read().await;
-    let persona = PersonaRepo::create(&state.db, &name, data.0).await?;
-    info!(
-        "Created persona: {} ({})",
-        name,
-        crate::db::value_bridge::record_id_to_string(&persona.id)
-    );
+    let (db, actor) = acting(&state).await?;
+    let persona = PersonaRepo::create(&db, &name, data.0).await?;
+    let id = crate::db::value_bridge::record_id_to_string(&persona.id);
+    stamp_owner(&db, &actor, "personas", &id).await?;
+    info!("Created persona: {} ({})", name, id);
     Ok(persona)
 }
 
@@ -51,8 +51,9 @@ pub async fn get_persona(
     if id.is_empty() {
         return Err(MythicError::Validation("Persona ID is required".into()));
     }
-    let state = state.read().await;
-    PersonaRepo::get(&state.db, &id).await
+    let (db, actor) = acting(&state).await?;
+    ensure_persona(&db, &actor, &id).await?;
+    PersonaRepo::get(&db, &id).await
 }
 
 /// Lists all personas, ordered by most recently updated.
@@ -61,8 +62,8 @@ pub async fn get_persona(
 pub async fn list_personas(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<Vec<Persona>, MythicError> {
-    let state = state.read().await;
-    PersonaRepo::list(&state.db).await
+    let (db, actor) = acting(&state).await?;
+    PersonaRepo::list(&db, actor.owner_filter()).await
 }
 
 /// Updates an existing persona's data.
@@ -81,9 +82,10 @@ pub async fn update_persona(
     if let Some(ref name) = name {
         validate_required_string("Persona name", name, 200)?;
     }
-    let state = state.read().await;
+    let (db, actor) = acting(&state).await?;
+    ensure_persona(&db, &actor, &id).await?;
     let persona = PersonaRepo::update(
-        &state.db,
+        &db,
         &id,
         name.as_deref(),
         data.map(|d| d.0),
@@ -107,8 +109,9 @@ pub async fn delete_persona(
     if id.is_empty() {
         return Err(MythicError::Validation("Persona ID is required".into()));
     }
-    let state = state.read().await;
-    PersonaRepo::delete(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_persona(&db, &actor, &id).await?;
+    PersonaRepo::delete(&db, &id).await?;
     info!("Deleted persona: {}", id);
     Ok(())
 }
@@ -123,8 +126,9 @@ pub async fn trash_persona(
     if id.is_empty() {
         return Err(MythicError::Validation("Persona ID is required".into()));
     }
-    let state = state.read().await;
-    let persona = PersonaRepo::trash(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_persona(&db, &actor, &id).await?;
+    let persona = PersonaRepo::trash(&db, &id).await?;
     info!("Trashed persona: {}", id);
     Ok(persona)
 }
@@ -139,8 +143,9 @@ pub async fn restore_persona(
     if id.is_empty() {
         return Err(MythicError::Validation("Persona ID is required".into()));
     }
-    let state = state.read().await;
-    let persona = PersonaRepo::restore(&state.db, &id).await?;
+    let (db, actor) = acting(&state).await?;
+    ensure_persona(&db, &actor, &id).await?;
+    let persona = PersonaRepo::restore(&db, &id).await?;
     info!("Restored persona: {}", id);
     Ok(persona)
 }
@@ -162,6 +167,11 @@ pub async fn generate_persona_portrait(
     persona_id: String,
     conversation_id: Option<String>,
 ) -> Result<Persona, MythicError> {
+    let (db, actor) = acting(&state).await?;
+    ensure_persona(&db, &actor, &persona_id).await?;
+    if let Some(conv_id) = &conversation_id {
+        ensure_conversation(&db, &actor, conv_id).await?;
+    }
     let state_guard = state.read().await;
     let persona = PersonaRepo::get(&state_guard.db, &persona_id).await?;
 

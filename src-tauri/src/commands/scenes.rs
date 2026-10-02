@@ -107,6 +107,8 @@ pub async fn list_scene_cast_members(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<Vec<SceneCastMember>, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state = state.read().await;
     let mut members = Vec::new();
 
@@ -179,6 +181,15 @@ pub async fn generate_scene(
         character_images,
     } = options;
     let character_images = character_images.unwrap_or_default();
+
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    if let Some(message_id) = &message_id {
+        crate::auth::access::ensure_message(&db, &actor, message_id).await?;
+    }
+    for image in &character_images {
+        crate::auth::access::ensure_character(&db, &actor, &image.character_id).await?;
+    }
 
     let scene_id = Uuid::new_v4().to_string();
 
@@ -433,6 +444,15 @@ pub async fn generate_video_scene(
     } = options;
     let character_images = character_images.unwrap_or_default();
 
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    if let Some(message_id) = &message_id {
+        crate::auth::access::ensure_message(&db, &actor, message_id).await?;
+    }
+    for image in &character_images {
+        crate::auth::access::ensure_character(&db, &actor, &image.character_id).await?;
+    }
+
     let params = VideoGenParams {
         prompt: prompt.clone(),
         negative_prompt: negative_prompt.unwrap_or_default(),
@@ -529,6 +549,8 @@ pub async fn cancel_scene_generation(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<(), MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state_guard = state.read().await;
     if let Some(flag) = state_guard
         .active_scene_generations
@@ -548,6 +570,8 @@ pub async fn list_scenes(
     state: State<'_, Arc<RwLock<AppState>>>,
     conversation_id: String,
 ) -> Result<Vec<Scene>, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     let state_guard = state.read().await;
     SceneRepo::list(&state_guard.db, &conversation_id).await
 }
@@ -560,6 +584,8 @@ pub async fn delete_scene(
     state: State<'_, Arc<RwLock<AppState>>>,
     scene_id: String,
 ) -> Result<(), MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_scene(&db, &actor, &scene_id).await?;
     let state_guard = state.read().await;
 
     // Get the file path before deleting
@@ -587,7 +613,13 @@ pub async fn delete_scene(
 /// Returns the absolute file path for a scene's media file.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_scene_path(app: AppHandle, file_relative: String) -> Result<String, MythicError> {
+pub async fn get_scene_path(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    file_relative: String,
+) -> Result<String, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_scene_file(&db, &actor, &file_relative).await?;
     let app_data_dir = app
         .path()
         .app_data_dir()

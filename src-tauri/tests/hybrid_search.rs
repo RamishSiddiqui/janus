@@ -223,7 +223,7 @@ async fn search_messages_finds_exact_term() {
     .await
     .expect("create unrelated message");
 
-    let results = ConversationRepo::search_messages(&db, "griffin", 10)
+    let results = ConversationRepo::search_messages(&db, "griffin", 10, None)
         .await
         .expect("search_messages should not error");
     assert_eq!(results.len(), 1);

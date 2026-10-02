@@ -356,6 +356,56 @@ impl OwnershipRepo {
         Ok(())
     }
 
+    /// Assigns one row to an account.
+    pub async fn set_owner(
+        db: &Surreal<Db>,
+        table: &str,
+        id: &str,
+        owner: &str,
+    ) -> Result<(), MythicError> {
+        if !OWNED_TABLES.contains(&table) {
+            return Err(MythicError::Validation(format!(
+                "{table} has no owner column"
+            )));
+        }
+        rows(
+            db,
+            "UPDATE type::record($t, $id) SET owner_id = $o",
+            serde_json::json!({ "t": table, "id": id, "o": owner }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// The owner of a row that belongs to a conversation (a message or a
+    /// scene), read through its `conversation_id` link. `None` if the row
+    /// doesn't exist.
+    pub async fn owner_via_conversation(
+        db: &Surreal<Db>,
+        table: &str,
+        id: &str,
+    ) -> Result<Option<String>, MythicError> {
+        if !matches!(table, "messages" | "scenes") {
+            return Err(MythicError::Validation(format!(
+                "{table} is not a conversation child"
+            )));
+        }
+        let found: Vec<serde_json::Value> = from_value_vec(
+            rows(
+                db,
+                "SELECT conversation_id.owner_id AS owner_id FROM type::record($t, $id)",
+                serde_json::json!({ "t": table, "id": id }),
+            )
+            .await?,
+        )?;
+        Ok(found.first().map(|v| {
+            v.get("owner_id")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .to_string()
+        }))
+    }
+
     /// The `owner_id` of one row, or `None` if the row doesn't exist.
     pub async fn owner_of(
         db: &Surreal<Db>,

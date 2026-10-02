@@ -73,9 +73,11 @@ impl ConversationRepo {
         db: &Surreal<Db>,
         limit: u32,
         offset: u32,
+        owner: Option<&str>,
     ) -> Result<Vec<Conversation>, MythicError> {
         let mut result = db
-            .query("SELECT * FROM conversations WHERE deleted_at IS NONE ORDER BY updated_at DESC LIMIT $limit START $offset")
+            .query(format!("SELECT * FROM conversations WHERE deleted_at IS NONE{} ORDER BY updated_at DESC LIMIT $limit START $offset", crate::db::owner_clause(owner)))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .bind(("limit", limit))
             .bind(("offset", offset))
             .await?;
@@ -85,9 +87,13 @@ impl ConversationRepo {
     }
 
     /// Returns the total number of non-trashed conversations (for pagination).
-    pub async fn count(db: &Surreal<Db>) -> Result<u32, MythicError> {
+    pub async fn count(db: &Surreal<Db>, owner: Option<&str>) -> Result<u32, MythicError> {
         let mut result = db
-            .query("SELECT count() FROM conversations WHERE deleted_at IS NONE GROUP ALL")
+            .query(format!(
+                "SELECT count() FROM conversations WHERE deleted_at IS NONE{} GROUP ALL",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         // SurrealDB returns [{ count: N }] from GROUP ALL
         let count_row: Option<serde_json::Value> =
@@ -146,11 +152,16 @@ impl ConversationRepo {
     }
 
     /// Lists trashed conversations, most recently trashed first.
-    pub async fn list_trashed(db: &Surreal<Db>) -> Result<Vec<Conversation>, MythicError> {
+    pub async fn list_trashed(
+        db: &Surreal<Db>,
+        owner: Option<&str>,
+    ) -> Result<Vec<Conversation>, MythicError> {
         let mut result = db
-            .query(
-                "SELECT * FROM conversations WHERE deleted_at IS NOT NONE ORDER BY deleted_at DESC",
-            )
+            .query(format!(
+                "SELECT * FROM conversations WHERE deleted_at IS NOT NONE{} ORDER BY deleted_at DESC",
+                crate::db::owner_clause(owner)
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .await?;
         let conversations: Vec<Conversation> =
             crate::db::value_bridge::from_value_vec(result.take(0)?)?;
@@ -605,9 +616,15 @@ impl ConversationRepo {
         db: &Surreal<Db>,
         query: &str,
         limit: u32,
+        owner: Option<&str>,
     ) -> Result<Vec<SearchResult>, MythicError> {
+        let owner_filter = if owner.is_some() {
+            " AND conversation_id.owner_id = $owner"
+        } else {
+            ""
+        };
         let mut result = db
-            .query(
+            .query(format!(
                 "SELECT
                     id AS message_id,
                     conversation_id,
@@ -620,10 +637,11 @@ impl ConversationRepo {
                     search::score(4) AS relevance
                 FROM messages
                 WHERE content @4@ $query
-                    AND conversation_id.deleted_at IS NONE
+                    AND conversation_id.deleted_at IS NONE{owner_filter}
                 ORDER BY relevance DESC
-                LIMIT $limit",
-            )
+                LIMIT $limit"
+            ))
+            .bind(("owner", owner.unwrap_or("").to_string()))
             .bind(("query", query.to_string()))
             .bind(("limit", limit))
             .await?;

@@ -2,10 +2,14 @@
 //! clipboard-pasted image into `app_data_dir/attachments/`, and resolving a
 //! stored message's attachments back into raw bytes for a provider call.
 
-use tauri::Manager;
+use std::sync::Arc;
+
+use tauri::{Manager, State};
+use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::error::MythicError;
+use crate::AppState;
 
 fn mime_type_for_extension(ext: &str) -> Option<&'static str> {
     match ext {
@@ -61,8 +65,10 @@ async fn write_attachment(
 #[specta::specta]
 pub async fn upload_message_attachment(
     app: tauri::AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
     file_path: String,
 ) -> Result<crate::models::conversation::MessageAttachment, MythicError> {
+    crate::commands::actor::acting(&state).await?;
     let source = std::path::PathBuf::from(&file_path);
     if !source.exists() {
         return Err(MythicError::NotFound(format!(
@@ -87,9 +93,11 @@ pub async fn upload_message_attachment(
 #[specta::specta]
 pub async fn upload_message_attachment_bytes(
     app: tauri::AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
     bytes: Vec<u8>,
     extension: String,
 ) -> Result<crate::models::conversation::MessageAttachment, MythicError> {
+    crate::commands::actor::acting(&state).await?;
     if bytes.is_empty() {
         return Err(MythicError::Validation("Pasted image is empty".to_string()));
     }
