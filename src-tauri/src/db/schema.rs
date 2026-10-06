@@ -315,6 +315,11 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE TABLE IF NOT EXISTS auth_settings SCHEMAFULL;
         DEFINE FIELD IF NOT EXISTS signup_mode ON auth_settings TYPE string DEFAULT 'admin_only'
             ASSERT $value IN ['open', 'admin_only'];
+        -- Browser access. option<...> so the existing 'main' row, which predates
+        -- these fields, stays valid (a NONE in a non-option field breaks updates).
+        DEFINE FIELD IF NOT EXISTS network_enabled ON auth_settings TYPE option<bool>;
+        DEFINE FIELD IF NOT EXISTS network_lan     ON auth_settings TYPE option<bool>;
+        DEFINE FIELD IF NOT EXISTS network_port    ON auth_settings TYPE option<int>;
     ",
     )
     .await?

@@ -71,6 +71,9 @@ base64 = "0.23"
 argon2 = "0.5"
 sha2 = "0.10"
 
+# Web mode: HTTP server for browser access over the local network (issue #94)
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+
 # Async traits
 async-trait = "0.1"
 
@@ -119,6 +122,9 @@ sysinfo = "0.39"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 
 [profile.dev]
 # This crate compiles staticlib+cdylib+rlib together with full debug info
