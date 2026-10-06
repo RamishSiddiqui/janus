@@ -6,6 +6,7 @@
 //! are exposed in later slices, each behind a signed-in session.
 
 pub mod auth_routes;
+pub mod events_routes;
 pub mod rpc;
 pub mod rpc_characters;
 pub mod rpc_chat;
@@ -39,6 +40,8 @@ pub struct WebState {
     pub limiter: Arc<RateLimiter>,
     /// Reaches the app's command functions; `None` in tests that don't need them.
     pub rpc: Option<Arc<dyn rpc::Rpc>>,
+    /// Where browser event streams read from.
+    pub bus: crate::events::Bus,
 }
 
 impl WebState {
@@ -49,7 +52,13 @@ impl WebState {
             // 10 sign-in / sign-up / recovery attempts a minute per address.
             limiter: Arc::new(RateLimiter::new(10, Duration::from_secs(60))),
             rpc: None,
+            bus: crate::events::new_bus(),
         }
+    }
+
+    pub fn with_bus(mut self, bus: crate::events::Bus) -> Self {
+        self.bus = bus;
+        self
     }
 
     pub fn with_rpc(mut self, rpc: Arc<dyn rpc::Rpc>) -> Self {
@@ -62,6 +71,7 @@ pub fn router(state: WebState) -> Router {
     let api = Router::new()
         .nest("/auth", auth_routes::routes())
         .route("/rpc/{name}", axum::routing::post(rpc::handle))
+        .route("/events", axum::routing::get(events_routes::stream))
         .fallback(api_not_found);
     Router::new()
         .nest("/api", api)

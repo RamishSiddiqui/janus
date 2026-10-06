@@ -4,9 +4,10 @@
 //! lives in `commands::chat::streaming`, not here — these commands are the
 //! setup/management surface around it.
 
+use crate::events::EmitScoped;
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::RwLock;
 
 use crate::db::characters::CharacterRepo;
@@ -330,7 +331,7 @@ pub async fn tts_replay_message(
         if let Ok(bytes) = &result {
             let audio =
                 base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes.clone());
-            let _ = app.emit(
+            let _ = app.emit_scoped(
                 "tts-chunk",
                 TtsChunkEvent {
                     conversation_id: conversation_id.clone(),
@@ -341,7 +342,7 @@ pub async fn tts_replay_message(
                 },
             );
         }
-        let _ = app.emit(
+        let _ = app.emit_scoped(
             "tts-stream-end",
             crate::tts::TtsStreamEndEvent {
                 conversation_id,
@@ -396,7 +397,7 @@ pub async fn tts_replay_message(
             }
         };
         let audio = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wav);
-        let _ = app.emit(
+        let _ = app.emit_scoped(
             "tts-chunk",
             TtsChunkEvent {
                 conversation_id: conversation_id.clone(),
@@ -408,7 +409,7 @@ pub async fn tts_replay_message(
         );
         sequence += 1;
     }
-    let _ = app.emit(
+    let _ = app.emit_scoped(
         "tts-stream-end",
         crate::tts::TtsStreamEndEvent {
             conversation_id,

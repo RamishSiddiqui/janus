@@ -7,10 +7,10 @@
 //! in Phase B) is expected to log-and-swallow any error — this pipeline must
 //! never block or fail a chat turn.
 
+use crate::events::EmitScoped;
 use serde_json::json;
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
-use tauri::Emitter;
 use tracing::{debug, info};
 
 use crate::commands::npc::perform_profile_refresh;
@@ -399,7 +399,7 @@ pub async fn run_npc_detection(
             character.name, char_id, conversation_id
         );
 
-        let _ = app.emit(
+        let _ = app.emit_scoped(
             "npc_created",
             json!({ "conversation_id": conversation_id, "character": character }),
         );
@@ -617,7 +617,7 @@ async fn register_placeholder(
         character.name, char_id, conversation_id
     );
 
-    let _ = app.emit(
+    let _ = app.emit_scoped(
         "npc_created",
         json!({ "conversation_id": conversation_id, "character": character }),
     );
@@ -729,7 +729,7 @@ pub async fn register_transient_speaker(
         character.name, char_id, conversation_id
     );
 
-    let _ = app.emit(
+    let _ = app.emit_scoped(
         "npc_created",
         json!({ "conversation_id": conversation_id, "character": character }),
     );
