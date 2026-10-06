@@ -152,6 +152,12 @@ pub(crate) async fn build_prompt(
 ) -> Result<(Vec<ChatMessage>, ContextStats), MythicError> {
     let mut prompt = Vec::new();
 
+    // Provider lookups below (RAG embeddings) must use the conversation
+    // owner's providers, never another account's.
+    let rag_owner = crate::auth::access::owner_filter_for_conversation(db, conversation_id)
+        .await
+        .unwrap_or(None);
+
     // Inject the user's global system prompt first (from Settings)
     if let Some(sys) = user_system_prompt {
         let trimmed = sys.trim();
@@ -736,7 +742,7 @@ pub(crate) async fn build_prompt(
 
                     // Try semantic retrieval first
                     if !last_user_content.is_empty() {
-                        if let Ok(pc) = get_default_llm_provider(db).await {
+                        if let Ok(pc) = get_default_llm_provider(db, rag_owner.as_deref()).await {
                             if let Ok(provider) = create_rig_provider(&pc) {
                                 let embed_model = pc
                                     .config
@@ -1014,7 +1020,8 @@ pub(crate) async fn build_prompt(
                         .map(|m| crate::db::value_bridge::record_id_to_string(&m.id))
                         .collect();
 
-                    let rag_results = match get_default_llm_provider(db).await {
+                    let rag_results = match get_default_llm_provider(db, rag_owner.as_deref()).await
+                    {
                         Ok(pc) => match create_rig_provider(&pc) {
                             Ok(provider) => {
                                 let embed_model = pc
@@ -1237,7 +1244,7 @@ pub(crate) async fn build_prompt(
 
             if !last_user_content.is_empty() {
                 let exclude_ids: Vec<String> = vec![];
-                let rag_results = match get_default_llm_provider(db).await {
+                let rag_results = match get_default_llm_provider(db, rag_owner.as_deref()).await {
                     Ok(pc) => match create_rig_provider(&pc) {
                         Ok(provider) => {
                             let embed_model = pc

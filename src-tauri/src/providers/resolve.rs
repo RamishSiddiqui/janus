@@ -14,8 +14,9 @@ use crate::providers::unified::RigProvider;
 /// Finds the default LLM provider configuration from the database.
 pub(crate) async fn get_default_llm_provider(
     db: &Surreal<Db>,
+    owner: Option<&str>,
 ) -> Result<ProviderConfig, MythicError> {
-    match ProviderRepo::get_default(db, "llm").await? {
+    match ProviderRepo::get_default(db, "llm", owner).await? {
         Some(config) => Ok(config),
         None => Err(MythicError::Config(
             "No LLM provider configured. Add one in Settings → Models.".to_string(),
@@ -44,7 +45,8 @@ pub(crate) async fn resolve_model_id(
                 // (explicitly exclude embedding models)
                 let provider_id_str =
                     crate::db::value_bridge::record_id_to_string(&provider_config.id);
-                let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id_str)).await?;
+                let enabled =
+                    ProviderRepo::list_enabled_models(db, Some(&provider_id_str), None).await?;
                 match enabled.into_iter().find(|m| m.model_type != "embedding") {
                     Some(m) => Ok(m.model_id),
                     None => Err(MythicError::Config(

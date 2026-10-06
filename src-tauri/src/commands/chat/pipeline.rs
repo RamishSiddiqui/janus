@@ -40,8 +40,9 @@ use crate::AppState;
 /// model, while manual rebuilds (which used the right provider) worked.
 async fn resolve_embedding_provider(
     db: &Surreal<Db>,
+    owner: Option<&str>,
 ) -> Result<(RigProvider, String), MythicError> {
-    let enabled = ProviderRepo::list_enabled_models(db, None).await?;
+    let enabled = ProviderRepo::list_enabled_models(db, None, owner).await?;
     let embedding_entry = enabled
         .iter()
         .find(|m| m.model_type == "embedding")
@@ -82,7 +83,10 @@ pub(crate) fn spawn_scene_extraction(
         // configured, NPC detection still runs on its own periodic cadence.
         let mut notable = false;
 
-        let provider_config_result = get_default_llm_provider(&db).await;
+        let owner = crate::auth::access::owner_filter_for_conversation(&db, &conversation_id)
+            .await
+            .unwrap_or(None);
+        let provider_config_result = get_default_llm_provider(&db, owner.as_deref()).await;
         if let Err(ref e) = provider_config_result {
             debug!(
                 "[scene_flow] No LLM provider configured, skipping extraction (non-fatal): {}",
@@ -223,7 +227,10 @@ pub(crate) fn spawn_embed_message(
     character_id: Option<String>,
 ) {
     tokio::spawn(async move {
-        match resolve_embedding_provider(&db).await {
+        let owner = crate::auth::access::owner_filter_for_conversation(&db, &conversation_id)
+            .await
+            .unwrap_or(None);
+        match resolve_embedding_provider(&db, owner.as_deref()).await {
             Ok((provider, embedding_model)) => {
                 match embed_and_store(
                     &db,
@@ -261,7 +268,10 @@ pub(crate) fn spawn_embed_memory(
     content: String,
 ) {
     tokio::spawn(async move {
-        match resolve_embedding_provider(&db).await {
+        let owner = crate::auth::access::owner_filter_for_row(&db, "memories", &memory_id)
+            .await
+            .unwrap_or(None);
+        match resolve_embedding_provider(&db, owner.as_deref()).await {
             Ok((provider, embedding_model)) => {
                 if let Err(e) = crate::context::rag::embed_memory(
                     &db,
@@ -297,12 +307,12 @@ pub async fn generate_raw(
     max_tokens: Option<u32>,
     temperature: Option<f32>,
 ) -> Result<String, MythicError> {
-    let (db, _actor) = crate::commands::actor::acting(&state).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
     let state_guard = state.read().await;
     let _http = state_guard.http_client.clone(); // retained for image providers
     drop(state_guard);
 
-    let provider_config = get_default_llm_provider(&db).await?;
+    let provider_config = get_default_llm_provider(&db, actor.owner_filter()).await?;
     let model_id = resolve_model_id(model, &provider_config, &db).await?;
 
     let gen_params = GenerationParams {
@@ -345,7 +355,7 @@ pub async fn get_context_stats(
     crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
     crate::auth::access::ensure_message(&db, &actor, &message_id).await?;
 
-    let provider_config = get_default_llm_provider(&db).await?;
+    let provider_config = get_default_llm_provider(&db, actor.owner_filter()).await?;
     let max_context = provider_config
         .config
         .get("context_length")

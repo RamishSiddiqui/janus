@@ -24,13 +24,17 @@ pub async fn list_memories(
     character_id: Option<String>,
     conversation_id: Option<String>,
 ) -> Result<Vec<Memory>, MythicError> {
-    let state = state.read().await;
-    MemoryRepo::list(
-        &state.db,
-        character_id.as_deref(),
-        conversation_id.as_deref(),
-    )
-    .await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    if let Some(cid) = character_id.as_deref() {
+        crate::auth::access::ensure_character(&db, &actor, cid).await?;
+    }
+    if let Some(cid) = conversation_id.as_deref() {
+        crate::auth::access::ensure_conversation(&db, &actor, cid).await?;
+    }
+    if character_id.is_none() && conversation_id.is_none() {
+        return MemoryRepo::list_recent(&db, actor.owner_filter()).await;
+    }
+    MemoryRepo::list(&db, character_id.as_deref(), conversation_id.as_deref()).await
 }
 
 /// Creates a new memory entry.
@@ -43,10 +47,15 @@ pub async fn create_memory(
     content: String,
     source: Option<String>,
 ) -> Result<Memory, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
-
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    if let Some(cid) = character_id.as_deref() {
+        crate::auth::access::ensure_character(&db, &actor, cid).await?;
+    }
+    if let Some(cid) = conversation_id.as_deref() {
+        crate::auth::access::ensure_conversation(&db, &actor, cid).await?;
+    }
+    // A memory with neither a character nor a conversation has nothing to
+    // inherit an owner from, so stamp it with the creator below.
     let source = source.unwrap_or_else(|| "user".to_string());
     let memory = MemoryRepo::create(
         &db,
@@ -54,6 +63,13 @@ pub async fn create_memory(
         conversation_id.as_deref(),
         &content,
         &source,
+    )
+    .await?;
+    crate::auth::access::stamp_owner(
+        &db,
+        &actor,
+        "memories",
+        &crate::db::value_bridge::record_id_to_string(&memory.id),
     )
     .await?;
     info!(
@@ -84,9 +100,8 @@ pub async fn update_memory(
     memory_id: String,
     content: String,
 ) -> Result<Memory, MythicError> {
-    let state_guard = state.read().await;
-    let db = state_guard.db.clone();
-    drop(state_guard);
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "memories", &memory_id).await?;
 
     let memory = MemoryRepo::update(&db, &memory_id, &content).await?;
     info!("Updated memory: {} (version incremented)", memory_id);
@@ -120,8 +135,9 @@ pub async fn set_memory_importance(
     memory_id: String,
     importance: i32,
 ) -> Result<Memory, MythicError> {
-    let state = state.read().await;
-    let updated = MemoryRepo::set_importance(&state.db, &memory_id, importance).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "memories", &memory_id).await?;
+    let updated = MemoryRepo::set_importance(&db, &memory_id, importance).await?;
     info!(
         "Set memory {} importance to {}",
         memory_id, updated.importance
@@ -136,10 +152,11 @@ pub async fn delete_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    MemoryRepo::delete(&state.db, &memory_id).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "memories", &memory_id).await?;
+    MemoryRepo::delete(&db, &memory_id).await?;
     // Also delete the embedding if it exists
-    if let Err(e) = EmbeddingRepo::delete_memory_embedding(&state.db, &memory_id).await {
+    if let Err(e) = EmbeddingRepo::delete_memory_embedding(&db, &memory_id).await {
         warn!("Failed to delete embedding for memory {}: {}", memory_id, e);
     }
     info!("Deleted memory: {}", memory_id);
@@ -154,8 +171,9 @@ pub async fn promote_to_canon(
     state: State<'_, Arc<RwLock<AppState>>>,
     memory_id: String,
 ) -> Result<Memory, MythicError> {
-    let state = state.read().await;
-    let memory = MemoryRepo::promote_to_canon(&state.db, &memory_id).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "memories", &memory_id).await?;
+    let memory = MemoryRepo::promote_to_canon(&db, &memory_id).await?;
     info!("Promoted memory {} to canon", memory_id);
     Ok(memory)
 }
@@ -195,9 +213,11 @@ pub async fn share_memory(
         ));
     }
 
-    let state = state.read().await;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_owned(&db, &actor, "memories", &source_memory_id).await?;
+    crate::auth::access::ensure_conversation(&db, &actor, &target_conversation_id).await?;
     let link = MemoryRepo::share(
-        &state.db,
+        &db,
         &source_memory_id,
         &target_conversation_id,
         &link_type,
@@ -220,8 +240,19 @@ pub async fn unlink_memory(
     state: State<'_, Arc<RwLock<AppState>>>,
     link_id: String,
 ) -> Result<(), MythicError> {
-    let state = state.read().await;
-    MemoryRepo::unlink(&state.db, &link_id).await?;
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    if !actor.is_legacy() {
+        match MemoryRepo::link_owner(&db, &link_id).await? {
+            Some(owner) if owner == actor.owner() => {}
+            _ => {
+                return Err(MythicError::NotFound(format!(
+                    "Memory link not found: {}",
+                    link_id
+                )))
+            }
+        }
+    }
+    MemoryRepo::unlink(&db, &link_id).await?;
     info!("Removed memory link: {}", link_id);
     Ok(())
 }
@@ -234,6 +265,7 @@ pub async fn get_memory_graph(
     state: State<'_, Arc<RwLock<AppState>>>,
     character_id: String,
 ) -> Result<MemoryGraph, MythicError> {
-    let state = state.read().await;
-    MemoryRepo::get_graph(&state.db, &character_id).await
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
+    MemoryRepo::get_graph(&db, &character_id).await
 }

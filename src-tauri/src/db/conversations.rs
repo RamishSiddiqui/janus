@@ -536,6 +536,12 @@ impl ConversationRepo {
             content: String,
         }
 
+        // Copied memories belong to whoever owns the parent conversation.
+        let parent_owner =
+            crate::db::users::OwnershipRepo::owner_of(db, "conversations", parent_id)
+                .await?
+                .unwrap_or_default();
+
         let mut mem_result = db
             .query("SELECT id, character_id, content FROM memories WHERE conversation_id = type::record('conversations', $conv_id)")
             .bind(("conv_id", parent_id.to_string()))
@@ -559,8 +565,10 @@ impl ConversationRepo {
                         parent_id: type::record('memories', $parent_mem_id),
                         version: 1,
                         is_canon: false,
+                        owner_id: $owner,
                     }",
                 )
+                .bind(("owner", parent_owner.clone()))
                 .bind(("id", copy_id.clone()))
                 .bind(("char_id", char_id_raw))
                 .bind(("conv_id", new_conv_id.clone()))
@@ -576,8 +584,10 @@ impl ConversationRepo {
                         parent_id: type::record('memories', $parent_mem_id),
                         version: 1,
                         is_canon: false,
+                        owner_id: $owner,
                     }",
                 )
+                .bind(("owner", parent_owner.clone()))
                 .bind(("id", copy_id.clone()))
                 .bind(("conv_id", new_conv_id.clone()))
                 .bind(("content", mem.content.clone()))

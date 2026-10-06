@@ -175,7 +175,8 @@ pub async fn generate_persona_portrait(
     let state_guard = state.read().await;
     let persona = PersonaRepo::get(&state_guard.db, &persona_id).await?;
 
-    let provider = ProviderRepo::get_default(&state_guard.db, "image").await?;
+    let provider =
+        ProviderRepo::get_default(&state_guard.db, "image", actor.owner_filter()).await?;
     let Some(provider) = provider else {
         return Ok(persona);
     };
@@ -210,9 +211,14 @@ pub async fn generate_persona_portrait(
     let image_bytes = if provider.adapter == ProviderAdapter::AiHorde {
         let preset = match &conversation_id {
             Some(conv_id) => {
-                ImagePresetRepo::resolve_for_conversation(&state_guard.db, conv_id).await?
+                ImagePresetRepo::resolve_for_conversation(
+                    &state_guard.db,
+                    conv_id,
+                    actor.owner_filter(),
+                )
+                .await?
             }
-            None => ImagePresetRepo::get_default(&state_guard.db).await?,
+            None => ImagePresetRepo::get_default(&state_guard.db, actor.owner_filter()).await?,
         };
         // Namespaced key so this never collides with scene generation or NPC
         // portrait generation, which use their own key prefixes on the same

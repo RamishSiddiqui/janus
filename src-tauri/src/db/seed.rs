@@ -57,6 +57,12 @@ pub async fn seed_defaults(db: &Surreal<Db>) -> Result<(), MythicError> {
 /// Idempotent — skips if any image preset already exists (including if the
 /// user has since deleted or edited the seeded one).
 async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> {
+    // Once accounts exist every account gets its own preset when it is created
+    // (see seed_default_image_preset_for_owner); a global unowned one would be
+    // invisible to everyone.
+    if crate::db::users::UserRepo::count(db).await? > 0 {
+        return Ok(());
+    }
     let mut result = db
         .query("SELECT count() FROM image_presets GROUP ALL")
         .await?;
@@ -70,29 +76,62 @@ async fn seed_default_image_preset(db: &Surreal<Db>) -> Result<(), MythicError> 
         return Ok(());
     }
 
+    insert_default_image_preset(db, "default-high-quality", "").await?;
+
+    tracing::info!("Seeded default image preset");
+    Ok(())
+}
+
+/// Gives an account its own copy of the default image preset, unless it
+/// already owns any preset (the first account inherits the existing one when
+/// it claims the pre-accounts data).
+pub async fn seed_default_image_preset_for_owner(
+    db: &Surreal<Db>,
+    owner: &str,
+) -> Result<(), MythicError> {
+    let mut result = db
+        .query("SELECT count() FROM image_presets WHERE owner_id = $owner GROUP ALL")
+        .bind(("owner", owner.to_string()))
+        .await?;
+    let count: Option<serde_json::Value> =
+        crate::db::value_bridge::from_value_opt(result.take(0)?)?;
+    let has_one = count
+        .and_then(|v| v.get("count").and_then(|c| c.as_u64()))
+        .unwrap_or(0)
+        > 0;
+    if has_one {
+        return Ok(());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    insert_default_image_preset(db, &id, owner).await
+}
+
+async fn insert_default_image_preset(
+    db: &Surreal<Db>,
+    id: &str,
+    owner: &str,
+) -> Result<(), MythicError> {
     db.query("CREATE type::record('image_presets', $id) CONTENT $data")
-        .bind(("id", "default-high-quality"))
+        .bind(("id", id.to_string()))
         .bind((
             "data",
             json!({
+                // Optional fields are omitted, not sent as null: SurrealDB 3
+                // rejects NULL for `option<...>` fields (it wants NONE).
+                "owner_id": owner,
                 "name": "High Quality (Default)",
-                "model": null,
                 "sampler_name": "k_dpmpp_2m",
                 "cfg_scale": 6.5,
                 "steps": 30,
                 "karras": true,
-                "style": null,
-                "negative_prompt": null,
-                "clip_skip": null,
                 "post_processing": ["GFPGAN", "RealESRGAN_x4plus"],
                 "hires_fix": false,
-                "hires_fix_denoising_strength": null,
                 "is_default": true,
             }),
         ))
-        .await?;
-
-    tracing::info!("Seeded default image preset");
+        .await?
+        .check()
+        .map_err(|e| MythicError::DatabaseOp(format!("seed:image_preset: {}", e)))?;
     Ok(())
 }
 

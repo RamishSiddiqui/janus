@@ -685,7 +685,17 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                                 })
                                 .collect();
 
-                            let provider_config = match get_default_llm_provider(&db_summary).await
+                            let summary_owner = crate::auth::access::owner_filter_for_conversation(
+                                &db_summary,
+                                &conv_summary,
+                            )
+                            .await
+                            .unwrap_or(None);
+                            let provider_config = match get_default_llm_provider(
+                                &db_summary,
+                                summary_owner.as_deref(),
+                            )
+                            .await
                             {
                                 Ok(pc) => pc,
                                 Err(e) => {

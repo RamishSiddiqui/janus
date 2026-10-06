@@ -236,7 +236,7 @@ pub async fn refresh_character_profile(
     crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
     crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
 
-    let provider_config = get_default_llm_provider(&db).await?;
+    let provider_config = get_default_llm_provider(&db, actor.owner_filter()).await?;
     let provider = create_rig_provider(&provider_config)?;
     let model_id = resolve_model_id(None, &provider_config, &db).await?;
 
@@ -523,7 +523,8 @@ pub async fn generate_npc_portrait(
     let state_guard = state.read().await;
     let character = CharacterRepo::get(&state_guard.db, &character_id).await?;
 
-    let provider = ProviderRepo::get_default(&state_guard.db, "image").await?;
+    let provider =
+        ProviderRepo::get_default(&state_guard.db, "image", actor.owner_filter()).await?;
     let Some(provider) = provider else {
         return Ok(character);
     };
@@ -572,8 +573,12 @@ pub async fn generate_npc_portrait(
     let relative_path = format!("portraits/{}", filename);
 
     let image_bytes = if provider.adapter == ProviderAdapter::AiHorde {
-        let preset =
-            ImagePresetRepo::resolve_for_conversation(&state_guard.db, &conversation_id).await?;
+        let preset = ImagePresetRepo::resolve_for_conversation(
+            &state_guard.db,
+            &conversation_id,
+            actor.owner_filter(),
+        )
+        .await?;
         // Namespaced key so this never collides with the conversation's own
         // scene-generation progress UI / single-flight lock — both are keyed
         // by whatever string is passed as `conversation_id` here.

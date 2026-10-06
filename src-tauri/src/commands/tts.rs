@@ -28,10 +28,9 @@ async fn list_voices_for_provider(
     state: &State<'_, Arc<RwLock<AppState>>>,
     provider_id: &str,
 ) -> Result<Vec<VoiceInfo>, MythicError> {
-    let (db, http_client) = {
-        let state = state.read().await;
-        (state.db.clone(), state.http_client.clone())
-    };
+    let (db, actor) = crate::commands::actor::acting(state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, provider_id).await?;
+    let http_client = state.read().await.http_client.clone();
     let provider = ProviderRepo::get(&db, provider_id).await?;
     match provider.adapter {
         ProviderAdapter::ElevenLabs => elevenlabs::list_voices(&provider, &http_client).await,
@@ -56,10 +55,9 @@ async fn synthesize_via_provider(
     text: &str,
     voice_id: &str,
 ) -> Result<Vec<u8>, MythicError> {
-    let (db, http_client) = {
-        let state = state.read().await;
-        (state.db.clone(), state.http_client.clone())
-    };
+    let (db, actor) = crate::commands::actor::acting(state).await?;
+    crate::auth::access::ensure_provider(&db, &actor, provider_id).await?;
+    let http_client = state.read().await.http_client.clone();
     let provider = ProviderRepo::get(&db, provider_id).await?;
     match provider.adapter {
         ProviderAdapter::ElevenLabs => {
@@ -190,6 +188,7 @@ pub async fn tts_list_voices(
     state: State<'_, Arc<RwLock<AppState>>>,
     provider_id: Option<String>,
 ) -> Result<Vec<VoiceInfo>, MythicError> {
+    crate::commands::actor::acting(&state).await?;
     if let Some(provider_id) = provider_id {
         return list_voices_for_provider(&state, &provider_id).await;
     }
@@ -215,7 +214,11 @@ pub async fn tts_set_character_voice(
     voice_id: Option<String>,
     voice_provider_id: Option<String>,
 ) -> Result<Character, MythicError> {
-    let db = state.read().await.db.clone();
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_character(&db, &actor, &character_id).await?;
+    if let Some(pid) = voice_provider_id.as_deref() {
+        crate::auth::access::ensure_provider(&db, &actor, pid).await?;
+    }
     CharacterRepo::set_voice(
         &db,
         &character_id,
@@ -240,6 +243,7 @@ pub async fn tts_test_speak(
     voice_id: String,
     provider_id: Option<String>,
 ) -> Result<String, MythicError> {
+    crate::commands::actor::acting(&state).await?;
     if let Some(provider_id) = provider_id {
         let bytes = synthesize_via_provider(&state, &provider_id, &text, &voice_id).await?;
         return Ok(base64::Engine::encode(
@@ -311,6 +315,11 @@ pub async fn tts_replay_message(
     voice_id: String,
     provider_id: Option<String>,
 ) -> Result<(), MythicError> {
+    {
+        let (db, actor) = crate::commands::actor::acting(&state).await?;
+        crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+        crate::auth::access::ensure_message(&db, &actor, &message_id).await?;
+    }
     // Cloud providers skip sentence-chunking entirely — that splitting
     // exists specifically to stay under Kokoro's ~512-token ONNX input
     // limit; ElevenLabs/Google have no such constraint, and chunking would

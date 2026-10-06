@@ -217,7 +217,7 @@ pub(crate) async fn generate_via_ai_horde(
     // state and picks from AI Horde's live public roster, not a local catalog.
     if let Some(m) = model {
         let provider_id = crate::db::value_bridge::record_id_to_string(&provider.id);
-        let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id)).await?;
+        let enabled = ProviderRepo::list_enabled_models(db, Some(&provider_id), None).await?;
         if !enabled.iter().any(|row| row.model_id == m) {
             return Err(MythicError::Validation(format!(
                 "Model '{}' is set as this provider's Default Model but isn't enabled — enable it on the Image/Video Models page first.",

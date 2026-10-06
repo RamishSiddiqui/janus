@@ -4,11 +4,21 @@
 //! black box when something goes wrong.
 
 use std::io::SeekFrom;
+use std::sync::Arc;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::sync::RwLock;
 
 use crate::error::MythicError;
+use crate::AppState;
+
+/// The backend log can contain every account's prompts and provider errors,
+/// so only the admin may read it.
+async fn require_admin(state: &State<'_, Arc<RwLock<AppState>>>) -> Result<(), MythicError> {
+    let (_, actor) = crate::commands::actor::acting(state).await?;
+    actor.require_admin()
+}
 
 /// Max lines ever returned by [`get_backend_logs`], regardless of the
 /// requested `lines` — a runaway request (or a log file that's grown huge
@@ -36,7 +46,12 @@ fn log_file_path(app: &AppHandle) -> Result<std::path::PathBuf, MythicError> {
 /// fresh install before anything's been logged.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_backend_logs(app: AppHandle, lines: Option<u32>) -> Result<String, MythicError> {
+pub async fn get_backend_logs(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    lines: Option<u32>,
+) -> Result<String, MythicError> {
+    require_admin(&state).await?;
     let path = log_file_path(&app)?;
     if !path.exists() {
         return Ok(String::new());
@@ -79,9 +94,11 @@ pub struct LogPage {
 #[specta::specta]
 pub async fn get_backend_logs_page(
     app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
     cursor: Option<u32>,
     limit: Option<u32>,
 ) -> Result<LogPage, MythicError> {
+    require_admin(&state).await?;
     let path = log_file_path(&app)?;
     let mut file = match tokio::fs::File::open(&path).await {
         Ok(f) => f,
@@ -163,6 +180,10 @@ pub async fn get_backend_logs_page(
 /// going through Export.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_backend_log_path(app: AppHandle) -> Result<String, MythicError> {
+pub async fn get_backend_log_path(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+) -> Result<String, MythicError> {
+    require_admin(&state).await?;
     Ok(log_file_path(&app)?.to_string_lossy().to_string())
 }
