@@ -21,6 +21,12 @@ pub async fn acting(
         let s = state.read().await;
         (s.db.clone(), s.desktop_user.clone())
     };
+    // A browser request carries its own account (see `web::rpc`); only the
+    // desktop falls back to the account the desktop window is signed in as.
+    if let Ok(web_user) = crate::web::rpc::REQUEST_USER.try_with(|u| u.clone()) {
+        let actor = crate::auth::access::resolve_web_actor(&db, &web_user).await?;
+        return Ok((db, actor));
+    }
     let signed_in = desktop.lock().await.clone();
     let actor = resolve_actor(&db, signed_in.as_deref()).await?;
     Ok((db, actor))

@@ -125,6 +125,7 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+tauri = { version = "2", features = ["test"] }
 
 [profile.dev]
 # This crate compiles staticlib+cdylib+rlib together with full debug info

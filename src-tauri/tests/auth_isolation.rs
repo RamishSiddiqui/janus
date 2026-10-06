@@ -400,3 +400,75 @@ async fn files_are_only_reachable_through_their_owners_rows() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn attachment_paths_must_be_plain_attachment_files_not_someone_elses() {
+    use janus_lib::auth::access::ensure_attachment_path;
+
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+    let (ada_row, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&ada_row), SignupMode::Open)
+        .await
+        .unwrap();
+    let (bob_row, _) = auth::register(&db, "bob", PASS).await.unwrap();
+    let ada = resolve_actor(&db, Some(&ada_row.id)).await.unwrap();
+    let bob = resolve_actor(&db, Some(&bob_row.id)).await.unwrap();
+
+    // Ada has already sent a message with an attachment.
+    let ch = CharacterRepo::create(&db, "E", serde_json::json!({"name": "E"}))
+        .await
+        .unwrap();
+    let ch_id = record_id_to_string(&ch.id);
+    stamp_owner(&db, &ada, "characters", &ch_id).await.unwrap();
+    let conv = ConversationRepo::create(&db, Some(&ch_id), Some("c"), None)
+        .await
+        .unwrap();
+    let conv_id = record_id_to_string(&conv.id);
+    stamp_owner(&db, &ada, "conversations", &conv_id)
+        .await
+        .unwrap();
+    MessageRepo::create(
+        &db,
+        &conv_id,
+        "user",
+        "look",
+        None,
+        Some(serde_json::json!({"attachments": [{"relativePath": "attachments/mine.png", "mimeType": "image/png"}]})),
+    )
+    .await
+    .unwrap();
+
+    // A freshly uploaded file nobody references yet is fine; so is your own.
+    ensure_attachment_path(&db, &bob, "attachments/fresh-upload.png")
+        .await
+        .unwrap();
+    ensure_attachment_path(&db, &ada, "attachments/mine.png")
+        .await
+        .unwrap();
+    // Someone else's attachment is "not found".
+    assert!(matches!(
+        ensure_attachment_path(&db, &bob, "attachments/mine.png").await,
+        Err(MythicError::NotFound(_))
+    ));
+    // Anything that isn't a plain attachments/<file> name is rejected outright.
+    for bad in [
+        "avatars/elara.png",
+        "attachments/../mythic_surreal/CURRENT",
+        "attachments/sub/dir.png",
+        "../secrets.png",
+        "attachments/",
+        "attachments/.hidden",
+        "/etc/passwd",
+    ] {
+        assert!(
+            matches!(
+                ensure_attachment_path(&db, &bob, bad).await,
+                Err(MythicError::Validation(_))
+            ),
+            "{bad} must be rejected"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(dir);
+}
