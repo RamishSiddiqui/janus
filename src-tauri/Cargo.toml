@@ -112,7 +112,7 @@ ndarray = "0.16"
 ndarray-npy = { version = "0.9", default-features = false, features = ["npz"] }
 misaki-rs = { version = "0.3", default-features = false }
 hound = "3.5"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Current process's own CPU/memory usage, surfaced in Settings so
 # resource-heavy features (starting with native TTS above) can be visually
