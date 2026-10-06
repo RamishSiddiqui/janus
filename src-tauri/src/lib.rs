@@ -18,6 +18,7 @@ pub mod error;
 pub mod models;
 pub mod providers;
 pub mod tts;
+pub mod web;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -88,6 +89,9 @@ pub struct AppState {
     /// by signing in. Before any account exists it stays `None` and the app
     /// behaves as it did before accounts. See issue #94.
     pub desktop_user: Arc<AsyncMutex<Option<String>>>,
+
+    /// The browser-access server, when it is on. See `web` and issue #94.
+    pub web_server: Arc<AsyncMutex<Option<web::WebServer>>>,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -241,6 +245,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::auth::auth_list_users,
         commands::auth::auth_create_user,
         commands::auth::auth_delete_user,
+        commands::web::web_status,
+        commands::web::web_set_network,
     ])
 }
 
@@ -441,9 +447,19 @@ pub fn run() {
                 tts_engine: Arc::new(AsyncMutex::new(None)),
                 resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new_all())),
                 desktop_user: Arc::new(AsyncMutex::new(desktop_user)),
+                web_server: Arc::new(AsyncMutex::new(None)),
             };
 
-            app.manage(Arc::new(RwLock::new(state)));
+            let shared = Arc::new(RwLock::new(state));
+            app.manage(shared.clone());
+
+            // Bring browser access back up if it was left on.
+            let web_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = commands::web::apply_settings(&web_app, &shared).await {
+                    tracing::warn!("[web] not started: {e}");
+                }
+            });
 
             info!("Janus initialized successfully");
             Ok(())
@@ -609,6 +625,8 @@ pub fn run() {
             commands::auth::auth_list_users,
             commands::auth::auth_create_user,
             commands::auth::auth_delete_user,
+            commands::web::web_status,
+            commands::web::web_set_network,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running Janus");

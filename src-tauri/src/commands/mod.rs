@@ -21,3 +21,4 @@ pub mod scene_states;
 pub mod scenes;
 pub mod trash;
 pub mod tts;
+pub mod web;

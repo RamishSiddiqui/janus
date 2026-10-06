@@ -8,7 +8,7 @@ use surrealdb::Surreal;
 
 use crate::db::value_bridge::{from_value_vec, to_surreal_value};
 use crate::error::MythicError;
-use crate::models::user::{DbSession, DbUser, Role, SignupMode};
+use crate::models::user::{DbSession, DbUser, NetworkSettings, Role, SignupMode, DEFAULT_WEB_PORT};
 
 async fn rows(
     db: &Surreal<Db>,
@@ -313,6 +313,41 @@ impl AuthSettingsRepo {
             Some("open") => SignupMode::Open,
             _ => SignupMode::AdminOnly,
         })
+    }
+
+    /// Browser-access settings. Off by default, loopback-only unless `lan`.
+    pub async fn network(db: &Surreal<Db>) -> Result<NetworkSettings, MythicError> {
+        let found: Vec<serde_json::Value> = from_value_vec(
+            rows(
+                db,
+                "SELECT network_enabled, network_lan, network_port FROM type::record('auth_settings', 'main')",
+                serde_json::json!({}),
+            )
+            .await?,
+        )?;
+        let row = found.first();
+        let get_bool = |k: &str| row.and_then(|v| v.get(k)).and_then(|v| v.as_bool());
+        let port = row
+            .and_then(|v| v.get("network_port"))
+            .and_then(|v| v.as_u64())
+            .and_then(|p| u16::try_from(p).ok())
+            .unwrap_or(DEFAULT_WEB_PORT);
+        Ok(NetworkSettings {
+            enabled: get_bool("network_enabled").unwrap_or(false),
+            lan: get_bool("network_lan").unwrap_or(false),
+            port,
+        })
+    }
+
+    pub async fn set_network(db: &Surreal<Db>, s: &NetworkSettings) -> Result<(), MythicError> {
+        rows(
+            db,
+            "UPSERT type::record('auth_settings', 'main')
+             SET network_enabled = $e, network_lan = $l, network_port = $p",
+            serde_json::json!({ "e": s.enabled, "l": s.lan, "p": s.port }),
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn set_signup_mode(db: &Surreal<Db>, mode: SignupMode) -> Result<(), MythicError> {

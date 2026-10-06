@@ -127,3 +127,22 @@ pub struct AccountCreated {
     pub user: UserInfo,
     pub recovery_key: String,
 }
+
+pub const DEFAULT_WEB_PORT: u16 = 1421;
+
+/// Browser access to this Janus. Off until the admin turns it on; when on it
+/// listens on loopback only unless `lan` is set.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct NetworkSettings {
+    pub enabled: bool,
+    pub lan: bool,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct WebStatus {
+    pub settings: NetworkSettings,
+    pub running: bool,
+    /// The address the server is actually bound to, when running.
+    pub bound: Option<String>,
+}
