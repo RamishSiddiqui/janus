@@ -28,9 +28,9 @@ pub async fn apply_settings(
     app: &AppHandle,
     state: &Arc<RwLock<AppState>>,
 ) -> Result<Option<String>, MythicError> {
-    let (db, slot) = {
+    let (db, slot, bus) = {
         let s = state.read().await;
-        (s.db.clone(), s.web_server.clone())
+        (s.db.clone(), s.web_server.clone(), s.event_bus.clone())
     };
     let settings = AuthSettingsRepo::network(&db).await?;
     let mut guard = slot.lock().await;
@@ -41,7 +41,9 @@ pub async fn apply_settings(
         return Ok(None);
     }
     let server = WebServer::start(
-        WebState::new(db, Some(asset_fn(app))),
+        WebState::new(db, Some(asset_fn(app)))
+            .with_rpc(Arc::new(crate::web::rpc::AppRpc(app.clone())))
+            .with_bus(bus),
         bind_addr(settings.lan, settings.port),
     )
     .await?;

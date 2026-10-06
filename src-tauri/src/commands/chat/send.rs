@@ -1,9 +1,10 @@
 //! `send_message` — the primary chat endpoint: saves the user message,
 //! builds the prompt, and streams (or generates) the AI response.
 
+use crate::events::EmitScoped;
 use std::sync::Arc;
 
-use tauri::{Emitter, Manager, State};
+use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
@@ -377,7 +378,7 @@ pub async fn send_message(
                 );
 
                 // Emit as a single 'done' event
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "done".to_string(),
@@ -392,7 +393,7 @@ pub async fn send_message(
                 );
             }
             Ok(Err(e)) => {
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "error".to_string(),
@@ -407,7 +408,7 @@ pub async fn send_message(
             }
             Err(join_err) => {
                 error!("Non-streaming generation task panicked: {}", join_err);
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "error".to_string(),

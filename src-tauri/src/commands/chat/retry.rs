@@ -1,9 +1,10 @@
 //! Retrying a failed message, regenerating a response, and cancelling an
 //! in-flight generation.
 
+use crate::events::EmitScoped;
 use std::sync::Arc;
 
-use tauri::{Emitter, Manager, State};
+use tauri::{Manager, State};
 use tokio::sync::RwLock;
 use tracing::{debug, error, warn};
 
@@ -312,7 +313,7 @@ pub async fn retry_failed_message(
                     assistant_msg_id.clone(),
                     full_text.clone(),
                 );
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "done".to_string(),
@@ -322,7 +323,7 @@ pub async fn retry_failed_message(
                 );
             }
             Ok(Err(e)) => {
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "error".to_string(),
@@ -337,7 +338,7 @@ pub async fn retry_failed_message(
             }
             Err(join_err) => {
                 error!("Retry non-streaming generation task panicked: {}", join_err);
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "error".to_string(),
@@ -545,7 +546,7 @@ pub async fn cancel_generation(
         }
     }
 
-    let _ = app.emit(
+    let _ = app.emit_scoped(
         "chat-stream",
         StreamEvent {
             event_type: "cancelled".to_string(),

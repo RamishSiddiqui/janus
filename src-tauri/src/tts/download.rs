@@ -3,10 +3,11 @@
 //! (see issue #66). Mirrors the app-data-dir resolution pattern in
 //! `db::backup` and the progress-event pattern in `providers::ai_horde`.
 
+use crate::events::EmitScoped;
 use std::path::{Path, PathBuf};
 
 use futures::StreamExt;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tokio::io::AsyncWriteExt;
 use tracing::info;
 
@@ -201,7 +202,7 @@ async fn download_one(
         // fires far more chunks than the UI needs progress ticks for.
         if percent != last_emitted_percent {
             last_emitted_percent = percent;
-            let _ = app.emit(
+            let _ = app.emit_scoped(
                 "tts-download-progress",
                 serde_json::json!({ "phase": phase, "percent": percent }),
             );

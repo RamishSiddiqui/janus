@@ -7,9 +7,9 @@
 
 use std::sync::Arc;
 
+use crate::events::EmitScoped;
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
-use tauri::Emitter;
 use tracing::{debug, error, info, warn};
 
 use super::pipeline::{spawn_embed_message, spawn_scene_extraction};
@@ -207,7 +207,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                     }
                 }
 
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "delta".to_string(),
@@ -220,7 +220,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 if let Ok(mut r) = reasoning_acc.lock() {
                     r.push_str(&text);
                 }
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "reasoning".to_string(),
@@ -270,7 +270,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                     // signal is possible but rare and non-destructive: the
                     // frontend just drops it as stray, same as any other
                     // late chunk.
-                    let _ = app.emit(
+                    let _ = app.emit_scoped(
                         "tts-stream-end",
                         crate::tts::TtsStreamEndEvent {
                             conversation_id: conv_id.clone(),
@@ -491,7 +491,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                         // avoid a duplicate combined-message re-render, so this is
                         // the only place the frontend's emotion pipeline can get them
                         // for a multi-speaker turn).
-                        let _ = app.emit(
+                        let _ = app.emit_scoped(
                             "multi-char-response",
                             serde_json::json!({
                                 "conversation_id": conv_id,
@@ -562,7 +562,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                             // message — same enrichment as the multi-segment branch above
                             // (real id/character_id, full_text, user_message) since this
                             // path also empties the "done" event's content below.
-                            let _ = app.emit(
+                            let _ = app.emit_scoped(
                                 "multi-char-response",
                                 serde_json::json!({
                                     "conversation_id": conv_id,
@@ -623,7 +623,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 } else {
                     full_text
                 };
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "done".to_string(),
@@ -742,7 +742,7 @@ pub(crate) async fn run_stream_completion(mut ctx: StreamCompletionCtx) {
                 break;
             }
             StreamChunk::Error(err) => {
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "chat-stream",
                     StreamEvent {
                         event_type: "error".to_string(),
@@ -783,7 +783,7 @@ fn spawn_tts_chunk(
         match engine.synthesize(&text, &voice_id, 1.0) {
             Ok(wav) => {
                 let audio = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wav);
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "tts-chunk",
                     TtsChunkEvent {
                         conversation_id,

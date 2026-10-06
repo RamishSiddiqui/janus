@@ -3,11 +3,12 @@
 //! (raw bytes + metadata, no DB writes/file writes here — the caller does
 //! that; the one DB access is the read-only enabled-model check below).
 
+use crate::events::EmitScoped;
 use std::time::Duration;
 
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tracing::{info, warn};
 
 use crate::db::providers::ProviderRepo;
@@ -347,7 +348,7 @@ pub(crate) async fn generate_via_ai_horde(
         job_id,
         submit_json.get("kudos")
     );
-    let _ = app.emit(
+    let _ = app.emit_scoped(
         "ai_horde_progress",
         serde_json::json!({
             "conversation_id": conversation_id,
@@ -411,7 +412,7 @@ pub(crate) async fn generate_via_ai_horde(
             MythicError::Provider(format!("Failed to parse AI Horde check response: {}", e))
         })?;
 
-        let _ = app.emit("ai_horde_progress", serde_json::json!({
+        let _ = app.emit_scoped("ai_horde_progress", serde_json::json!({
             "conversation_id": conversation_id,
             "phase": if check["processing"].as_i64().unwrap_or(0) > 0 { "processing" } else { "waiting" },
             "queue_position": check["queue_position"],
@@ -432,7 +433,7 @@ pub(crate) async fn generate_via_ai_horde(
         }
     }
 
-    let _ = app.emit(
+    let _ = app.emit_scoped(
         "ai_horde_progress",
         serde_json::json!({
             "conversation_id": conversation_id,
