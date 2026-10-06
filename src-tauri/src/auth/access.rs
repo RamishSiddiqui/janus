@@ -211,3 +211,23 @@ pub async fn owner_filter_for_row(
         .await?
         .filter(|o| !o.is_empty()))
 }
+
+/// A stored file may only be read through a path the caller's own rows
+/// reference (their characters' / personas' avatars, their scenes, their
+/// chat attachments). Anything else, including a path that exists but
+/// belongs to someone else, is "not found".
+pub async fn ensure_file_access(
+    db: &Surreal<Db>,
+    actor: &Actor,
+    relative: &str,
+) -> Result<(), MythicError> {
+    if actor.is_legacy() {
+        return Ok(());
+    }
+    let owners = OwnershipRepo::owners_of_file(db, relative).await?;
+    if owners.iter().any(|o| o == actor.owner()) {
+        Ok(())
+    } else {
+        Err(MythicError::NotFound(format!("File not found: {relative}")))
+    }
+}

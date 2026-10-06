@@ -267,8 +267,11 @@ pub async fn import_persona_card(
 #[specta::specta]
 pub async fn get_avatar_path(
     app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
     avatar_relative: String,
 ) -> Result<String, MythicError> {
+    let (db, actor) = crate::commands::actor::acting(&state).await?;
+    crate::auth::access::ensure_file_access(&db, &actor, &avatar_relative).await?;
     let app_data_dir = app
         .path()
         .app_data_dir()

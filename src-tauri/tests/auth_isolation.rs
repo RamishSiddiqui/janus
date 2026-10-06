@@ -312,3 +312,91 @@ async fn every_account_gets_exactly_one_default_image_preset() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn files_are_only_reachable_through_their_owners_rows() {
+    use janus_lib::auth::access::ensure_file_access;
+    use janus_lib::db::users::OwnershipRepo;
+
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+
+    let (ada_row, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&ada_row), SignupMode::Open)
+        .await
+        .unwrap();
+    let (bob_row, _) = auth::register(&db, "bob", PASS).await.unwrap();
+    let ada = resolve_actor(&db, Some(&ada_row.id)).await.unwrap();
+    let bob = resolve_actor(&db, Some(&bob_row.id)).await.unwrap();
+
+    // Ada has an avatar, a scene file and a chat attachment.
+    let ch = CharacterRepo::create(&db, "Elara", serde_json::json!({"name": "Elara"}))
+        .await
+        .unwrap();
+    let ch_id = record_id_to_string(&ch.id);
+    stamp_owner(&db, &ada, "characters", &ch_id).await.unwrap();
+    CharacterRepo::update(&db, &ch_id, None, None, Some("avatars/elara.png"))
+        .await
+        .unwrap();
+    let conv = ConversationRepo::create(&db, Some(&ch_id), Some("c"), None)
+        .await
+        .unwrap();
+    let conv_id = record_id_to_string(&conv.id);
+    stamp_owner(&db, &ada, "conversations", &conv_id)
+        .await
+        .unwrap();
+    let scene_id = uuid::Uuid::new_v4().to_string();
+    SceneRepo::create(
+        &db,
+        &scene_id,
+        &conv_id,
+        None,
+        "image",
+        "p",
+        "scenes/s1.png",
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    MessageRepo::create(
+        &db,
+        &conv_id,
+        "user",
+        "look",
+        None,
+        Some(serde_json::json!({"attachments": [{"relativePath": "attachments/a1.png", "mimeType": "image/png"}]})),
+    )
+    .await
+    .unwrap();
+
+    for path in ["avatars/elara.png", "scenes/s1.png", "attachments/a1.png"] {
+        ensure_file_access(&db, &ada, path).await.unwrap();
+        assert!(
+            matches!(
+                ensure_file_access(&db, &bob, path).await,
+                Err(MythicError::NotFound(_))
+            ),
+            "bob must not reach {path}"
+        );
+    }
+    // A path nobody references is refused for everyone.
+    assert!(ensure_file_access(&db, &ada, "avatars/nobody.png")
+        .await
+        .is_err());
+
+    // The account's file list covers all three (debug builds also seed demo
+    // avatars, which the first account claims), and nothing of Bob's.
+    let files = OwnershipRepo::files_of_owner(&db, &ada_row.id)
+        .await
+        .unwrap();
+    for path in ["avatars/elara.png", "scenes/s1.png", "attachments/a1.png"] {
+        assert!(files.iter().any(|f| f == path), "missing {path}");
+    }
+    assert!(OwnershipRepo::files_of_owner(&db, &bob_row.id)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let _ = std::fs::remove_dir_all(dir);
+}
