@@ -171,10 +171,26 @@ pub async fn auth_create_user(
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_delete_user(
+    app: tauri::AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
     user_id: String,
 ) -> Result<(), MythicError> {
+    use tauri::Manager;
     let (db, desktop) = db_and_desktop(&state).await;
     let me = require_current(&db, &desktop).await?;
-    service::delete_user(&db, &me, &user_id).await
+    // Collect the account's files before its rows disappear, remove them after.
+    let files = crate::db::users::OwnershipRepo::files_of_owner(&db, &user_id).await?;
+    service::delete_user(&db, &me, &user_id).await?;
+    if let Ok(dir) = app.path().app_data_dir() {
+        for relative in files {
+            if let Ok(full) = crate::error::resolve_within(&dir, &relative) {
+                if let Err(e) = tokio::fs::remove_file(&full).await {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::warn!("Failed to remove {}: {}", full.display(), e);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }

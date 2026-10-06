@@ -187,8 +187,12 @@ pub async fn generate_scene(
     if let Some(message_id) = &message_id {
         crate::auth::access::ensure_message(&db, &actor, message_id).await?;
     }
+    if let Some(reference) = &reference_image_path {
+        crate::auth::access::ensure_file_access(&db, &actor, reference).await?;
+    }
     for image in &character_images {
         crate::auth::access::ensure_character(&db, &actor, &image.character_id).await?;
+        crate::auth::access::ensure_file_access(&db, &actor, &image.relative_path).await?;
     }
 
     let scene_id = Uuid::new_v4().to_string();
@@ -456,6 +460,7 @@ pub async fn generate_video_scene(
     }
     for image in &character_images {
         crate::auth::access::ensure_character(&db, &actor, &image.character_id).await?;
+        crate::auth::access::ensure_file_access(&db, &actor, &image.relative_path).await?;
     }
 
     let params = VideoGenParams {

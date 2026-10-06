@@ -468,3 +468,64 @@ impl OwnershipRepo {
         Ok(())
     }
 }
+
+impl OwnershipRepo {
+    /// Owners of every row that references a stored file by its relative
+    /// path: avatars/portraits (characters, personas), scene files, and chat
+    /// attachments (via the message's conversation).
+    pub async fn owners_of_file(
+        db: &Surreal<Db>,
+        relative: &str,
+    ) -> Result<Vec<String>, MythicError> {
+        let mut owners = Vec::new();
+        for sql in [
+            "SELECT VALUE owner_id FROM characters WHERE avatar_path = $p",
+            "SELECT VALUE owner_id FROM personas WHERE avatar_path = $p",
+            "SELECT VALUE conversation_id.owner_id FROM scenes WHERE file_path = $p",
+            "SELECT VALUE conversation_id.owner_id FROM messages WHERE metadata.attachments.relativePath CONTAINS $p",
+        ] {
+            let found: Vec<serde_json::Value> =
+                from_value_vec(rows(db, sql, serde_json::json!({ "p": relative })).await?)?;
+            owners.extend(found.into_iter().filter_map(|v| v.as_str().map(str::to_string)));
+        }
+        Ok(owners)
+    }
+
+    /// Every stored file an account's rows reference, as relative paths, so
+    /// they can be removed along with the account.
+    pub async fn files_of_owner(
+        db: &Surreal<Db>,
+        user_id: &str,
+    ) -> Result<Vec<String>, MythicError> {
+        let mut files = Vec::new();
+        for sql in [
+            "SELECT VALUE avatar_path FROM characters WHERE owner_id = $u AND avatar_path != NONE",
+            "SELECT VALUE avatar_path FROM personas WHERE owner_id = $u AND avatar_path != NONE",
+            "SELECT VALUE file_path FROM scenes WHERE conversation_id.owner_id = $u",
+        ] {
+            let found: Vec<serde_json::Value> =
+                from_value_vec(rows(db, sql, serde_json::json!({ "u": user_id })).await?)?;
+            files.extend(
+                found
+                    .into_iter()
+                    .filter_map(|v| v.as_str().map(str::to_string)),
+            );
+        }
+        let metas: Vec<serde_json::Value> = from_value_vec(
+            rows(
+                db,
+                "SELECT VALUE metadata.attachments.relativePath FROM messages WHERE conversation_id.owner_id = $u AND metadata.attachments != NONE",
+                serde_json::json!({ "u": user_id }),
+            )
+            .await?,
+        )?;
+        for m in metas {
+            if let Some(arr) = m.as_array() {
+                files.extend(arr.iter().filter_map(|v| v.as_str().map(str::to_string)));
+            }
+        }
+        files.sort();
+        files.dedup();
+        Ok(files)
+    }
+}
