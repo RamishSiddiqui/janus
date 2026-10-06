@@ -451,3 +451,247 @@ fn rate_limiter_allows_a_burst_then_refuses_per_address() {
     std::thread::sleep(Duration::from_millis(60));
     assert!(short.allow(a), "the window expires");
 }
+
+// ── commands over HTTP ────────────────────────────────────────────────────
+
+mod rpc {
+    use super::*;
+    use janus_lib::web::rpc::{BoxFut, Rpc};
+    use janus_lib::AppState;
+    use tauri::test::{mock_app, MockRuntime};
+    use tauri::Manager;
+    use tokio::sync::{Mutex as AsyncMutex, RwLock};
+
+    /// Reaches the real command functions through a mock Tauri app.
+    struct MockRpc(tauri::AppHandle<MockRuntime>);
+
+    impl Rpc for MockRpc {
+        fn call(
+            &self,
+            name: String,
+            args: serde_json::Value,
+        ) -> BoxFut<Result<serde_json::Value, janus_lib::error::MythicError>> {
+            let app = self.0.clone();
+            Box::pin(async move {
+                match janus_lib::web::rpc_tables::dispatch_generic(&app, &name, args).await {
+                    Some(r) => r,
+                    None => Err(janus_lib::error::MythicError::NotFound(format!(
+                        "No such command: {name}"
+                    ))),
+                }
+            })
+        }
+    }
+
+    pub async fn app_with_rpc() -> (Router, TestDb, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+        let db = init_database(&dir).await.unwrap();
+        let tauri_app = mock_app();
+        let state = AppState {
+            db: db.clone(),
+            http_client: reqwest::Client::new(),
+            active_generations: Arc::new(AsyncMutex::new(Default::default())),
+            active_scene_generations: Arc::new(AsyncMutex::new(Default::default())),
+            tts_engine: Arc::new(AsyncMutex::new(None)),
+            resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new())),
+            desktop_user: Arc::new(AsyncMutex::new(None)),
+            web_server: Arc::new(AsyncMutex::new(None)),
+        };
+        tauri_app.manage(Arc::new(RwLock::new(state)));
+        let handle = tauri_app.handle().clone();
+        // The mock app must outlive the server for the test's duration.
+        std::mem::forget(tauri_app);
+        let st = WebState::new(db.clone(), None).with_rpc(Arc::new(MockRpc(handle)));
+        (router(st), db, dir)
+    }
+}
+
+#[tokio::test]
+async fn commands_run_as_the_session_account_and_stay_separate() {
+    let (app, db, dir) = rpc::app_with_rpc().await;
+    let (admin, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&admin), SignupMode::Open)
+        .await
+        .unwrap();
+
+    let ada = call(
+        &app,
+        Method::POST,
+        "/api/auth/login",
+        None,
+        Some(creds("ada", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+    let bob = call(
+        &app,
+        Method::POST,
+        "/api/auth/register",
+        None,
+        Some(creds("bob", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+
+    // No session, no commands.
+    let anon = call(
+        &app,
+        Method::POST,
+        "/api/rpc/list_characters",
+        None,
+        Some(serde_json::json!({})),
+        true,
+    )
+    .await;
+    assert_eq!(anon.status, StatusCode::UNAUTHORIZED);
+
+    // CSRF header is required here too.
+    let nocsrf = call(
+        &app,
+        Method::POST,
+        "/api/rpc/list_characters",
+        Some(&ada),
+        Some(serde_json::json!({})),
+        false,
+    )
+    .await;
+    assert_eq!(nocsrf.status, StatusCode::FORBIDDEN);
+
+    // Ada creates a character with the same camelCase arguments the desktop sends.
+    let made = call(
+        &app,
+        Method::POST,
+        "/api/rpc/create_character",
+        Some(&ada),
+        Some(serde_json::json!({ "name": "Elara", "data": { "name": "Elara" } })),
+        true,
+    )
+    .await;
+    assert_eq!(made.status, StatusCode::OK, "{}", made.text);
+    let id = made.body["id"].as_str().unwrap().to_string();
+
+    let ada_list = call(
+        &app,
+        Method::POST,
+        "/api/rpc/list_characters",
+        Some(&ada),
+        None,
+        true,
+    )
+    .await;
+    assert!(ada_list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["name"] == "Elara"));
+    // Bob sees none of Ada's, and cannot read, change or delete her character by id.
+    let bob_list = call(
+        &app,
+        Method::POST,
+        "/api/rpc/list_characters",
+        Some(&bob),
+        None,
+        true,
+    )
+    .await;
+    assert!(!bob_list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["name"] == "Elara"));
+    for (cmd, body) in [
+        ("get_character", serde_json::json!({ "id": id })),
+        (
+            "update_character",
+            serde_json::json!({ "id": id, "name": "Hijacked" }),
+        ),
+        ("delete_character", serde_json::json!({ "id": id })),
+    ] {
+        let r = call(
+            &app,
+            Method::POST,
+            &format!("/api/rpc/{cmd}"),
+            Some(&bob),
+            Some(body),
+            true,
+        )
+        .await;
+        assert_eq!(
+            r.status,
+            StatusCode::NOT_FOUND,
+            "{cmd} must look like not-found to Bob"
+        );
+    }
+    // Ada still has it, unchanged.
+    let still = call(
+        &app,
+        Method::POST,
+        "/api/rpc/get_character",
+        Some(&ada),
+        Some(serde_json::json!({ "id": id })),
+        true,
+    )
+    .await;
+    assert_eq!(still.body["name"], "Elara");
+
+    // Bad arguments are a 400, unknown commands a 404.
+    let bad = call(
+        &app,
+        Method::POST,
+        "/api/rpc/get_character",
+        Some(&ada),
+        Some(serde_json::json!({ "wrong": 1 })),
+        true,
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+    let unknown = call(
+        &app,
+        Method::POST,
+        "/api/rpc/format_the_disk",
+        Some(&ada),
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND);
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn a_member_with_a_pending_passphrase_change_cannot_call_commands() {
+    let (app, db, dir) = rpc::app_with_rpc().await;
+    let (admin, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::admin_create_user(&db, &UserInfo::from(&admin), "sara", "temporary passphrase")
+        .await
+        .unwrap();
+    let sara = call(
+        &app,
+        Method::POST,
+        "/api/auth/login",
+        None,
+        Some(creds("sara", "temporary passphrase")),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+    let r = call(
+        &app,
+        Method::POST,
+        "/api/rpc/list_characters",
+        Some(&sara),
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -6,6 +6,12 @@
 //! are exposed in later slices, each behind a signed-in session.
 
 pub mod auth_routes;
+pub mod rpc;
+pub mod rpc_characters;
+pub mod rpc_chat;
+pub mod rpc_conversations;
+pub mod rpc_providers;
+pub mod rpc_tables;
 pub mod util;
 
 use std::net::SocketAddr;
@@ -31,6 +37,8 @@ pub struct WebState {
     pub db: Surreal<Db>,
     pub assets: Option<AssetFn>,
     pub limiter: Arc<RateLimiter>,
+    /// Reaches the app's command functions; `None` in tests that don't need them.
+    pub rpc: Option<Arc<dyn rpc::Rpc>>,
 }
 
 impl WebState {
@@ -40,13 +48,20 @@ impl WebState {
             assets,
             // 10 sign-in / sign-up / recovery attempts a minute per address.
             limiter: Arc::new(RateLimiter::new(10, Duration::from_secs(60))),
+            rpc: None,
         }
+    }
+
+    pub fn with_rpc(mut self, rpc: Arc<dyn rpc::Rpc>) -> Self {
+        self.rpc = Some(rpc);
+        self
     }
 }
 
 pub fn router(state: WebState) -> Router {
     let api = Router::new()
         .nest("/auth", auth_routes::routes())
+        .route("/rpc/{name}", axum::routing::post(rpc::handle))
         .fallback(api_not_found);
     Router::new()
         .nest("/api", api)

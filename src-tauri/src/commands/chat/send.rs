@@ -45,6 +45,9 @@ pub async fn send_message(
 ) -> Result<SendMessageResult, MythicError> {
     let (db, actor) = crate::commands::actor::acting(&state).await?;
     crate::auth::access::ensure_conversation(&db, &actor, &conversation_id).await?;
+    for attachment in attachments.iter().flatten() {
+        crate::auth::access::ensure_attachment_path(&db, &actor, &attachment.relative_path).await?;
+    }
     let state_guard = state.read().await;
     let _http = state_guard.http_client.clone(); // retained for image providers
     let tts_engine = state_guard.tts_engine.clone();

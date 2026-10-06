@@ -231,3 +231,43 @@ pub async fn ensure_file_access(
         Err(MythicError::NotFound(format!("File not found: {relative}")))
     }
 }
+
+/// The actor for a browser request. Unlike the desktop path there is no
+/// "no accounts yet" fallback: a session always names a real account.
+pub async fn resolve_web_actor(db: &Surreal<Db>, user_id: &str) -> Result<Actor, MythicError> {
+    match UserRepo::get(db, user_id).await? {
+        Some(user) => Ok(Actor::User(UserInfo::from(&user))),
+        None => Err(MythicError::Unauthorized("Sign in first.".to_string())),
+    }
+}
+
+/// A chat attachment path the client sends along with a message. It must be
+/// a plain `attachments/<file>` name (no folders, no other directory such as
+/// avatars or the database), and must not already belong to another account's
+/// message. A file nobody references yet (just uploaded) is fine.
+pub async fn ensure_attachment_path(
+    db: &Surreal<Db>,
+    actor: &Actor,
+    relative: &str,
+) -> Result<(), MythicError> {
+    let plain = relative.strip_prefix("attachments/").is_some_and(|f| {
+        !f.is_empty()
+            && f.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+            && !f.starts_with('.')
+    });
+    if !plain {
+        return Err(MythicError::Validation(
+            "Invalid attachment path.".to_string(),
+        ));
+    }
+    if actor.is_legacy() {
+        return Ok(());
+    }
+    let owners = OwnershipRepo::owners_of_file(db, relative).await?;
+    if owners.is_empty() || owners.iter().any(|o| o == actor.owner()) {
+        Ok(())
+    } else {
+        Err(MythicError::NotFound(format!("File not found: {relative}")))
+    }
+}
