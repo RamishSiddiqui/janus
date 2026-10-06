@@ -291,9 +291,9 @@ async fn every_account_gets_exactly_one_default_image_preset() {
     let (bob_row, _) = auth::register(&db, "bob", PASS).await.unwrap();
 
     // Ada inherited the one that existed before accounts (no duplicate), Bob got his own.
-    for id in [&ada_row.id, &bob_row.id] {
+    for (n, id) in [&ada_row.id, &bob_row.id].into_iter().enumerate() {
         let presets = ImagePresetRepo::list(&db, Some(id)).await.unwrap();
-        assert_eq!(presets.len(), 1, "presets for account {id}");
+        assert_eq!(presets.len(), 1, "presets for account #{n}");
         assert!(presets[0].is_default);
     }
     // And they are different rows.
