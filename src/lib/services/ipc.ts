@@ -1400,6 +1400,13 @@ export async function authStatus(): Promise<AccountStatus> {
   return safeInvoke<AccountStatus>('auth_status');
 }
 
+export async function authRegister(
+  username: string,
+  passphrase: string
+): Promise<AccountCreatedResult> {
+  return safeInvoke<AccountCreatedResult>('auth_register', { username, passphrase });
+}
+
 export async function authLogin(username: string, passphrase: string): Promise<AccountUser> {
   return safeInvoke<AccountUser>('auth_login', { username, passphrase });
 }

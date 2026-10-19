@@ -22,6 +22,32 @@
   let switchPass = $state('');
   let confirmDelete = $state<string | null>(null);
 
+  // first account (nobody has one yet)
+  let adminName = $state('');
+  let adminPass = $state('');
+  let adminPass2 = $state('');
+  let adminKey = $state('');
+  const canCreateAdmin = $derived(
+    /^[a-z0-9][a-z0-9._-]{2,23}$/.test(adminName.trim().toLowerCase()) &&
+      adminPass.length >= 12 &&
+      adminPass === adminPass2,
+  );
+
+  async function createAdmin() {
+    busy = true;
+    try {
+      const res = await (await ipc()).authRegister(adminName.trim().toLowerCase(), adminPass);
+      adminKey = res.recovery_key ?? '';
+      adminPass = '';
+      adminPass2 = '';
+      await load();
+    } catch (e) {
+      toastError((e as { message?: string }).message ?? 'Could not create the account.');
+    } finally {
+      busy = false;
+    }
+  }
+
   const isAdmin = $derived(account?.user?.role === 'admin');
   const address = $derived(
     web?.bound ? `http://${web.bound.replace('0.0.0.0', '<this-computer>')}` : null,
@@ -117,9 +143,41 @@
   <span class="panel-heading-desc">Let other devices on your network use Janus from a browser</span>
 </div>
 
+{#if adminKey}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    <div class="setting-label">
+      <span class="setting-name">Save your recovery key</span>
+      <span class="setting-desc">It lets you set a new passphrase if you forget yours. It is shown once.</span>
+    </div>
+    <p class="net-key"><code>{adminKey}</code></p>
+    <div class="button-row">
+      <button class="settings-btn outline" onclick={() => navigator.clipboard?.writeText(adminKey)}>Copy</button>
+      <button class="settings-btn primary" onclick={() => (adminKey = '')}>I have saved it</button>
+    </div>
+  </section>
+{/if}
+
 {#if loadError}
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <p class="clear-warn">{loadError}</p>
+  </section>
+{:else if account && !account.has_users}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    <div class="setting-label">
+      <span class="setting-name">Create the admin account</span>
+      <span class="setting-desc">
+        Janus has no accounts yet. The first one becomes the admin, owns everything you have now, and decides who else
+        can join. Needed before browser access can be turned on.
+      </span>
+    </div>
+    <div class="net-add">
+      <input class="net-input wide" placeholder="Username (3 to 24 letters, numbers, . _ -)" autocomplete="off" bind:value={adminName} aria-label="Admin username" />
+      <input class="net-input wide" type="password" placeholder="Passphrase (at least 12 characters)" autocomplete="new-password" bind:value={adminPass} aria-label="Passphrase" />
+      <input class="net-input wide" type="password" placeholder="Confirm passphrase" autocomplete="new-password" bind:value={adminPass2} aria-label="Confirm passphrase" />
+      <div class="button-row">
+        <button class="settings-btn primary" disabled={busy || !canCreateAdmin} onclick={createAdmin}>Create admin account</button>
+      </div>
+    </div>
   </section>
 {:else if account && !isAdmin}
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
@@ -221,7 +279,7 @@
   </section>
 {/if}
 
-{#if account}
+{#if account && account.has_users}
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">This window</span>
     <span class="panel-heading-desc">Signed in as {account.user?.username ?? 'nobody'}. Switch to use another account here.</span>
@@ -254,6 +312,10 @@
   }
   .net-input:focus-visible {
     outline: 2px solid var(--accent-primary);
+  }
+  .net-key {
+    margin: 12px 0;
+    font-size: var(--text-md);
   }
   .net-note {
     margin-top: 10px;
