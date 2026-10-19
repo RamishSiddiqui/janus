@@ -9,6 +9,8 @@
   import SettingsImageSection from '$lib/components/SettingsImageSection.svelte';
   import SettingsPromptsSection from '$lib/components/SettingsPromptsSection.svelte';
   import SettingsLoggingSection from '$lib/components/SettingsLoggingSection.svelte';
+  import SettingsNetworkSection from '$lib/components/SettingsNetworkSection.svelte';
+  import { isWebMode } from '$lib/services/webBridge';
   import { settings } from '$lib/stores/settings';
   import { browser } from '$app/environment';
 
@@ -18,7 +20,7 @@
   // quality knobs, the reasoning toggle, etc). A single active-section panel
   // with sidebar nav (the VS Code / Linear / macOS System Settings pattern)
   // scales to any number of sections without the page just getting taller.
-  type SettingsSection = 'appearance' | 'chat' | 'context' | 'voice' | 'privacy' | 'image' | 'prompts' | 'logging';
+  type SettingsSection = 'appearance' | 'chat' | 'context' | 'voice' | 'privacy' | 'image' | 'prompts' | 'logging' | 'network';
   let activeSection = $state<SettingsSection>('appearance');
   const NAV_ITEMS: { id: SettingsSection; label: string; icon: string; accent: string }[] = [
     { id: 'appearance', label: 'Appearance', icon: 'palette', accent: '#9075f2' },
@@ -29,6 +31,8 @@
     { id: 'prompts', label: 'Prompts', icon: 'file-text', accent: '#34d399' },
     { id: 'privacy', label: 'Data & Privacy', icon: 'shield', accent: '#fb7185' },
     { id: 'logging', label: 'Logging', icon: 'terminal', accent: '#94a3b8' },
+    // Network access is managed from the desktop window, not from a browser.
+    ...(isWebMode() ? [] : [{ id: 'network' as const, label: 'Network Access', icon: 'network', accent: '#cda15f' }]),
   ];
   // Each section carries its own accent — driven into the panel below as a
   // CSS custom property, so every glass card/button/progress-bar re-tints
@@ -185,6 +189,10 @@
 
     {#if activeSection === 'privacy'}
       <SettingsPrivacySection onImported={() => importGeneration++} />
+    {/if}
+
+    {#if activeSection === 'network'}
+      <SettingsNetworkSection />
     {/if}
 
     {#if activeSection === 'image'}

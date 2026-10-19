@@ -5,10 +5,17 @@
   import JanusMark from './JanusMark.svelte';
   import { settings } from '$lib/stores/settings';
   import { isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
+  import { isWebMode } from '$lib/services/webBridge';
 
-  let { onToggleSidebar }: { onToggleSidebar: () => void } = $props();
+  let {
+    onToggleSidebar,
+    webUser = null,
+    onSignOut,
+  }: { onToggleSidebar: () => void; webUser?: string | null; onSignOut?: () => void } = $props();
 
-  const isTauri = browser && '__TAURI_INTERNALS__' in window;
+  // In a browser there is no window to minimize or close; show the account instead.
+  const isWeb = isWebMode();
+  const isTauri = browser && '__TAURI_INTERNALS__' in window && !isWeb;
 
   let isMaximized = $state(false);
 
@@ -80,6 +87,10 @@
   </div>
 
   <div class="tb-right">
+    {#if isWeb}
+      {#if webUser}<span class="tb-user">{webUser}</span>{/if}
+      <button class="tb-signout" onclick={() => onSignOut?.()}>Sign out</button>
+    {:else}
     <button class="tb-win-btn" onclick={minimize} aria-label="Minimize">
       <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0" y="4.5" width="10" height="1" fill="currentColor"/></svg>
     </button>
@@ -101,10 +112,29 @@
         <line x1="9.5" y1="0.5" x2="0.5" y2="9.5"/>
       </svg>
     </button>
+    {/if}
   </div>
 </div>
 
 <style>
+  .tb-user {
+    color: #8b8ba7;
+    font-size: 12px;
+    margin-right: 10px;
+  }
+  .tb-signout {
+    background: none;
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 6px;
+    color: #b9a7ff;
+    font-size: 11px;
+    padding: 4px 10px;
+    margin-right: 10px;
+    cursor: pointer;
+  }
+  .tb-signout:hover {
+    background: rgba(139, 92, 246, 0.12);
+  }
   .titlebar {
     display: flex;
     align-items: center;

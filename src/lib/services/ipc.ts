@@ -1368,3 +1368,69 @@ export async function listTrash(): Promise<TrashItem[]> {
 export async function emptyTrash(): Promise<void> {
   return safeInvoke<void>('empty_trash');
 }
+
+// --- Accounts and browser access (issue #94) ---
+
+export interface AccountUser {
+  id: string;
+  username: string;
+  role: 'admin' | 'member';
+  must_change: boolean;
+  created_at: string;
+}
+
+export interface AccountStatus {
+  has_users: boolean;
+  signup_mode: 'open' | 'admin_only';
+  user: AccountUser | null;
+}
+
+export interface AccountCreatedResult {
+  user: AccountUser;
+  recovery_key: string | null;
+}
+
+export interface WebAccessStatus {
+  settings: { enabled: boolean; lan: boolean; port: number };
+  running: boolean;
+  bound: string | null;
+}
+
+export async function authStatus(): Promise<AccountStatus> {
+  return safeInvoke<AccountStatus>('auth_status');
+}
+
+export async function authLogin(username: string, passphrase: string): Promise<AccountUser> {
+  return safeInvoke<AccountUser>('auth_login', { username, passphrase });
+}
+
+export async function authSetSignupMode(mode: 'open' | 'admin_only'): Promise<void> {
+  return safeInvoke<void>('auth_set_signup_mode', { mode });
+}
+
+export async function authListUsers(): Promise<AccountUser[]> {
+  return safeInvoke<AccountUser[]>('auth_list_users');
+}
+
+export async function authCreateUser(
+  username: string,
+  temporaryPassphrase: string
+): Promise<AccountCreatedResult> {
+  return safeInvoke<AccountCreatedResult>('auth_create_user', { username, temporaryPassphrase });
+}
+
+export async function authDeleteUser(userId: string): Promise<void> {
+  return safeInvoke<void>('auth_delete_user', { userId });
+}
+
+export async function webStatus(): Promise<WebAccessStatus> {
+  return safeInvoke<WebAccessStatus>('web_status');
+}
+
+export async function webSetNetwork(
+  enabled: boolean,
+  lan: boolean,
+  port: number
+): Promise<WebAccessStatus> {
+  return safeInvoke<WebAccessStatus>('web_set_network', { enabled, lan, port });
+}
