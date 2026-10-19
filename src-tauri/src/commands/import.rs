@@ -147,7 +147,7 @@ pub(crate) async fn import_character_png(
 
     // Extract the character ID for the avatar filename
     let character_id = crate::db::value_bridge::record_id_to_string(&character.id);
-    stamp_owner(db, &actor, "characters", &character_id).await?;
+    stamp_owner(db, actor, "characters", &character_id).await?;
 
     // Import the card's embedded lorebook (if any) as real, persisted
     // entries — previously this data was only ever read back out for a
