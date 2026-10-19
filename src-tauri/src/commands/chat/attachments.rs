@@ -31,6 +31,20 @@ async fn write_attachment(
     bytes: &[u8],
     ext: &str,
 ) -> Result<crate::models::conversation::MessageAttachment, MythicError> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
+    write_attachment_in(&app_data_dir, bytes, ext).await
+}
+
+/// The part of `write_attachment` that needs only the data directory, so the
+/// browser upload endpoint can share it.
+pub(crate) async fn write_attachment_in(
+    app_data_dir: &std::path::Path,
+    bytes: &[u8],
+    ext: &str,
+) -> Result<crate::models::conversation::MessageAttachment, MythicError> {
     let mime_type = mime_type_for_extension(ext).ok_or_else(|| {
         MythicError::Validation(format!(
             "Unsupported attachment type '.{}'. Supported: png, jpg, jpeg, webp, gif",
@@ -38,10 +52,6 @@ async fn write_attachment(
         ))
     })?;
 
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
     let attachments_dir = app_data_dir.join("attachments");
     tokio::fs::create_dir_all(&attachments_dir).await?;
     let filename = format!("{}.{}", uuid::Uuid::new_v4(), ext);

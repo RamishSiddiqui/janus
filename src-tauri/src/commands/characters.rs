@@ -169,15 +169,26 @@ pub async fn upload_character_avatar(
         .path()
         .app_data_dir()
         .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
+    store_portrait(&db, &app_data_dir, &character_id, &image_bytes).await
+}
+
+/// Saves an uploaded image as a character's approved portrait. The caller has
+/// already checked the character belongs to the acting account.
+pub(crate) async fn store_portrait(
+    db: &surrealdb::Surreal<surrealdb::engine::local::Db>,
+    app_data_dir: &std::path::Path,
+    character_id: &str,
+    image_bytes: &[u8],
+) -> Result<Character, MythicError> {
     let portraits_dir = app_data_dir.join("portraits");
     tokio::fs::create_dir_all(&portraits_dir).await?;
     let filename = format!("{}.png", character_id);
     let dest = portraits_dir.join(&filename);
-    tokio::fs::write(&dest, &image_bytes).await?;
+    tokio::fs::write(&dest, image_bytes).await?;
     let relative_path = format!("portraits/{}", filename);
 
     let updated =
-        CharacterRepo::set_portrait(&db, &character_id, Some(&relative_path), "approved").await?;
+        CharacterRepo::set_portrait(db, character_id, Some(&relative_path), "approved").await?;
     info!("Uploaded portrait for character: {}", character_id);
     Ok(updated)
 }
