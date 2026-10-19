@@ -967,3 +967,114 @@ async fn stored_files_are_served_only_to_their_owner_and_uploads_are_checked() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+fn card_png(name: &str) -> Vec<u8> {
+    let json = serde_json::json!({
+        "spec": "chara_card_v2",
+        "spec_version": "2.0",
+        "data": { "name": name, "description": "d", "personality": "p", "scenario": "s",
+                   "first_mes": "hi", "mes_example": "" }
+    })
+    .to_string();
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, json);
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, 1, 1);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.add_text_chunk("chara".to_string(), b64).unwrap();
+        let mut w = enc.write_header().unwrap();
+        w.write_image_data(&[0, 0, 0, 255]).unwrap();
+    }
+    out
+}
+
+#[tokio::test]
+async fn a_character_card_uploaded_from_a_browser_belongs_to_that_account() {
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+    let app = router(WebState::new(db.clone(), None).with_data_dir(dir.clone()));
+    let (admin, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&admin), SignupMode::Open)
+        .await
+        .unwrap();
+    let ada = call(
+        &app,
+        Method::POST,
+        "/api/auth/login",
+        None,
+        Some(creds("ada", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+    let bob = call(
+        &app,
+        Method::POST,
+        "/api/auth/register",
+        None,
+        Some(creds("bob", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/character-card",
+        Some(&bob),
+        card_png("Mara"),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert_eq!(r.body["name"], "Mara");
+    let avatar = r.body["avatar_path"].as_str().unwrap().to_string();
+    assert!(avatar.starts_with("avatars/"));
+
+    let uri = format!("/api/files/{avatar}");
+    assert_eq!(
+        call(&app, Method::GET, &uri, Some(&bob), None, false)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(&app, Method::GET, &uri, Some(&ada), None, false)
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/persona-card",
+        Some(&bob),
+        card_png("Me"),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert!(r.body["avatar_path"]
+        .as_str()
+        .unwrap()
+        .starts_with("personas/"));
+
+    // Not a card: a clean 400, nothing stored.
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/character-card",
+        Some(&bob),
+        b"not a png".to_vec(),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let _ = std::fs::remove_dir_all(dir);
+}
