@@ -17,3 +17,6 @@ svelte-check-output.txt
 
 # Raw design source uploads (extracted copies live under branding/)
 /Janus Dual-Face Logo.zip
+
+# Sphinx build output
+docs/_build/
