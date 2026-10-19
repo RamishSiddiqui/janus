@@ -3,11 +3,12 @@
 //! commands (`generate_raw`, `get_context_stats`) that don't belong with
 //! either the send or retry flow.
 
+use crate::events::EmitScoped;
 use std::sync::Arc;
 
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
-use tauri::{Emitter, State};
+use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
@@ -137,7 +138,7 @@ pub(crate) fn spawn_scene_extraction(
                                         info!("[scene_flow] Updated scene: {} (changed={}, present={:?})",
                                             new_state.location_name, changed, new_state.characters_present);
                                         if changed {
-                                            let _ = app.emit(
+                                            let _ = app.emit_scoped(
                                                 "scene_state_changed",
                                                 serde_json::to_value(&new_state)
                                                     .unwrap_or_default(),
@@ -244,7 +245,7 @@ pub(crate) fn spawn_embed_message(
                 .await
                 {
                     Ok(_) => {
-                        let _ = app.emit("embedding_updated", ());
+                        let _ = app.emit_scoped("embedding_updated", ());
                     }
                     Err(e) => warn!("[embed] Failed to embed message {}: {}", message_id, e),
                 }

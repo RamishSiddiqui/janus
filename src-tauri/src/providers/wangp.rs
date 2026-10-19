@@ -6,6 +6,7 @@
 //! `wangp_get_model_schema`, etc. This module talks to it as an MCP client
 //! via the `rmcp` crate instead of `reqwest` HTTP calls.
 
+use crate::events::EmitScoped;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -18,7 +19,7 @@ use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::ServiceExt;
 use serde::Serialize;
 use specta::Type;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tracing::info;
 
 use crate::error::MythicError;
@@ -244,7 +245,7 @@ async fn run_wangp_job(
         let job_json = extract_tool_json(&job_result)?;
 
         if let Some(progress) = job_json.get("progress") {
-            let _ = app.emit(
+            let _ = app.emit_scoped(
                 "wangp_progress",
                 serde_json::json!({
                     "conversation_id": conversation_id,

@@ -1,6 +1,7 @@
+use crate::events::EmitScoped;
 use std::sync::Arc;
 
-use tauri::{Emitter, State};
+use tauri::State;
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -131,7 +132,7 @@ pub async fn delete_conversation(
     // with everything else, but nothing tells the Settings page's Memory
     // panel that happened — reuse the same event the live embed path emits
     // so its index counts refresh instead of showing a stale total.
-    let _ = app.emit("embedding_updated", ());
+    let _ = app.emit_scoped("embedding_updated", ());
     Ok(())
 }
 

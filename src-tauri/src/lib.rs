@@ -15,6 +15,7 @@ pub mod commands;
 pub mod context;
 pub mod db;
 pub mod error;
+pub mod events;
 pub mod models;
 pub mod providers;
 pub mod tts;
@@ -92,6 +93,10 @@ pub struct AppState {
 
     /// The browser-access server, when it is on. See `web` and issue #94.
     pub web_server: Arc<AsyncMutex<Option<web::WebServer>>>,
+
+    /// Carries events (chat streaming, TTS audio, ...) to browser sessions.
+    /// See `events`.
+    pub event_bus: events::Bus,
 }
 
 /// Builds the tauri-specta command registry — the single source of truth
@@ -438,6 +443,8 @@ pub fn run() {
             .flatten()
             .map(|u| u.id);
 
+            let event_bus = events::new_bus();
+
             // Register global app state
             let state = AppState {
                 db,
@@ -448,10 +455,12 @@ pub fn run() {
                 resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new_all())),
                 desktop_user: Arc::new(AsyncMutex::new(desktop_user)),
                 web_server: Arc::new(AsyncMutex::new(None)),
+                event_bus: event_bus.clone(),
             };
 
             let shared = Arc::new(RwLock::new(state));
             app.manage(shared.clone());
+            events::start(app.handle().clone(), event_bus);
 
             // Bring browser access back up if it was left on.
             let web_app = app.handle().clone();

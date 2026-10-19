@@ -496,6 +496,7 @@ mod rpc {
             resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new())),
             desktop_user: Arc::new(AsyncMutex::new(None)),
             web_server: Arc::new(AsyncMutex::new(None)),
+            event_bus: janus_lib::events::new_bus(),
         };
         tauri_app.manage(Arc::new(RwLock::new(state)));
         let handle = tauri_app.handle().clone();
@@ -693,5 +694,104 @@ async fn a_member_with_a_pending_passphrase_change_cannot_call_commands() {
     )
     .await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// ── events over SSE ───────────────────────────────────────────────────────
+
+#[test]
+fn events_are_only_visible_to_their_owner_or_when_public() {
+    use janus_lib::events::BusEvent;
+    let mine = BusEvent {
+        name: "chat-stream".into(),
+        payload: serde_json::json!({}),
+        owner: Some("ada".into()),
+    };
+    assert!(mine.visible_to("ada"));
+    assert!(!mine.visible_to("bob"));
+    // Unowned events reach no browser, except the public refresh signals.
+    let unowned = BusEvent {
+        name: "tts-download-progress".into(),
+        payload: serde_json::json!({}),
+        owner: None,
+    };
+    assert!(!unowned.visible_to("ada"));
+    let public = BusEvent {
+        name: "embedding_updated".into(),
+        payload: serde_json::Value::Null,
+        owner: None,
+    };
+    assert!(public.visible_to("ada") && public.visible_to("bob"));
+}
+
+#[tokio::test]
+async fn the_event_stream_needs_a_session_and_delivers_only_your_events() {
+    use futures::StreamExt;
+    use janus_lib::events::BusEvent;
+
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+    let bus = janus_lib::events::new_bus();
+    let app = router(WebState::new(db.clone(), None).with_bus(bus.clone()));
+
+    let (admin, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&admin), SignupMode::Open)
+        .await
+        .unwrap();
+    let ada = call(
+        &app,
+        Method::POST,
+        "/api/auth/login",
+        None,
+        Some(creds("ada", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+
+    // No session, no stream.
+    let anon = call(&app, Method::GET, "/api/events", None, None, false).await;
+    assert_eq!(anon.status, StatusCode::UNAUTHORIZED);
+
+    // Open Ada's stream, then publish one event for Bob and one for Ada.
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/api/events")
+        .header(header::COOKIE, &ada)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get(header::CONTENT_TYPE).unwrap(),
+        "text/event-stream"
+    );
+    let mut body = resp.into_body().into_data_stream();
+
+    let _ = bus.send(std::sync::Arc::new(BusEvent {
+        name: "chat-stream".into(),
+        payload: serde_json::json!({ "content": "for bob" }),
+        owner: Some("someone-else".into()),
+    }));
+    let _ = bus.send(std::sync::Arc::new(BusEvent {
+        name: "chat-stream".into(),
+        payload: serde_json::json!({ "content": "for ada" }),
+        owner: Some(admin.id.clone()),
+    }));
+
+    let frame = tokio::time::timeout(Duration::from_secs(5), body.next())
+        .await
+        .expect("an event should arrive")
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8_lossy(&frame).to_string();
+    assert!(text.contains("event: chat-stream"), "{text}");
+    assert!(text.contains("for ada"), "{text}");
+    assert!(
+        !text.contains("for bob"),
+        "another account's event leaked: {text}"
+    );
+
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -3,11 +3,12 @@
 //! Provides status checks and full index rebuilds for the vector embedding
 //! system that powers RAG (Retrieval-Augmented Generation).
 
+use crate::events::EmitScoped;
 use std::sync::Arc;
 
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
-use tauri::{Emitter, State};
+use tauri::State;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
@@ -406,7 +407,7 @@ pub async fn rebuild_embedding_index(
                 // button — without this the frontend has no way to show
                 // anything beyond a spinner for what can be a long-running
                 // bulk operation.
-                let _ = app.emit(
+                let _ = app.emit_scoped(
                     "embedding_index_progress",
                     serde_json::json!({ "embedded": embedded, "total": total }),
                 );
@@ -698,8 +699,8 @@ pub async fn backfill_missing_embeddings(
                 // elsewhere (live per-message embedding, etc.); embedding_index_progress
                 // carries the actual counts so the Settings > Context "Catch
                 // Up" button can show real progress instead of just a spinner.
-                let _ = app.emit("embedding_updated", ());
-                let _ = app.emit(
+                let _ = app.emit_scoped("embedding_updated", ());
+                let _ = app.emit_scoped(
                     "embedding_index_progress",
                     serde_json::json!({ "embedded": embedded, "total": total_missing }),
                 );
