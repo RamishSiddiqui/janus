@@ -170,12 +170,23 @@
         can join. Needed before browser access can be turned on.
       </span>
     </div>
-    <div class="net-add">
-      <input class="net-input wide" placeholder="Username (3 to 24 letters, numbers, . _ -)" autocomplete="off" bind:value={adminName} aria-label="Admin username" />
-      <input class="net-input wide" type="password" placeholder="Passphrase (at least 12 characters)" autocomplete="new-password" bind:value={adminPass} aria-label="Passphrase" />
-      <input class="net-input wide" type="password" placeholder="Confirm passphrase" autocomplete="new-password" bind:value={adminPass2} aria-label="Confirm passphrase" />
+    <div class="net-form">
+      <label class="net-field">
+        <span class="setting-name">Username</span>
+        <input class="net-input full" autocomplete="off" bind:value={adminName} />
+        <span class="setting-desc">3 to 24 letters, numbers, dot, dash or underscore</span>
+      </label>
+      <label class="net-field">
+        <span class="setting-name">Passphrase</span>
+        <input class="net-input full" type="password" autocomplete="new-password" bind:value={adminPass} />
+        <span class="setting-desc">At least 12 characters. A sentence you will remember works well.</span>
+      </label>
+      <label class="net-field">
+        <span class="setting-name">Confirm passphrase</span>
+        <input class="net-input full" type="password" autocomplete="new-password" bind:value={adminPass2} />
+      </label>
       <div class="button-row">
-        <button class="settings-btn primary" disabled={busy || !canCreateAdmin} onclick={createAdmin}>Create admin account</button>
+        <button class="settings-btn primary net-submit" disabled={busy || !canCreateAdmin} onclick={createAdmin}>Create admin account</button>
       </div>
     </div>
   </section>
@@ -312,6 +323,33 @@
   }
   .net-input:focus-visible {
     outline: 2px solid var(--accent-primary);
+  }
+  .net-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(139, 92, 246, 0.08);
+    max-width: 420px;
+  }
+  .net-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .net-input.full {
+    flex: none;
+    width: 100%;
+    height: 40px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+  .net-input.full:focus {
+    border-color: rgba(139, 92, 246, 0.4);
+  }
+  .net-submit {
+    padding: 10px 22px;
   }
   .net-key {
     margin: 12px 0;
