@@ -180,6 +180,42 @@ describe('files', () => {
   });
 });
 
+describe('file pickers', () => {
+  it('uploads a picked file instead of sending a host path', async () => {
+    const file = new File(['png'], 'face.png', { type: 'image/png' });
+    // Stand in for the browser's picker: the dialog resolves with this file.
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const handlers: Record<string, () => void> = {};
+        const el: any = {
+          files: [file],
+          addEventListener: (n: string, fn: () => void) => (handlers[n] = fn),
+          click: () => queueMicrotask(() => handlers.change?.()),
+        };
+        return el;
+      },
+    });
+    const token = (await internals.invoke('plugin:dialog|open', { options: { multiple: false } })) as string;
+    expect(token).toMatch(/^browser-file:\d+\/face\.png$/);
+    expect((await internals.invoke('plugin:fs|stat', { path: token })).size).toBe(3);
+
+    const fetchMock = vi.fn().mockResolvedValue(response(200, '{"id":"c1"}'));
+    vi.stubGlobal('fetch', fetchMock);
+    await rpcInvoke('upload_character_avatar', { characterId: 'c1', filePath: token });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/upload/portrait/c1');
+    expect(fetchMock.mock.calls[0][1].body).toBe(file);
+
+    await rpcInvoke('import_character_card', { filePath: token });
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/upload/character-card');
+  });
+
+  it('asks to choose again for a path it does not know', async () => {
+    await expect(rpcInvoke('import_persona_card', { filePath: 'C:/x.png' })).rejects.toMatchObject({
+      error: 'validation',
+    });
+  });
+});
+
 describe('install', () => {
   it('marks the page as served by Janus', () => {
     expect(isWebMode()).toBe(true);
