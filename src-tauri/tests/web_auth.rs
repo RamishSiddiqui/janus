@@ -795,3 +795,175 @@ async fn the_event_stream_needs_a_session_and_delivers_only_your_events() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ── files ─────────────────────────────────────────────────────────────────
+
+async fn raw(
+    app: &Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Vec<u8>,
+    csrf: bool,
+) -> Resp {
+    let mut req = Request::builder().method(method).uri(uri);
+    if csrf {
+        req = req.header("x-janus-request", "1");
+    }
+    if let Some(c) = cookie {
+        req = req.header(header::COOKIE, c);
+    }
+    let resp = app
+        .clone()
+        .oneshot(req.body(Body::from(body)).unwrap())
+        .await
+        .unwrap();
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    Resp {
+        status,
+        cookie: None,
+        set_cookie_raw: None,
+        body: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+        text: String::from_utf8_lossy(&bytes).to_string(),
+    }
+}
+
+#[tokio::test]
+async fn stored_files_are_served_only_to_their_owner_and_uploads_are_checked() {
+    use janus_lib::db::characters::CharacterRepo;
+    use janus_lib::db::users::OwnershipRepo;
+
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+    let app = router(WebState::new(db.clone(), None).with_data_dir(dir.clone()));
+
+    let (admin, _) = auth::register(&db, "ada", PASS).await.unwrap();
+    auth::set_signup_mode(&db, &UserInfo::from(&admin), SignupMode::Open)
+        .await
+        .unwrap();
+    let ada = call(
+        &app,
+        Method::POST,
+        "/api/auth/login",
+        None,
+        Some(creds("ada", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+    let bob = call(
+        &app,
+        Method::POST,
+        "/api/auth/register",
+        None,
+        Some(creds("bob", PASS)),
+        true,
+    )
+    .await
+    .cookie
+    .unwrap();
+
+    // Ada's character, owned by Ada.
+    let ch = CharacterRepo::create(&db, "Mara", serde_json::json!({ "name": "Mara" }))
+        .await
+        .unwrap();
+    let cid = janus_lib::db::value_bridge::record_id_to_string(&ch.id);
+    OwnershipRepo::set_owner(&db, "characters", &cid, &admin.id)
+        .await
+        .unwrap();
+
+    let png = b"\x89PNG\r\n\x1a\nfake".to_vec();
+
+    // Upload needs the CSRF header and a session.
+    let up = format!("/api/upload/portrait/{cid}");
+    let r = raw(&app, Method::POST, &up, Some(&ada), png.clone(), false).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = raw(&app, Method::POST, &up, None, png.clone(), true).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    // Bob can't set a portrait on Ada's character.
+    let r = raw(&app, Method::POST, &up, Some(&bob), png.clone(), true).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    // Ada can.
+    let r = raw(&app, Method::POST, &up, Some(&ada), png.clone(), true).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    let path = r.body["avatar_path"].as_str().unwrap().to_string();
+    assert_eq!(path, format!("portraits/{cid}.png"));
+
+    // Reading it back: owner yes, other account / anonymous no.
+    let uri = format!("/api/files/{path}");
+    let own = call(&app, Method::GET, &uri, Some(&ada), None, false).await;
+    assert_eq!(own.status, StatusCode::OK);
+    assert!(own.text.starts_with("\u{fffd}PNG"));
+    let other = call(&app, Method::GET, &uri, Some(&bob), None, false).await;
+    assert_eq!(other.status, StatusCode::NOT_FOUND);
+    let anon = call(&app, Method::GET, &uri, None, None, false).await;
+    assert_eq!(anon.status, StatusCode::UNAUTHORIZED);
+
+    // Only media files are ever served, and nothing outside the data dir.
+    for bad in [
+        "/api/files/db/LOG",
+        "/api/files/portraits/..%2F..%2Fsecret.png",
+        "/api/files/attachments/x.txt",
+    ] {
+        let r = call(&app, Method::GET, bad, Some(&ada), None, false).await;
+        assert!(
+            r.status == StatusCode::NOT_FOUND || r.status == StatusCode::BAD_REQUEST,
+            "{bad} gave {}",
+            r.status
+        );
+    }
+
+    // Attachments: a real image type works (and may exceed the 64 KB default).
+    let big = vec![7u8; 200 * 1024];
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/attachment?ext=png",
+        Some(&bob),
+        big,
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert!(r.body["relativePath"]
+        .as_str()
+        .unwrap()
+        .starts_with("attachments/"));
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/attachment?ext=exe",
+        Some(&bob),
+        png.clone(),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/attachment?ext=png",
+        Some(&bob),
+        vec![],
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let huge = vec![0u8; 13 * 1024 * 1024];
+    let r = raw(
+        &app,
+        Method::POST,
+        "/api/upload/attachment?ext=png",
+        Some(&bob),
+        huge,
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::PAYLOAD_TOO_LARGE);
+
+    let _ = std::fs::remove_dir_all(dir);
+}

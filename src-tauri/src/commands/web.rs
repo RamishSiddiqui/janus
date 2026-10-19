@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::RwLock;
 
 use crate::commands::actor::acting;
@@ -40,10 +40,15 @@ pub async fn apply_settings(
     if !settings.enabled {
         return Ok(None);
     }
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {e}")))?;
     let server = WebServer::start(
         WebState::new(db, Some(asset_fn(app)))
             .with_rpc(Arc::new(crate::web::rpc::AppRpc(app.clone())))
-            .with_bus(bus),
+            .with_bus(bus)
+            .with_data_dir(data_dir),
         bind_addr(settings.lan, settings.port),
     )
     .await?;

@@ -7,6 +7,7 @@
 
 pub mod auth_routes;
 pub mod events_routes;
+pub mod files;
 pub mod rpc;
 pub mod rpc_characters;
 pub mod rpc_chat;
@@ -42,6 +43,8 @@ pub struct WebState {
     pub rpc: Option<Arc<dyn rpc::Rpc>>,
     /// Where browser event streams read from.
     pub bus: crate::events::Bus,
+    /// The app data directory stored files live under; `None` in tests that don't need it.
+    pub data_dir: Option<std::path::PathBuf>,
 }
 
 impl WebState {
@@ -53,11 +56,17 @@ impl WebState {
             limiter: Arc::new(RateLimiter::new(10, Duration::from_secs(60))),
             rpc: None,
             bus: crate::events::new_bus(),
+            data_dir: None,
         }
     }
 
     pub fn with_bus(mut self, bus: crate::events::Bus) -> Self {
         self.bus = bus;
+        self
+    }
+
+    pub fn with_data_dir(mut self, dir: std::path::PathBuf) -> Self {
+        self.data_dir = Some(dir);
         self
     }
 
@@ -72,6 +81,19 @@ pub fn router(state: WebState) -> Router {
         .nest("/auth", auth_routes::routes())
         .route("/rpc/{name}", axum::routing::post(rpc::handle))
         .route("/events", axum::routing::get(events_routes::stream))
+        .route("/files/{*path}", axum::routing::get(files::get_file))
+        .route(
+            "/upload/attachment",
+            axum::routing::post(files::upload_attachment).layer(
+                axum::extract::DefaultBodyLimit::max(files::MAX_UPLOAD_BYTES),
+            ),
+        )
+        .route(
+            "/upload/portrait/{character_id}",
+            axum::routing::post(files::upload_portrait).layer(
+                axum::extract::DefaultBodyLimit::max(files::MAX_UPLOAD_BYTES),
+            ),
+        )
         .fallback(api_not_found);
     Router::new()
         .nest("/api", api)
