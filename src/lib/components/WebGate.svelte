@@ -14,6 +14,7 @@
   import {
     LEVELS,
     MIN_PASSPHRASE,
+    agoLabel,
     cleanRecoveryKey,
     formatRecoveryKey,
     passphraseStrength,
@@ -223,14 +224,6 @@
     } catch {
       // The list refreshes next time; nothing to undo.
     }
-  }
-
-  function ago(ms: number): string {
-    const secs = Math.max(0, Math.round((Date.now() - ms) / 1000));
-    if (secs < 90) return 'now';
-    if (secs < 5400) return `${Math.round(secs / 60)} minutes ago`;
-    if (secs < 129600) return `${Math.round(secs / 3600)} hours ago`;
-    return `${Math.round(secs / 86400)} days ago`;
   }
 
   function onKey(e: KeyboardEvent) {
@@ -580,7 +573,7 @@
                 <li>
                   <div>
                     <span>{s.label}{#if s.current}<span class="here">  ●</span>{/if}</span>
-                    <span class="meta-line">{s.current ? 'This device' : 'Signed in'} · {ago(s.last_seen)}</span>
+                    <span class="meta-line">{s.current ? 'This device' : 'Signed in'} · {agoLabel(s.last_seen)}</span>
                   </div>
                   {#if !s.current}
                     <button type="button" class="ghost" aria-label={'Sign out ' + s.label} onclick={() => signOutDevice(s.id)}>Sign out</button>
