@@ -710,6 +710,8 @@ export const commands = {
 	 */
 	authCreateUser: (username: string, temporaryPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_create_user", { username, temporaryPassphrase })),
 	authDeleteUser: (userId: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_delete_user", { userId })),
+	webStatus: () => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_status")),
+	webSetNetwork: (enabled: boolean, lan: boolean, port: number) => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_set_network", { enabled, lan, port })),
 };
 
 /* Types */
@@ -1743,6 +1745,16 @@ export type MythicError = {
 };
 
 /**
+ *  Browser access to this Janus. Off until the admin turns it on; when on it
+ *  listens on loopback only unless `lan` is set.
+ */
+export type NetworkSettings = {
+	enabled: boolean,
+	lan: boolean,
+	port: number,
+};
+
+/**
  *  A user-controlled persona — the player's own stand-in for a conversation.
  *  Shares the same CharacterCardV2-shaped `data` JSON as `characters`
  *  (see `models::character::CharacterCardV2`/`CharacterData`), but carries
@@ -2255,6 +2267,13 @@ export type WangpModelInfo = {
 	 */
 	availability_status: string | null,
 	available: boolean,
+};
+
+export type WebStatus = {
+	settings: NetworkSettings,
+	running: boolean,
+	/**  The address the server is actually bound to, when running. */
+	bound: string | null,
 };
 
 /* Tauri Specta runtime */
