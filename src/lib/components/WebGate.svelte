@@ -1115,6 +1115,13 @@
     font: 500 1rem/1.3 var(--mono);
     letter-spacing: 0.08em;
   }
+  .stage .txt:focus-visible,
+  .stage .check input:focus-visible {
+    outline: none;
+  }
+  .stage .check input:focus-visible {
+    box-shadow: 0 0 0 3px rgba(185, 167, 255, 0.35);
+  }
   .txt::placeholder {
     color: var(--mute);
     opacity: 0.7;

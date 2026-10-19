@@ -700,6 +700,13 @@ export const commands = {
 	authRegister: (username: string, passphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_register", { username, passphrase })),
 	authLogin: (username: string, passphrase: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_login", { username, passphrase })),
 	authLogout: () => typedError<null, MythicError>(__TAURI_INVOKE("auth_logout")),
+	/**
+	 *  The admin, sitting at the host machine, acts as any account without its
+	 *  passphrase (to help someone or check what they see), and can return to the
+	 *  admin account the same way. Desktop only: it is not reachable from the
+	 *  browser.
+	 */
+	authSwitchTo: (userId: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_switch_to", { userId })),
 	authResetWithRecovery: (username: string, recoveryKey: string, newPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_reset_with_recovery", { username, recoveryKey, newPassphrase })),
 	authChangePassphrase: (currentPassphrase: string, newPassphrase: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_change_passphrase", { currentPassphrase, newPassphrase })),
 	authSetSignupMode: (mode: SignupMode) => typedError<null, MythicError>(__TAURI_INVOKE("auth_set_signup_mode", { mode })),
@@ -735,6 +742,8 @@ export type AuthStatus = {
 	signup_mode: SignupMode,
 	/**  The signed-in account, if any. */
 	user: UserInfo | null,
+	/**  Set while the admin is acting as another account on the desktop. */
+	impersonator: UserInfo | null,
 };
 
 /**
