@@ -32,6 +32,8 @@ export interface AppSettings {
   /** Master switch for voice output. Off by default — TTS must be opt-in,
    *  never autoplay for a user who hasn't explicitly turned it on. */
   ttsEnabled: boolean;
+  /** True once the first-run setup guide has been finished or skipped. */
+  onboardingDone: boolean;
   /** Fallback voice used for a character with no `voice_id` of their own. */
   ttsDefaultVoiceId: string | null;
   /** Which TTS provider `ttsDefaultVoiceId` belongs to — `null` means the
@@ -82,6 +84,7 @@ const defaultSettings: AppSettings = {
   autoSaveMemories: false,
   localStorageOnly: true,
   ttsEnabled: false,
+  onboardingDone: false,
   ttsDefaultVoiceId: null,
   ttsDefaultProviderId: null,
   _settingsVersion: CURRENT_SETTINGS_VERSION,

@@ -160,7 +160,13 @@ Produces a native installer (MSI/NSIS on Windows, `.dmg` on macOS, `.deb`/AppIma
 
 ## First run
 
-Janus starts with no provider configured. Open **AI Studio → Providers**, add one (the free AI Horde or Puter presets need nothing but a name), then pick a character from the **Gallery** — or import your own character card — and start talking.
+On first launch Janus walks you through setup: connect a model, then start a chat with one of three starter characters. You can also do it by hand.
+
+- **No account at all:** install [Ollama](https://ollama.com), pull a model, and choose Ollama in the guide.
+- **Free cloud models:** OpenRouter offers models marked `:free` (needs a free API key), and Puter offers free models through a personal token.
+- **Image generation:** the AI Horde preset is free and needs no signup, but it makes images only, not chat.
+
+Details are in the [getting started guide](docs/getting-started.md).
 
 ## Tech stack
 
