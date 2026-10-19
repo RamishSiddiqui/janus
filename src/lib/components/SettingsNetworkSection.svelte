@@ -125,6 +125,17 @@
     }
   }
 
+  async function switchTo(userId: string) {
+    busy = true;
+    try {
+      await (await ipc()).authSwitchTo(userId);
+      location.href = '/';
+    } catch (e) {
+      toastError((e as { message?: string }).message ?? 'Could not switch accounts.');
+      busy = false;
+    }
+  }
+
   async function switchAccount() {
     busy = true;
     try {
@@ -142,6 +153,20 @@
   <span class="panel-heading-title">Network Access</span>
   <span class="panel-heading-desc">Let other devices on your network use Janus from a browser</span>
 </div>
+
+{#if account?.impersonator}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">Acting as {account.user?.username}</span>
+        <span class="setting-desc">You are using this window as that account, for {account.impersonator.username}.</span>
+      </div>
+      <button class="settings-btn primary" disabled={busy} onclick={() => switchTo(account!.impersonator!.id)}>
+        Return to {account.impersonator.username}
+      </button>
+    </div>
+  </section>
+{/if}
 
 {#if adminKey}
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
@@ -240,7 +265,7 @@
 
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">Accounts</span>
-    <span class="panel-heading-desc">Each account has its own characters, chats and providers</span>
+    <span class="panel-heading-desc">Each account has its own characters, chats and providers. As admin you can use this window as any of them without their passphrase.</span>
   </div>
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <div class="setting-row">
@@ -268,7 +293,10 @@
                 <button class="settings-btn outline" onclick={() => (confirmDelete = null)}>Cancel</button>
               </div>
             {:else}
-              <button class="settings-btn outline" onclick={() => (confirmDelete = u.id)}>Delete</button>
+              <div class="button-row">
+                <button class="settings-btn outline" disabled={busy} onclick={() => switchTo(u.id)}>Use this window as them</button>
+                <button class="settings-btn outline" onclick={() => (confirmDelete = u.id)}>Delete</button>
+              </div>
             {/if}
           {/if}
         </li>
@@ -290,10 +318,10 @@
   </section>
 {/if}
 
-{#if account && account.has_users}
+{#if account && account.has_users && !isAdmin && !account.impersonator}
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">This window</span>
-    <span class="panel-heading-desc">Signed in as {account.user?.username ?? 'nobody'}. Switch to use another account here.</span>
+    <span class="panel-heading-desc">Signed in as {account.user?.username ?? 'nobody'}. Sign in as someone else here.</span>
   </div>
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <div class="button-row">

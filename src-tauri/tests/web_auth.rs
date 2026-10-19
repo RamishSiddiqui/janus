@@ -495,6 +495,7 @@ mod rpc {
             tts_engine: Arc::new(AsyncMutex::new(None)),
             resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new())),
             desktop_user: Arc::new(AsyncMutex::new(None)),
+            desktop_admin: Arc::new(AsyncMutex::new(None)),
             web_server: Arc::new(AsyncMutex::new(None)),
             event_bus: janus_lib::events::new_bus(),
         };

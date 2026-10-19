@@ -109,6 +109,8 @@ pub struct AuthStatus {
     pub signup_mode: SignupMode,
     /// The signed-in account, if any.
     pub user: Option<UserInfo>,
+    /// Set while the admin is acting as another account on the desktop.
+    pub impersonator: Option<UserInfo>,
 }
 
 /// Returned by sign-in / sign-up on the network path. The token is shown to

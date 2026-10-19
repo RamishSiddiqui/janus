@@ -1383,6 +1383,8 @@ export interface AccountStatus {
   has_users: boolean;
   signup_mode: 'open' | 'admin_only';
   user: AccountUser | null;
+  /** Set while the admin is acting as another account on the desktop. */
+  impersonator: AccountUser | null;
 }
 
 export interface AccountCreatedResult {
@@ -1409,6 +1411,10 @@ export async function authRegister(
 
 export async function authLogin(username: string, passphrase: string): Promise<AccountUser> {
   return safeInvoke<AccountUser>('auth_login', { username, passphrase });
+}
+
+export async function authSwitchTo(userId: string): Promise<AccountUser> {
+  return safeInvoke<AccountUser>('auth_switch_to', { userId });
 }
 
 export async function authSetSignupMode(mode: 'open' | 'admin_only'): Promise<void> {

@@ -1138,15 +1138,21 @@
     appearance: none;
     -webkit-appearance: none;
     flex: none;
-    width: 1.1rem;
-    height: 1.1rem;
-    margin: 0.18rem 0 0;
-    border: 1px solid var(--line);
-    border-radius: 2px;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0.12rem 0 0;
+    border: 1.5px solid var(--mute);
+    border-radius: 50%;
     background: transparent;
     cursor: pointer;
     display: grid;
     place-items: center;
+    transition:
+      border-color 0.2s,
+      background 0.2s;
+  }
+  .check input:hover {
+    border-color: var(--gold-hi);
   }
   .check input:checked {
     background: var(--gold);
@@ -1154,11 +1160,12 @@
   }
   .check input:checked::after {
     content: '';
-    width: 0.28rem;
-    height: 0.55rem;
+    width: 0.3rem;
+    height: 0.58rem;
+    margin-top: -0.1rem;
     border: solid #1a1306;
     border-width: 0 2px 2px 0;
-    transform: rotate(45deg) translate(-1px, -1px);
+    transform: rotate(45deg);
   }
 
   .cta {
@@ -1252,20 +1259,26 @@
     appearance: none;
     cursor: pointer;
     background: transparent;
-    border: 1px solid var(--hair);
-    border-radius: 2px;
-    color: var(--dim);
-    padding: 0.5rem 0.75rem;
+    border: 0;
+    border-radius: 99px;
+    color: var(--mute);
+    padding: 0.4rem 0.2rem;
     font: 600 0.66rem/1 var(--body);
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    transition:
-      border-color 0.2s,
-      color 0.2s;
+    transition: color 0.2s;
   }
   .ghost:hover {
+    color: var(--gold-hi);
+  }
+  .devices .ghost,
+  .keyrow .ghost {
+    border: 1px solid var(--hair);
+    padding: 0.5rem 0.9rem;
+  }
+  .devices .ghost:hover,
+  .keyrow .ghost:hover {
     border-color: var(--line);
-    color: var(--text);
   }
   .back {
     appearance: none;

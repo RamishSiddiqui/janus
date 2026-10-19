@@ -52,10 +52,17 @@ pub async fn auth_status(
     state: State<'_, Arc<RwLock<AppState>>>,
 ) -> Result<AuthStatus, MythicError> {
     let (db, desktop) = db_and_desktop(&state).await;
+    let admin_slot = state.read().await.desktop_admin.clone();
+    let admin_id = admin_slot.lock().await.clone();
+    let impersonator = match admin_id {
+        Some(id) => UserRepo::get(&db, &id).await?.as_ref().map(UserInfo::from),
+        None => None,
+    };
     Ok(AuthStatus {
         has_users: service::has_users(&db).await?,
         signup_mode: service::signup_mode(&db).await?,
         user: current(&db, &desktop).await?,
+        impersonator,
     })
 }
 
@@ -71,6 +78,7 @@ pub async fn auth_register(
     let (db, desktop) = db_and_desktop(&state).await;
     let (user, recovery_key) = service::register(&db, &username, &passphrase).await?;
     *desktop.lock().await = Some(user.id.clone());
+    *state.read().await.desktop_admin.lock().await = None;
     Ok(AccountCreated {
         user: UserInfo::from(&user),
         recovery_key,
@@ -87,7 +95,42 @@ pub async fn auth_login(
     let (db, desktop) = db_and_desktop(&state).await;
     let user = service::verify_credentials(&db, &username, &passphrase).await?;
     *desktop.lock().await = Some(user.id.clone());
+    *state.read().await.desktop_admin.lock().await = None;
     Ok(UserInfo::from(&user))
+}
+
+/// The admin, sitting at the host machine, acts as any account without its
+/// passphrase (to help someone or check what they see), and can return to the
+/// admin account the same way. Desktop only: it is not reachable from the
+/// browser.
+#[tauri::command]
+#[specta::specta]
+pub async fn auth_switch_to(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    user_id: String,
+) -> Result<UserInfo, MythicError> {
+    let (db, desktop) = db_and_desktop(&state).await;
+    let admin_slot = state.read().await.desktop_admin.clone();
+    let me = require_current(&db, &desktop).await?;
+    let returning = admin_slot.lock().await.clone();
+    let allowed =
+        me.role == crate::models::user::Role::Admin || returning.as_deref() == Some(&user_id);
+    if !allowed {
+        return Err(MythicError::Unauthorized(
+            "Only the admin can switch accounts.".to_string(),
+        ));
+    }
+    let target = UserRepo::get(&db, &user_id)
+        .await?
+        .ok_or_else(|| MythicError::NotFound("No such account.".to_string()))?;
+    let mut admin = admin_slot.lock().await;
+    if me.role == crate::models::user::Role::Admin && target.id != me.id {
+        *admin = Some(me.id.clone());
+    } else if returning.as_deref() == Some(&target.id) {
+        *admin = None;
+    }
+    *desktop.lock().await = Some(target.id.clone());
+    Ok(UserInfo::from(&target))
 }
 
 #[tauri::command]
@@ -95,6 +138,7 @@ pub async fn auth_login(
 pub async fn auth_logout(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), MythicError> {
     let (_, desktop) = db_and_desktop(&state).await;
     *desktop.lock().await = None;
+    *state.read().await.desktop_admin.lock().await = None;
     Ok(())
 }
 
@@ -110,6 +154,7 @@ pub async fn auth_reset_with_recovery(
     let (user, new_key) =
         service::reset_with_recovery(&db, &username, &recovery_key, &new_passphrase).await?;
     *desktop.lock().await = Some(user.id.clone());
+    *state.read().await.desktop_admin.lock().await = None;
     Ok(AccountCreated {
         user: UserInfo::from(&user),
         recovery_key: new_key,

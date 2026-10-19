@@ -91,6 +91,10 @@ pub struct AppState {
     /// behaves as it did before accounts. See issue #94.
     pub desktop_user: Arc<AsyncMutex<Option<String>>>,
 
+    /// The admin's id while the desktop window is acting as someone else (so
+    /// "return to admin" needs no passphrase). Cleared by any sign-in/out.
+    pub desktop_admin: Arc<AsyncMutex<Option<String>>>,
+
     /// The browser-access server, when it is on. See `web` and issue #94.
     pub web_server: Arc<AsyncMutex<Option<web::WebServer>>>,
 
@@ -244,6 +248,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::auth::auth_register,
         commands::auth::auth_login,
         commands::auth::auth_logout,
+        commands::auth::auth_switch_to,
         commands::auth::auth_reset_with_recovery,
         commands::auth::auth_change_passphrase,
         commands::auth::auth_set_signup_mode,
@@ -454,6 +459,7 @@ pub fn run() {
                 tts_engine: Arc::new(AsyncMutex::new(None)),
                 resource_monitor: Arc::new(AsyncMutex::new(sysinfo::System::new_all())),
                 desktop_user: Arc::new(AsyncMutex::new(desktop_user)),
+                desktop_admin: Arc::new(AsyncMutex::new(None)),
                 web_server: Arc::new(AsyncMutex::new(None)),
                 event_bus: event_bus.clone(),
             };
@@ -628,6 +634,7 @@ pub fn run() {
             commands::auth::auth_register,
             commands::auth::auth_login,
             commands::auth::auth_logout,
+            commands::auth::auth_switch_to,
             commands::auth::auth_reset_with_recovery,
             commands::auth::auth_change_passphrase,
             commands::auth::auth_set_signup_mode,
