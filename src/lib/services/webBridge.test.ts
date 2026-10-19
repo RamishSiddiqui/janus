@@ -108,7 +108,7 @@ describe('commands over HTTP', () => {
   });
 
   it('refuses desktop-only plugin commands', async () => {
-    await expect(internals.invoke('plugin:dialog|open', {})).rejects.toMatchObject({
+    await expect(internals.invoke('plugin:window|close', {})).rejects.toMatchObject({
       error: 'unsupported',
     });
   });
@@ -199,7 +199,7 @@ describe('file pickers', () => {
     expect(token).toMatch(/^browser-file:\d+\/face\.png$/);
     expect((await internals.invoke('plugin:fs|stat', { path: token })).size).toBe(3);
 
-    const fetchMock = vi.fn().mockResolvedValue(response(200, '{"id":"c1"}'));
+    const fetchMock = vi.fn().mockImplementation(async () => response(200, '{"id":"c1"}'));
     vi.stubGlobal('fetch', fetchMock);
     await rpcInvoke('upload_character_avatar', { characterId: 'c1', filePath: token });
     expect(fetchMock.mock.calls[0][0]).toBe('/api/upload/portrait/c1');
