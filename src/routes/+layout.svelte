@@ -8,6 +8,8 @@
   import TitleBar from '$lib/components/TitleBar.svelte';
   import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
   import ToastContainer from '$lib/components/ToastContainer.svelte';
+  import FirstRunWizard from '$lib/components/FirstRunWizard.svelte';
+  import { shouldShowWizard } from '$lib/utils/onboarding';
   import { settings } from '$lib/stores/settings';
   import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
   import { initTtsPlaybackListener, cleanupTtsPlaybackListener, isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
@@ -17,6 +19,21 @@
   let { children } = $props();
 
   let sidebarCollapsed = $state(false);
+  let showWizard = $state(false);
+
+  // First-run setup guide: only for someone with no chat provider yet.
+  // An existing user is marked done silently so an upgrade never nags them.
+  onMount(async () => {
+    if (!('__TAURI_INTERNALS__' in window) || $settings.onboardingDone) return;
+    try {
+      const ipc = await import('$lib/services/ipc');
+      const llm = await ipc.listProviders('llm');
+      if (shouldShowWizard(false, llm.length)) showWizard = true;
+      else settings.update((s) => ({ ...s, onboardingDone: true }));
+    } catch (err) {
+      console.error('[onboarding] provider check failed:', err);
+    }
+  });
 
   // As early as possible so nothing logged during the rest of this page's
   // own initialization is missed.
@@ -134,6 +151,10 @@
 
 <!-- Skip navigation for keyboard/screen reader users -->
 <a href="#main-content" class="sr-only">Skip to content</a>
+
+{#if showWizard}
+  <FirstRunWizard onclose={() => (showWizard = false)} />
+{/if}
 
 <div class="app-frame">
   <TitleBar onToggleSidebar={() => sidebarCollapsed = !sidebarCollapsed} />
