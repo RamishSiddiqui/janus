@@ -33,6 +33,16 @@ export interface SignedIn {
   recovery_key: string | null;
 }
 
+export interface WebSession {
+  id: string;
+  label: string;
+  trusted: boolean;
+  created_at: string;
+  last_seen: number;
+  expires_at: number;
+  current: boolean;
+}
+
 export interface WebError {
   error: string;
   message: string;
@@ -113,6 +123,10 @@ export const webAuth = {
       new_passphrase: newPassphrase,
       trusted,
     }) as Promise<SignedIn>,
+  sessions: () => request<WebSession[]>('GET', '/api/auth/sessions') as Promise<WebSession[]>,
+  revokeSession: async (id: string) => {
+    await request('DELETE', `/api/auth/sessions/${encodeURIComponent(id)}`);
+  },
   logout: async () => {
     await request('POST', '/api/auth/logout');
   },

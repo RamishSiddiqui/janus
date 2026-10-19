@@ -9,6 +9,16 @@
   import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
   import ToastContainer from '$lib/components/ToastContainer.svelte';
   import FirstRunWizard from '$lib/components/FirstRunWizard.svelte';
+  import WebGate from '$lib/components/WebGate.svelte';
+  import {
+    SIGNED_OUT_EVENT,
+    closeEvents,
+    getInitialStatus,
+    isWebMode,
+    webAuth,
+    type WebStatus,
+    type WebUser,
+  } from '$lib/services/webBridge';
   import { shouldShowWizard } from '$lib/utils/onboarding';
   import { settings } from '$lib/stores/settings';
   import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
@@ -21,18 +31,58 @@
   let sidebarCollapsed = $state(false);
   let showWizard = $state(false);
 
+  // Browser access: until someone signs in, only the sign-in screen renders.
+  const webMode = isWebMode();
+  const startStatus = getInitialStatus();
+  let gateStatus = $state<WebStatus | null>(startStatus);
+  let webUser = $state<WebUser | null>(
+    startStatus?.user && !startStatus.user.must_change ? startStatus.user : null,
+  );
+
+  async function backToGate() {
+    closeEvents();
+    webUser = null;
+    try {
+      gateStatus = await webAuth.status();
+    } catch {
+      // keep the last known status; the gate still works
+    }
+  }
+
+  async function signOut() {
+    try {
+      await webAuth.logout();
+    } catch {
+      // the session may already be gone
+    }
+    await backToGate();
+  }
+
+  onMount(() => {
+    if (!webMode) return;
+    const onOut = () => void backToGate();
+    window.addEventListener(SIGNED_OUT_EVENT, onOut);
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, onOut);
+  });
+
   // First-run setup guide: only for someone with no chat provider yet.
   // An existing user is marked done silently so an upgrade never nags them.
-  onMount(async () => {
+  let wizardChecked = false;
+  $effect(() => {
+    if (!browser || wizardChecked) return;
     if (!('__TAURI_INTERNALS__' in window) || $settings.onboardingDone) return;
-    try {
-      const ipc = await import('$lib/services/ipc');
-      const llm = await ipc.listProviders('llm');
-      if (shouldShowWizard(false, llm.length)) showWizard = true;
-      else settings.update((s) => ({ ...s, onboardingDone: true }));
-    } catch (err) {
-      console.error('[onboarding] provider check failed:', err);
-    }
+    if (webMode && !webUser) return;
+    wizardChecked = true;
+    void (async () => {
+      try {
+        const ipc = await import('$lib/services/ipc');
+        const llm = await ipc.listProviders('llm');
+        if (shouldShowWizard(false, llm.length)) showWizard = true;
+        else settings.update((s) => ({ ...s, onboardingDone: true }));
+      } catch (err) {
+        console.error('[onboarding] provider check failed:', err);
+      }
+    })();
   });
 
   // As early as possible so nothing logged during the rest of this page's
@@ -152,12 +202,19 @@
 <!-- Skip navigation for keyboard/screen reader users -->
 <a href="#main-content" class="sr-only">Skip to content</a>
 
+{#if webMode && !webUser && gateStatus}
+  <WebGate status={gateStatus} onenter={(u) => (webUser = u)} />
+{:else}
 {#if showWizard}
   <FirstRunWizard onclose={() => (showWizard = false)} />
 {/if}
 
 <div class="app-frame">
-  <TitleBar onToggleSidebar={() => sidebarCollapsed = !sidebarCollapsed} />
+  <TitleBar
+    onToggleSidebar={() => sidebarCollapsed = !sidebarCollapsed}
+    webUser={webUser?.username ?? null}
+    onSignOut={signOut}
+  />
   <div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
     <Sidebar
       {navItems}
@@ -173,6 +230,7 @@
     </main>
   </div>
 </div>
+{/if}
 
 <ToastContainer />
 
