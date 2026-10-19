@@ -16,11 +16,20 @@
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   let {
-    navItems, currentPath, collapsed = false, onNavigate, onToggleCollapse
+    navItems, currentPath, collapsed = false, onNavigate, onToggleCollapse,
+    mobileOpen = false, onMobileClose
   }: {
     navItems: readonly NavItem[]; currentPath: string; collapsed?: boolean;
     onNavigate: (path: string) => void; onToggleCollapse: () => void;
+    /** Phone layout: the sidebar is a drawer, shown when true. */
+    mobileOpen?: boolean; onMobileClose?: () => void;
   } = $props();
+
+  /** On a phone the drawer closes after any button or link inside it is used. */
+  function closeDrawerOnPick(e: MouseEvent) {
+    if (!mobileOpen) return;
+    if ((e.target as HTMLElement).closest('button, a, [role="button"]')) onMobileClose?.();
+  }
 
   let showConversations = $derived(currentPath === '/');
 
@@ -62,7 +71,8 @@
   }
 </script>
 
-<aside class="sidebar" class:collapsed aria-label="Application sidebar">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
+<aside class="sidebar" class:collapsed class:mobile-open={mobileOpen} aria-label="Application sidebar" onclick={closeDrawerOnPick}>
   <div class="sb-glow-top" aria-hidden="true"></div>
   <div class="sb-glow-orb" aria-hidden="true"></div>
 
@@ -264,6 +274,14 @@
   .sidebar.collapsed .sb-nav-item { justify-content: center; padding: 10px; }
 
   @media (max-width: 768px) {
-    .sidebar { position: fixed; left: 0; top: 0; z-index: 100; transform: translateX(-100%); }
+    .sidebar {
+      position: fixed; left: 0; top: 34px; bottom: 0; z-index: 100; width: min(300px, 86vw);
+      transform: translateX(-100%); transition: transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
+      box-shadow: none;
+    }
+    .sidebar.mobile-open { transform: translateX(0); box-shadow: 8px 0 40px rgba(0, 0, 0, 0.6); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar { transition: none; }
   }
 </style>

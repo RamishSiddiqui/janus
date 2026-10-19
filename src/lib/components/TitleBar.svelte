@@ -117,6 +117,15 @@
 </div>
 
 <style>
+  @media (max-width: 520px) {
+    .tb-user {
+      display: none;
+    }
+    .tb-left,
+    .tb-right {
+      width: auto;
+    }
+  }
   .tb-user {
     color: #8b8ba7;
     font-size: 12px;
