@@ -4,7 +4,7 @@ import {
   canAutoCheck,
   downloadFraction,
   readDismissed,
-  releaseNotesLines,
+  releaseNotesGroups,
   updatesBlockedInDev,
   updateErrorMessage,
   writeDismissed,
@@ -28,15 +28,24 @@ describe('updatesBlockedInDev', () => {
   });
 });
 
-describe('releaseNotesLines', () => {
-  it('strips Markdown markers and blank lines', () => {
-    const notes = '## Features\n\n- **Browser** access (#94)\n* Updates\n\n';
-    expect(releaseNotesLines(notes)).toEqual(['Features', 'Browser access (#94)', 'Updates']);
+describe('releaseNotesGroups', () => {
+  const body =
+    '## [0.1.4] - 2026-10-20\n\n### Build\n\n- Bump version to 0.1.4 (#139) (#151)\n\n- Repository hardening (#147)\n\n\n### Fixed\n\n- Phone layouts (#144)';
+  it('groups bullets under their headings and drops the version line', () => {
+    expect(releaseNotesGroups(body)).toEqual([
+      { heading: 'Build', items: ['Bump version to 0.1.4 (#139) (#151)', 'Repository hardening (#147)'] },
+      { heading: 'Fixed', items: ['Phone layouts (#144)'] },
+    ]);
   });
-  it('caps the number of lines and handles no notes', () => {
-    expect(releaseNotesLines('a\nb\nc', 2)).toEqual(['a', 'b']);
-    expect(releaseNotesLines(null)).toEqual([]);
-    expect(releaseNotesLines('')).toEqual([]);
+  it('keeps bullets that come before any heading and strips bold markers', () => {
+    expect(releaseNotesGroups('- **Browser** access\n* Updates')).toEqual([
+      { heading: null, items: ['Browser access', 'Updates'] },
+    ]);
+  });
+  it('caps the number of bullets and handles no notes', () => {
+    expect(releaseNotesGroups('- a\n- b\n- c', 2)).toEqual([{ heading: null, items: ['a', 'b'] }]);
+    expect(releaseNotesGroups(null)).toEqual([]);
+    expect(releaseNotesGroups('')).toEqual([]);
   });
 });
 
