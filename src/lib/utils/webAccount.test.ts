@@ -4,6 +4,7 @@ import {
   formatRecoveryKey,
   passphraseStrength,
   usernameOk,
+  agoLabel,
 } from './webAccount';
 
 describe('passphraseStrength', () => {
@@ -37,5 +38,15 @@ describe('recovery key typing', () => {
     expect(formatRecoveryKey('')).toBe('');
     expect(formatRecoveryKey('7K2F9Q')).toBe('JANUS-7K2F-9Q');
     expect(formatRecoveryKey('7K2F9QXDM41BZT8R')).toBe('JANUS-7K2F-9QXD-M41B-ZT8R');
+  });
+});
+
+describe('agoLabel', () => {
+  const now = 1_800_000_000_000;
+  it('reads Unix seconds as well as milliseconds', () => {
+    expect(agoLabel(now / 1000 - 10, now)).toBe('now');
+    expect(agoLabel(now / 1000 - 600, now)).toBe('10 minutes ago');
+    expect(agoLabel(now - 3 * 3600 * 1000, now)).toBe('3 hours ago');
+    expect(agoLabel(now / 1000 - 6 * 86400, now)).toBe('6 days ago');
   });
 });

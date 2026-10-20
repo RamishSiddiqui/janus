@@ -29,6 +29,23 @@
   let { children } = $props();
 
   let sidebarCollapsed = $state(false);
+
+  // Phone layout: the sidebar becomes a drawer opened from the title bar.
+  let isMobile = $state(false);
+  let mobileNavOpen = $state(false);
+  if (browser) {
+    const mobileQuery = window.matchMedia('(max-width: 768px)');
+    isMobile = mobileQuery.matches;
+    mobileQuery.addEventListener('change', (e) => {
+      isMobile = e.matches;
+      if (!e.matches) mobileNavOpen = false;
+    });
+  }
+
+  function toggleSidebar() {
+    if (isMobile) mobileNavOpen = !mobileNavOpen;
+    else sidebarCollapsed = !sidebarCollapsed;
+  }
   let showWizard = $state(false);
 
   // Browser access: until someone signs in, only the sign-in screen renders.
@@ -187,10 +204,11 @@
     // Ctrl/Cmd + B → Toggle sidebar
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
       e.preventDefault();
-      sidebarCollapsed = !sidebarCollapsed;
+      toggleSidebar();
     }
     // Escape → Blur active element (close dropdowns, deselect inputs)
     if (e.key === 'Escape') {
+      mobileNavOpen = false;
       const active = document.activeElement as HTMLElement | null;
       active?.blur();
     }
@@ -211,7 +229,7 @@
 
 <div class="app-frame">
   <TitleBar
-    onToggleSidebar={() => sidebarCollapsed = !sidebarCollapsed}
+    onToggleSidebar={toggleSidebar}
     webUser={webUser?.username ?? null}
     onSignOut={signOut}
   />
@@ -219,10 +237,15 @@
     <Sidebar
       {navItems}
       {currentPath}
-      collapsed={sidebarCollapsed}
+      collapsed={sidebarCollapsed && !isMobile}
+      mobileOpen={mobileNavOpen}
+      onMobileClose={() => (mobileNavOpen = false)}
       onNavigate={(path) => goto(path)}
       onToggleCollapse={() => sidebarCollapsed = !sidebarCollapsed}
     />
+    {#if isMobile && mobileNavOpen}
+      <button class="drawer-backdrop" aria-label="Close menu" onclick={() => (mobileNavOpen = false)}></button>
+    {/if}
     <main id="main-content" class="app-content">
       <ErrorBoundary fallbackTitle="This page encountered an error">
         {@render children()}
@@ -235,6 +258,14 @@
 <ToastContainer />
 
 <style>
+  .drawer-backdrop {
+    position: fixed;
+    inset: 34px 0 0 0;
+    z-index: 90;
+    border: 0;
+    background: rgba(5, 5, 15, 0.6);
+    backdrop-filter: blur(2px);
+  }
   .app-frame {
     display: flex;
     flex-direction: column;

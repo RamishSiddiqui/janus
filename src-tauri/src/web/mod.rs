@@ -89,6 +89,18 @@ pub fn router(state: WebState) -> Router {
             ),
         )
         .route(
+            "/upload/character-card",
+            axum::routing::post(files::upload_character_card).layer(
+                axum::extract::DefaultBodyLimit::max(files::MAX_UPLOAD_BYTES),
+            ),
+        )
+        .route(
+            "/upload/persona-card",
+            axum::routing::post(files::upload_persona_card).layer(
+                axum::extract::DefaultBodyLimit::max(files::MAX_UPLOAD_BYTES),
+            ),
+        )
+        .route(
             "/upload/portrait/{character_id}",
             axum::routing::post(files::upload_portrait).layer(
                 axum::extract::DefaultBodyLimit::max(files::MAX_UPLOAD_BYTES),

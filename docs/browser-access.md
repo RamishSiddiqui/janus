@@ -26,5 +26,5 @@ Janus can serve itself over your network, so you can chat from a phone, tablet o
 
 ## Limits today
 
-- Choosing an avatar or attachment from disk is not available in the browser yet. Pasting an image into the chat works.
+- Saving files (backups, logs, exported scene images) is not available in the browser yet.
 - Network settings and the voice model downloads are managed from the desktop app.

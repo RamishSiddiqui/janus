@@ -700,6 +700,13 @@ export const commands = {
 	authRegister: (username: string, passphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_register", { username, passphrase })),
 	authLogin: (username: string, passphrase: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_login", { username, passphrase })),
 	authLogout: () => typedError<null, MythicError>(__TAURI_INVOKE("auth_logout")),
+	/**
+	 *  The admin, sitting at the host machine, acts as any account without its
+	 *  passphrase (to help someone or check what they see), and can return to the
+	 *  admin account the same way. Desktop only: it is not reachable from the
+	 *  browser.
+	 */
+	authSwitchTo: (userId: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_switch_to", { userId })),
 	authResetWithRecovery: (username: string, recoveryKey: string, newPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_reset_with_recovery", { username, recoveryKey, newPassphrase })),
 	authChangePassphrase: (currentPassphrase: string, newPassphrase: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_change_passphrase", { currentPassphrase, newPassphrase })),
 	authSetSignupMode: (mode: SignupMode) => typedError<null, MythicError>(__TAURI_INVOKE("auth_set_signup_mode", { mode })),
@@ -710,6 +717,8 @@ export const commands = {
 	 */
 	authCreateUser: (username: string, temporaryPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_create_user", { username, temporaryPassphrase })),
 	authDeleteUser: (userId: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_delete_user", { userId })),
+	webStatus: () => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_status")),
+	webSetNetwork: (enabled: boolean, lan: boolean, port: number) => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_set_network", { enabled, lan, port })),
 };
 
 /* Types */
@@ -733,6 +742,8 @@ export type AuthStatus = {
 	signup_mode: SignupMode,
 	/**  The signed-in account, if any. */
 	user: UserInfo | null,
+	/**  Set while the admin is acting as another account on the desktop. */
+	impersonator: UserInfo | null,
 };
 
 /**
@@ -1743,6 +1754,16 @@ export type MythicError = {
 };
 
 /**
+ *  Browser access to this Janus. Off until the admin turns it on; when on it
+ *  listens on loopback only unless `lan` is set.
+ */
+export type NetworkSettings = {
+	enabled: boolean,
+	lan: boolean,
+	port: number,
+};
+
+/**
  *  A user-controlled persona — the player's own stand-in for a conversation.
  *  Shares the same CharacterCardV2-shaped `data` JSON as `characters`
  *  (see `models::character::CharacterCardV2`/`CharacterData`), but carries
@@ -2255,6 +2276,13 @@ export type WangpModelInfo = {
 	 */
 	availability_status: string | null,
 	available: boolean,
+};
+
+export type WebStatus = {
+	settings: NetworkSettings,
+	running: boolean,
+	/**  The address the server is actually bound to, when running. */
+	bound: string | null,
 };
 
 /* Tauri Specta runtime */

@@ -22,6 +22,32 @@
   let switchPass = $state('');
   let confirmDelete = $state<string | null>(null);
 
+  // first account (nobody has one yet)
+  let adminName = $state('');
+  let adminPass = $state('');
+  let adminPass2 = $state('');
+  let adminKey = $state('');
+  const canCreateAdmin = $derived(
+    /^[a-z0-9][a-z0-9._-]{2,23}$/.test(adminName.trim().toLowerCase()) &&
+      adminPass.length >= 12 &&
+      adminPass === adminPass2,
+  );
+
+  async function createAdmin() {
+    busy = true;
+    try {
+      const res = await (await ipc()).authRegister(adminName.trim().toLowerCase(), adminPass);
+      adminKey = res.recovery_key ?? '';
+      adminPass = '';
+      adminPass2 = '';
+      await load();
+    } catch (e) {
+      toastError((e as { message?: string }).message ?? 'Could not create the account.');
+    } finally {
+      busy = false;
+    }
+  }
+
   const isAdmin = $derived(account?.user?.role === 'admin');
   const address = $derived(
     web?.bound ? `http://${web.bound.replace('0.0.0.0', '<this-computer>')}` : null,
@@ -99,6 +125,17 @@
     }
   }
 
+  async function switchTo(userId: string) {
+    busy = true;
+    try {
+      await (await ipc()).authSwitchTo(userId);
+      location.href = '/';
+    } catch (e) {
+      toastError((e as { message?: string }).message ?? 'Could not switch accounts.');
+      busy = false;
+    }
+  }
+
   async function switchAccount() {
     busy = true;
     try {
@@ -117,9 +154,66 @@
   <span class="panel-heading-desc">Let other devices on your network use Janus from a browser</span>
 </div>
 
+{#if account?.impersonator}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="setting-name">Acting as {account.user?.username}</span>
+        <span class="setting-desc">You are using this window as that account, for {account.impersonator.username}.</span>
+      </div>
+      <button class="settings-btn primary" disabled={busy} onclick={() => switchTo(account!.impersonator!.id)}>
+        Return to {account.impersonator.username}
+      </button>
+    </div>
+  </section>
+{/if}
+
+{#if adminKey}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    <div class="setting-label">
+      <span class="setting-name">Save your recovery key</span>
+      <span class="setting-desc">It lets you set a new passphrase if you forget yours. It is shown once.</span>
+    </div>
+    <p class="net-key"><code>{adminKey}</code></p>
+    <div class="button-row">
+      <button class="settings-btn outline" onclick={() => navigator.clipboard?.writeText(adminKey)}>Copy</button>
+      <button class="settings-btn primary" onclick={() => (adminKey = '')}>I have saved it</button>
+    </div>
+  </section>
+{/if}
+
 {#if loadError}
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <p class="clear-warn">{loadError}</p>
+  </section>
+{:else if account && !account.has_users}
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    <div class="setting-label">
+      <span class="setting-name">Create the admin account</span>
+      <span class="setting-desc">
+        Janus has no accounts yet. The first one becomes the admin, owns everything you have now, and decides who else
+        can join. Needed before browser access can be turned on.
+      </span>
+    </div>
+    <div class="net-form">
+      <label class="net-field">
+        <span class="setting-name">Username</span>
+        <input class="net-input full" autocomplete="off" bind:value={adminName} />
+        <span class="setting-desc">3 to 24 letters, numbers, dot, dash or underscore</span>
+      </label>
+      <label class="net-field">
+        <span class="setting-name">Passphrase</span>
+        <input class="net-input full" type="password" autocomplete="new-password" bind:value={adminPass} />
+        <span class="setting-desc">At least 12 characters. A sentence you will remember works well.</span>
+      </label>
+      <label class="net-field">
+        <span class="setting-name">Confirm passphrase</span>
+        <input class="net-input full" type="password" autocomplete="new-password" bind:value={adminPass2} />
+      </label>
+      <div class="button-row">
+        <button class="settings-btn primary net-submit" disabled={busy || !canCreateAdmin} onclick={createAdmin}>Create admin account</button>
+      </div>
+    </div>
   </section>
 {:else if account && !isAdmin}
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
@@ -171,7 +265,7 @@
 
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">Accounts</span>
-    <span class="panel-heading-desc">Each account has its own characters, chats and providers</span>
+    <span class="panel-heading-desc">Each account has its own characters, chats and providers. As admin you can use this window as any of them without their passphrase.</span>
   </div>
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <div class="setting-row">
@@ -199,7 +293,10 @@
                 <button class="settings-btn outline" onclick={() => (confirmDelete = null)}>Cancel</button>
               </div>
             {:else}
-              <button class="settings-btn outline" onclick={() => (confirmDelete = u.id)}>Delete</button>
+              <div class="button-row">
+                <button class="settings-btn outline" disabled={busy} onclick={() => switchTo(u.id)}>Use this window as them</button>
+                <button class="settings-btn outline" onclick={() => (confirmDelete = u.id)}>Delete</button>
+              </div>
             {/if}
           {/if}
         </li>
@@ -221,10 +318,10 @@
   </section>
 {/if}
 
-{#if account}
+{#if account && account.has_users && !isAdmin && !account.impersonator}
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">This window</span>
-    <span class="panel-heading-desc">Signed in as {account.user?.username ?? 'nobody'}. Switch to use another account here.</span>
+    <span class="panel-heading-desc">Signed in as {account.user?.username ?? 'nobody'}. Sign in as someone else here.</span>
   </div>
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <div class="button-row">
@@ -254,6 +351,37 @@
   }
   .net-input:focus-visible {
     outline: 2px solid var(--accent-primary);
+  }
+  .net-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(139, 92, 246, 0.08);
+    max-width: 420px;
+  }
+  .net-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .net-input.full {
+    flex: none;
+    width: 100%;
+    height: 40px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+  .net-input.full:focus {
+    border-color: rgba(139, 92, 246, 0.4);
+  }
+  .net-submit {
+    padding: 10px 22px;
+  }
+  .net-key {
+    margin: 12px 0;
+    font-size: var(--text-md);
   }
   .net-note {
     margin-top: 10px;

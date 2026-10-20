@@ -110,8 +110,24 @@ pub async fn import_character_card(
 
     let png_bytes = tokio::fs::read(&path).await?;
 
+    let (db, actor) = acting(&state).await?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
+    import_character_png(&db, &actor, &app_data_dir, &png_bytes).await
+}
+
+/// Creates a character from a PNG with an embedded Character Card V2, saving
+/// the PNG as its avatar. Shared by the desktop command and the browser upload.
+pub(crate) async fn import_character_png(
+    db: &surrealdb::Surreal<surrealdb::engine::local::Db>,
+    actor: &crate::auth::access::Actor,
+    app_data_dir: &std::path::Path,
+    png_bytes: &[u8],
+) -> Result<Character, MythicError> {
     // Extract and parse the character data
-    let json_str = extract_chara_from_png(&png_bytes)?;
+    let json_str = extract_chara_from_png(png_bytes)?;
 
     let card: CharacterCardV2 = serde_json::from_str(&json_str)
         .map_err(|e| MythicError::Validation(format!("Invalid character card JSON: {}", e)))?;
@@ -127,12 +143,11 @@ pub async fn import_character_card(
     let data_value = serde_json::to_value(&card.data)?;
 
     // Create the character via repo (spec is hardcoded in create, avatar set via update)
-    let (db, actor) = acting(&state).await?;
-    let character = CharacterRepo::create(&db, &character_name, data_value).await?;
+    let character = CharacterRepo::create(db, &character_name, data_value).await?;
 
     // Extract the character ID for the avatar filename
     let character_id = crate::db::value_bridge::record_id_to_string(&character.id);
-    stamp_owner(&db, &actor, "characters", &character_id).await?;
+    stamp_owner(db, actor, "characters", &character_id).await?;
 
     // Import the card's embedded lorebook (if any) as real, persisted
     // entries — previously this data was only ever read back out for a
@@ -141,7 +156,7 @@ pub async fn import_character_card(
     if let Some(ref book) = card.data.character_book {
         if !book.entries.is_empty() {
             match crate::db::lorebook::LorebookRepo::import_from_character_book(
-                &db,
+                db,
                 &character_id,
                 book,
                 actor.owner(),
@@ -162,23 +177,18 @@ pub async fn import_character_card(
     }
 
     // Save the avatar PNG to the app data directory
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
-
     let avatars_dir = app_data_dir.join("avatars");
     tokio::fs::create_dir_all(&avatars_dir).await?;
 
     let avatar_filename = format!("{}.png", character_id);
     let avatar_path = avatars_dir.join(&avatar_filename);
-    tokio::fs::write(&avatar_path, &png_bytes).await?;
+    tokio::fs::write(&avatar_path, png_bytes).await?;
 
     let relative_avatar = format!("avatars/{}", avatar_filename);
 
     // Update the character with the avatar path
     let updated = CharacterRepo::update(
-        &db,
+        db,
         &character_id,
         None, // name unchanged
         None, // data unchanged
@@ -217,7 +227,23 @@ pub async fn import_persona_card(
 
     let png_bytes = tokio::fs::read(&path).await?;
 
-    let json_str = extract_chara_from_png(&png_bytes)?;
+    let (db, actor) = acting(&state).await?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
+    import_persona_png(&db, &actor, &app_data_dir, &png_bytes).await
+}
+
+/// Creates a persona from a PNG with an embedded Character Card V2. Shared by
+/// the desktop command and the browser upload.
+pub(crate) async fn import_persona_png(
+    db: &surrealdb::Surreal<surrealdb::engine::local::Db>,
+    actor: &crate::auth::access::Actor,
+    app_data_dir: &std::path::Path,
+    png_bytes: &[u8],
+) -> Result<Persona, MythicError> {
+    let json_str = extract_chara_from_png(png_bytes)?;
 
     let card: CharacterCardV2 = serde_json::from_str(&json_str)
         .map_err(|e| MythicError::Validation(format!("Invalid character card JSON: {}", e)))?;
@@ -231,27 +257,21 @@ pub async fn import_persona_card(
 
     let data_value = serde_json::to_value(&card.data)?;
 
-    let (db, actor) = acting(&state).await?;
-    let persona = PersonaRepo::create(&db, &persona_name, data_value).await?;
+    let persona = PersonaRepo::create(db, &persona_name, data_value).await?;
 
     let persona_id = crate::db::value_bridge::record_id_to_string(&persona.id);
-    stamp_owner(&db, &actor, "personas", &persona_id).await?;
-
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {}", e)))?;
+    stamp_owner(db, actor, "personas", &persona_id).await?;
 
     let personas_dir = app_data_dir.join("personas");
     tokio::fs::create_dir_all(&personas_dir).await?;
 
     let avatar_filename = format!("{}.png", persona_id);
     let avatar_path = personas_dir.join(&avatar_filename);
-    tokio::fs::write(&avatar_path, &png_bytes).await?;
+    tokio::fs::write(&avatar_path, png_bytes).await?;
 
     let relative_avatar = format!("personas/{}", avatar_filename);
 
-    let updated = PersonaRepo::update(&db, &persona_id, None, None, Some(&relative_avatar)).await?;
+    let updated = PersonaRepo::update(db, &persona_id, None, None, Some(&relative_avatar)).await?;
 
     info!(
         "Imported persona: {} ({}) with avatar at {}",

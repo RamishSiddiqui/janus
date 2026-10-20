@@ -33,3 +33,13 @@ export function formatRecoveryKey(raw: string): string {
   const groups = raw.match(/.{1,4}/g) ?? [];
   return groups.length ? 'JANUS-' + groups.join('-') : '';
 }
+
+/** "now", "5 minutes ago", ... for a Unix time given in seconds (or milliseconds). */
+export function agoLabel(timestamp: number, nowMs: number = Date.now()): string {
+  const ms = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+  const secs = Math.max(0, Math.round((nowMs - ms) / 1000));
+  if (secs < 90) return 'now';
+  if (secs < 5400) return `${Math.round(secs / 60)} minutes ago`;
+  if (secs < 129600) return `${Math.round(secs / 3600)} hours ago`;
+  return `${Math.round(secs / 86400)} days ago`;
+}

@@ -157,6 +157,8 @@ export async function rpcInvoke(cmd: string, args?: Record<string, unknown>): Pr
   if (cmd === 'upload_message_attachment_bytes') {
     return uploadAttachmentBytes(args ?? {});
   }
+  const upload = pickedFileUpload(cmd, args ?? {});
+  if (upload) return upload;
   return request('POST', `/api/rpc/${encodeURIComponent(cmd)}`, args ?? {});
 }
 
@@ -175,6 +177,99 @@ async function uploadAttachmentBytes(args: Record<string, unknown>): Promise<unk
   const text = await res.text();
   if (!res.ok) throw toWebError(res.status, text);
   return JSON.parse(text);
+}
+
+// ── file pickers ───────────────────────────────────────────────────────────
+//
+// The desktop's file dialog returns a path on the host, which a browser
+// doesn't have. In a browser the dialog opens the browser's own picker and
+// hands back a token for the chosen File; the few commands that take a
+// `filePath` then upload those bytes instead.
+
+const PICKED_PREFIX = 'browser-file:';
+const picked = new Map<string, File>();
+let nextPick = 1;
+
+interface DialogOptions {
+  multiple?: boolean;
+  filters?: { name: string; extensions: string[] }[];
+}
+
+function pickFiles(options: DialogOptions): Promise<string | string[] | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = !!options.multiple;
+    const exts = (options.filters ?? []).flatMap((f) => f.extensions.map((e) => `.${e}`));
+    if (exts.length) input.accept = exts.join(',');
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files ?? []);
+      if (!files.length) return resolve(null);
+      const tokens = files.map((f) => {
+        const token = `${PICKED_PREFIX}${nextPick++}/${f.name}`;
+        picked.set(token, f);
+        return token;
+      });
+      resolve(options.multiple ? tokens : tokens[0]);
+    });
+    input.addEventListener('cancel', () => resolve(null));
+    input.click();
+  });
+}
+
+function pickedFile(token: unknown): File {
+  const f = typeof token === 'string' ? picked.get(token) : undefined;
+  if (!f) throw { error: 'validation', message: 'Choose the file again.' } as WebError;
+  return f;
+}
+
+async function postFile(url: string, file: File): Promise<unknown> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'x-janus-request': '1' },
+    credentials: 'same-origin',
+    body: file,
+  });
+  const text = await res.text();
+  if (!res.ok) throw toWebError(res.status, text);
+  return JSON.parse(text);
+}
+
+/** The commands that take a picked file's path, turned into uploads. */
+function pickedFileUpload(cmd: string, args: Record<string, unknown>): Promise<unknown> | null {
+  switch (cmd) {
+    case 'upload_message_attachment': {
+      const f = pickedFile(args.filePath);
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return postFile(`/api/upload/attachment?ext=${encodeURIComponent(ext)}`, f);
+    }
+    case 'upload_character_avatar':
+      return postFile(
+        `/api/upload/portrait/${encodeURIComponent(String(args.characterId))}`,
+        pickedFile(args.filePath),
+      );
+    case 'import_character_card':
+      return postFile('/api/upload/character-card', pickedFile(args.filePath));
+    case 'import_persona_card':
+      return postFile('/api/upload/persona-card', pickedFile(args.filePath));
+    default:
+      return null;
+  }
+}
+
+/** The size of a picked file, for the attachment size check. */
+function statPicked(args: Record<string, unknown>) {
+  const f = pickedFile(args.path);
+  return {
+    isFile: true,
+    isDirectory: false,
+    isSymlink: false,
+    size: f.size,
+    mtime: null,
+    atime: null,
+    birthtime: null,
+    readonly: false,
+  };
 }
 
 /** A stored file as an object URL. Throws when it isn't yours or doesn't exist. */
@@ -244,6 +339,8 @@ function unlistenCommand(args: Record<string, unknown>) {
 async function bridgeInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   if (cmd === 'plugin:event|listen') return listenCommand(args ?? {});
   if (cmd === 'plugin:event|unlisten') return unlistenCommand(args ?? {});
+  if (cmd === 'plugin:dialog|open') return pickFiles((args?.options ?? {}) as DialogOptions);
+  if (cmd === 'plugin:fs|stat') return statPicked(args ?? {});
   if (cmd.startsWith('plugin:')) {
     throw { error: 'unsupported', message: 'This is not available in the browser.' } as WebError;
   }

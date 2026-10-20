@@ -116,3 +116,27 @@ pub async fn upload_portrait(
         crate::commands::characters::store_portrait(&st.db, dir, &character_id, &body).await?;
     Ok(Json(updated))
 }
+
+/// `POST /api/upload/character-card`: a Character Card V2 PNG as the body.
+pub async fn upload_character_card(
+    State(st): State<WebState>,
+    ActiveUser(authed): ActiveUser,
+    body: Bytes,
+) -> Result<Json<crate::models::character::Character>, ApiError> {
+    let dir = data_dir(&st)?;
+    let actor = access::resolve_web_actor(&st.db, &authed.user.id).await?;
+    let made = crate::commands::import::import_character_png(&st.db, &actor, dir, &body).await?;
+    Ok(Json(made))
+}
+
+/// `POST /api/upload/persona-card`: a Character Card V2 PNG as the body.
+pub async fn upload_persona_card(
+    State(st): State<WebState>,
+    ActiveUser(authed): ActiveUser,
+    body: Bytes,
+) -> Result<Json<crate::models::persona::Persona>, ApiError> {
+    let dir = data_dir(&st)?;
+    let actor = access::resolve_web_actor(&st.db, &authed.user.id).await?;
+    let made = crate::commands::import::import_persona_png(&st.db, &actor, dir, &body).await?;
+    Ok(Json(made))
+}

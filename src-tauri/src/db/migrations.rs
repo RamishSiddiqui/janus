@@ -118,8 +118,12 @@ const MIGRATIONS: &[Migration] = &[Migration {
             async move {
                 // `DEFINE FIELD ... DEFAULT` never backfills existing rows
                 // (see migration 1), and a NONE in a `TYPE string` field
-                // breaks every later UPDATE of that row. One statement per
-                // table is safe here since owner_id is the only new field.
+                // breaks every later UPDATE of that row. SurrealDB also
+                // validates the *whole* row on any write, so a row that is
+                // missing some other defaulted field (e.g. a memory that
+                // predates `access_count`) would make an owner_id-only
+                // backfill fail. Fill every defaulted field of the row in
+                // the same statement.
                 for table in [
                     "characters",
                     "personas",
@@ -129,12 +133,9 @@ const MIGRATIONS: &[Migration] = &[Migration {
                     "lorebook_entries",
                     "memories",
                 ] {
-                    db.query(format!(
-                        "UPDATE {table} SET owner_id = '' WHERE owner_id = NONE;"
-                    ))
-                    .await?
-                    .check()
-                    .map_err(|e| MythicError::DatabaseOp(format!("migration 3 ({table}): {}", e)))?;
+                    backfill_defaults(db, table)
+                        .await
+                        .map_err(|e| MythicError::DatabaseOp(format!("migration 3 ({table}): {e}")))?;
                 }
                 Ok(())
             }
@@ -142,6 +143,70 @@ const MIGRATIONS: &[Migration] = &[Migration {
         },
     },
 ];
+
+/// Gives every row of `table` the schema DEFAULT for any non-optional field
+/// that is NONE (rows written before the field existed), in one statement per
+/// table, since SurrealDB validates the whole row on each write.
+pub async fn backfill_defaults(db: &Surreal<Db>, table: &str) -> Result<(), MythicError> {
+    let mut result = db.query(format!("INFO FOR TABLE {table}")).await?;
+    let info: Option<surrealdb::types::Value> = result.take(0)?;
+    let info: Option<serde_json::Value> = crate::db::value_bridge::from_value_opt(info)?;
+    let Some(fields) = info
+        .as_ref()
+        .and_then(|i| i.get("fields"))
+        .and_then(|f| f.as_object())
+    else {
+        return Ok(());
+    };
+
+    let mut sets = Vec::new();
+    let mut conds = Vec::new();
+    for (name, def) in fields {
+        let Some(def) = def.as_str() else { continue };
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let Some(default) = default_of(def) else {
+            continue;
+        };
+        sets.push(format!(
+            "{name} = IF {name} = NONE THEN {default} ELSE {name} END"
+        ));
+        conds.push(format!("{name} = NONE"));
+    }
+    if sets.is_empty() {
+        return Ok(());
+    }
+    let sql = format!(
+        "UPDATE {table} SET {} WHERE {};",
+        sets.join(", "),
+        conds.join(" OR ")
+    );
+    db.query(sql).await?.check()?;
+    Ok(())
+}
+
+/// The DEFAULT expression of a `DEFINE FIELD ...` statement for a field that
+/// is not optional, or `None` when it has none or may be absent.
+fn default_of(def: &str) -> Option<String> {
+    if def.contains("TYPE option<") {
+        return None;
+    }
+    let after = def.split(" DEFAULT ").nth(1)?;
+    let end = [
+        " ASSERT ",
+        " PERMISSIONS",
+        " READONLY",
+        " VALUE ",
+        " COMMENT ",
+    ]
+    .iter()
+    .filter_map(|m| after.find(m))
+    .min()
+    .unwrap_or(after.len());
+    let expr = after[..end].trim();
+    (!expr.is_empty()).then(|| expr.to_string())
+}
 
 /// Runs any migrations not yet recorded as applied, in version order.
 /// Safe to call on every startup — already-applied migrations are skipped.
@@ -178,4 +243,35 @@ pub async fn run_pending(db: &Surreal<Db>) -> Result<(), MythicError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_of;
+
+    #[test]
+    fn reads_the_default_of_a_field_definition() {
+        assert_eq!(
+            default_of("DEFINE FIELD access_count ON memories TYPE int DEFAULT 0 PERMISSIONS FULL"),
+            Some("0".to_string())
+        );
+        assert_eq!(
+            default_of("DEFINE FIELD source ON memories TYPE string DEFAULT 'user' ASSERT $value INSIDE ['user'] PERMISSIONS FULL"),
+            Some("'user'".to_string())
+        );
+        assert_eq!(
+            default_of(
+                "DEFINE FIELD created_at ON t TYPE datetime DEFAULT time::now() PERMISSIONS FULL"
+            ),
+            Some("time::now()".to_string())
+        );
+        assert_eq!(
+            default_of("DEFINE FIELD x ON t TYPE option<int> DEFAULT 1"),
+            None
+        );
+        assert_eq!(
+            default_of("DEFINE FIELD x ON t TYPE string PERMISSIONS FULL"),
+            None
+        );
+    }
 }
