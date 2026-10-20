@@ -102,7 +102,9 @@ jobs:
           releaseBody: ${{ needs.changelog.outputs.body }}
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          # Update packages (and their signatures) are only made for releases, so a
+          # local `tauri build` does not need the private key.
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
   publish:
     needs: build

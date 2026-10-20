@@ -51,9 +51,11 @@ The desktop app (`tauri-plugin-updater`, wired in `lib.rs`, with `updater:defaul
 | `TAURI_SIGNING_PRIVATE_KEY` | contents of the private key file |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password |
 
-Keep a backup of the private key. If it is lost, installed copies cannot verify new updates and everyone must reinstall by hand; if it leaks, rotate the pair and ship a release signed with the old key that carries the new public key. Without the secrets the release build fails, because `createUpdaterArtifacts` is on.
+Keep a backup of the private key. If it is lost, installed copies cannot verify new updates and everyone must reinstall by hand; if it leaks, rotate the pair and ship a release signed with the old key that carries the new public key. `createUpdaterArtifacts` is switched on only for releases, by `src-tauri/tauri.release.conf.json` (passed with `--config` in the workflow), so an ordinary `tauri build` needs no key. Without the secrets the release build fails.
 
 **First updater release.** Versions released before this feature (v0.1.2 and earlier) have no updater, so users install the first one that has it manually. To test the whole flow, release a version, install it, then tag a higher one and watch the first install offer it.
+
+**For contributors.** `npm run tauri dev` never checks automatically; **Settings, Updates, Check now** works but reports nothing newer, because your build is compared with the published `latest.json`. A local `tauri build` makes installers that update from the official feed and replace themselves with the official build when asked. If you distribute your own build (a fork), change `plugins.updater.endpoints` and generate your own key pair for `pubkey`. To try the update UI end to end, point `endpoints` at a `latest.json` you host (a `python -m http.server` is enough), sign a higher-versioned build with your own key, and use your own public key.
 
 Bumping the version in the three files (see above) is what makes an update available: the check compares the installed version with the one in `latest.json`.
 
