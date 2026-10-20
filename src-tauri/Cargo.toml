@@ -118,6 +118,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # resource-heavy features (starting with native TTS above) can be visually
 # sanity-checked as not going haywire — see GitHub issue #77.
 sysinfo = "0.39"
+if-addrs = "0.15.0"
 
 [features]
 default = ["custom-protocol"]

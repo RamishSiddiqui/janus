@@ -1073,6 +1073,10 @@
     animation: bubbleFloat 12s ease-in-out infinite;
   }
 
+  @media (max-width: 768px) {
+    .landing-bubbles { display: none; }
+  }
+
   .bubble-text {
     font-size: var(--text-sm);
     white-space: nowrap;

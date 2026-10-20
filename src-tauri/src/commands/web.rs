@@ -57,6 +57,41 @@ pub async fn apply_settings(
     Ok(Some(bound))
 }
 
+/// The IPv4 addresses other devices on the local network could use to reach
+/// this computer, read from the network adapters so it works with no internet
+/// and no default route. Private ranges come first; link-local (169.254.x.x,
+/// what an adapter falls back to with no router) is kept only when nothing else exists.
+fn lan_ips() -> Vec<String> {
+    let mut private = Vec::new();
+    let mut other = Vec::new();
+    let mut link_local = Vec::new();
+    for iface in if_addrs::get_if_addrs().unwrap_or_default() {
+        let std::net::IpAddr::V4(ip) = iface.ip() else {
+            continue;
+        };
+        if ip.is_loopback() || ip.is_unspecified() {
+            continue;
+        }
+        let list = if ip.is_link_local() {
+            &mut link_local
+        } else if ip.is_private() {
+            &mut private
+        } else {
+            &mut other
+        };
+        let text = ip.to_string();
+        if !list.contains(&text) {
+            list.push(text);
+        }
+    }
+    private.extend(other);
+    if private.is_empty() {
+        link_local
+    } else {
+        private
+    }
+}
+
 async fn status_of(state: &Arc<RwLock<AppState>>, settings: NetworkSettings) -> WebStatus {
     let slot = state.read().await.web_server.clone();
     let guard = slot.lock().await;
@@ -64,6 +99,7 @@ async fn status_of(state: &Arc<RwLock<AppState>>, settings: NetworkSettings) -> 
         settings,
         running: guard.is_some(),
         bound: guard.as_ref().map(|s| s.addr.to_string()),
+        lan_ips: lan_ips(),
     }
 }
 

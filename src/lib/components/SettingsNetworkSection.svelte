@@ -49,9 +49,16 @@
   }
 
   const isAdmin = $derived(account?.user?.role === 'admin');
-  const address = $derived(
-    web?.bound ? `http://${web.bound.replace('0.0.0.0', '<this-computer>')}` : null,
-  );
+  // On the network the server is bound to every adapter, so list the real
+  // addresses (read locally, so this works with no internet).
+  const addresses = $derived.by(() => {
+    if (!web?.bound) return [];
+    if (!web.bound.startsWith('0.0.0.0')) return [`http://${web.bound}`];
+    const port = web.bound.split(':').pop();
+    return web.lan_ips.length
+      ? web.lan_ips.map((ip) => `http://${ip}:${port}`)
+      : [`http://<this-computer>:${port}`];
+  });
 
   async function ipc() {
     return import('$lib/services/ipc');
@@ -252,8 +259,8 @@
     <div class="button-row">
       <button class="settings-btn primary" disabled={busy} onclick={applyNetwork}>Apply</button>
     </div>
-    {#if web?.running && address}
-      <span class="backup-status">Running at {address}{web.settings.lan ? ' (use this computer\'s address on your network)' : ''}</span>
+    {#if web?.running && addresses.length}
+      <span class="backup-status">Running at {addresses.join(' or ')}{addresses.length > 1 ? ' (use the one on the same network as your phone)' : ''}</span>
     {:else}
       <span class="backup-status">Not running</span>
     {/if}

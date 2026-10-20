@@ -2300,6 +2300,8 @@ export type WebStatus = {
 	running: boolean,
 	/**  The address the server is actually bound to, when running. */
 	bound: string | null,
+	/**  This computer's addresses on the local network (works offline), best first, for the "open this on your phone" hint. */
+	lan_ips: string[],
 };
 
 /* Tauri Specta runtime */

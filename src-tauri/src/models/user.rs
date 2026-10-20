@@ -147,4 +147,6 @@ pub struct WebStatus {
     pub running: bool,
     /// The address the server is actually bound to, when running.
     pub bound: Option<String>,
+    /// This computer's addresses on the local network (works offline), best first, for the "open this on your phone" hint.
+    pub lan_ips: Vec<String>,
 }
