@@ -2,7 +2,7 @@
   // The "new version available" card in the corner of the desktop app (#139).
   import Icon from './Icon.svelte';
   import { updates, installUpdate, dismissUpdate } from '$lib/stores/updates';
-  import { releaseNotesLines } from '$lib/utils/updates';
+  import { releaseNotesGroups } from '$lib/utils/updates';
 
   let showNotes = $state(false);
 
@@ -12,7 +12,7 @@
       $updates.status === 'installing',
   );
   const working = $derived($updates.status === 'downloading' || $updates.status === 'installing');
-  const notes = $derived(releaseNotesLines($updates.notes, 8));
+  const notes = $derived(releaseNotesGroups($updates.notes, 8));
   const percent = $derived($updates.progress == null ? null : Math.round($updates.progress * 100));
 </script>
 
@@ -40,9 +40,14 @@
       </div>
     {:else}
       {#if showNotes && notes.length}
-        <ul class="update-notes">
-          {#each notes as line (line)}<li>{line}</li>{/each}
-        </ul>
+        <div class="update-notes">
+          {#each notes as group, gi (gi)}
+            {#if group.heading}<span class="update-notes-heading">{group.heading}</span>{/if}
+            <ul>
+              {#each group.items as line (line)}<li>{line}</li>{/each}
+            </ul>
+          {/each}
+        </div>
       {/if}
       <div class="update-actions">
         <button class="update-btn primary" onclick={installUpdate}>Update now</button>
@@ -92,15 +97,22 @@
   .update-title strong { font-size: var(--text-md); color: #e8e0ff; font-weight: 650; }
   .update-sub { font-size: var(--text-sm); color: var(--fg-muted); }
   .update-notes {
-    margin: 0;
-    padding: 0 0 0 18px;
-    max-height: 160px;
+    max-height: 180px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     font-size: var(--text-sm);
     color: var(--fg-muted);
+  }
+  .update-notes ul { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 3px; }
+  .update-notes-heading {
+    margin-top: 4px;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c4a1ff;
   }
   .update-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .update-btn {

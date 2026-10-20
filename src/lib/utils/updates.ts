@@ -24,14 +24,47 @@ export function updatesBlockedInDev(isDev: boolean, override: string | undefined
   return isDev && override !== '1';
 }
 
-/** Release notes are Markdown from the changelog; show them as plain lines. */
-export function releaseNotesLines(notes: string | null | undefined, max = 8): string[] {
+export interface NotesGroup {
+  /** The changelog section ("Fixed", "Build", ...), or null for lines before any heading. */
+  heading: string | null;
+  items: string[];
+}
+
+const plain = (text: string) => text.replace(/\*\*(.+?)\*\*/g, '$1').trim();
+
+/**
+ * Turns the release's Markdown changelog into headed groups of bullets. The
+ * leading "[0.1.4] - date" line is dropped, because the card already names the
+ * version. At most `maxItems` bullets are kept.
+ */
+export function releaseNotesGroups(notes: string | null | undefined, maxItems = 12): NotesGroup[] {
   if (!notes) return [];
-  return notes
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^\s*(#{1,6}\s*|[-*+]\s+)/, '').replace(/\*\*(.+?)\*\*/g, '$1').trim())
-    .filter((line) => line.length > 0)
-    .slice(0, max);
+  const groups: NotesGroup[] = [];
+  let current: NotesGroup = { heading: null, items: [] };
+  let count = 0;
+  const flush = () => {
+    if (current.items.length) groups.push(current);
+  };
+  for (const raw of notes.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const heading = line.match(/^#{1,6}\s*(.+)$/);
+    if (heading) {
+      const title = plain(heading[1]);
+      if (/^\[?v?\d+\.\d+\.\d+/.test(title)) continue;
+      flush();
+      current = { heading: title, items: [] };
+      continue;
+    }
+    if (count >= maxItems) break;
+    const item = plain(line.replace(/^[-*+]\s+/, ''));
+    if (item) {
+      current.items.push(item);
+      count++;
+    }
+  }
+  flush();
+  return groups;
 }
 
 /** 0..1 download progress, or null while the size is unknown. */

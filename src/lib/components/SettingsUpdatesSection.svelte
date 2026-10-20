@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import { settings } from '$lib/stores/settings';
   import { updates, checkForUpdates, installUpdate } from '$lib/stores/updates';
-  import { releaseNotesLines } from '$lib/utils/updates';
+  import { releaseNotesGroups } from '$lib/utils/updates';
   import { agoLabel } from '$lib/utils/webAccount';
 
   let checkForUpdatesOn = $state($settings.checkForUpdates);
@@ -31,7 +31,7 @@
   const busy = $derived(
     $updates.status === 'checking' || $updates.status === 'downloading' || $updates.status === 'installing',
   );
-  const notes = $derived(releaseNotesLines($updates.notes, 10));
+  const notes = $derived(releaseNotesGroups($updates.notes, 12));
   const percent = $derived($updates.progress == null ? null : Math.round($updates.progress * 100));
   const lastChecked = $derived($updates.lastChecked ? agoLabel($updates.lastChecked) : null);
 </script>
@@ -80,9 +80,14 @@
   {#if $updates.status === 'available' && notes.length}
     <div class="setting-label">
       <span class="setting-name">What is new in {$updates.version}</span>
-      <ul class="update-notes">
-        {#each notes as line (line)}<li>{line}</li>{/each}
-      </ul>
+      <div class="update-notes">
+        {#each notes as group, gi (gi)}
+          {#if group.heading}<span class="update-notes-heading">{group.heading}</span>{/if}
+          <ul>
+            {#each group.items as line (line)}<li>{line}</li>{/each}
+          </ul>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -124,12 +129,19 @@
     .update-progress-bar.indeterminate { animation: none; width: 100%; }
   }
   .update-notes {
-    margin: 6px 0 0;
-    padding-left: 18px;
+    margin-top: 6px;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 6px;
     font-size: var(--text-sm);
     color: var(--fg-muted);
+  }
+  .update-notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+  .update-notes-heading {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #c4a1ff;
   }
 </style>
