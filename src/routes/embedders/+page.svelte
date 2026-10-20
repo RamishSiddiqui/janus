@@ -667,4 +667,25 @@
   .empty-icon { opacity: 0.4; }
   .empty-title { font-size: 15px; font-weight: 700; color: #6b6b8a; }
   .empty-sub { font-size: 13px; color: #4a4a6a; max-width: 300px; }
+
+  /* ── Phones: each model becomes a two-line card instead of a six-column row ── */
+  @media (max-width: 768px) {
+    .table-wrap { padding: 0 10px 20px; }
+    .thead { display: none; }
+    .trow {
+      grid-template-columns: repeat(4, minmax(0, auto));
+      grid-template-areas:
+        "model model model action"
+        "provider caps price ctx";
+      justify-content: space-between;
+      column-gap: 10px; row-gap: 8px; padding: 10px 12px;
+    }
+    .td:not(.td-model) { overflow: visible; }
+    .td-model { grid-area: model; }
+    .td-action { grid-area: action; }
+    .td-provider { grid-area: provider; }
+    .td-caps, .td-dims { grid-area: caps; }
+    .td-price { grid-area: price; }
+    .td-ctx { grid-area: ctx; }
+  }
 </style>
