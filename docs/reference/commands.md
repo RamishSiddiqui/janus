@@ -4,7 +4,7 @@
 
 Every backend command the frontend can call: **142 commands** in 26 modules. The desktop app calls them through Tauri's `invoke()`; a browser calls the ones marked **Browser** through `POST /api/rpc/{command}` (see {doc}`/developer/browser-server`). Arguments are sent as a JSON object with camelCase keys. A failed command rejects with `{ error, message }`.
 
-Browser-callable: **113** of 142. The rest read or write files on the host machine, manage the host (voice model downloads, network settings, account switching), or are not needed in a browser yet.
+Browser-callable: **114** of 142. The rest read or write files on the host machine, manage the host (voice model downloads, network settings, account switching), or are not needed in a browser yet.
 
 | Module | Commands |
 |---|---|
@@ -1898,7 +1898,7 @@ several hundred KB.
 
 Returns `Result<String, MythicError>`
 
-### `tts_replay_message`
+### `tts_replay_message` — **Browser**
 
 Replays an already-saved chat message's voice, sentence by sentence —
 emits one `tts-chunk` event per completed sentence (same event, same

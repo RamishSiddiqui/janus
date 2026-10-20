@@ -1,12 +1,10 @@
 //! Providers and API keys, image presets, lorebook, memories, and voice (TTS)
 //! commands that are safe to call from a browser.
 //!
-//! Deliberately not listed (host-global, or would act on the host machine):
-//! `tts_download_model` and `tts_preload_engine` (they change the shared Kokoro
-//! model files on the host; `tts_model_status` only reads them, so it is allowed),
-//! and `tts_replay_message` (streams audio
-//! through app-wide events that currently reach the desktop window, not the
-//! requesting browser; it comes with the event bridge).
+//! Deliberately not listed (they change the shared Kokoro model files on the
+//! host): `tts_download_model` and `tts_preload_engine`. `tts_model_status` only
+//! reads them, and `tts_replay_message` checks ownership and streams its audio
+//! through scoped events that reach the requesting browser, so both are allowed.
 
 use crate::commands::image_presets as ip;
 use crate::commands::image_presets::{CreateImagePresetFields, UpdateImagePresetFields};
@@ -64,6 +62,7 @@ crate::rpc_family! {
 
 crate::rpc_family_wry! {
     "tts_model_status" => tts::tts_model_status [app] ();
+    "tts_replay_message" => tts::tts_replay_message [app, state] (conversation_id: String, message_id: String, text: String, voice_id: String, provider_id: Option<String>);
     "tts_list_voices" => tts::tts_list_voices [app, state] (provider_id: Option<String>);
     "tts_test_speak" => tts::tts_test_speak [app, state] (text: String, voice_id: String, provider_id: Option<String>);
 }

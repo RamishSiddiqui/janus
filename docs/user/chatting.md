@@ -21,7 +21,7 @@ Under the box you see a running **token** count for what will be sent.
 The pill at the right of the input shows the model that will answer. Click it to search your enabled models and pick another for this chat. Models are enabled under [AI Studio](providers-and-models.md).
 
 ```{note}
-The **Bold** and **AI Assist** buttons beside the attach button are placeholders for now and do nothing. Type `**bold**` yourself.
+The **Bold** button beside the attach button wraps the selected text in `**` (and removes it again if the text is already bold). With nothing selected it inserts an empty pair to type between.
 ```
 
 ### Images
