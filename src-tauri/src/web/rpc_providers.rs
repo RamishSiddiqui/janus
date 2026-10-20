@@ -11,7 +11,6 @@ use crate::commands::image_presets::{CreateImagePresetFields, UpdateImagePresetF
 use crate::commands::lorebook as lb;
 use crate::commands::memories as mem;
 use crate::commands::providers as pr;
-use crate::commands::resource_monitor;
 use crate::commands::tts;
 use crate::error::MythicError;
 use crate::models::DynamicJson;
@@ -56,7 +55,6 @@ crate::rpc_family! {
     "get_memory_graph" => mem::get_memory_graph [state] (character_id: String);
 
     "tts_set_character_voice" => tts::tts_set_character_voice [state] (character_id: String, voice_id: Option<String>, voice_provider_id: Option<String>);
-    "get_resource_usage" => resource_monitor::get_resource_usage [state] ();
     "get_app_info" => app_info [] ();
 }
 
