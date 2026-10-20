@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
   import Icon from './Icon.svelte';
   import SplitHeading from './SplitHeading.svelte';
   import type { Scene } from '$lib/services/ipc';
@@ -41,7 +42,7 @@
 
   async function copyText(text: string, field: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      if (!(await copyToClipboard(text))) throw new Error('copy failed');
       copiedField = field;
       setTimeout(() => { if (copiedField === field) copiedField = null; }, 1500);
     } catch (err) {

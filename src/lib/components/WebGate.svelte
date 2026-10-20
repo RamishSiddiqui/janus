@@ -4,6 +4,7 @@
    * fill the screen and slide apart to reveal the forms. Shown only when the
    * page is served by Janus's own web server and nobody is signed in.
    */
+  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
   import { onMount } from 'svelte';
   import {
     webAuth,
@@ -200,12 +201,7 @@
   }
 
   async function copyKey() {
-    try {
-      await navigator.clipboard.writeText(issuedKey);
-      copyNote = 'Copied';
-    } catch {
-      copyNote = 'Select the key and press Ctrl+C';
-    }
+    copyNote = (await copyToClipboard(issuedKey)) ? 'Copied' : 'Select the key and press Ctrl+C';
   }
 
   async function openWelcome() {
