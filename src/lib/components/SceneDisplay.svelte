@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { onMount, onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
+  import { isWebMode } from '$lib/services/webBridge';
   import { activeConversationId } from '$lib/stores/chat';
   import { settings } from '$lib/stores/settings';
   import { get } from 'svelte/store';
@@ -620,6 +621,16 @@
     const isVideo = activeTab === 'video';
     const sceneId = isVideo ? currentVideoSceneId : currentSceneId;
     if (isVideo ? !sceneVideoUrl : !sceneImageUrl) return;
+    // A browser has no save dialog or host file path: download the file it already shows.
+    if (isWebMode()) {
+      const a = document.createElement('a');
+      a.href = (isVideo ? sceneVideoUrl : sceneImageUrl) as string;
+      a.download = `scene-${sceneId ?? Date.now()}.${isVideo ? 'mp4' : 'png'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
     // Open the image/video in a save dialog
     if (isTauri && sceneId) {
       try {

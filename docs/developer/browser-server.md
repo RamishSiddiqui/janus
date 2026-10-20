@@ -70,6 +70,8 @@ That is enough for `@tauri-apps/api` to work unchanged:
 | `plugin:dialog|open` | The browser's own file picker; returns a token for the chosen `File`. |
 | commands taking a `filePath` | `upload_message_attachment`, `upload_character_avatar`, `import_character_card`, `import_persona_card` upload the picked file's bytes instead. |
 | `upload_message_attachment_bytes` | `POST /api/upload/attachment`. |
+| `plugin:dialog|save` | No dialog: returns a `browser-download:NAME` token. |
+| `plugin:fs|write_text_file`, `write_file` | When the path is a download token, the bytes become a browser download (`downloadBytes`); any other path is rejected. |
 | `plugin:fs|stat` | The picked file's size. |
 | other `plugin:*` calls | Rejected with `{ error: 'unsupported' }`. |
 | `loadFileAsBlobUrl(path)` | `GET /api/files/{path}` as a blob. |
