@@ -53,6 +53,7 @@ pub struct UpdateImagePresetFields {
     pub hires_fix_denoising_strength: Option<f64>,
 }
 
+/// Lists the signed-in account's image-generation presets.
 #[tauri::command]
 #[specta::specta]
 pub async fn list_image_presets(
@@ -62,6 +63,7 @@ pub async fn list_image_presets(
     ImagePresetRepo::list(&db, actor.owner_filter()).await
 }
 
+/// Creates an image-generation preset (sampler, steps, guidance, style, quality options).
 #[tauri::command]
 #[specta::specta]
 pub async fn create_image_preset(
@@ -92,6 +94,7 @@ pub async fn create_image_preset(
     Ok(preset)
 }
 
+/// Changes some fields of an image preset; fields left out stay as they are.
 #[tauri::command]
 #[specta::specta]
 pub async fn update_image_preset(
@@ -120,6 +123,7 @@ pub async fn update_image_preset(
     .await
 }
 
+/// Deletes an image preset.
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_image_preset(
@@ -131,6 +135,7 @@ pub async fn delete_image_preset(
     ImagePresetRepo::delete(&db, &id).await
 }
 
+/// Makes one preset the default used when a scene does not pick its own.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_default_image_preset(

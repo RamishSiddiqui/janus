@@ -67,6 +67,7 @@ async fn status_of(state: &Arc<RwLock<AppState>>, settings: NetworkSettings) -> 
     }
 }
 
+/// Admin only: whether browser access is on, its saved settings, and the address it is listening on.
 #[tauri::command]
 #[specta::specta]
 pub async fn web_status(state: State<'_, Arc<RwLock<AppState>>>) -> Result<WebStatus, MythicError> {
@@ -76,6 +77,7 @@ pub async fn web_status(state: State<'_, Arc<RwLock<AppState>>>) -> Result<WebSt
     Ok(status_of(state.inner(), settings).await)
 }
 
+/// Admin only: turns browser access on or off, chooses loopback-only or LAN, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned.
 #[tauri::command]
 #[specta::specta]
 pub async fn web_set_network(

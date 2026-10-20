@@ -82,6 +82,7 @@ fn signed_in(user: &DbUser, token: &str, trusted: bool, recovery_key: Option<Str
         .into_response()
 }
 
+/// Creates an account and signs it in. The first account becomes the admin; later ones need signup to be open. Returns the one-time recovery key.
 async fn register(
     State(st): State<WebState>,
     ClientIp(ip): ClientIp,
@@ -97,6 +98,7 @@ async fn register(
     Ok(signed_in(&user, &token, body.trusted, Some(key)))
 }
 
+/// Checks the passphrase and starts a session (a 30-day or a short one). Wrong attempts are rate-limited per address and per account.
 async fn login(
     State(st): State<WebState>,
     ClientIp(ip): ClientIp,
@@ -117,6 +119,7 @@ async fn login(
     Ok(signed_in(&user, &token, body.trusted, None))
 }
 
+/// Ends the current session and clears the cookie.
 async fn logout(State(st): State<WebState>, headers: HeaderMap) -> Result<Response, ApiError> {
     if let Some(token) = token_from_headers(&headers) {
         service::logout(&st.db, &token).await?;
@@ -137,6 +140,7 @@ struct ResetBody {
     trusted: bool,
 }
 
+/// Sets a new passphrase from the recovery key, signs other sessions out, and returns a fresh recovery key.
 async fn reset(
     State(st): State<WebState>,
     ClientIp(ip): ClientIp,
@@ -158,6 +162,7 @@ async fn reset(
     Ok(signed_in(&user, &token, body.trusted, Some(new_key)))
 }
 
+/// The signed-in account.
 async fn me(authed: AuthedUser) -> Json<UserInfo> {
     Json(UserInfo::from(&authed.user))
 }
@@ -168,6 +173,7 @@ struct ChangePassphrase {
     new: String,
 }
 
+/// Changes the passphrase; other sessions are signed out.
 async fn change_passphrase(
     State(st): State<WebState>,
     authed: AuthedUser,
@@ -184,6 +190,7 @@ async fn change_passphrase(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// The account's signed-in devices, marking the current one.
 async fn list_sessions(
     State(st): State<WebState>,
     ActiveUser(authed): ActiveUser,
@@ -193,6 +200,7 @@ async fn list_sessions(
     ))
 }
 
+/// Signs one of the account's devices out.
 async fn revoke_session(
     State(st): State<WebState>,
     ActiveUser(authed): ActiveUser,

@@ -17,9 +17,9 @@ Please include as much detail as you can:
 
 ## What counts
 
-Janus is a local-first desktop app — most of its attack surface is: malicious character card imports (embedded PNG/JSON parsing), malicious/compromised provider responses (LLM/image/video API replies), and the Tauri IPC boundary between the frontend and the Rust backend (e.g. path traversal in file operations, SSRF via provider base URLs). Reports in these areas are especially welcome.
+Janus is a local-first desktop app. Most of its attack surface is: malicious character card imports (embedded PNG/JSON parsing), malicious or compromised provider responses (LLM/image/video API replies), and the Tauri IPC boundary between the frontend and the Rust backend (e.g. path traversal in file operations, SSRF via provider base URLs).
 
-Since there's no server component and no user accounts, things like "no rate limiting" or "no CAPTCHA" aren't applicable.
+When the admin turns on **browser access**, Janus also runs an HTTP server (off by default, loopback-only unless LAN access is enabled) with user accounts. Reports about it are in scope and welcome: authentication and session handling, the ownership checks that keep accounts' data separate (one account reading or changing another's data), CSRF and cross-origin protection, the file and upload endpoints, and rate limiting and lockout. Browser access serves plain HTTP and is documented as suitable only for a trusted home network; the absence of TLS on its own is a known limitation rather than a vulnerability.
 
 ## Response
 

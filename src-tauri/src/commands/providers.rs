@@ -312,6 +312,7 @@ async fn summarize_http_result(
     }
 }
 
+/// Checks that a provider is reachable and its key is accepted. A failure always says why (bad key, wrong address, server down, timeout).
 #[tauri::command]
 #[specta::specta]
 pub async fn test_provider_connection(

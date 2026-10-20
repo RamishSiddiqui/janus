@@ -8,12 +8,16 @@ import { browser } from '$app/environment';
 type Theme = 'dark' | 'light' | 'system';
 
 export interface AppSettings {
+  /** Colour theme: `dark`, `light`, or `system` (follow the operating system). */
   theme: Theme;
+  /** Interface text size: `Small`, `Medium` or `Large`. */
   fontSize: string;
+  /** Show replies word by word as they are generated instead of all at once. */
   streamingEnabled: boolean;
   /** Whether to show the collapsible "Thinking" section for reasoning-model
    *  chain-of-thought. When off, reasoning is discarded from the UI entirely. */
   showThinking: boolean;
+  /** Generate a scene image automatically when the scene changes (needs an image provider). */
   autoGenerateImages: boolean;
   /** Sent as AI Horde's `nsfw` request flag for scene generation — NOT "make
    *  everything explicit," but "don't route through the safety filter that
@@ -27,7 +31,9 @@ export interface AppSettings {
   /** When on, an auto-generated NPC portrait is used immediately; when off,
    *  it sits in a pending-review state until approved/regenerated/rejected. */
   autoApproveNpcPortraits: boolean;
+  /** Extract facts from the conversation and save them as memories automatically. */
   autoSaveMemories: boolean;
+  /** Privacy mode: nothing leaves the device except calls to your chosen AI providers. */
   localStorageOnly: boolean;
   /** Master switch for voice output. Off by default — TTS must be opt-in,
    *  never autoplay for a user who hasn't explicitly turned it on. */
@@ -40,6 +46,7 @@ export interface AppSettings {
    *  built-in Kokoro engine (unchanged default), a `ProviderConfig` id
    *  means a cloud provider instead (see issue #78). */
   ttsDefaultProviderId: string | null;
+  /** The app-wide instructions that frame every roleplay generation (editable under Settings, Prompts). */
   systemPrompt: string;
   /** Post-History Instructions — injected AFTER conversation history, before generation.
    *  Shapes how the AI ends responses (narrative hooks, pacing, tone). */

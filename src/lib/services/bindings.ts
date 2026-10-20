@@ -149,6 +149,7 @@ export const commands = {
 	deleteProvider: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_provider", { id })),
 	/**  Sets a provider as the default for its type. Unsets all others of the same type. */
 	setDefaultProvider: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("set_default_provider", { id })),
+	/**  Checks that a provider is reachable and its key is accepted. A failure always says why (bad key, wrong address, server down, timeout). */
 	testProviderConnection: (id: string) => typedError<ConnectionTestResult, MythicError>(__TAURI_INVOKE("test_provider_connection", { id })),
 	/**
 	 *  Lists available models from a provider's API.
@@ -319,10 +320,15 @@ export const commands = {
 	upsertSceneState: (conversationId: string, locationName: string | null, locationDescription: string | null, timePeriod: string | null, weather: string | null, charactersPresent: string[] | null, ambientDetails: string | null, sceneMood: string | null) => typedError<SceneState_Serialize, MythicError>(__TAURI_INVOKE("upsert_scene_state", { conversationId, locationName, locationDescription, timePeriod, weather, charactersPresent, ambientDetails, sceneMood })),
 	/**  Deletes the scene state for a conversation. */
 	deleteSceneState: (conversationId: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_scene_state", { conversationId })),
+	/**  Lists the signed-in account's image-generation presets. */
 	listImagePresets: () => typedError<ImagePreset_Serialize[], MythicError>(__TAURI_INVOKE("list_image_presets")),
+	/**  Creates an image-generation preset (sampler, steps, guidance, style, quality options). */
 	createImagePreset: (name: string, fields: CreateImagePresetFields) => typedError<ImagePreset_Serialize, MythicError>(__TAURI_INVOKE("create_image_preset", { name, fields })),
+	/**  Changes some fields of an image preset; fields left out stay as they are. */
 	updateImagePreset: (id: string, fields: UpdateImagePresetFields) => typedError<ImagePreset_Serialize, MythicError>(__TAURI_INVOKE("update_image_preset", { id, fields })),
+	/**  Deletes an image preset. */
 	deleteImagePreset: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("delete_image_preset", { id })),
+	/**  Makes one preset the default used when a scene does not pick its own. */
 	setDefaultImagePreset: (id: string) => typedError<null, MythicError>(__TAURI_INVOKE("set_default_image_preset", { id })),
 	/**
 	 *  Sets (or clears, passing `null`) this conversation's chosen
@@ -624,6 +630,7 @@ export const commands = {
 	 *  into one with unrelated existing data.
 	 */
 	importDataBackup: (filePath: string) => typedError<null, MythicError>(__TAURI_INVOKE("import_data_backup", { filePath })),
+	/**  Lists the backup files in the app's `backups/` folder, newest first. */
 	listDataBackups: () => typedError<BackupFileInfo[], MythicError>(__TAURI_INVOKE("list_data_backups")),
 	/**
 	 *  Whether the Kokoro model + voice pack are already cached on disk. Pure
@@ -692,13 +699,16 @@ export const commands = {
 	 *  refresh of one PID, not a full system scan.
 	 */
 	getResourceUsage: () => typedError<ResourceUsage, MythicError>(__TAURI_INVOKE("get_resource_usage")),
+	/**  Whether any account exists, who may sign up, and which account this window is acting as (plus the admin it is acting for, if any). */
 	authStatus: () => typedError<AuthStatus, MythicError>(__TAURI_INVOKE("auth_status")),
 	/**
 	 *  Creates an account. The first one becomes the admin. The new account
 	 *  becomes the one the desktop acts as.
 	 */
 	authRegister: (username: string, passphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_register", { username, passphrase })),
+	/**  Signs the desktop window in as an account, checking its passphrase. */
 	authLogin: (username: string, passphrase: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_login", { username, passphrase })),
+	/**  Signs the desktop window out. Until someone signs in again, account-owned data is not reachable. */
 	authLogout: () => typedError<null, MythicError>(__TAURI_INVOKE("auth_logout")),
 	/**
 	 *  The admin, sitting at the host machine, acts as any account without its
@@ -707,17 +717,24 @@ export const commands = {
 	 *  browser.
 	 */
 	authSwitchTo: (userId: string) => typedError<UserInfo, MythicError>(__TAURI_INVOKE("auth_switch_to", { userId })),
+	/**  Sets a new passphrase using the account's recovery key, signs every other session out, and issues a fresh recovery key. */
 	authResetWithRecovery: (username: string, recoveryKey: string, newPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_reset_with_recovery", { username, recoveryKey, newPassphrase })),
+	/**  Changes the signed-in account's passphrase after checking the current one. */
 	authChangePassphrase: (currentPassphrase: string, newPassphrase: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_change_passphrase", { currentPassphrase, newPassphrase })),
+	/**  Admin only: chooses whether anyone can sign up (`open`) or only the admin creates accounts (`admin_only`). */
 	authSetSignupMode: (mode: SignupMode) => typedError<null, MythicError>(__TAURI_INVOKE("auth_set_signup_mode", { mode })),
+	/**  Admin only: lists every account. */
 	authListUsers: () => typedError<UserInfo[], MythicError>(__TAURI_INVOKE("auth_list_users")),
 	/**
 	 *  Admin adds a member with a temporary passphrase they must replace on
 	 *  first sign-in. The desktop keeps acting as the admin.
 	 */
 	authCreateUser: (username: string, temporaryPassphrase: string) => typedError<AccountCreated, MythicError>(__TAURI_INVOKE("auth_create_user", { username, temporaryPassphrase })),
+	/**  Admin only: deletes an account together with its characters, chats, memories, providers and stored files. */
 	authDeleteUser: (userId: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_delete_user", { userId })),
+	/**  Admin only: whether browser access is on, its saved settings, and the address it is listening on. */
 	webStatus: () => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_status")),
+	/**  Admin only: turns browser access on or off, chooses loopback-only or LAN, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned. */
 	webSetNetwork: (enabled: boolean, lan: boolean, port: number) => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_set_network", { enabled, lan, port })),
 };
 

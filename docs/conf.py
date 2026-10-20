@@ -7,13 +7,15 @@ copyright = "2026, Janus contributors (AGPL-3.0-or-later)"
 extensions = [
     "myst_parser",
     "sphinx_copybutton",
+    "sphinx_design",
 ]
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 root_doc = "index"
-exclude_patterns = ["_build", "requirements.txt", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "requirements.txt", "Thumbs.db", ".DS_Store", "tools"]
 
 myst_heading_anchors = 3
+myst_enable_extensions = ["colon_fence"]
 
 html_theme = "furo"
 html_title = "Janus"

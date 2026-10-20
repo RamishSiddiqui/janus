@@ -2,6 +2,10 @@
 
 Thanks for considering it. This document covers the dev workflow, how the codebase is organized, and the conventions worth keeping intact.
 
+## Documentation
+
+The [developer guide](docs/developer/index.md) goes deeper than this page (architecture, how to add a command or provider, database and testing notes). Every command needs a `///` description and the reference pages are generated from the source; see [Documentation](docs/developer/docs.md). Run `python docs/tools/gen_reference.py` and commit the result with your change.
+
 ## Before you start
 
 - **Small fixes / bugs** — just open a PR.
