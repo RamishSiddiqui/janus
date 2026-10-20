@@ -17,6 +17,7 @@ import {
   isStreaming, lastStreamError, messages, pathState,
 } from './chat';
 import { runEmotionUpdatePipeline } from './chatEmotion';
+import { uuid } from '$lib/utils/insecureContext';
 import { loadMessages } from './chatMessages';
 import { primeTtsAudioContext } from './ttsPlayback';
 
@@ -147,7 +148,7 @@ export async function sendMessage(
   if (!isTauri) {
     // Dev mode — just add user message locally
     messages.update(msgs => [...msgs, {
-      id: crypto.randomUUID(),
+      id: uuid(),
       role: 'user' as const,
       content,
       attachments,
@@ -156,7 +157,7 @@ export async function sendMessage(
   }
 
   const ipc = await import('$lib/services/ipc');
-  const tempUserId = crypto.randomUUID();
+  const tempUserId = uuid();
   // Declared outside the try block (not `const unlisten = ...` inside it) so
   // the catch block below can reach it too — if the backend call throws
   // AFTER the listener was registered, the listener must still be torn down,
@@ -192,7 +193,7 @@ export async function sendMessage(
       console.error('[Janus] Stream watchdog fired — no event from backend for 105s');
       buffer.reset();
       toastError('AI response timed out — no reply from the backend. Please try again.');
-      const timeoutMsgId = crypto.randomUUID();
+      const timeoutMsgId = uuid();
       const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
       messages.update(msgs => [...msgs, timeoutMsg]);
       pathState.fullActivePath.push(timeoutMsg);
@@ -386,7 +387,7 @@ export async function retryLastMessage(model?: string) {
       console.error('[Janus] Stream watchdog fired — no event from backend for 105s');
       buffer.reset();
       toastError('AI response timed out — no reply from the backend. Please try again.');
-      const timeoutMsgId = crypto.randomUUID();
+      const timeoutMsgId = uuid();
       const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
       messages.update(msgs => [...msgs, timeoutMsg]);
       pathState.fullActivePath.push(timeoutMsg);
@@ -512,7 +513,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
       console.error('[Janus] Stream watchdog fired — no event from backend for 105s');
       buffer.reset();
       toastError('Regeneration timed out — no reply from the backend. Please try again.');
-      const timeoutMsgId = crypto.randomUUID();
+      const timeoutMsgId = uuid();
       const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
       messages.update(msgs => [...msgs, timeoutMsg]);
       pathState.fullActivePath.push(timeoutMsg);

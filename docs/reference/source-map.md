@@ -257,6 +257,8 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/utils/error.ts` | Janus — Centralized Error Handling Logs errors to console AND shows user-facing toast |
 | `src/lib/utils/format.ts` | Janus — Text Formatting Utilities |
 | `src/lib/utils/groupMemories.ts` | groupMemories.ts Groups consecutive memories within each lane that don't have link events (copy/sync) between them into single logical groups. Used by both MemoryTimeline and MemoryGraph to reduce visual clutter. |
+| `src/lib/utils/insecureContext.test.ts` | Tests for the insecure-context fallbacks (uuid and clipboard) used over plain HTTP. |
+| `src/lib/utils/insecureContext.ts` | Helpers for pages served over plain HTTP on a local network address (browser access from a phone). Browsers treat that as an insecure context and leave out `crypto.randomUUID` and the async clipboard API, so these fall back to what is still available there. |
 | `src/lib/utils/markdownEdit.test.ts` | Tests for the composer's Markdown helpers. |
 | `src/lib/utils/markdownEdit.ts` | Small text edits for the chat composer, kept pure so they can be tested. |
 | `src/lib/utils/models.ts` | Janus — Model Table Display Utilities Shared by the LLM Models and Embedding Models pages, which render the same ModelEntry data in the same table layout. |

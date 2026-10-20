@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
   import { onMount } from 'svelte';
   import { success, error as toastError } from '$lib/stores/toast';
   import type { AccountStatus, AccountUser, WebAccessStatus } from '$lib/services/ipc';
@@ -183,7 +184,7 @@
     </div>
     <p class="net-key"><code>{adminKey}</code></p>
     <div class="button-row">
-      <button class="settings-btn outline" onclick={() => navigator.clipboard?.writeText(adminKey)}>Copy</button>
+      <button class="settings-btn outline" onclick={() => copyToClipboard(adminKey)}>Copy</button>
       <button class="settings-btn primary" onclick={() => (adminKey = '')}>I have saved it</button>
     </div>
   </section>

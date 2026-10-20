@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
   import Icon from './Icon.svelte';
   import JanusMark from './JanusMark.svelte';
   import EmotionHUD from './EmotionHUD.svelte';
@@ -328,7 +329,7 @@
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(message.content);
+      if (!(await copyToClipboard(message.content))) throw new Error('copy failed');
       copied = true;
       setTimeout(() => copied = false, 1500);
     } catch (err) {
