@@ -35,7 +35,7 @@ rig-core = { version = "0.41", features = ["derive", "image"] }
 # into this sibling crate — rig-core alone only has the low-level
 # CompletionModel API now. Same trait names/signatures as before, just a
 # different crate path.
-rig-agent = { version = "0.41", features = ["derive"] }
+rig-agent = { version = "0.42", features = ["derive"] }
 
 # HTTP client (for non-LLM HTTP calls: image gen, health checks)
 reqwest = { version = "0.12", features = ["json", "stream", "multipart", "rustls-tls"], default-features = false }
