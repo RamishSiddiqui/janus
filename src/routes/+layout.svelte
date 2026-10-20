@@ -8,6 +8,8 @@
   import TitleBar from '$lib/components/TitleBar.svelte';
   import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
   import ToastContainer from '$lib/components/ToastContainer.svelte';
+  import UpdatePrompt from '$lib/components/UpdatePrompt.svelte';
+  import { startAutoUpdateChecks, stopAutoUpdateChecks } from '$lib/stores/updates';
   import FirstRunWizard from '$lib/components/FirstRunWizard.svelte';
   import WebGate from '$lib/components/WebGate.svelte';
   import {
@@ -115,6 +117,13 @@
     if (!splash) return;
     splash.classList.add('janus-splash-hidden');
     setTimeout(() => splash.remove(), 400);
+  });
+
+  // Quiet background check for a newer Janus (desktop only; the store skips
+  // browsers, dev builds and anyone who turned it off in Settings).
+  onMount(() => {
+    startAutoUpdateChecks();
+    return stopAutoUpdateChecks;
   });
 
   // Navigation items for the sidebar
@@ -256,6 +265,7 @@
 {/if}
 
 <ToastContainer />
+{#if !webMode}<UpdatePrompt />{/if}
 
 <style>
   .drawer-backdrop {

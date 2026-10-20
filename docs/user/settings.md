@@ -92,6 +92,19 @@ See [Data and privacy](data-and-privacy.md).
 
 Backend and frontend activity, for diagnosing problems. **Backend** lines are read from Janus's log file, newest first, loading older lines as you scroll up. **Frontend** lines are collected in the window. Both can be searched, and the logs can be exported to a file. **Clear frontend logs** empties the on-screen list.
 
+(updates)=
+## Updates
+
+Only in the desktop app. Janus checks GitHub for a newer release a few seconds after it starts and every few hours while it stays open. When there is one, a card appears in the corner with the new version, **What's new** (the release notes), **Update now** and **Later**. **Update now** downloads the update, checks its signature, installs it and restarts Janus; your data is untouched. **Later** hides the card for that version (it is still offered here).
+
+| Control | Meaning |
+|---|---|
+| **Check now** | Look for an update right away and report the result. |
+| **Update now** | Appears when a newer version is available. |
+| **Check for updates automatically** | The launch and every-few-hours check. The check only asks GitHub for the latest release and sends nothing about you or your data. On by default; turn it off to update by hand from the releases page. |
+
+Versions older than the first one with this feature cannot update themselves: install that version once from the releases page, and later ones arrive in the app.
+
 (network-access)=
 ## Network Access
 

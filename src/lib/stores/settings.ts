@@ -40,6 +40,8 @@ export interface AppSettings {
   ttsEnabled: boolean;
   /** True once the first-run setup guide has been finished or skipped. */
   onboardingDone: boolean;
+  /** Look for a newer Janus on GitHub at launch and every few hours. Only the version number is sent. */
+  checkForUpdates: boolean;
   /** Fallback voice used for a character with no `voice_id` of their own. */
   ttsDefaultVoiceId: string | null;
   /** Which TTS provider `ttsDefaultVoiceId` belongs to — `null` means the
@@ -92,6 +94,7 @@ const defaultSettings: AppSettings = {
   localStorageOnly: true,
   ttsEnabled: false,
   onboardingDone: false,
+  checkForUpdates: true,
   ttsDefaultVoiceId: null,
   ttsDefaultProviderId: null,
   _settingsVersion: CURRENT_SETTINGS_VERSION,

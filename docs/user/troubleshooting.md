@@ -59,6 +59,14 @@ Browser access must be **on**, and **Other devices on my network** must be on an
 **"Sign in first" appears while using Janus**
 The session ended (signed out elsewhere, expired, or the host restarted). Sign in again.
 
+## Updates
+
+**Check now says "No update information is published yet"**
+The release does not have its update file yet, or you are offline. Try again later, or download the newest installer from the releases page.
+
+**An update failed or "could not be verified"**
+Janus only installs updates signed by the project, so a damaged or tampered download is refused and nothing changes. Check your connection and try again, or install the latest installer manually.
+
 ## Starting up
 
 **Janus will not start after an update**

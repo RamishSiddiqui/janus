@@ -194,6 +194,7 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/components/SettingsNetworkSection.svelte` | — |
 | `src/lib/components/SettingsPrivacySection.svelte` | — |
 | `src/lib/components/SettingsPromptsSection.svelte` | — |
+| `src/lib/components/SettingsUpdatesSection.svelte` | Settings → Updates: the installed version, a manual check, and the automatic-check switch (#139). |
 | `src/lib/components/SettingsVoiceSection.svelte` | — |
 | `src/lib/components/Sidebar.svelte` | — |
 | `src/lib/components/SidebarContextMenu.svelte` | — |
@@ -206,6 +207,7 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/components/TimelineFilter.svelte` | — |
 | `src/lib/components/TitleBar.svelte` | — |
 | `src/lib/components/ToastContainer.svelte` | — |
+| `src/lib/components/UpdatePrompt.svelte` | The "new version available" card in the corner of the desktop app (#139). |
 | `src/lib/components/WaveformBars.svelte` | Small live level-meter for TTS preview playback — bars scale with |
 | `src/lib/components/WebGate.svelte` | The sign-in screen for browsers (issue #94): "Janus Threshold". Two gates fill the screen and slide apart to reveal the forms. Shown only when the page is served by Janus's own web server and nobody is signed in. |
 | `src/lib/components/edges/SharingEdge.svelte` | — |
@@ -231,6 +233,7 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/stores/settings.ts` | Janus — Persisted Settings Store |
 | `src/lib/stores/toast.ts` | Janus — Toast Notification Store Lightweight global toast system for user feedback |
 | `src/lib/stores/ttsPlayback.ts` | Janus — Streamed TTS Playback Queue Subscribes to `tts-chunk` events (one per synthesized sentence during a live chat response) and plays them back gaplessly via the Web Audio API. There is no other audio code anywhere in this codebase — this is genuinely new  |
+| `src/lib/stores/updates.ts` | Janus — App update state Checks the release feed, downloads a signed update and restarts into it. Desktop only; see issue #139. |
 
 ## Frontend services (`src/lib/services`)
 
@@ -259,6 +262,8 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/utils/personaMacros.ts` | Case-insensitive {{user}} -> display-name substitution, mirroring the Rust-side `substitute_user_macro` used in `build_prompt`. Used only for the client-seeded character greeting (`first_mes`), which never passes through the backend prompt pipeline. Uses `pers |
 | `src/lib/utils/providerError.ts` | Janus — Provider Error Humanizer |
 | `src/lib/utils/sanitize.ts` | Janus — HTML Sanitization |
+| `src/lib/utils/updates.test.ts` | Tests for the pure update-prompt helpers (auto-check rules, notes, progress, errors). |
+| `src/lib/utils/updates.ts` | Pure helpers for the in-app update prompt. |
 | `src/lib/utils/webAccount.test.ts` | — |
 | `src/lib/utils/webAccount.ts` | Pure helpers for the browser sign-in screens. |
 

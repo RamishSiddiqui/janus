@@ -29,7 +29,7 @@ git push origin v0.1.3
 
 1. generates release notes with [git-cliff](https://git-cliff.org/) from the commits since the last tag (template in `cliff.toml`);
 2. builds installers in a matrix: macOS (Apple Silicon and Intel), Windows, Linux (`.deb`, `.AppImage`, `.rpm`);
-3. creates a draft GitHub release with every installer attached;
+3. signs the update packages and creates a draft GitHub release with every installer and `latest.json` attached;
 4. publishes it.
 
 The changelog is used only for the release notes; it is not committed back to `master`.
@@ -40,6 +40,23 @@ Before tagging, bump the version in `package.json`, `src-tauri/Cargo.toml` and `
 
 Use `type: short description` (`feat`, `fix`, `refactor`, `docs`, `build`, `test`). The changelog template renders only each commit's **subject line**, so put issue references there, for example `fix: message delete undo (#20)`. A reference only in the body never appears in the release notes.
 
+## In-app updates
+
+The desktop app (`tauri-plugin-updater`, wired in `lib.rs`, with `updater:default` and `process:allow-restart` in `capabilities/default.json`) reads `https://github.com/RamishSiddiqui/janus/releases/latest/download/latest.json`, which `tauri-action` uploads with each release (`uploadUpdaterJson: true`). The frontend side is `src/lib/stores/updates.ts` (state, checks, install, restart), `UpdatePrompt.svelte` (the corner card) and `SettingsUpdatesSection.svelte`. Browsers, dev builds and users who turned the setting off never check automatically.
+
+**Signing.** Update packages are signed with a minisign key pair made by `npx tauri signer generate`. The **public** key is `plugins.updater.pubkey` in `tauri.conf.json`; the **private** key and its password are repository secrets used by the release job:
+
+| Secret | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | contents of the private key file |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password |
+
+Keep a backup of the private key. If it is lost, installed copies cannot verify new updates and everyone must reinstall by hand; if it leaks, rotate the pair and ship a release signed with the old key that carries the new public key. Without the secrets the release build fails, because `createUpdaterArtifacts` is on.
+
+**First updater release.** Versions released before this feature (v0.1.2 and earlier) have no updater, so users install the first one that has it manually. To test the whole flow, release a version, install it, then tag a higher one and watch the first install offer it.
+
+Bumping the version in the three files (see above) is what makes an update available: the check compares the installed version with the one in `latest.json`.
+
 ## Installers are unsigned
 
-Releases are not code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn on first launch. The README explains the one-time steps for users.
+Releases are not OS code-signed yet (the update signature above is separate and only covers in-app updates), so Windows SmartScreen and macOS Gatekeeper warn on first launch. The README explains the one-time steps for users.

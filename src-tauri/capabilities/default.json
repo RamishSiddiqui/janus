@@ -10,6 +10,8 @@
     "fs:default",
     "fs:allow-appdata-read-recursive",
     "shell:default",
+    "updater:default",
+    "process:allow-restart",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
