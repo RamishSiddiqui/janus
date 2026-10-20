@@ -1,0 +1,31 @@
+# Code owners are asked to review every change to the paths below, and the
+# branch rules require their approval. Anything not listed falls under the
+# default owner on the first line.
+*                                  @RamishSiddiqui
+
+# What runs in CI and what ships: workflows, release signing, the update feed.
+/.github/                          @RamishSiddiqui
+/src-tauri/tauri.conf.json         @RamishSiddiqui
+/src-tauri/tauri.release.conf.json @RamishSiddiqui
+
+# What the app is allowed to do on a person's computer.
+/src-tauri/capabilities/           @RamishSiddiqui
+/src-tauri/build.rs                @RamishSiddiqui
+
+# Dependencies: a changed lockfile is how most supply-chain attacks arrive.
+/src-tauri/Cargo.toml              @RamishSiddiqui
+/src-tauri/Cargo.lock              @RamishSiddiqui
+/src-tauri/deny.toml               @RamishSiddiqui
+/package.json                      @RamishSiddiqui
+/package-lock.json                 @RamishSiddiqui
+
+# Accounts, sessions and the browser server.
+/src-tauri/src/web/                @RamishSiddiqui
+/src-tauri/src/commands/auth.rs    @RamishSiddiqui
+/src-tauri/src/db/users.rs         @RamishSiddiqui
+/src/lib/services/webBridge.ts     @RamishSiddiqui
+
+# Policy and legal text.
+/SECURITY.md                       @RamishSiddiqui
+/LICENSE                           @RamishSiddiqui
+/CLA.md                            @RamishSiddiqui

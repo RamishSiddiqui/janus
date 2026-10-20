@@ -1,0 +1,12 @@
+# cargo-deny: where crates may come from and which ones are banned.
+# Known vulnerabilities are checked separately by the "Security audit" workflow.
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"

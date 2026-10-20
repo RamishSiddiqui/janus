@@ -1,0 +1,25 @@
+name: Network destinations
+
+# A change that makes the app talk to a new host needs a maintainer's review.
+# See docs/developer/security.md. It runs on every pull request (the script finds
+# nothing to flag when no source changed), so it can be a required check.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  new-hosts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Look for new hosts
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+        run: python .github/scripts/check_new_hosts.py

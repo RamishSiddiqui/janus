@@ -1,0 +1,32 @@
+name: CLA
+
+# Contributions are accepted under the Contributor License Agreement (CLA.md).
+# The pull request description must carry the ticked agreement from the template.
+# The repository owner and dependency bots are exempt.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  agreed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the agreement
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          OWNER: ${{ github.repository_owner }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          case "$AUTHOR" in
+            "$OWNER"|dependabot\[bot\]) echo "Exempt: $AUTHOR"; exit 0 ;;
+          esac
+          if printf '%s' "$BODY" | grep -Eiq '^\s*-\s*\[x\]\s*I have read and agree to the Janus Contributor License Agreement'; then
+            echo "CLA agreed."
+          else
+            echo "::error::Tick the CLA box in the pull request description (see CLA.md)."
+            exit 1
+          fi

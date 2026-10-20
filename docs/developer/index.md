@@ -33,6 +33,7 @@ For people who want to understand, change or extend Janus. Start with {doc}`setu
 | {doc}`testing` | Backend and frontend tests and what each suite covers. |
 | {doc}`ci-release` | The CI checks, dependency updates and how a release is made. |
 | {doc}`contributing` | The workflow, the path for a new feature, and conventions. |
+| {doc}`security` | How the repository is protected, what reviewers check, and the maintainer's duties. |
 | {doc}`docs` | How these docs are built and kept in sync with the code. |
 
 ## Reference (generated)
@@ -59,5 +60,6 @@ events
 testing
 ci-release
 contributing
+security
 docs
 ```
