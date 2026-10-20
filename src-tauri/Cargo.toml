@@ -108,7 +108,7 @@ tokio-stream = "0.1"
 # (see build/download/dist.tsv in the ort-sys source: `ms@1.28.0`) — same
 # ABI, just loaded dynamically instead of linked statically.
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
-ndarray = "0.16"
+ndarray = "0.17"
 ndarray-npy = { version = "0.9", default-features = false, features = ["npz"] }
 misaki-rs = { version = "0.3", default-features = false }
 hound = "3.5"
