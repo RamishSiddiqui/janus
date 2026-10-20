@@ -663,12 +663,25 @@
 
   /* ── Responsive ── */
   @media (max-width: 600px) {
-    .card-grid { grid-template-columns: 1fr; padding: 16px; }
+    /* Three to a row, so a phone shows many characters at once; the card is
+       compact, with the name and tags only. */
+    .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px 10px; }
+    .card-body { padding: 8px 8px 9px; gap: 4px; }
+    .card-name { font-size: var(--text-sm); line-height: 1.25; overflow-wrap: anywhere; }
+    .card-desc { display: none; }
+    .card-bottom { flex-wrap: wrap; gap: 2px; }
+    .card-tag { padding: 2px 6px; }
+    .card-action-btn, .fav-btn { padding: 3px; }
     .gallery-header {
       flex-direction: column; gap: 12px; align-items: flex-start; padding: 16px;
     }
     .gallery-header-right { width: 100%; flex-wrap: wrap; }
     .gallery-search { width: 100%; }
+  }
+
+  /* Touch screens have no hover, so keep the card actions visible. */
+  @media (hover: none) {
+    .card-action-btn { opacity: 0.6; }
   }
 
   /* ── Empty State ── */

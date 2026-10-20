@@ -1396,6 +1396,7 @@ export interface WebAccessStatus {
   settings: { enabled: boolean; lan: boolean; port: number };
   running: boolean;
   bound: string | null;
+  lan_ips: string[];
 }
 
 export async function authStatus(): Promise<AccountStatus> {

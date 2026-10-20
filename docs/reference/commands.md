@@ -4,7 +4,7 @@
 
 Every backend command the frontend can call: **142 commands** in 26 modules. The desktop app calls them through Tauri's `invoke()`; a browser calls the ones marked **Browser** through `POST /api/rpc/{command}` (see {doc}`/developer/browser-server`). Arguments are sent as a JSON object with camelCase keys. A failed command rejects with `{ error, message }`.
 
-Browser-callable: **111** of 142. The rest read or write files on the host machine, manage the host (voice model downloads, network settings, account switching), or are not needed in a browser yet.
+Browser-callable: **113** of 142. The rest read or write files on the host machine, manage the host (voice model downloads, network settings, account switching), or are not needed in a browser yet.
 
 | Module | Commands |
 |---|---|
@@ -1639,7 +1639,7 @@ Returns `Result<Vec<ModelEntry>, MythicError>`
 
 Source: `src-tauri/src/commands/resource_monitor.rs`
 
-### `get_resource_usage`
+### `get_resource_usage` — **Browser**
 
 Reads this process's own current memory/CPU usage. Cheap — a targeted
 refresh of one PID, not a full system scan.
@@ -1820,7 +1820,7 @@ Returns `Result<(), MythicError>`
 
 Source: `src-tauri/src/commands/tts.rs`
 
-### `tts_model_status`
+### `tts_model_status` — **Browser**
 
 Whether the Kokoro model + voice pack are already cached on disk. Pure
 filesystem check — doesn't load the engine.
