@@ -57,6 +57,10 @@ Squash-merge, so the history stays one reviewed commit per change.
 - The **update signing key** is the most valuable secret: a copy of it can push code to every installed Janus. Keep an offline backup, never put it in the repository or a chat, and rotate it if it might have leaked ({doc}`ci-release`).
 - Report and fix vulnerabilities privately, through GitHub's private vulnerability reporting (see `SECURITY.md`).
 
+## Lookalikes and forks
+
+The code is AGPL-3.0, so anyone may fork it, and nothing stops someone shipping a modified copy. What protects users is that installed copies only accept updates signed with the project's key, that the official releases carry `SHA256SUMS` and a build-provenance attestation, and that the README tells people to install from the Releases page only. The name and logo are covered by the [name and trademark policy](https://github.com/RamishSiddiqui/janus/blob/master/TRADEMARK.md); report a copy that uses them to pass itself off as the official app through the private route in `SECURITY.md`.
+
 ## Reporting something suspicious
 
 If you find code in a pull request, a dependency or a release that looks malicious, do not discuss it in a public issue. Report it through the private route in `SECURITY.md`.
