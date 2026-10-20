@@ -20,6 +20,10 @@ Under the box you see a running **token** count for what will be sent.
 
 The pill at the right of the input shows the model that will answer. Click it to search your enabled models and pick another for this chat. Models are enabled under [AI Studio](providers-and-models.md).
 
+```{note}
+The **Bold** and **AI Assist** buttons beside the attach button are placeholders for now and do nothing. Type `**bold**` yourself.
+```
+
 ### Images
 
 - Press the paperclip to attach images (PNG, JPEG, WebP or GIF, up to 10 MB each, up to 4 per message), or **paste** a screenshot straight into the box.
