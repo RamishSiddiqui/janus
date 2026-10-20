@@ -2,6 +2,10 @@
 
 Janus is a desktop roleplay chat app. Your characters, chats and settings stay on your computer. To chat you need one thing: a language model to write the replies.
 
+```{note}
+Download Janus only from the project's **Releases** page on GitHub. Each release lists `SHA256SUMS` and has a build record you can check with `gh attestation verify`; see the README for the commands. Once installed, Janus updates itself and only accepts updates signed by the project.
+```
+
 ## 1. Connect a model
 
 On first launch the setup guide asks where the AI should come from. Pick one:

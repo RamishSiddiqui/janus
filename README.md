@@ -130,6 +130,22 @@ Janus isn't code-signed yet, so your OS will flag it as coming from an unidentif
 - **Windows**: SmartScreen will say "Windows protected your PC" → click **More info** → **Run anyway**.
 - **macOS**: Gatekeeper will refuse to open it the normal way → right-click the app → **Open** → confirm in the dialog. (Only needs doing once.)
 
+### Install only from official releases
+
+Download Janus only from this repository's **[Releases](../../releases)** page. Copies from other sites, mirrors or chat links may be modified, and Janus has no connection to anyone who offers it elsewhere. Once installed, the app updates itself from these releases and only accepts updates signed with the project's key.
+
+You can check a download before you run it. Each release lists `SHA256SUMS`, and every file carries a build-provenance record showing it was built by this repository's release workflow:
+
+```bash
+# compare the hash with the one in SHA256SUMS
+sha256sum Janus_0.1.4_amd64.deb            # Windows PowerShell: Get-FileHash <file>
+
+# check it was built by this repository (needs the GitHub CLI)
+gh attestation verify Janus_0.1.4_amd64.deb --repo RamishSiddiqui/janus
+```
+
+The project's name and logo are covered by the [name and trademark policy](TRADEMARK.md).
+
 ### Building from source instead
 
 If you'd rather build it yourself (or want to run a dev build with hot-reload):
