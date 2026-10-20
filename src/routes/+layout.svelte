@@ -270,7 +270,9 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    width: 100vw;
+    /* Phones: the visible height, not the height behind the browser's toolbars. */
+    height: 100dvh;
+    width: 100%;
     overflow: hidden;
   }
 
@@ -278,7 +280,7 @@
     display: flex;
     flex: 1;
     min-height: 0;
-    width: 100vw;
+    width: 100%;
     overflow: hidden;
     background: var(--surface-inverse);
   }

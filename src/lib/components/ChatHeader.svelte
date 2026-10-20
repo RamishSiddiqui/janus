@@ -379,4 +379,14 @@
     opacity: 1;
     transform: translateX(0);
   }
+
+  /* Phones: keep the header to one compact row, with the model name cut short. */
+  @media (max-width: 768px) {
+    .ch-left { min-width: 0; flex: 1 1 0; gap: 10px; }
+    .ch-info { min-width: 0; }
+    .ch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ch-status { min-width: 0; }
+    .ch-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .ch-right { flex-shrink: 0; gap: 4px; }
+  }
 </style>
