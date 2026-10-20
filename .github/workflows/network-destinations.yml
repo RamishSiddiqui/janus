@@ -1,14 +1,12 @@
 name: Network destinations
 
 # A change that makes the app talk to a new host needs a maintainer's review.
-# See docs/developer/security.md.
+# See docs/developer/security.md. It runs on every pull request (the script finds
+# nothing to flag when no source changed), so it can be a required check.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-    paths:
-      - 'src/**'
-      - 'src-tauri/src/**'
 
 permissions:
   contents: read
