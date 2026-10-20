@@ -81,13 +81,23 @@ jobs:
           # constant-time rewrite is still in progress. Revisit once either
           # surrealdb-core updates its jsonwebtoken/rsa dependency or a
           # patched rsa release ships.
+          # RUSTSEC-2026-0367/0368/0369 (zip: SUID/SGID bits, symlinks and Unix
+          # permissions applied by ZipArchive::extract / ZipStreamReader::extract):
+          # all about the extract() helpers on untrusted archives, patched
+          # only in zip 9 (a major bump). Janus never calls extract(): zip 2.4.2
+          # is only read for the voice pack's .npz arrays (ndarray-npy), and
+          # zip 4.6.1 comes with tauri-plugin-updater, which unpacks an update
+          # only after its minisign signature has verified. Revisit when the
+          # dependents move to zip 9.
+          #
           ignore: >-
             RUSTSEC-2026-0235,RUSTSEC-2024-0411,RUSTSEC-2024-0412,RUSTSEC-2024-0413,
             RUSTSEC-2024-0414,RUSTSEC-2024-0415,RUSTSEC-2024-0416,RUSTSEC-2024-0417,
             RUSTSEC-2024-0418,RUSTSEC-2024-0419,RUSTSEC-2024-0420,RUSTSEC-2024-0429,
             RUSTSEC-2025-0075,RUSTSEC-2025-0080,RUSTSEC-2025-0081,RUSTSEC-2025-0098,
             RUSTSEC-2025-0100,RUSTSEC-2024-0436,RUSTSEC-2024-0370,
-            RUSTSEC-2023-0089,RUSTSEC-2023-0071
+            RUSTSEC-2023-0089,RUSTSEC-2023-0071,
+            RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369
 
   npm-audit:
     runs-on: ubuntu-latest
