@@ -336,7 +336,50 @@ function unlistenCommand(args: Record<string, unknown>) {
   if (cbId !== undefined) callbacks.delete(cbId);
 }
 
-async function bridgeInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
+/** A "save as" in a browser: remember the file name and let the next write become a download. */
+const DOWNLOAD_PREFIX = 'browser-download:';
+
+function saveDialog(options: DialogOptions & { defaultPath?: string }): string {
+  const name = (options.defaultPath ?? '').split(/[\\/]/).pop() || 'janus-export';
+  return `${DOWNLOAD_PREFIX}${name}`;
+}
+
+/** Hands bytes to the browser as a file download. */
+export function downloadBytes(name: string, bytes: BlobPart) {
+  const url = URL.createObjectURL(new Blob([bytes]));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** The file plugin's write calls carry the path in a header and the bytes as the body. */
+function writeDownload(body: unknown, options: { headers?: Record<string, string> } | undefined) {
+  let path = options?.headers?.path ?? '';
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    /* already plain */
+  }
+  if (!path.startsWith(DOWNLOAD_PREFIX)) {
+    throw { error: 'unsupported', message: 'This is not available in the browser.' } as WebError;
+  }
+  downloadBytes(path.slice(DOWNLOAD_PREFIX.length), body as BlobPart);
+  return null;
+}
+
+async function bridgeInvoke(
+  cmd: string,
+  args?: any,
+  options?: { headers?: Record<string, string> },
+): Promise<unknown> {
+  if (cmd === 'plugin:dialog|save') return saveDialog((args?.options ?? {}) as DialogOptions);
+  if (cmd === 'plugin:fs|write_text_file' || cmd === 'plugin:fs|write_file') {
+    return writeDownload(args, options);
+  }
   if (cmd === 'plugin:event|listen') return listenCommand(args ?? {});
   if (cmd === 'plugin:event|unlisten') return unlistenCommand(args ?? {});
   if (cmd === 'plugin:dialog|open') return pickFiles((args?.options ?? {}) as DialogOptions);

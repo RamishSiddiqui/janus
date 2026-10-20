@@ -760,4 +760,16 @@
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
+
+  /* ── Phones ── */
+  @media (max-width: 768px) {
+    .topbar { padding: 10px 14px; }
+    .topbar-right { flex-wrap: wrap; width: 100%; }
+    .view-chip { padding: 6px 11px; }
+    /* The four counts and the timeline filter scroll sideways instead of being cut off. */
+    .stats-strip { padding: 8px 6px; overflow-x: auto; scrollbar-width: none; }
+    .stats-strip::-webkit-scrollbar { display: none; }
+    .stat { padding: 0 10px; flex-shrink: 0; }
+    .stat-divider { flex-shrink: 0; }
+  }
 </style>

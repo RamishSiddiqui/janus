@@ -221,3 +221,34 @@ describe('install', () => {
     expect(isWebMode()).toBe(true);
   });
 });
+
+describe('saving files in the browser', () => {
+  it('turns a save dialog plus a file write into a download', async () => {
+    const click = vi.fn();
+    const anchor: Record<string, unknown> = { click, remove: vi.fn() };
+    vi.stubGlobal('document', {
+      createElement: vi.fn(() => anchor),
+      body: { appendChild: vi.fn() },
+    });
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+
+    const token = await internals.invoke('plugin:dialog|save', {
+      options: { defaultPath: 'C:\\logs\\janus-logs.log' },
+    });
+    expect(token).toBe('browser-download:janus-logs.log');
+
+    const bytes = new TextEncoder().encode('hello');
+    await internals.invoke('plugin:fs|write_text_file', bytes, {
+      headers: { path: encodeURIComponent(token), options: '{}' },
+    });
+    expect(anchor.download).toBe('janus-logs.log');
+    expect(click).toHaveBeenCalled();
+  });
+
+  it('refuses to write to a real path', async () => {
+    await expect(
+      internals.invoke('plugin:fs|write_text_file', new Uint8Array(), { headers: { path: 'C:/x.txt' } }),
+    ).rejects.toMatchObject({ error: 'unsupported' });
+  });
+});
+

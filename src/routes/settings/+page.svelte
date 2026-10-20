@@ -31,7 +31,8 @@
     { id: 'image', label: 'Image Generation', icon: 'image', accent: '#fbbf24' },
     { id: 'prompts', label: 'Prompts', icon: 'file-text', accent: '#34d399' },
     { id: 'privacy', label: 'Data & Privacy', icon: 'shield', accent: '#fb7185' },
-    { id: 'logging', label: 'Logging', icon: 'terminal', accent: '#94a3b8' },
+    // The log files belong to the host computer, so they are not offered to browsers.
+    ...(isWebMode() ? [] : [{ id: 'logging' as const, label: 'Logging', icon: 'terminal', accent: '#94a3b8' }]),
     // Updates install the desktop app itself, so a browser has nothing to update.
     ...(isWebMode() ? [] : [{ id: 'updates' as const, label: 'Updates', icon: 'download', accent: '#4ade80' }]),
     // Network access is managed from the desktop window, not from a browser.

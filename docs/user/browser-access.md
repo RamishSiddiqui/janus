@@ -35,11 +35,11 @@ A member (not the admin) who signs in on the desktop does so with a passphrase, 
 
 ## What works in a browser
 
-Almost everything: chatting with streaming replies, characters and personas, memories, lorebooks, providers and models, scene images, voice with the built-in engine's streamed audio, settings, and uploads (attach an image, paste a screenshot, upload a portrait, import a character or persona card using the browser's own file picker). Layout adapts to phones: the sidebar becomes a menu button at the top left.
+Almost everything: saving your data export and scene images to your device (they download like any file), chatting with streaming replies, characters and personas, memories, lorebooks, providers and models, scene images, voice with the built-in engine's streamed audio, settings, and uploads (attach an image, paste a screenshot, upload a portrait, import a character or persona card using the browser's own file picker). Layout adapts to phones: the sidebar becomes a menu button at the top left.
 
 ## Limits today
 
-- **Desktop only:** network settings, account switching, the voice model download, and anything that saves a file to disk (data export, log export, saving scene images).
+- **Desktop only:** network settings, account switching, the voice model download, and the log files (they belong to the computer running Janus).
 - Replaying a message's voice works on the desktop only.
 - The context side panel is hidden on narrow screens.
 - Settings such as theme are stored per device, so a phone and the desktop keep their own.
