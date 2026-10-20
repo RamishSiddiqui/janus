@@ -150,3 +150,7 @@ lto = true            # Link-time optimization
 strip = true          # Strip debug symbols
 codegen-units = 1     # Better optimization (slower compile)
 panic = "abort"       # No unwinding overhead
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-process = "2.4.0"
+tauri-plugin-updater = "2.14.0"

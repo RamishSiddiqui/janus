@@ -39,5 +39,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwMENCQTQ0RkM3NEIyNzQKUldSMHNuVDhSTG9NOEFVVjRST0V4VHQ3a0FrcElkMTIycTdYQlNmb3ZYN29EQ0Zobm80MkpNWHcK",
+      "endpoints": [
+        "https://github.com/RamishSiddiqui/janus/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

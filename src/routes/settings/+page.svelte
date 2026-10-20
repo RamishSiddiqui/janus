@@ -10,6 +10,7 @@
   import SettingsPromptsSection from '$lib/components/SettingsPromptsSection.svelte';
   import SettingsLoggingSection from '$lib/components/SettingsLoggingSection.svelte';
   import SettingsNetworkSection from '$lib/components/SettingsNetworkSection.svelte';
+  import SettingsUpdatesSection from '$lib/components/SettingsUpdatesSection.svelte';
   import { isWebMode } from '$lib/services/webBridge';
   import { settings } from '$lib/stores/settings';
   import { browser } from '$app/environment';
@@ -20,7 +21,7 @@
   // quality knobs, the reasoning toggle, etc). A single active-section panel
   // with sidebar nav (the VS Code / Linear / macOS System Settings pattern)
   // scales to any number of sections without the page just getting taller.
-  type SettingsSection = 'appearance' | 'chat' | 'context' | 'voice' | 'privacy' | 'image' | 'prompts' | 'logging' | 'network';
+  type SettingsSection = 'appearance' | 'chat' | 'context' | 'voice' | 'privacy' | 'image' | 'prompts' | 'logging' | 'network' | 'updates';
   let activeSection = $state<SettingsSection>('appearance');
   const NAV_ITEMS: { id: SettingsSection; label: string; icon: string; accent: string }[] = [
     { id: 'appearance', label: 'Appearance', icon: 'palette', accent: '#9075f2' },
@@ -31,6 +32,8 @@
     { id: 'prompts', label: 'Prompts', icon: 'file-text', accent: '#34d399' },
     { id: 'privacy', label: 'Data & Privacy', icon: 'shield', accent: '#fb7185' },
     { id: 'logging', label: 'Logging', icon: 'terminal', accent: '#94a3b8' },
+    // Updates install the desktop app itself, so a browser has nothing to update.
+    ...(isWebMode() ? [] : [{ id: 'updates' as const, label: 'Updates', icon: 'download', accent: '#4ade80' }]),
     // Network access is managed from the desktop window, not from a browser.
     ...(isWebMode() ? [] : [{ id: 'network' as const, label: 'Network Access', icon: 'network', accent: '#cda15f' }]),
   ];
@@ -189,6 +192,10 @@
 
     {#if activeSection === 'privacy'}
       <SettingsPrivacySection onImported={() => importGeneration++} />
+    {/if}
+
+    {#if activeSection === 'updates'}
+      <SettingsUpdatesSection />
     {/if}
 
     {#if activeSection === 'network'}

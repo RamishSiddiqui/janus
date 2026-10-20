@@ -21,6 +21,8 @@ Janus is a local-first desktop app. Most of its attack surface is: malicious cha
 
 When the admin turns on **browser access**, Janus also runs an HTTP server (off by default, loopback-only unless LAN access is enabled) with user accounts. Reports about it are in scope and welcome: authentication and session handling, the ownership checks that keep accounts' data separate (one account reading or changing another's data), CSRF and cross-origin protection, the file and upload endpoints, and rate limiting and lockout. Browser access serves plain HTTP and is documented as suitable only for a trusted home network; the absence of TLS on its own is a known limitation rather than a vulnerability.
 
+The desktop app also checks GitHub for **updates** and installs them in place. Update packages are signed with a project key; the app embeds the public key and refuses anything that does not verify. Reports about this path (a way to make the app accept an unsigned or modified update, or a leaked signing key) are in scope.
+
 ## Response
 
 This is a young, mostly solo-maintained project — there's no formal SLA yet, but security reports get priority over regular issues. Expect an acknowledgment within a few days.

@@ -2,7 +2,7 @@
 
 # Settings reference
 
-The 24 app settings, read from `src/lib/stores/settings.ts`. They are saved in the browser's local storage on whichever device you use (a desktop window and a phone each keep their own). Long default values (the prompts) are shown as `(text)`.
+The 25 app settings, read from `src/lib/stores/settings.ts`. They are saved in the browser's local storage on whichever device you use (a desktop window and a phone each keep their own). Long default values (the prompts) are shown as `(text)`.
 
 | Setting | Type | Default | Meaning |
 |---|---|---|---|
@@ -18,6 +18,7 @@ The 24 app settings, read from `src/lib/stores/settings.ts`. They are saved in t
 | `localStorageOnly` | `boolean` | `true` | Privacy mode: nothing leaves the device except calls to your chosen AI providers. |
 | `ttsEnabled` | `boolean` | `false` | Master switch for voice output. Off by default — TTS must be opt-in, never autoplay for a user who hasn't explicitly turned it on. |
 | `onboardingDone` | `boolean` | `false` | True once the first-run setup guide has been finished or skipped. |
+| `checkForUpdates` | `boolean` | `true` | Look for a newer Janus on GitHub at launch and every few hours. Only the version number is sent. |
 | `ttsDefaultVoiceId` | `string \| null` | `null` | Fallback voice used for a character with no `voice_id` of their own. |
 | `ttsDefaultProviderId` | `string \| null` | `null` | Which TTS provider `ttsDefaultVoiceId` belongs to — `null` means the built-in Kokoro engine (unchanged default), a `ProviderConfig` id means a cloud provider instead (see issue #78). |
 | `systemPrompt` | `string` | `(text)` | The app-wide instructions that frame every roleplay generation (editable under Settings, Prompts). |

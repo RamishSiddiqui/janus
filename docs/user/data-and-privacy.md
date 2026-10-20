@@ -7,10 +7,11 @@ Janus is local-first. Your characters, chats, memories and settings live on your
 - The text of your prompts (and any attached images) go to your **chat provider** to get a reply. A local provider such as Ollama keeps even that on your machine.
 - Scene requests go to your **image or video provider**, and voice requests to a **cloud voice provider** if you use one. The built-in Kokoro voice stays local.
 - Memory extraction, summaries, NPC detection and similar background steps also call your chat provider with parts of the conversation.
+- The desktop app asks GitHub whether a newer Janus exists (at launch and every few hours). The request carries no personal data and no part of your data; turn it off under **Settings, Updates**.
 - Janus has **no telemetry, no analytics and no cloud sync**.
 - API keys are stored in the local database and are sent only to their own provider. Your own providers (keys included) are visible to your account on the Providers page, in the desktop app or in a [browser](browser-access.md); other accounts cannot see them.
 
-**Local Storage Only** (Settings, Data and Privacy) records your intent to keep it that way; it is on by default.
+**Local Storage Only** (Settings, Data and Privacy) records your intent to keep it that way; it is on by default. It does not switch off the update check, which is its own setting.
 
 ## Where the data lives
 
