@@ -15,6 +15,15 @@ export function canAutoCheck(opts: {
   return opts.enabled && opts.isDesktop && !opts.isDev;
 }
 
+/**
+ * Development builds (`tauri dev`) never install updates: their version is
+ * whatever the branch says, and replacing a dev build with a release would be
+ * wrong. A developer testing the update flow sets `VITE_JANUS_UPDATES=1`.
+ */
+export function updatesBlockedInDev(isDev: boolean, override: string | undefined): boolean {
+  return isDev && override !== '1';
+}
+
 /** Release notes are Markdown from the changelog; show them as plain lines. */
 export function releaseNotesLines(notes: string | null | undefined, max = 8): string[] {
   if (!notes) return [];

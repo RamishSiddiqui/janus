@@ -5,6 +5,7 @@ import {
   downloadFraction,
   readDismissed,
   releaseNotesLines,
+  updatesBlockedInDev,
   updateErrorMessage,
   writeDismissed,
 } from './updates';
@@ -15,6 +16,15 @@ describe('canAutoCheck', () => {
     expect(canAutoCheck({ enabled: false, isDesktop: true, isDev: false })).toBe(false);
     expect(canAutoCheck({ enabled: true, isDesktop: false, isDev: false })).toBe(false);
     expect(canAutoCheck({ enabled: true, isDesktop: true, isDev: true })).toBe(false);
+  });
+});
+
+describe('updatesBlockedInDev', () => {
+  it('blocks dev builds unless the override is set', () => {
+    expect(updatesBlockedInDev(true, undefined)).toBe(true);
+    expect(updatesBlockedInDev(true, '0')).toBe(true);
+    expect(updatesBlockedInDev(true, '1')).toBe(false);
+    expect(updatesBlockedInDev(false, undefined)).toBe(false);
   });
 });
 

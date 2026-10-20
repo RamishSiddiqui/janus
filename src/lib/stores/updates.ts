@@ -15,6 +15,7 @@ import {
   downloadFraction,
   readDismissed,
   updateErrorMessage,
+  updatesBlockedInDev,
   writeDismissed,
 } from '$lib/utils/updates';
 
@@ -67,6 +68,12 @@ const isDesktop = () => browser && '__TAURI_INTERNALS__' in window && !isWebMode
 /** Looks for a newer version. `manual` checks report "up to date" and errors; automatic ones stay quiet. */
 export async function checkForUpdates(manual = false): Promise<void> {
   if (!isDesktop()) return;
+  if (updatesBlockedInDev(import.meta.env.DEV, import.meta.env.VITE_JANUS_UPDATES)) {
+    if (manual) {
+      updates.update((s) => ({ ...s, status: 'error', error: 'Updates are turned off in development builds.' }));
+    }
+    return;
+  }
   const current = get(updates);
   if (current.status === 'checking' || current.status === 'downloading' || current.status === 'installing') return;
 
@@ -141,7 +148,7 @@ export function startAutoUpdateChecks(): void {
   stopAutoUpdateChecks();
   const run = () => {
     const s = get(settings);
-    if (canAutoCheck({ enabled: s.checkForUpdates, isDesktop: isDesktop(), isDev: import.meta.env.DEV })) {
+    if (canAutoCheck({ enabled: s.checkForUpdates, isDesktop: isDesktop(), isDev: updatesBlockedInDev(import.meta.env.DEV, import.meta.env.VITE_JANUS_UPDATES) })) {
       void checkForUpdates(false);
     }
   };
