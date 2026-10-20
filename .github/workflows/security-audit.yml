@@ -90,6 +90,13 @@ jobs:
           # only after its minisign signature has verified. Revisit when the
           # dependents move to zip 9.
           #
+          # RUSTSEC-2026-0381 (webpki-roots: bundled roots trust distrusted emSign
+          # intermediates): fixed in webpki-roots 1.0.10, which Janus now uses for
+          # its own HTTPS clients. The remaining 0.26.11 copy comes only from
+          # surrealdb -> tokio-tungstenite, SurrealDB's WebSocket client, which
+          # Janus never opens (it uses the embedded RocksDB engine, no remote
+          # connection). Drop this once surrealdb moves to webpki-roots 1.x.
+          #
           ignore: >-
             RUSTSEC-2026-0235,RUSTSEC-2024-0411,RUSTSEC-2024-0412,RUSTSEC-2024-0413,
             RUSTSEC-2024-0414,RUSTSEC-2024-0415,RUSTSEC-2024-0416,RUSTSEC-2024-0417,
@@ -97,7 +104,8 @@ jobs:
             RUSTSEC-2025-0075,RUSTSEC-2025-0080,RUSTSEC-2025-0081,RUSTSEC-2025-0098,
             RUSTSEC-2025-0100,RUSTSEC-2024-0436,RUSTSEC-2024-0370,
             RUSTSEC-2023-0089,RUSTSEC-2023-0071,
-            RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369
+            RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369,
+            RUSTSEC-2026-0381
 
   npm-audit:
     runs-on: ubuntu-latest
