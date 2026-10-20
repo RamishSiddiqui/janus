@@ -166,7 +166,7 @@ On first launch Janus walks you through setup: connect a model, then start a cha
 - **Free cloud models:** OpenRouter offers models marked `:free` (needs a free API key), and Puter offers free models through a personal token.
 - **Image generation:** the AI Horde preset is free and needs no signup, but it makes images only, not chat.
 
-Details are in the [getting started guide](docs/getting-started.md) and the [browser access guide](docs/browser-access.md). The docs are built with Sphinx and Furo: `pip install -r docs/requirements.txt && python -m sphinx -b html docs docs/_build/html`.
+Details are in the [getting started guide](docs/user/getting-started.md). The full [user guide](docs/user/index.md) and [developer guide](docs/developer/index.md) live in `docs/` and are built with Sphinx and Furo: `pip install -r docs/requirements.txt && python -m sphinx -b html docs docs/_build/html`.
 
 ## Tech stack
 

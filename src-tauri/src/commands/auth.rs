@@ -46,6 +46,7 @@ async fn require_current(
         .ok_or_else(|| MythicError::Unauthorized("Sign in first.".to_string()))
 }
 
+/// Whether any account exists, who may sign up, and which account this window is acting as (plus the admin it is acting for, if any).
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_status(
@@ -85,6 +86,7 @@ pub async fn auth_register(
     })
 }
 
+/// Signs the desktop window in as an account, checking its passphrase.
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_login(
@@ -133,6 +135,7 @@ pub async fn auth_switch_to(
     Ok(UserInfo::from(&target))
 }
 
+/// Signs the desktop window out. Until someone signs in again, account-owned data is not reachable.
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_logout(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), MythicError> {
@@ -142,6 +145,7 @@ pub async fn auth_logout(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), 
     Ok(())
 }
 
+/// Sets a new passphrase using the account's recovery key, signs every other session out, and issues a fresh recovery key.
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_reset_with_recovery(
@@ -161,6 +165,7 @@ pub async fn auth_reset_with_recovery(
     })
 }
 
+/// Changes the signed-in account's passphrase after checking the current one.
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_change_passphrase(
@@ -173,6 +178,7 @@ pub async fn auth_change_passphrase(
     service::change_passphrase(&db, &me.id, &current_passphrase, &new_passphrase, None).await
 }
 
+/// Admin only: chooses whether anyone can sign up (`open`) or only the admin creates accounts (`admin_only`).
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_set_signup_mode(
@@ -184,6 +190,7 @@ pub async fn auth_set_signup_mode(
     service::set_signup_mode(&db, &me, mode).await
 }
 
+/// Admin only: lists every account.
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_list_users(
@@ -213,6 +220,7 @@ pub async fn auth_create_user(
     })
 }
 
+/// Admin only: deletes an account together with its characters, chats, memories, providers and stored files.
 #[tauri::command]
 #[specta::specta]
 pub async fn auth_delete_user(

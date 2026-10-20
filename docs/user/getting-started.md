@@ -28,9 +28,14 @@ More characters:
 
 ## 3. Optional extras
 
-- **Scene images:** add an image provider. The AI Horde preset is free and needs no signup. ComfyUI and WanGP work for local generation.
-- **Voice:** turn on voice in Settings. Built-in Kokoro runs locally; ElevenLabs, Google Cloud TTS and Fish Audio are available as cloud providers.
-- **Memories and lorebooks:** Janus can remember facts from your chats and inject world details when keywords appear.
+- **Scene images:** add an image provider. The AI Horde preset is free and needs no signup. ComfyUI and WanGP work for local generation. See [Emotions and scenes](emotions-and-scenes.md).
+- **Voice:** turn on voice in Settings. Built-in Kokoro runs locally (Windows for now); ElevenLabs, Google Cloud TTS and Fish Audio are available as cloud providers. See [Voice](voice.md).
+- **Memory:** Janus can remember facts from your chats and add world details when keywords appear. See [Memories](memories.md), [Lorebooks](lorebooks.md) and [How Janus remembers](how-janus-remembers.md).
+- **Your phone or another computer:** see [Browser access](browser-access.md).
+
+## Where to go next
+
+[Chatting](chatting.md) explains messages, timelines and branching. [Settings](settings.md) lists every option. If something does not work, try [Troubleshooting](troubleshooting.md).
 
 ## Troubleshooting
 

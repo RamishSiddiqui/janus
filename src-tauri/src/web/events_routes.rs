@@ -13,6 +13,7 @@ use tokio::sync::broadcast::error::RecvError;
 use super::util::ActiveUser;
 use super::WebState;
 
+/// `GET /api/events`: the signed-in account's events as a Server-Sent Events stream.
 pub async fn stream(
     State(st): State<WebState>,
     ActiveUser(authed): ActiveUser,

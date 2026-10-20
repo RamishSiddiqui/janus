@@ -77,6 +77,7 @@ pub struct BackupFileInfo {
     pub size_bytes: String,
 }
 
+/// Lists the backup files in the app's `backups/` folder, newest first.
 #[tauri::command]
 #[specta::specta]
 pub async fn list_data_backups(
