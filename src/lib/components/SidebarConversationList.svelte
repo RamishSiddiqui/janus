@@ -302,7 +302,7 @@
     {/each}
 
     {#if $hasMoreConversations}
-      <button class="load-more-btn" onclick={loadMoreConversations}>
+      <button class="load-more-btn" data-keep-drawer onclick={loadMoreConversations}>
         <Icon name="chevron-down" size={12} color="#8B5CF6" />
         <span>Load more ({conversations.length} of {$totalConversations})</span>
       </button>

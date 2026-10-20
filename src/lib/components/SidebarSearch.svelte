@@ -121,7 +121,7 @@
     onkeydown={handleSearchKeydown}
     onfocus={() => searchFocused = true} onblur={() => searchFocused = false} />
   {#if searchInput}
-    <button class="search-clear" onclick={clearSearch} aria-label="Clear search">
+    <button class="search-clear" data-keep-drawer onclick={clearSearch} aria-label="Clear search">
       <Icon name="x" size={12} color="#6b6b8a" />
     </button>
   {/if}

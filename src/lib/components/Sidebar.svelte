@@ -28,7 +28,10 @@
   /** On a phone the drawer closes after any button or link inside it is used. */
   function closeDrawerOnPick(e: MouseEvent) {
     if (!mobileOpen) return;
-    if ((e.target as HTMLElement).closest('button, a, [role="button"]')) onMobileClose?.();
+    const hit = (e.target as HTMLElement).closest('button, a, [role="button"]');
+    // Expanders (AI Studio, conversation groups), clearing the search and
+    // loading more only change the list, so the drawer stays open for them.
+    if (hit && !hit.hasAttribute('aria-expanded') && !hit.closest('[data-keep-drawer]')) onMobileClose?.();
   }
 
   let showConversations = $derived(currentPath === '/');
@@ -92,6 +95,9 @@
     {/if}
   </div>
 
+  <!-- Everything between the brand and the pinned Trash/Settings scrolls as one,
+       so an expanded AI Studio never pushes the chats list out of reach. -->
+  <div class="sb-scroll">
   <SidebarNav {navItems} {currentPath} {collapsed} {onNavigate} />
 
   {#if showConversations && !collapsed}
@@ -109,6 +115,7 @@
       />
     {/if}
   {/if}
+  </div>
 
   <!-- Bottom-pinned Trash + Settings -->
   <div class="sb-bottom">
@@ -155,6 +162,26 @@
     border-right: 1px solid rgba(139,92,246,0.08);
     transition: width var(--duration-normal) var(--ease-out);
   }
+
+  /* Reaches the sidebar's own edges (cancelling its padding) so the scrollbar sits
+     at the right edge, and stays nearly invisible until the pointer is over it. */
+  .sb-scroll {
+    flex: 1 1 0; min-height: 0;
+    margin: 0 -14px; width: calc(100% + 28px); padding: 0 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    overflow-y: auto; overflow-x: hidden;
+    position: relative; z-index: 1;
+    scrollbar-width: thin; scrollbar-color: transparent transparent;
+  }
+  .sb-scroll:hover { scrollbar-color: rgba(139,92,246,0.18) transparent; }
+  .sb-scroll::-webkit-scrollbar { width: 3px; }
+  .sb-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
+  .sb-scroll:hover::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.18); }
+  .sidebar.collapsed .sb-scroll { margin: 0 -8px; width: calc(100% + 16px); padding: 0 8px; align-items: center; }
+  /* The list grows to its content; the wrapper above does the scrolling. */
+  .sb-scroll :global(.sb-convos) { flex: 1 0 auto; min-height: 0; overflow: visible; }
+  .sb-scroll :global(.search-results) { flex: 1 0 auto; min-height: 0; }
+  .sb-scroll :global(.search-results-list) { overflow: visible; }
 
   /* Ambient glow — top */
   .sb-glow-top {
@@ -275,7 +302,7 @@
 
   @media (max-width: 768px) {
     .sidebar {
-      position: fixed; left: 0; top: 34px; bottom: 0; z-index: 100; width: min(300px, 86vw);
+      position: fixed; left: 0; top: 34px; bottom: 0; height: auto; z-index: 100; width: min(300px, 86vw);
       transform: translateX(-100%); transition: transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
       box-shadow: none;
     }
