@@ -54,6 +54,10 @@ These patterns are consistent throughout the codebase — matching them makes a 
 - **Design language** — the app uses a "Light Carousel" chip pattern for tabs/filters/mode switches: individual floating pills (not an enclosed segmented-control capsule), full opacity at rest, the active one pops forward with a solid accent fill, `scale(1.05)`, and a colored glow. Look at `.carousel-chip` in `src/routes/settings/+page.svelte` or `.toggle-btn` in `src/lib/components/SceneDisplay.svelte` for the canonical CSS. Don't introduce a different tab/toggle visual style without a reason.
 - **Blob URLs, not `asset://`**, for loading local files (images, avatars, generated scenes) into `<img>`/`<video>` — the app's CSP doesn't allow `asset://`. Use `loadFileAsBlobUrl` from `src/lib/utils/blobUrl.ts`, and revoke the URL on unmount/replacement to avoid leaking blob memory.
 
+## Security and review
+
+Janus handles private conversations and ships signed updates, so every change is reviewed before it reaches `master`. Work from a fork and open a pull request. In the description, tick the agreement to the [Contributor License Agreement](CLA.md), and list any new network destination the change adds (Janus talks only to the providers a person adds and to GitHub for updates). Pull requests are checked for vulnerable dependencies, new hosts and committed secrets, and changes to workflows, capabilities, dependencies and the account code need the maintainer's review. See [Security and review](docs/developer/security.md) for the full picture. To report a vulnerability, follow [SECURITY.md](SECURITY.md).
+
 ## Cutting a release
 
 Releases are fully automated — pushing a `v*` tag (e.g. `v0.1.2`) is the only manual step:

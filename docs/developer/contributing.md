@@ -56,3 +56,5 @@ python docs/tools/gen_reference.py --check
 ## Reporting security problems
 
 Do not open a public issue. Follow `SECURITY.md`.
+
+Before you open a pull request, read {doc}`security`: it explains the review rules, the Contributor License Agreement and the checks your change will go through.

@@ -23,6 +23,8 @@ When the admin turns on **browser access**, Janus also runs an HTTP server (off 
 
 The desktop app also checks GitHub for **updates** and installs them in place. Update packages are signed with a project key; the app embeds the public key and refuses anything that does not verify. Reports about this path (a way to make the app accept an unsigned or modified update, or a leaked signing key) are in scope.
 
+**Supply chain** reports are in scope too: a malicious or typosquatted dependency, a workflow or build step that could leak the signing key or alter a release, and a pull request or release that contains code that collects or sends data without being documented. Releases carry `SHA256SUMS` and a build-provenance attestation (`gh attestation verify <file> --repo RamishSiddiqui/janus`).
+
 ## Response
 
 This is a young, mostly solo-maintained project — there's no formal SLA yet, but security reports get priority over regular issues. Expect an acknowledgment within a few days.
