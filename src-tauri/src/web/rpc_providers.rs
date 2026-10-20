@@ -1,19 +1,16 @@
 //! Providers and API keys, image presets, lorebook, memories, and voice (TTS)
 //! commands that are safe to call from a browser.
 //!
-//! Deliberately not listed (host-global, or would act on the host machine):
-//! `tts_download_model` and `tts_preload_engine` (they change the shared Kokoro
-//! model files on the host; `tts_model_status` only reads them, so it is allowed),
-//! and `tts_replay_message` (streams audio
-//! through app-wide events that currently reach the desktop window, not the
-//! requesting browser; it comes with the event bridge).
+//! Deliberately not listed (they change the shared Kokoro model files on the
+//! host): `tts_download_model` and `tts_preload_engine`. `tts_model_status` only
+//! reads them, and `tts_replay_message` checks ownership and streams its audio
+//! through scoped events that reach the requesting browser, so both are allowed.
 
 use crate::commands::image_presets as ip;
 use crate::commands::image_presets::{CreateImagePresetFields, UpdateImagePresetFields};
 use crate::commands::lorebook as lb;
 use crate::commands::memories as mem;
 use crate::commands::providers as pr;
-use crate::commands::resource_monitor;
 use crate::commands::tts;
 use crate::error::MythicError;
 use crate::models::DynamicJson;
@@ -58,12 +55,12 @@ crate::rpc_family! {
     "get_memory_graph" => mem::get_memory_graph [state] (character_id: String);
 
     "tts_set_character_voice" => tts::tts_set_character_voice [state] (character_id: String, voice_id: Option<String>, voice_provider_id: Option<String>);
-    "get_resource_usage" => resource_monitor::get_resource_usage [state] ();
     "get_app_info" => app_info [] ();
 }
 
 crate::rpc_family_wry! {
     "tts_model_status" => tts::tts_model_status [app] ();
+    "tts_replay_message" => tts::tts_replay_message [app, state] (conversation_id: String, message_id: String, text: String, voice_id: String, provider_id: Option<String>);
     "tts_list_voices" => tts::tts_list_voices [app, state] (provider_id: Option<String>);
     "tts_test_speak" => tts::tts_test_speak [app, state] (text: String, voice_id: String, provider_id: Option<String>);
 }

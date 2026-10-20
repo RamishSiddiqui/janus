@@ -177,5 +177,14 @@
     background: linear-gradient(90deg, transparent, rgba(139,92,246,0.12), transparent);
   }
 
-  @media (max-width: 1024px) { .context-panel { display: none; } }
+  /* Narrow screens: the panel slides over the chat as a sheet (opened from the
+     chat header's info button) instead of taking a column from it. */
+  @media (max-width: 1024px) {
+    .context-panel {
+      position: fixed; top: 34px; right: 0; bottom: 0; height: auto;
+      width: min(400px, 92vw) !important; z-index: 95;
+      box-shadow: -8px 0 40px rgba(0, 0, 0, 0.6);
+    }
+    .ctx-resize-handle { display: none; }
+  }
 </style>

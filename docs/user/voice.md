@@ -30,5 +30,4 @@ Open a character's profile, press **Edit Character**, choose the **Voice provide
 
 - Kokoro ships 54 voices and uses roughly one second of computing for every two seconds of speech on an ordinary CPU. The engine loads when needed, and Janus warms it up at startup when voice is on.
 - Cloud voices send the text of replies to that provider. Turn voice off, or keep to Kokoro, if you want nothing leaving your computer.
-- Replaying a message's voice works in the desktop app; it is not available from a browser yet.
-- The Kokoro model is shared by everyone on this computer. Downloading it and the resource monitor are managed from the desktop app, not from a browser.
+- The Kokoro model is shared by everyone on this computer. Downloading it is managed from the desktop app, not from a browser; replaying a message's voice works from a browser too.

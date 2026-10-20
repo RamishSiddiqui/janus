@@ -2,6 +2,7 @@
   import Icon from './Icon.svelte';
   import { browser } from '$app/environment';
   import { error as toastError } from '$lib/stores/toast';
+  import { toggleBold } from '$lib/utils/markdownEdit';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -148,6 +149,18 @@
 
   let hasContent = $derived(value.trim().length > 0);
 
+/** Wraps the selected text in Markdown bold (or unwraps it). */
+function applyBold() {
+  if (!inputElement) return;
+  const r = toggleBold(value, inputElement.selectionStart, inputElement.selectionEnd);
+  value = r.text;
+  const el = inputElement;
+  requestAnimationFrame(() => {
+    el.focus();
+    el.setSelectionRange(r.start, r.end);
+  });
+}
+
   let filteredModels = $derived(
     modelFilter
       ? availableModels.filter(m => m.toLowerCase().includes(modelFilter.toLowerCase()))
@@ -243,7 +256,7 @@
     <!-- Toolbar row -->
     <div class="ci-toolbar">
 
-      <!-- Left tools: paperclip / bold / sparkle -->
+      <!-- Left tools: paperclip / bold -->
       <div class="ci-left-tools">
         <button
           class="ci-tool-btn"
@@ -257,14 +270,9 @@
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
         </button>
-        <button class="ci-tool-btn" title="Bold" aria-label="Bold">
+        <button class="ci-tool-btn" title="Bold" aria-label="Bold" onmousedown={(e) => e.preventDefault()} onclick={applyBold}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>
-          </svg>
-        </button>
-        <button class="ci-tool-btn" title="AI Assist" aria-label="AI Assist">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3L9.5 9.5 3 12l6.5 2.5L12 21l2.5-6.5L21 12l-6.5-2.5z"/>
           </svg>
         </button>
       </div>

@@ -1639,7 +1639,7 @@ Returns `Result<Vec<ModelEntry>, MythicError>`
 
 Source: `src-tauri/src/commands/resource_monitor.rs`
 
-### `get_resource_usage` — **Browser**
+### `get_resource_usage`
 
 Reads this process's own current memory/CPU usage. Cheap — a targeted
 refresh of one PID, not a full system scan.
@@ -1898,7 +1898,7 @@ several hundred KB.
 
 Returns `Result<String, MythicError>`
 
-### `tts_replay_message`
+### `tts_replay_message` — **Browser**
 
 Replays an already-saved chat message's voice, sentence by sentence —
 emits one `tts-chunk` event per completed sentence (same event, same

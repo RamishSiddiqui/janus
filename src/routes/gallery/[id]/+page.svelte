@@ -1013,4 +1013,17 @@
   }
   .btn-save:hover:not(:disabled) { opacity:0.9; transform:translateY(-1px); box-shadow:0 6px 24px rgba(139,92,246,0.4); }
   .btn-save:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* ── Phones: the side panel stacks above the tabs and the whole page scrolls ── */
+  @media (max-width: 768px) {
+    .profile-page { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+    .hero { width: 100%; flex-shrink: 0; border-right: none; border-bottom: 1px solid rgba(139,92,246,0.1); overflow: visible; }
+    .hero::after { display: none; }
+    .conv-list { flex: none; max-height: 220px; }
+    .main { flex: none; overflow: visible; }
+    .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 14px 14px 4px; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab-body { overflow: visible; padding: 16px 14px 28px; }
+    .field-grid { grid-template-columns: 1fr; }
+  }
 </style>

@@ -57,7 +57,8 @@
   // (not a one-shot read) is required for cpu_percent to mean anything:
   // sysinfo computes CPU% as a delta since the previous refresh, so a
   // single read always shows 0%. Only runs while Settings is open.
-  const isTauri = browser && '__TAURI_INTERNALS__' in window;
+  // The host's memory and CPU are not shown to browsers.
+  const isTauri = browser && '__TAURI_INTERNALS__' in window && !isWebMode();
   let memoryMb = $state<number | null>(null);
   let cpuPercent = $state<number | null>(null);
   $effect(() => {
@@ -97,7 +98,7 @@
   // string that silently goes stale every release.
   let appVersion = $state<string | null>(null);
   $effect(() => {
-    if (!isTauri) return;
+    if (!(browser && '__TAURI_INTERNALS__' in window)) return;
     let cancelled = false;
     import('$lib/services/ipc').then(async (ipc) => {
       try {
