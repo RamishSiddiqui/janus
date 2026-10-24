@@ -4,7 +4,7 @@
 
 | Workflow | What it runs |
 |---|---|
-| **CI** (`ci.yml`) | **Frontend:** `npm ci`, `npm run check`, `npm run lint`, `npm run format:check`, `npm test`. **Backend:** `cargo fmt --check` first (it fails in seconds), then installs the Tauri Linux dependencies, builds the frontend, and runs `cargo clippy --all-targets -- -D warnings` and `cargo test`. |
+| **CI** (`ci.yml`) | **Frontend:** `npm ci`, `npm run check`, `npm run lint`, `npm run format:check`, `npm test`. **Backend:** `cargo fmt --check` first (it fails in seconds), then installs the Tauri Linux dependencies, builds the frontend, checks that every Tauri plugin's npm package and Rust crate are on the same minor version (`tauri build` refuses to run otherwise), and runs `cargo clippy --all-targets -- -D warnings` and `cargo test`. |
 | **CodeQL** (`codeql.yml`) | Static analysis for JavaScript/TypeScript and Rust, on pushes, pull requests and weekly. |
 | **Gitleaks** (`gitleaks.yml`) | Secret scanning. |
 | **Security audit** (`security-audit.yml`) | `cargo audit` and `npm audit --audit-level=high`, weekly and whenever a dependency file changes. Known, justified advisories are listed with reasons in the workflow. |

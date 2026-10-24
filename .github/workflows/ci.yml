@@ -69,6 +69,18 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # `tauri build` refuses to run when a Tauri plugin's npm package and Rust
+      # crate differ in major/minor, and neither cargo nor npm notices. That
+      # first showed up as a failed release, so check it on every PR. `tauri
+      # info` prints the mismatch but still exits 0, so look at its output.
+      - name: Tauri npm packages match their Rust crates
+        run: |
+          npx tauri info 2>&1 | tee tauri-info.txt
+          if grep -q "version mismatched" tauri-info.txt; then
+            echo "::error::A Tauri npm package and its Rust crate are on different minor versions; update them together."
+            exit 1
+          fi
+
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
