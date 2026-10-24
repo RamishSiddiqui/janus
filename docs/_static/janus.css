@@ -83,6 +83,14 @@
   border: 0;
 }
 
+/* Furo floats its view-source, edit and theme icons at the top right of the
+   page. The hero is a positioned element, which paints above floats, so it
+   covered them and swallowed their clicks. Lift the icon row above it. */
+.content-icon-container {
+  position: relative;
+  z-index: 2;
+}
+
 .janus-hero {
   position: relative;
   isolation: isolate;
