@@ -266,6 +266,7 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/utils/onboarding.ts` | Pure helpers for the first-run setup guide. |
 | `src/lib/utils/personaMacros.ts` | Case-insensitive {{user}} -> display-name substitution, mirroring the Rust-side `substitute_user_macro` used in `build_prompt`. Used only for the client-seeded character greeting (`first_mes`), which never passes through the backend prompt pipeline. Uses `pers |
 | `src/lib/utils/providerError.ts` | Janus — Provider Error Humanizer |
+| `src/lib/utils/sanitize.test.ts` | Tests for the search-snippet escaping used with {@html} in the sidebar search. |
 | `src/lib/utils/sanitize.ts` | Janus — HTML Sanitization |
 | `src/lib/utils/updates.test.ts` | Tests for the pure update-prompt helpers (auto-check rules, notes, progress, errors). |
 | `src/lib/utils/updates.ts` | Pure helpers for the in-app update prompt. |
