@@ -20,6 +20,12 @@ permissions:
   contents: read
   security-events: write
 
+# A newer commit on the same PR supersedes the older run, so cancel it.
+# Master pushes, the weekly schedule and manual runs are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     runs-on: ubuntu-latest

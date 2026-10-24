@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [master]
 
+# A newer commit on the same PR supersedes the older run, so cancel it. Pushes
+# to master get their own group per commit and are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
     name: Frontend (svelte-check)
@@ -26,6 +32,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+
+      # Formatting needs only rustfmt, so check it first and fail in seconds
+      # instead of after the system packages, frontend build and compile.
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
 
       - name: Install Tauri Linux build dependencies
         run: |
@@ -49,25 +65,15 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          components: clippy, rustfmt
-
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
-      - name: cargo check
-        working-directory: src-tauri
-        run: cargo check --all-targets
-
+      # clippy compiles every target `cargo check --all-targets` would, and
+      # fails on warnings too, so a separate check step only repeated the work.
       - name: cargo clippy
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
-
-      - name: cargo fmt --check
-        working-directory: src-tauri
-        run: cargo fmt --check
 
       - name: cargo test
         working-directory: src-tauri
