@@ -1,0 +1,67 @@
+/*
+  Janus brand for the docs: the app's fonts (Raleway, Geist Mono), served from
+  this site so readers never contact a third party, and the sidebar mark and
+  wordmark. Colours and font stacks are set in conf.py through Furo's variables.
+  Both fonts are SIL OFL 1.1; the licence texts sit next to the files.
+*/
+
+@font-face {
+  font-family: "Raleway";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/raleway-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+/* Sidebar brand: mark + wordmark, the same layout as the app's title bar. */
+.sidebar-brand {
+  /* Furo centres the brand block; keep the mark and word together as one unit. */
+  padding-block: 1.1rem 0.9rem;
+}
+
+.janus-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.janus-mark {
+  height: 2.2rem;
+  width: auto;
+  flex: none;
+}
+
+.janus-mark-top {
+  stroke: var(--janus-gold);
+}
+
+.janus-mark-bottom {
+  stroke: var(--janus-violet);
+}
+
+.janus-wordmark {
+  font-weight: 500;
+  font-size: 1.2rem;
+  /* Same tracking as the title bar. Trailing space after the last letter is
+     trimmed so the block stays optically centred. */
+  letter-spacing: 0.28em;
+  margin-right: -0.28em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.janus-ja {
+  color: var(--janus-violet);
+}
+
+.janus-nus {
+  color: var(--janus-gold);
+}
