@@ -1,0 +1,90 @@
+name: Release dry run
+
+# Builds the installers exactly the way release.yml does, but publishes nothing
+# and needs no secrets. CI proves the code compiles and passes its tests; this
+# proves the release build itself still works (Tauri refuses to bundle when its
+# npm packages and Rust crates drift apart, which neither cargo nor npm notice).
+#
+# - Weekly, on all three platforms, so drift and runner changes surface on a
+#   quiet day instead of on release day.
+# - On demand (Actions tab, "Run workflow"): run it before tagging a release,
+#   especially after a batch of dependency updates.
+# - On pull requests that touch the Tauri packages, on Linux only, to keep the
+#   feedback quick. Not a required check: path-filtered checks cannot be.
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # every Monday 08:00 UTC (after security-audit and CodeQL)
+  workflow_dispatch:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/tauri.conf.json'
+      - 'src-tauri/tauri.release.conf.json'
+      - 'src-tauri/capabilities/**'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-dry-run.yml'
+
+permissions:
+  contents: read
+
+# A newer commit on the same PR supersedes the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build installers (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-22.04"]' || '["ubuntu-22.04","windows-latest","macos-latest"]') }}
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # The base config on purpose: the release config turns on signed update
+      # packages, which need the private key that only the approved release
+      # environment may read. Everything else is the same as a release build.
+      - name: Build the installers
+        run: npm run tauri build
+
+      - name: List what was built
+        shell: bash
+        run: find src-tauri/target/release/bundle -maxdepth 2 -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -print
