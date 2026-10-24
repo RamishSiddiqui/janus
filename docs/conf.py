@@ -28,6 +28,7 @@ html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 html_static_path = ["_static"]
 templates_path = ["_templates"]  # sidebar/brand.html: the mark and wordmark
 html_css_files = ["janus.css"]  # self-hosted brand fonts and the sidebar brand
+html_js_files = [("janus-headings.js", {"defer": "defer"})]  # two-tone page titles
 html_favicon = "_static/favicon.svg"
 
 # The app's type: Raleway for text and headings, Geist Mono for code.

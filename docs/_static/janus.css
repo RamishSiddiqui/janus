@@ -66,6 +66,15 @@
   color: var(--janus-gold);
 }
 
+/* Two-tone page titles, added by janus-headings.js. */
+.janus-split-a {
+  color: var(--janus-violet);
+}
+
+.janus-split-b {
+  color: var(--janus-gold);
+}
+
 /* ---- Landing page ------------------------------------------------------ */
 
 /* The page keeps a real <h1> for the tab title and navigation; the hero
