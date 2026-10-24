@@ -1,0 +1,298 @@
+/*
+  Janus brand for the docs: the app's fonts (Raleway, Geist Mono), served from
+  this site so readers never contact a third party, and the sidebar mark and
+  wordmark. Colours and font stacks are set in conf.py through Furo's variables.
+  Both fonts are SIL OFL 1.1; the licence texts sit next to the files.
+*/
+
+@font-face {
+  font-family: "Raleway";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/raleway-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+/* Sidebar brand: mark + wordmark, the same layout as the app's title bar. */
+.sidebar-brand {
+  /* Furo centres the brand block; keep the mark and word together as one unit. */
+  padding-block: 1.1rem 0.9rem;
+}
+
+.janus-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.janus-mark {
+  height: 2.2rem;
+  width: auto;
+  flex: none;
+}
+
+.janus-mark-top {
+  stroke: var(--janus-gold);
+}
+
+.janus-mark-bottom {
+  stroke: var(--janus-violet);
+}
+
+.janus-wordmark {
+  /* Capital letters sit above the middle of a text box. Nudge them down by a
+     small, measured amount so the letters centre on the mark. */
+  position: relative;
+  top: 0.035em;
+  font-weight: 500;
+  font-size: 1.2rem;
+  /* Same tracking as the title bar. Trailing space after the last letter is
+     trimmed so the block stays optically centred. */
+  letter-spacing: 0.28em;
+  margin-right: -0.28em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.janus-ja {
+  color: var(--janus-violet);
+}
+
+.janus-nus {
+  color: var(--janus-gold);
+}
+
+/* The same lockup in the top bar that stands in for the sidebar on a narrow
+   window (placed by janus.js). It is a block-level flex box on purpose: as an
+   inline box it was aligned to the text baseline of an invisible line and sat
+   about 3px above the bar's centre. */
+.janus-brand-header {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.janus-brand-header .janus-mark {
+  height: 1.3rem;
+}
+
+.janus-brand-header .janus-wordmark {
+  font-size: 0.875rem;
+}
+
+/* Two-tone page titles, added by janus.js. */
+.janus-split-a {
+  color: var(--janus-violet);
+}
+
+.janus-split-b {
+  color: var(--janus-gold);
+}
+
+/* ---- Landing page ------------------------------------------------------ */
+
+/* The page keeps a real <h1> for the tab title and navigation; the hero
+   headline below is what people see. (The class is on the page's top-level
+   section, which wraps all the content, so only its heading is hidden.) */
+.janus-landing > h1,
+.janus-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Furo floats its view-source, edit and theme icons at the top right of the
+   page. The hero is a positioned element, which paints above floats, so it
+   covered them and swallowed their clicks. Lift the icon row above it. */
+.content-icon-container {
+  position: relative;
+  z-index: 2;
+}
+
+.janus-hero {
+  position: relative;
+  isolation: isolate;
+  padding: 3rem 0 0.4rem;
+}
+
+/* On narrow screens the mark sits above the headline and supplies the space. */
+@media (max-width: 63em) {
+  .janus-hero {
+    padding-top: 1.4rem;
+  }
+}
+
+/* A faint violet and gold glow behind the hero, the app's two colours. */
+.janus-hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  /* Stay inside the content column and fade out before every edge, so the
+     glow never shows a hard border. */
+  inset: -1rem 0 -3rem 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 60% at 14% 22%, color-mix(in srgb, var(--janus-violet) 20%, transparent), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 86% 38%, color-mix(in srgb, var(--janus-gold) 13%, transparent), transparent 70%);
+  -webkit-mask-image:
+    linear-gradient(to bottom, #000 40%, transparent),
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to bottom, #000 40%, transparent),
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  mask-composite: intersect;
+}
+
+/* The sidebar already shows the mark and wordmark, so repeating the mark in the
+   hero on a wide screen only duplicates it. Furo tucks the sidebar into a
+   drawer at 63em and below; that is where the hero needs to carry the brand. */
+.janus-hero-mark {
+  display: none;
+  height: 4.2rem;
+  width: auto;
+  margin-bottom: 1.2rem;
+}
+
+@media (max-width: 63em) {
+  .janus-hero-mark {
+    display: block;
+  }
+}
+
+.janus-hero-title {
+  margin: 0 0 0.6rem;
+  font-weight: 800;
+  font-size: clamp(2.1rem, 1.25rem + 3.4vw, 3.5rem);
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+}
+
+.janus-hero-tagline {
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.janus-hero-lead {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--color-foreground-secondary);
+}
+
+.janus-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.5rem 0 2.6rem;
+}
+
+.janus-hero-actions p {
+  margin: 0;
+}
+
+/* sphinx-design buttons and cards in the Janus palette. The "warning" colour
+   is reused for gold, "secondary" for the quiet option. */
+body {
+  --sd-color-primary: var(--janus-violet);
+  --sd-color-primary-text: var(--janus-on-violet);
+  --sd-color-primary-highlight: var(--janus-violet);
+  --sd-color-warning: var(--janus-gold);
+  --sd-color-warning-text: var(--janus-on-violet);
+  --sd-color-warning-highlight: var(--janus-gold);
+  --sd-color-secondary: var(--color-foreground-secondary);
+  --sd-color-secondary-text: var(--color-background-primary);
+  --sd-color-secondary-highlight: var(--color-foreground-primary);
+  --sd-color-card-border: var(--color-background-border);
+  --sd-color-card-border-hover: var(--janus-violet);
+  --sd-color-card-background: var(--color-background-secondary);
+  --sd-color-card-text: var(--color-foreground-primary);
+  --sd-color-shadow: transparent;
+}
+
+.janus-hero-actions .sd-btn {
+  padding: 0.55rem 1.3rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+/* sphinx-design pads each grid on the sides; drop it so the cards line up with
+   the headings above them. */
+.sd-container-fluid {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.janus-card {
+  border-radius: 14px;
+}
+
+.janus-card .sd-card-body {
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+
+.janus-card .sd-card-title {
+  margin-bottom: 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.janus-card .sd-card-text {
+  color: var(--color-foreground-secondary);
+  line-height: 1.55;
+}
+
+/* The three steps are a real sequence, so they are numbered. */
+.janus-steps {
+  counter-reset: janus-step;
+}
+
+.janus-step {
+  counter-increment: janus-step;
+}
+
+.janus-step .sd-card-body::before {
+  content: counter(janus-step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  margin-bottom: 0.7rem;
+  border-radius: 50%;
+  background: var(--janus-gold);
+  color: var(--janus-on-violet);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .janus-card {
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .janus-card.sd-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--janus-violet) 22%, transparent);
+  }
+}
+
+.janus-footnote {
+  margin-top: 2.8rem;
+  font-size: 0.85rem;
+  color: var(--color-foreground-muted);
+}

@@ -72,6 +72,30 @@ Keep a backup of the private key. If it is lost, installed copies cannot verify 
 
 Bumping the version in the files listed under Releasing is what makes an update available: the check compares the installed version with the one in `latest.json`.
 
+## Hosted documentation
+
+These docs are published on [Read the Docs](https://readthedocs.org/) from `.readthedocs.yaml` at the repository root (Ubuntu 24.04, Python 3.13, `docs/conf.py`, `docs/requirements.txt`). It is separate from GitHub Actions: Read the Docs builds on its own servers from a webhook it installs on the repository, and it builds only what is committed. It does not run `docs/tools/gen_reference.py`, so the generated reference pages must be committed up to date; the Docs workflow enforces that.
+
+**What triggers a build.** A push to `master` rebuilds `latest`. Pushing a version tag, the same push that starts a release, creates a docs version for that tag and builds it. Pull requests get a preview build and a status check when *Build pull requests for this project* is on.
+
+**Versions.**
+
+| Version | Shows |
+|---|---|
+| `latest` | The head of `master`, including features that are not released yet. |
+| `stable` | Created automatically; points at the highest version tag, so it moves forward with each release. |
+| `v0.1.7`, `v0.1.8`, ... | A frozen snapshot of the docs at that tag. |
+
+Tags made before `.readthedocs.yaml` was merged (up to v0.1.7) cannot build, because Read the Docs reads the config from the tagged commit. Leave those versions inactive; the first docs version is the first tag cut after the file landed.
+
+**One-time setup, by a maintainer on readthedocs.org:**
+
+1. Sign in with GitHub, *Import a Project*, and choose this repository.
+2. *Advanced settings*: turn on *Build pull requests for this project*.
+3. *Automation rules*: add a rule that activates versions matching *SemVer versions*, so each release tag appears without a manual step.
+4. Until the first tag that contains `.readthedocs.yaml` has built (v0.1.8 or later), keep the default version on `latest`. After that, set it to `stable`, so the front page shows released docs.
+5. Put the docs URL in the README and as the repository homepage.
+
 ## Installers are unsigned
 
 Releases are not OS code-signed yet (the update signature above is separate and only covers in-app updates), so Windows SmartScreen and macOS Gatekeeper warn on first launch. The README explains the one-time steps for users.

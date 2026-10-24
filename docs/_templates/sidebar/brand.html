@@ -1,0 +1,18 @@
+{#-
+  The Janus mark and wordmark at the top of the sidebar, built the way the app
+  draws them (JanusMark.svelte and the title bar): the two-stroke mark, then
+  JANUS in Raleway with the JA / NUS colour split. Inline SVG and real text, so
+  it follows light and dark mode and uses the self-hosted brand font.
+-#}
+{% extends "!sidebar/brand.html" %}
+{%- block brand_content %}
+<span class="janus-brand">
+  <svg class="janus-mark" viewBox="-61 -83 122 166" aria-hidden="true" focusable="false">
+    <g fill="none" stroke-width="18" stroke-linecap="round">
+      <path class="janus-mark-top" d="M 0,2 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"></path>
+      <path class="janus-mark-bottom" d="M 0,-2 L 0,46 Q 0,74 -30,74 Q -52,74 -52,52"></path>
+    </g>
+  </svg>
+  <span class="janus-wordmark"><span class="janus-ja">JA</span><span class="janus-nus">NUS</span></span>
+</span>
+{%- endblock brand_content %}
