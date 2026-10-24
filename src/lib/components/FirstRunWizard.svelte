@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { settings } from '#lib/stores/settings.js';
-  import { MODEL_SOURCES, rankModels, type ModelSource } from '#lib/utils/onboarding.js';
+  import { MODEL_SOURCES, findExistingCharacter, rankModels, type ModelSource } from '#lib/utils/onboarding.js';
   import { STARTER_CHARACTERS } from '#lib/data/starterCharacters.js';
 
   let { onclose }: { onclose: () => void } = $props();
@@ -100,7 +100,10 @@
     busy = true;
     try {
       const ipc = await ipcPromise();
-      const ch = await ipc.createCharacter(String(starter.data.name), starter.data);
+      const name = String(starter.data.name);
+      // Re-running the guide reuses a starter the user already has.
+      const ch =
+        findExistingCharacter(await ipc.listCharacters(), name) ?? (await ipc.createCharacter(name, starter.data));
       const { createConversation } = await import('#lib/stores/chat.js');
       await createConversation(ch.id, ch.name);
       finish();

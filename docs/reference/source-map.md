@@ -232,6 +232,7 @@ Every source file with its own summary line, taken from the file's leading comme
 | `src/lib/stores/personas.ts` | Janus — Selected Persona (for new-chat pre-selection) |
 | `src/lib/stores/sceneGeneration.ts` | Janus — Scene Generation Store Tracks in-flight AI Horde scene generations keyed by conversation_id, independent of any component's lifecycle. |
 | `src/lib/stores/settings.ts` | Janus — Persisted Settings Store |
+| `src/lib/stores/setupGuide.ts` | — |
 | `src/lib/stores/toast.ts` | Janus — Toast Notification Store Lightweight global toast system for user feedback |
 | `src/lib/stores/ttsPlayback.ts` | Janus — Streamed TTS Playback Queue Subscribes to `tts-chunk` events (one per synthesized sentence during a live chat response) and plays them back gaplessly via the Web Audio API. There is no other audio code anywhere in this codebase — this is genuinely new  |
 | `src/lib/stores/updates.ts` | Janus — App update state Checks the release feed, downloads a signed update and restarts into it. Desktop only; see issue #139. |

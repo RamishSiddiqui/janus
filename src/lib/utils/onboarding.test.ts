@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MODEL_SOURCES, rankModels, shouldShowWizard } from './onboarding';
+import { MODEL_SOURCES, findExistingCharacter, rankModels, shouldShowWizard } from './onboarding';
 import { STARTER_CHARACTERS } from '../data/starterCharacters';
 
 describe('rankModels', () => {
@@ -22,6 +22,23 @@ describe('shouldShowWizard', () => {
     expect(shouldShowWizard(false, 0)).toBe(true);
     expect(shouldShowWizard(true, 0)).toBe(false);
     expect(shouldShowWizard(false, 2)).toBe(false);
+  });
+});
+
+describe('findExistingCharacter', () => {
+  const characters = [
+    { id: '1', name: 'Mira Vale' },
+    { id: '2', name: 'Captain Dray' },
+  ];
+
+  it('finds a character by name, ignoring case and surrounding spaces', () => {
+    expect(findExistingCharacter(characters, '  mira vale ')?.id).toBe('1');
+    expect(findExistingCharacter(characters, 'CAPTAIN DRAY')?.id).toBe('2');
+  });
+
+  it('returns undefined when the user has no such character', () => {
+    expect(findExistingCharacter(characters, 'Someone Else')).toBeUndefined();
+    expect(findExistingCharacter([], 'Mira Vale')).toBeUndefined();
   });
 });
 
