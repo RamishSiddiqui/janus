@@ -17,6 +17,10 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{ts,js,svelte,css}\" \"*.js\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,svelte,css}\" \"*.js\"",
     "tauri": "tauri"
   },
   "license": "AGPL-3.0-or-later",

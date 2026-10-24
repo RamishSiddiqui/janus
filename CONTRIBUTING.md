@@ -29,6 +29,8 @@ Run both of these — CI runs them too, so failures here are failures there:
 
 ```bash
 npm run check                              # svelte-check: TypeScript + Svelte template errors
+npm run lint                               # ESLint (errors fail CI; warnings are a backlog)
+npm run format:check                       # Prettier (npm run format fixes it)
 cd src-tauri && cargo check                # Rust compile check
 cd src-tauri && cargo test                 # Rust unit/integration tests
 ```

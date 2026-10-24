@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `npm run check` passes
+- [ ] `npm run check`, `npm run lint` and `npm run format:check` pass
 - [ ] `cd src-tauri && cargo check` passes
 - [ ] `cd src-tauri && cargo test` passes (if you touched Rust code with test coverage)
 - [ ] For a new/changed Tauri command: restarted the dev server so `src/lib/services/bindings.ts` regenerated, and committed the regenerated file
