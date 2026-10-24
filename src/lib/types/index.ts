@@ -86,7 +86,13 @@ export interface ConversationPreview {
   /** The message ID in the PARENT conversation where the fork happened. */
   branchPointMessageId?: string | null;
   /** Additional characters in a multi-character conversation (future support) */
-  additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
+  additionalCharacters?: {
+    id: string;
+    name: string;
+    description: string;
+    avatarUrl: string | null;
+    avatarColor: string;
+  }[];
 }
 
 /** An AI provider configuration (chat, image, or video). */

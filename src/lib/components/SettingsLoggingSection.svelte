@@ -94,12 +94,12 @@
   let filteredBackendLines = $derived(
     logSearch.trim()
       ? backendLogLines.filter(l => l.toLowerCase().includes(logSearch.trim().toLowerCase()))
-      : backendLogLines
+      : backendLogLines,
   );
   let filteredFrontendEntries = $derived(
     logSearch.trim()
       ? $frontendLogs.filter(e => e.message.toLowerCase().includes(logSearch.trim().toLowerCase()))
-      : $frontendLogs
+      : $frontendLogs,
   );
 
   function backendLogLineClass(line: string): string {
@@ -178,7 +178,13 @@
         <div class="log-loading-more">Loading older lines…</div>
       {/if}
       {#if filteredBackendLines.length === 0}
-        <div class="log-empty">{backendLogLines.length ? 'No lines match your search.' : (isLoadingBackendLogs ? 'Loading…' : 'No backend logs yet.')}</div>
+        <div class="log-empty">
+          {backendLogLines.length
+            ? 'No lines match your search.'
+            : isLoadingBackendLogs
+              ? 'Loading…'
+              : 'No backend logs yet.'}
+        </div>
       {:else}
         {#each filteredBackendLines as line, i (i)}
           <div class="log-line {backendLogLineClass(line)}">{line}</div>
@@ -188,11 +194,14 @@
   {:else}
     <div class="log-viewer" bind:this={logViewerEl}>
       {#if filteredFrontendEntries.length === 0}
-        <div class="log-empty">{$frontendLogs.length ? 'No lines match your search.' : 'No frontend activity captured yet.'}</div>
+        <div class="log-empty">
+          {$frontendLogs.length ? 'No lines match your search.' : 'No frontend activity captured yet.'}
+        </div>
       {:else}
         {#each filteredFrontendEntries as entry (entry.timestamp + entry.message)}
           <div class="log-line log-line-{entry.level}">
-            [{new Date(entry.timestamp).toLocaleTimeString()}] {entry.level.toUpperCase()} {entry.message}
+            [{new Date(entry.timestamp).toLocaleTimeString()}] {entry.level.toUpperCase()}
+            {entry.message}
           </div>
         {/each}
       {/if}
@@ -211,55 +220,118 @@
 <style>
   /* ── Logging ── */
   .log-toolbar {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 10px; flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
   }
   .log-subtabs {
-    display: flex; gap: 4px; padding: 3px; border-radius: 10px;
-    background: rgba(0,0,0,0.2); border: 1px solid rgba(139,92,246,0.08);
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.08);
   }
   .log-subtab {
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 12px; border-radius: 7px; border: none; background: none;
-    color: #8b8ba7; font-size: var(--text-sm); font-weight: 600;
-    font-family: var(--font-body); cursor: pointer; transition: all 150ms;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    border: none;
+    background: none;
+    color: #8b8ba7;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all 150ms;
   }
-  .log-subtab:hover { color: #c8c8e0; }
-  .log-subtab.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .log-subtab:hover {
+    color: #c8c8e0;
+  }
+  .log-subtab.active {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+  }
   .log-subtab-count {
-    font-size: 10px; font-family: var(--font-mono); color: inherit; opacity: 0.7;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: inherit;
+    opacity: 0.7;
   }
   .log-search {
-    flex: 1; min-width: 160px; max-width: 280px;
-    padding: 7px 12px; border-radius: 8px;
-    background: rgba(14,14,30,0.6); border: 1px solid rgba(139,92,246,0.1);
-    color: #c8c8e0; font-size: var(--text-sm); font-family: var(--font-body);
-    outline: none; transition: border-color 150ms;
+    flex: 1;
+    min-width: 160px;
+    max-width: 280px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: rgba(14, 14, 30, 0.6);
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    color: #c8c8e0;
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    outline: none;
+    transition: border-color 150ms;
   }
-  .log-search:focus { border-color: rgba(139,92,246,0.3); }
+  .log-search:focus {
+    border-color: rgba(139, 92, 246, 0.3);
+  }
   .log-path {
-    display: block; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; opacity: 0.7;
+    display: block;
+    margin-bottom: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.7;
   }
   .log-viewer {
-    max-height: 420px; overflow-y: auto; padding: 10px 12px; border-radius: 10px;
-    background: rgba(7,7,18,0.7); border: 1px solid rgba(139,92,246,0.08);
-    font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(7, 7, 18, 0.7);
+    border: 1px solid rgba(139, 92, 246, 0.08);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
   }
   .log-loading-more {
-    text-align: center; padding: 6px 0 10px; color: #6a6a86; font-size: 10.5px;
-    font-family: var(--font-mono); letter-spacing: 0.02em;
+    text-align: center;
+    padding: 6px 0 10px;
+    color: #6a6a86;
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
   }
   .log-line {
-    white-space: pre-wrap; word-break: break-word; color: #7d7d99;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #7d7d99;
     padding: 1px 0;
   }
-  .log-line-error { color: #fb7185; }
-  .log-line-warn { color: #fbbf24; }
-  .log-line-debug { color: #5a5a7a; }
-  .log-empty {
-    padding: 20px 0; text-align: center; color: #4a4a6a;
-    font-family: var(--font-body); font-size: var(--text-sm);
+  .log-line-error {
+    color: #fb7185;
   }
-  .log-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+  .log-line-warn {
+    color: #fbbf24;
+  }
+  .log-line-debug {
+    color: #5a5a7a;
+  }
+  .log-empty {
+    padding: 20px 0;
+    text-align: center;
+    color: #4a4a6a;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+  }
+  .log-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
 </style>

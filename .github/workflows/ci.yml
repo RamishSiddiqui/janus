@@ -26,6 +26,9 @@ jobs:
 
       - run: npm ci
       - run: npm run check
+      # Errors fail the build; warnings are a visible backlog (see eslint.config.js).
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm test
 
   backend:

@@ -19,14 +19,7 @@ import {
   writeDismissed,
 } from '#lib/utils/updates.js';
 
-export type UpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'uptodate'
-  | 'available'
-  | 'downloading'
-  | 'installing'
-  | 'error';
+export type UpdateStatus = 'idle' | 'checking' | 'uptodate' | 'available' | 'downloading' | 'installing' | 'error';
 
 export interface UpdateState {
   status: UpdateStatus;
@@ -70,26 +63,26 @@ export async function checkForUpdates(manual = false): Promise<void> {
   if (!isDesktop()) return;
   if (updatesBlockedInDev(import.meta.env.DEV, import.meta.env.VITE_JANUS_UPDATES)) {
     if (manual) {
-      updates.update((s) => ({ ...s, status: 'error', error: 'Updates are turned off in development builds.' }));
+      updates.update(s => ({ ...s, status: 'error', error: 'Updates are turned off in development builds.' }));
     }
     return;
   }
   const current = get(updates);
   if (current.status === 'checking' || current.status === 'downloading' || current.status === 'installing') return;
 
-  updates.update((s) => ({ ...s, status: 'checking', error: null }));
+  updates.update(s => ({ ...s, status: 'checking', error: null }));
   try {
     const { check } = await import('@tauri-apps/plugin-updater');
     const found = await check();
     const now = Date.now();
     if (!found) {
       pending = null;
-      updates.update((s) => ({ ...s, status: 'uptodate', version: null, notes: null, lastChecked: now }));
+      updates.update(s => ({ ...s, status: 'uptodate', version: null, notes: null, lastChecked: now }));
       return;
     }
     pending = found;
     const dismissed = readDismissed(localStorage) === found.version;
-    updates.update((s) => ({
+    updates.update(s => ({
       ...s,
       status: 'available',
       version: found.version,
@@ -99,7 +92,7 @@ export async function checkForUpdates(manual = false): Promise<void> {
     }));
   } catch (err) {
     console.warn('[updates] check failed:', err);
-    updates.update((s) => ({
+    updates.update(s => ({
       ...s,
       status: manual ? 'error' : 'idle',
       error: manual ? updateErrorMessage(err) : null,
@@ -113,23 +106,23 @@ export async function installUpdate(): Promise<void> {
   if (!pending) return;
   let total: number | undefined;
   let downloaded = 0;
-  updates.update((s) => ({ ...s, status: 'downloading', progress: null, error: null }));
+  updates.update(s => ({ ...s, status: 'downloading', progress: null, error: null }));
   try {
-    await pending.downloadAndInstall((e) => {
+    await pending.downloadAndInstall(e => {
       if (e.event === 'Started') {
         total = e.data.contentLength;
       } else if (e.event === 'Progress') {
         downloaded += e.data.chunkLength;
-        updates.update((s) => ({ ...s, progress: downloadFraction(downloaded, total) }));
+        updates.update(s => ({ ...s, progress: downloadFraction(downloaded, total) }));
       } else {
-        updates.update((s) => ({ ...s, status: 'installing', progress: 1 }));
+        updates.update(s => ({ ...s, status: 'installing', progress: 1 }));
       }
     });
     const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
   } catch (err) {
     console.warn('[updates] install failed:', err);
-    updates.update((s) => ({ ...s, status: 'error', error: updateErrorMessage(err) }));
+    updates.update(s => ({ ...s, status: 'error', error: updateErrorMessage(err) }));
   }
 }
 
@@ -137,7 +130,7 @@ export async function installUpdate(): Promise<void> {
 export function dismissUpdate(): void {
   const { version } = get(updates);
   if (version && browser) writeDismissed(localStorage, version);
-  updates.update((s) => ({ ...s, dismissed: true }));
+  updates.update(s => ({ ...s, dismissed: true }));
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -148,7 +141,13 @@ export function startAutoUpdateChecks(): void {
   stopAutoUpdateChecks();
   const run = () => {
     const s = get(settings);
-    if (canAutoCheck({ enabled: s.checkForUpdates, isDesktop: isDesktop(), isDev: updatesBlockedInDev(import.meta.env.DEV, import.meta.env.VITE_JANUS_UPDATES) })) {
+    if (
+      canAutoCheck({
+        enabled: s.checkForUpdates,
+        isDesktop: isDesktop(),
+        isDev: updatesBlockedInDev(import.meta.env.DEV, import.meta.env.VITE_JANUS_UPDATES),
+      })
+    ) {
       void checkForUpdates(false);
     }
   };

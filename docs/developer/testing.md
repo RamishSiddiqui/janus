@@ -44,6 +44,8 @@ When you add a table or a command that reads user data, extend `auth_isolation.r
 ```bash
 npm test            # vitest run
 npm run check       # svelte-check
+npm run lint        # ESLint
+npm run format:check  # Prettier
 ```
 
 Vitest runs `src/**/*.test.ts`. Current suites: `chatEmotion`, `onboarding` (model ranking, wizard conditions, starter characters), `webAccount` (passphrase strength, usernames, recovery-key typing, time labels), and `webBridge` (the browser transport: commands, errors, sign-out signal, events, files, pickers). Keep logic that can be pure in `lib/utils/` so it can be tested without a DOM.

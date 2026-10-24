@@ -73,7 +73,7 @@ export async function playBase64Wav(base64: string): Promise<WavPlayback> {
   source.buffer = buffer;
   source.connect(analyser);
   analyser.connect(ctx.destination);
-  const ended = new Promise<void>((resolve) => {
+  const ended = new Promise<void>(resolve => {
     source.onended = () => resolve();
   });
   source.start();

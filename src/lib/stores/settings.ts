@@ -136,11 +136,7 @@ Rules:
 
 // These are the fields that get force-refreshed when _settingsVersion is bumped.
 // Everything else (theme, fontSize, etc.) is always preserved from the user's save.
-const MANAGED_PROMPT_KEYS: (keyof AppSettings)[] = [
-  'systemPrompt',
-  'postHistoryInstructions',
-  'profileRefreshPrompt',
-];
+const MANAGED_PROMPT_KEYS: (keyof AppSettings)[] = ['systemPrompt', 'postHistoryInstructions', 'profileRefreshPrompt'];
 
 function loadSettings(): AppSettings {
   if (!browser) return defaultSettings;
@@ -161,9 +157,7 @@ function loadSettings(): AppSettings {
         merged._settingsVersion = CURRENT_SETTINGS_VERSION;
         // Persist the migration immediately
         localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        console.info(
-          `[settings] Migrated v${savedVersion} → v${CURRENT_SETTINGS_VERSION}: refreshed managed prompts`
-        );
+        console.info(`[settings] Migrated v${savedVersion} → v${CURRENT_SETTINGS_VERSION}: refreshed managed prompts`);
       }
 
       return merged;
@@ -178,7 +172,7 @@ function createSettingsStore() {
   const { subscribe, set, update } = writable<AppSettings>(loadSettings());
 
   // Persist on every change
-  subscribe((value) => {
+  subscribe(value => {
     if (browser) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
@@ -205,6 +199,8 @@ export const settings = createSettingsStore();
  */
 export function isLocalOnly(): boolean {
   let value = true;
-  settings.subscribe(s => { value = s.localStorageOnly; })();
+  settings.subscribe(s => {
+    value = s.localStorageOnly;
+  })();
   return value;
 }

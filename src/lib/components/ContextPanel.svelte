@@ -23,7 +23,13 @@
      *  reference, which requires a real file path server-side. */
     avatarPath?: string | null;
     tags?: { label: string; color: string }[];
-    additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
+    additionalCharacters?: {
+      id: string;
+      name: string;
+      description: string;
+      avatarUrl: string | null;
+      avatarColor: string;
+    }[];
     conversationId?: string | null;
     onClose: () => void;
   } = $props();
@@ -128,63 +134,114 @@
 
 <style>
   .context-panel {
-    height: 100%; position: relative;
+    height: 100%;
+    position: relative;
     background: linear-gradient(175deg, #0c0c1e, #09091a 50%, #07071a);
-    border-left: 1px solid rgba(139,92,246,0.08);
-    padding: 18px 16px; display: flex; flex-direction: column;
-    gap: 16px; overflow-y: auto; flex-shrink: 0;
-    animation: ctxSlideIn 350ms cubic-bezier(0.34,1.56,0.64,1) both;
+    border-left: 1px solid rgba(139, 92, 246, 0.08);
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    animation: ctxSlideIn 350ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
     /* Exposes this panel's own width (not the viewport's) as `cqi` to every
        descendant, so text/buttons/spacing can scale with the drag handle
        instead of staying pinned to fixed px sizes as the panel widens. */
     container-type: inline-size;
     container-name: ctx-panel;
   }
-  .context-panel.resizing { animation: none; user-select: none; }
+  .context-panel.resizing {
+    animation: none;
+    user-select: none;
+  }
 
   .ctx-resize-handle {
-    position: absolute; top: 0; bottom: 0; left: -3px; width: 6px;
-    cursor: col-resize; z-index: 5; touch-action: none;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3px;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 5;
+    touch-action: none;
   }
   .ctx-resize-handle::after {
-    content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px;
-    background: rgba(139,92,246,0.15); transition: background 150ms;
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 2px;
+    background: rgba(139, 92, 246, 0.15);
+    transition: background 150ms;
   }
   .ctx-resize-handle:hover::after,
   .context-panel.resizing .ctx-resize-handle::after {
-    background: rgba(139,92,246,0.5);
+    background: rgba(139, 92, 246, 0.5);
   }
   @keyframes ctxSlideIn {
-    from { opacity: 0; transform: translateX(20px); }
-    to { opacity: 1; transform: translateX(0); }
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
-  .context-panel::-webkit-scrollbar { width: 3px; }
-  .context-panel::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 3px; }
+  .context-panel::-webkit-scrollbar {
+    width: 3px;
+  }
+  .context-panel::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.15);
+    border-radius: 3px;
+  }
 
-  .ctx-header { display: flex; justify-content: space-between; align-items: center; }
+  .ctx-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
   .ctx-title {
-    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
-    font-family: var(--font-mono); letter-spacing: 1.8px;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: #5a5a7a;
+    font-family: var(--font-mono);
+    letter-spacing: 1.8px;
   }
   .ctx-close {
-    background: none; border: none; padding: 6px; border-radius: 8px;
-    cursor: pointer; transition: background 150ms;
+    background: none;
+    border: none;
+    padding: 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 150ms;
   }
-  .ctx-close:hover { background: rgba(139,92,246,0.08); }
+  .ctx-close:hover {
+    background: rgba(139, 92, 246, 0.08);
+  }
 
   .ctx-divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(139,92,246,0.12), transparent);
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.12), transparent);
   }
 
   /* Narrow screens: the panel slides over the chat as a sheet (opened from the
      chat header's info button) instead of taking a column from it. */
   @media (max-width: 1024px) {
     .context-panel {
-      position: fixed; top: 34px; right: 0; bottom: 0; height: auto;
-      width: min(400px, 92vw) !important; z-index: 95;
+      position: fixed;
+      top: 34px;
+      right: 0;
+      bottom: 0;
+      height: auto;
+      width: min(400px, 92vw) !important;
+      z-index: 95;
       box-shadow: -8px 0 40px rgba(0, 0, 0, 0.6);
     }
-    .ctx-resize-handle { display: none; }
+    .ctx-resize-handle {
+      display: none;
+    }
   }
 </style>

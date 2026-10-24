@@ -21,7 +21,7 @@
   let ttsProviders = $state<ProviderConfig[]>([]);
   let sources = $derived<Source[]>([
     { id: null, name: 'Kokoro (built-in)', adapter: 'kokoro' },
-    ...ttsProviders.map((p) => ({ id: p.id, name: p.name, adapter: p.adapter })),
+    ...ttsProviders.map(p => ({ id: p.id, name: p.name, adapter: p.adapter })),
   ]);
 
   // Per-source voice lists, loaded on demand (not eagerly for every source —
@@ -38,17 +38,16 @@
     return id ?? 'kokoro-builtin';
   }
 
-  onMount(async () => { await loadAll(); });
+  onMount(async () => {
+    await loadAll();
+  });
 
   async function loadAll() {
     isLoading = true;
     if (isTauri) {
       try {
         const ipc = await import('#lib/services/ipc.js');
-        const [status, providers] = await Promise.all([
-          ipc.ttsModelStatus(),
-          ipc.listProviders('tts'),
-        ]);
+        const [status, providers] = await Promise.all([ipc.ttsModelStatus(), ipc.listProviders('tts')]);
         kokoroStatus = status;
         ttsProviders = providers;
       } catch (err) {
@@ -88,11 +87,7 @@
     previewingVoiceKey = key;
     try {
       const ipc = await import('#lib/services/ipc.js');
-      const audio = await ipc.ttsTestSpeak(
-        'Hello, this is a preview of this voice.',
-        voice.id,
-        source.id ?? undefined,
-      );
+      const audio = await ipc.ttsTestSpeak('Hello, this is a preview of this voice.', voice.id, source.id ?? undefined);
       const playback = await playBase64Wav(audio);
       previewAnalyser = playback.analyser;
       await playback.ended;
@@ -103,9 +98,7 @@
     previewingVoiceKey = null;
   }
 
-  let totalVoiceCount = $derived(
-    Object.values(voicesBySource).reduce((sum, v) => sum + v.length, 0),
-  );
+  let totalVoiceCount = $derived(Object.values(voicesBySource).reduce((sum, v) => sum + v.length, 0));
 </script>
 
 <svelte:head><title>Voice Models — Janus</title></svelte:head>
@@ -118,7 +111,9 @@
         {#if isLoading}
           <span class="stat">Loading…</span>
         {:else}
-          <span class="stat">{sources.length} <span class="stat-label">{sources.length === 1 ? 'source' : 'sources'}</span></span>
+          <span class="stat"
+            >{sources.length} <span class="stat-label">{sources.length === 1 ? 'source' : 'sources'}</span></span
+          >
           {#if totalVoiceCount > 0}
             <span class="stat-sep">·</span>
             <span class="stat stat-enabled">{totalVoiceCount} <span class="stat-label">voices loaded</span></span>
@@ -217,77 +212,202 @@
 
 <style>
   .page {
-    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: linear-gradient(175deg, #0b0b1e 0%, #080814 40%, #06060f 100%);
   }
 
   .hdr {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    padding: 24px 28px 20px; flex-shrink: 0; position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 24px 28px 20px;
+    flex-shrink: 0;
+    position: relative;
   }
-  .hdr-left { display: flex; flex-direction: column; gap: 6px; }
-  .hdr-title { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; margin: 0; }
-  .hdr-stats { display: flex; align-items: center; gap: 6px; }
-  .stat { font-size: 13px; font-weight: 700; color: #c0c0d8; }
-  .stat-label { font-weight: 400; color: #4a4a6a; }
-  .stat-sep { color: #2a2a4a; }
-  .stat-enabled { color: #10B981; }
+  .hdr-left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hdr-title {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin: 0;
+  }
+  .hdr-stats {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stat {
+    font-size: 13px;
+    font-weight: 700;
+    color: #c0c0d8;
+  }
+  .stat-label {
+    font-weight: 400;
+    color: #4a4a6a;
+  }
+  .stat-sep {
+    color: #2a2a4a;
+  }
+  .stat-enabled {
+    color: #10b981;
+  }
 
   .btn-refresh {
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 16px; border-radius: 10px;
-    border: 1px solid rgba(139,92,246,0.15); background: rgba(139,92,246,0.06);
-    color: #8B5CF6; font-size: 12px; font-weight: 600; font-family: var(--font-body);
-    cursor: pointer; transition: all 150ms ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: rgba(139, 92, 246, 0.06);
+    color: #8b5cf6;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all 150ms ease;
   }
-  .btn-refresh:hover { background: rgba(139,92,246,0.14); border-color: rgba(139,92,246,0.3); transform: translateY(-1px); }
-  .btn-refresh:disabled { opacity: 0.4; pointer-events: none; }
+  .btn-refresh:hover {
+    background: rgba(139, 92, 246, 0.14);
+    border-color: rgba(139, 92, 246, 0.3);
+    transform: translateY(-1px);
+  }
+  .btn-refresh:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
 
-  .body { flex: 1; overflow-y: auto; padding: 0 28px 32px; }
-  .skeleton-list, .source-list { display: flex; flex-direction: column; gap: 10px; max-width: 780px; }
+  .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 28px 32px;
+  }
+  .skeleton-list,
+  .source-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 780px;
+  }
 
   .source-card {
-    border-radius: 12px; border: 1px solid rgba(139,92,246,0.1);
-    background: rgba(255,255,255,0.02); overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
   }
-  .source-card.expanded { border-color: rgba(139,92,246,0.25); background: rgba(139,92,246,0.03); }
+  .source-card.expanded {
+    border-color: rgba(139, 92, 246, 0.25);
+    background: rgba(139, 92, 246, 0.03);
+  }
 
   .source-header {
-    width: 100%; display: flex; align-items: center; gap: 10px;
-    padding: 14px 16px; background: none; border: none; cursor: pointer;
-    text-align: left; font-family: var(--font-body);
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-body);
   }
-  .source-icon { display: flex; flex-shrink: 0; }
-  .source-name { font-size: 13.5px; font-weight: 600; color: #e0e0f0; }
+  .source-icon {
+    display: flex;
+    flex-shrink: 0;
+  }
+  .source-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #e0e0f0;
+  }
   .source-adapter {
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
-    color: #5a5a7a; background: rgba(255,255,255,0.03); border-radius: 5px; padding: 2px 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #5a5a7a;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 5px;
+    padding: 2px 6px;
   }
   .source-badge {
-    margin-left: auto; font-size: 11px; color: #8b8ba7;
-    background: rgba(255,255,255,0.03); border-radius: 999px; padding: 3px 10px;
+    margin-left: auto;
+    font-size: 11px;
+    color: #8b8ba7;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 999px;
+    padding: 3px 10px;
   }
-  .source-badge.badge-warn { color: #f0a15c; background: rgba(240,161,92,0.08); }
-  .source-chevron { display: flex; transition: transform 150ms ease; flex-shrink: 0; }
-  .source-chevron.open { transform: rotate(180deg); }
+  .source-badge.badge-warn {
+    color: #f0a15c;
+    background: rgba(240, 161, 92, 0.08);
+  }
+  .source-chevron {
+    display: flex;
+    transition: transform 150ms ease;
+    flex-shrink: 0;
+  }
+  .source-chevron.open {
+    transform: rotate(180deg);
+  }
 
-  .source-body { padding: 0 16px 16px; }
-  .empty-note { font-size: 12.5px; color: #6b6b8a; margin: 4px 0; }
-  .empty-note a { color: #a78bfa; }
-  .empty-note.hint { max-width: 780px; }
+  .source-body {
+    padding: 0 16px 16px;
+  }
+  .empty-note {
+    font-size: 12.5px;
+    color: #6b6b8a;
+    margin: 4px 0;
+  }
+  .empty-note a {
+    color: #a78bfa;
+  }
+  .empty-note.hint {
+    max-width: 780px;
+  }
 
   .voice-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 8px;
   }
   .voice-chip {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 9px 12px; border-radius: 9px;
-    border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);
-    color: #c0c0d8; font-size: 12px; font-family: var(--font-body);
-    cursor: pointer; transition: all 150ms ease; text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.02);
+    color: #c0c0d8;
+    font-size: 12px;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all 150ms ease;
+    text-align: left;
   }
-  .voice-chip:hover:not(:disabled) { border-color: rgba(139,92,246,0.25); background: rgba(139,92,246,0.06); }
-  .voice-chip:disabled { opacity: 0.5; cursor: default; }
-  .voice-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+  .voice-chip:hover:not(:disabled) {
+    border-color: rgba(139, 92, 246, 0.25);
+    background: rgba(139, 92, 246, 0.06);
+  }
+  .voice-chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .voice-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-transform: capitalize;
+  }
 </style>

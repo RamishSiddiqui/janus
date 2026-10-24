@@ -30,10 +30,12 @@
   let selected = $derived(options.find(o => o.value === value));
   let filtered = $derived(
     filter.trim()
-      ? options.filter(o =>
-          o.label.toLowerCase().includes(filter.toLowerCase()) ||
-          (o.sublabel ?? '').toLowerCase().includes(filter.toLowerCase()))
-      : options
+      ? options.filter(
+          o =>
+            o.label.toLowerCase().includes(filter.toLowerCase()) ||
+            (o.sublabel ?? '').toLowerCase().includes(filter.toLowerCase()),
+        )
+      : options,
   );
 
   function toggle() {
@@ -59,7 +61,10 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') { isOpen = false; filter = ''; }
+    if (e.key === 'Escape') {
+      isOpen = false;
+      filter = '';
+    }
   }
 </script>
 
@@ -81,7 +86,7 @@
       {selected ? selected.label : placeholder}
     </span>
     <svg class="combo-caret" class:flipped={isOpen} width="10" height="10" viewBox="0 0 10 6" fill="none">
-      <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   </button>
 
@@ -89,10 +94,25 @@
     <div class="combo-panel" role="listbox" aria-label={ariaLabel}>
       {#if options.length > 6}
         <div class="combo-search">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input type="text" class="combo-search-input" placeholder="Search…" bind:value={filter} aria-label="Filter options" />
+          <input
+            type="text"
+            class="combo-search-input"
+            placeholder="Search…"
+            bind:value={filter}
+            aria-label="Filter options"
+          />
         </div>
       {/if}
       <div class="combo-list">
@@ -113,8 +133,17 @@
                 {#if opt.sublabel}<span class="combo-item-sublabel" title={opt.sublabel}>{opt.sublabel}</span>{/if}
               </span>
               {#if opt.value === value}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#BF40FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#BF40FF"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12" />
                 </svg>
               {/if}
             </button>
@@ -146,7 +175,9 @@
     font-size: 12px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     cursor: pointer;
-    transition: border-color 150ms, background 150ms;
+    transition:
+      border-color 150ms,
+      background 150ms;
   }
   .combo-trigger:hover:not(.is-disabled) {
     border-color: rgba(139, 92, 246, 0.3);
@@ -167,14 +198,18 @@
     white-space: nowrap;
     text-align: left;
   }
-  .combo-trigger-text.is-placeholder { color: #5a5a7a; }
+  .combo-trigger-text.is-placeholder {
+    color: #5a5a7a;
+  }
 
   .combo-caret {
     flex-shrink: 0;
     color: rgba(140, 100, 200, 0.6);
     transition: transform 180ms ease;
   }
-  .combo-caret.flipped { transform: rotate(180deg); }
+  .combo-caret.flipped {
+    transform: rotate(180deg);
+  }
 
   .combo-panel {
     position: absolute;
@@ -188,14 +223,22 @@
     -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid rgba(191, 64, 255, 0.16);
     border-radius: 12px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0,0,0,0.2);
+    box-shadow:
+      0 16px 48px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(0, 0, 0, 0.2);
     z-index: 60;
     overflow: hidden;
     animation: comboPanelIn 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes comboPanelIn {
-    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .combo-search {
@@ -215,15 +258,21 @@
     font-size: 12px;
     font-family: var(--font-body, 'Raleway', sans-serif);
   }
-  .combo-search-input::placeholder { color: rgba(80, 70, 130, 0.5); }
+  .combo-search-input::placeholder {
+    color: rgba(80, 70, 130, 0.5);
+  }
 
   .combo-list {
     overflow-y: auto;
     max-height: 270px;
     padding: 5px;
   }
-  .combo-list::-webkit-scrollbar { width: 3px; }
-  .combo-list::-webkit-scrollbar-track { background: transparent; }
+  .combo-list::-webkit-scrollbar {
+    width: 3px;
+  }
+  .combo-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
   .combo-list::-webkit-scrollbar-thumb {
     background: rgba(191, 64, 255, 0.2);
     border-radius: 3px;
@@ -243,7 +292,9 @@
     font-size: 12px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     cursor: pointer;
-    transition: background 120ms, color 120ms;
+    transition:
+      background 120ms,
+      color 120ms;
     text-align: left;
   }
   .combo-item:hover {
@@ -252,7 +303,7 @@
   }
   .combo-item.is-active {
     background: rgba(191, 64, 255, 0.12);
-    color: #BF40FF;
+    color: #bf40ff;
   }
 
   .combo-item-text {

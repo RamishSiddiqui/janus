@@ -2,7 +2,11 @@
   import Icon from './Icon.svelte';
   import JanusLoader from './JanusLoader.svelte';
 
-  let { reasoning = '', isThinking = false, startedAt }: {
+  let {
+    reasoning = '',
+    isThinking = false,
+    startedAt,
+  }: {
     /** Accumulated chain-of-thought text — may still be growing if isThinking. */
     reasoning?: string;
     /** True while reasoning is actively streaming and no real reply has
@@ -20,7 +24,9 @@
   let liveElapsedMs = $state(0);
   $effect(() => {
     if (!isThinking || !startedAt) return;
-    const handle = setInterval(() => { liveElapsedMs = Date.now() - startedAt; }, 250);
+    const handle = setInterval(() => {
+      liveElapsedMs = Date.now() - startedAt;
+    }, 250);
     return () => clearInterval(handle);
   });
 
@@ -51,7 +57,7 @@
     <button
       class="thinking-header"
       type="button"
-      onclick={() => expanded = !expanded}
+      onclick={() => (expanded = !expanded)}
       aria-expanded={expanded}
       aria-controls="thinking-body-{startedAt ?? 'static'}"
     >
@@ -91,7 +97,9 @@
     background: rgba(139, 92, 246, 0.05);
     border: 1px solid rgba(139, 92, 246, 0.12);
     cursor: pointer;
-    transition: background 180ms ease, border-color 180ms ease;
+    transition:
+      background 180ms ease,
+      border-color 180ms ease;
     max-width: 100%;
   }
   .thinking-header:hover {
@@ -107,7 +115,10 @@
     border-color: rgba(139, 92, 246, 0.2);
   }
 
-  .thinking-icon { display: flex; flex-shrink: 0; }
+  .thinking-icon {
+    display: flex;
+    flex-shrink: 0;
+  }
 
   .thinking-label {
     font-size: 10.5px;
@@ -119,11 +130,14 @@
   }
 
   .thinking-chevron {
-    display: flex; flex-shrink: 0;
+    display: flex;
+    flex-shrink: 0;
     transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
     opacity: 0.7;
   }
-  .thinking-chevron.expanded { transform: rotate(180deg); }
+  .thinking-chevron.expanded {
+    transform: rotate(180deg);
+  }
 
   /* Grid-rows accordion — animates height without measuring content. */
   .thinking-body-wrap {
@@ -131,8 +145,13 @@
     grid-template-rows: 0fr;
     transition: grid-template-rows 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .thinking-body-wrap.expanded { grid-template-rows: 1fr; }
-  .thinking-body-inner { overflow: hidden; min-height: 0; }
+  .thinking-body-wrap.expanded {
+    grid-template-rows: 1fr;
+  }
+  .thinking-body-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
 
   .thinking-body {
     margin-top: 6px;
@@ -149,11 +168,17 @@
     max-height: 240px;
     overflow-y: auto;
   }
-  .thinking-body::-webkit-scrollbar { width: 3px; }
-  .thinking-body::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 3px; }
+  .thinking-body::-webkit-scrollbar {
+    width: 3px;
+  }
+  .thinking-body::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.15);
+    border-radius: 3px;
+  }
 
   @media (prefers-reduced-motion: reduce) {
-    .thinking-body-wrap, .thinking-chevron {
+    .thinking-body-wrap,
+    .thinking-chevron {
       transition: none;
       animation: none;
     }

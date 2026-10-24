@@ -8,11 +8,11 @@
 // ============================================================
 
 export interface EmotionState {
-  mood:             number; // 0–100: 0=devastated, 50=neutral, 100=elated
-  trust:            number; // 0–100: 0=hostile, 50=wary, 100=devoted
-  arousal:          number; // 0–100: 0=withdrawn, 50=engaged, 100=intense
+  mood: number; // 0–100: 0=devastated, 50=neutral, 100=elated
+  trust: number; // 0–100: 0=hostile, 50=wary, 100=devoted
+  arousal: number; // 0–100: 0=withdrawn, 50=engaged, 100=intense
   dominant_emotion: string; // single lowercase word
-  state_summary:    string; // 1–2 sentences, third person, max 150 chars
+  state_summary: string; // 1–2 sentences, third person, max 150 chars
 }
 
 const SYSTEM_PROMPT = `You are an emotional state analyzer for a roleplay character.
@@ -30,18 +30,16 @@ Rules:
 - Keep state_summary under 120 characters.`;
 
 function buildPrompt(
-  userMessage:       string,
+  userMessage: string,
   assistantResponse: string,
-  prev:              EmotionState | null,
-  characterName?:    string,
+  prev: EmotionState | null,
+  characterName?: string,
 ): string {
   const baseline = prev
     ? `Previous state: mood=${prev.mood} trust=${prev.trust} arousal=${prev.arousal} emotion=${prev.dominant_emotion}`
     : 'Previous state: unknown (first exchange — infer from this response alone)';
 
-  const charLine = characterName
-    ? `\n[TARGET CHARACTER: ${characterName}]`
-    : '';
+  const charLine = characterName ? `\n[TARGET CHARACTER: ${characterName}]` : '';
 
   return `${baseline}${charLine}
 
@@ -57,23 +55,25 @@ Infer ${characterName ? characterName + "'s" : "the character's"} new emotional 
 function parseEmotionResponse(raw: string): EmotionState | null {
   try {
     // Strip markdown fences if the model adds them despite instructions
-    let cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const cleaned = raw
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '');
     const match = cleaned.match(/\{[\s\S]*\}/);
     if (!match) return null;
 
     const p = JSON.parse(match[0]);
 
-    const clamp = (v: unknown): number =>
-      Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
+    const clamp = (v: unknown): number => Math.max(0, Math.min(100, Math.round(Number(v) || 50)));
     const str = (v: unknown, fallback: string): string =>
       typeof v === 'string' && v.trim().length > 0 ? v.trim() : fallback;
 
     return {
-      mood:             clamp(p.mood),
-      trust:            clamp(p.trust),
-      arousal:          clamp(p.arousal),
+      mood: clamp(p.mood),
+      trust: clamp(p.trust),
+      arousal: clamp(p.arousal),
       dominant_emotion: str(p.dominant_emotion, 'neutral').toLowerCase().split(/\s+/)[0],
-      state_summary:    str(p.state_summary, '').slice(0, 150),
+      state_summary: str(p.state_summary, '').slice(0, 150),
     };
   } catch {
     return null;
@@ -93,11 +93,11 @@ function parseEmotionResponse(raw: string): EmotionState | null {
  * 4. Persist via upsert_character_state (upserts on conflict)
  */
 export async function updateEmotionalState(
-  characterId:       string,
-  conversationId:    string,
-  userMessage:       string,
+  characterId: string,
+  conversationId: string,
+  userMessage: string,
   assistantResponse: string,
-  characterName?:    string,
+  characterName?: string,
 ): Promise<void> {
   // Skip very short responses — not enough signal to infer emotion
   if (assistantResponse.length < 80) return;
@@ -117,8 +117,8 @@ export async function updateEmotionalState(
       SYSTEM_PROMPT,
       buildPrompt(userMessage, assistantResponse, prev, characterName),
       undefined, // use default model
-      256,       // emotion response is short
-      0.3,       // low temperature — we want stable, consistent output
+      256, // emotion response is short
+      0.3, // low temperature — we want stable, consistent output
     );
 
     const state = parseEmotionResponse(raw);
@@ -138,7 +138,7 @@ export async function updateEmotionalState(
     );
 
     console.debug(
-      `[Janus] Emotion updated → ${state.dominant_emotion} (mood=${state.mood} trust=${state.trust} arousal=${state.arousal})`
+      `[Janus] Emotion updated → ${state.dominant_emotion} (mood=${state.mood} trust=${state.trust} arousal=${state.arousal})`,
     );
   } catch (err) {
     // Never surface emotion errors to the user — it's a background enhancement

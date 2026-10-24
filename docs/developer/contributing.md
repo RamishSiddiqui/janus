@@ -16,6 +16,8 @@ By contributing you agree your work is licensed under the project's licence (AGP
 
 ```bash
 npm run check
+npm run lint
+npm run format:check   # npm run format fixes it
 npm test
 cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 python docs/tools/gen_reference.py --check

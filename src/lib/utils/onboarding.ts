@@ -57,7 +57,7 @@ export const MODEL_SOURCES: ModelSource[] = [
 /** Free models first (OpenRouter marks them ":free"), then alphabetical. */
 export function rankModels(models: string[]): string[] {
   const seen = new Set<string>();
-  const unique = models.filter((m) => m && !seen.has(m) && seen.add(m));
+  const unique = models.filter(m => m && !seen.has(m) && seen.add(m));
   return unique.sort((a, b) => {
     const fa = a.endsWith(':free') ? 0 : 1;
     const fb = b.endsWith(':free') ? 0 : 1;

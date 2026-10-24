@@ -75,7 +75,7 @@
     padding: 10px 20px;
     border-radius: var(--rounded-md);
     background: var(--accent-primary);
-    color: #FFFFFF;
+    color: #ffffff;
     font-size: 13px;
     font-weight: 600;
     font-family: var(--font-body);

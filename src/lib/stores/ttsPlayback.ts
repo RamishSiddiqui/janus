@@ -221,7 +221,7 @@ async function handleChunk(chunk: TtsChunkEvent) {
 
   source.onended = () => {
     activeSourceCount--;
-    pendingSources = pendingSources.filter((s) => s !== source);
+    pendingSources = pendingSources.filter(s => s !== source);
     if (currentMessageId !== messageId) return; // A newer message has already taken over entirely.
     if (activeSourceCount <= 0 && streamEnded) {
       // Nothing left playing/scheduled, and we know nothing more is
@@ -255,10 +255,10 @@ export async function initTtsPlaybackListener(): Promise<() => void> {
   if (!isTauri) return () => {};
 
   const { listen } = await import('@tauri-apps/api/event');
-  unlistenTtsChunk = await listen<TtsChunkEvent>('tts-chunk', (event) => {
+  unlistenTtsChunk = await listen<TtsChunkEvent>('tts-chunk', event => {
     void handleChunk(event.payload);
   });
-  unlistenTtsStreamEnd = await listen<TtsStreamEndEvent>('tts-stream-end', (event) => {
+  unlistenTtsStreamEnd = await listen<TtsStreamEndEvent>('tts-stream-end', event => {
     handleStreamEnd(event.payload);
   });
   return unlistenTtsChunk;

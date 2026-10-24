@@ -26,6 +26,8 @@ A debug build also seeds a few demo characters on first run (`db/seed.rs`, behin
 |---|---|
 | `npm run tauri dev` | Run the app with hot reload. |
 | `npm run check` | `svelte-kit sync` then `svelte-check` (TypeScript and Svelte). |
+| `npm run lint` / `npm run lint:fix` | ESLint over the frontend. Errors fail CI; warnings are a backlog. |
+| `npm run format` / `npm run format:check` | Prettier: write the formatting, or only check it (CI runs the check). |
 | `npm test` | Frontend unit tests (vitest). |
 | `npm run build` | Build the static frontend into `build/`. |
 | `npm run tauri build` | Build installers (`src-tauri/target/release/bundle/`). |

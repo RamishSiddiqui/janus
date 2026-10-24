@@ -9,10 +9,8 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let isExpanded = $state(false);
-
-  // Initialize from prop
-  $effect(() => { isExpanded = expanded; });
+  // Follows the prop, and can be toggled locally until the prop changes again.
+  let isExpanded = $derived(expanded);
 
   // Scene extraction is told to use the literal "{{user}}" token to refer
   // to the player character in `characters_present` — resolve it to the
@@ -49,9 +47,13 @@
 
   function getWeatherIcon(weather: string): string {
     const map: Record<string, string> = {
-      clear: 'sun', cloudy: 'cloud', raining: 'cloud-rain',
-      storming: 'cloud-lightning', snowing: 'cloud-snow',
-      foggy: 'eye', windy: 'wind',
+      clear: 'sun',
+      cloudy: 'cloud',
+      raining: 'cloud-rain',
+      storming: 'cloud-lightning',
+      snowing: 'cloud-snow',
+      foggy: 'eye',
+      windy: 'wind',
     };
     return map[weather.toLowerCase()] || 'cloud';
   }
@@ -65,10 +67,14 @@
 
   function getMoodColor(mood: string): string {
     const map: Record<string, string> = {
-      tense: '#ef4444', dangerous: '#ef4444',
-      calm: '#60a5fa', neutral: '#60a5fa',
-      romantic: '#f472b6', mysterious: '#a78bfa',
-      joyful: '#fbbf24', melancholic: '#9ca3af',
+      tense: '#ef4444',
+      dangerous: '#ef4444',
+      calm: '#60a5fa',
+      neutral: '#60a5fa',
+      romantic: '#f472b6',
+      mysterious: '#a78bfa',
+      joyful: '#fbbf24',
+      melancholic: '#9ca3af',
     };
     return map[mood.toLowerCase()] || '#60a5fa';
   }
@@ -110,12 +116,22 @@
 
         <span class="ssb-chip">
           <Icon name="users" size={12} color="var(--fg-muted)" />
-          <span class="ssb-chip-text ssb-chip-muted">{sceneState.characters_present.length} character{sceneState.characters_present.length !== 1 ? 's' : ''}</span>
+          <span class="ssb-chip-text ssb-chip-muted"
+            >{sceneState.characters_present.length} character{sceneState.characters_present.length !== 1
+              ? 's'
+              : ''}</span
+          >
         </span>
 
         {#if sceneState.scene_mood}
           <span class="ssb-divider" aria-hidden="true">·</span>
-          <span class="ssb-mood-dot" style="background:{getMoodColor(sceneState.scene_mood)}; box-shadow: 0 0 6px {getMoodColor(sceneState.scene_mood)}40;" title="Mood: {sceneState.scene_mood}"></span>
+          <span
+            class="ssb-mood-dot"
+            style="background:{getMoodColor(sceneState.scene_mood)}; box-shadow: 0 0 6px {getMoodColor(
+              sceneState.scene_mood,
+            )}40;"
+            title="Mood: {sceneState.scene_mood}"
+          ></span>
         {/if}
       </div>
 
@@ -156,7 +172,12 @@
           <div class="ssb-detail-row">
             <span class="ssb-detail-label">Mood</span>
             <span class="ssb-detail-value">
-              <span class="ssb-mood-dot-inline" style="background:{getMoodColor(sceneState.scene_mood)}; box-shadow: 0 0 6px {getMoodColor(sceneState.scene_mood)}40;"></span>
+              <span
+                class="ssb-mood-dot-inline"
+                style="background:{getMoodColor(sceneState.scene_mood)}; box-shadow: 0 0 6px {getMoodColor(
+                  sceneState.scene_mood,
+                )}40;"
+              ></span>
               {sceneState.scene_mood.replace(/^\w/, c => c.toUpperCase())}
             </span>
           </div>
@@ -256,8 +277,15 @@
   }
 
   @keyframes moodPulse {
-    0%, 100% { opacity: 0.7; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.15); }
+    0%,
+    100% {
+      opacity: 0.7;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.15);
+    }
   }
 
   .ssb-toggle {
@@ -268,8 +296,9 @@
     width: 20px;
     height: 20px;
     border-radius: var(--rounded-sm, 4px);
-    transition: transform var(--duration-fast, 120ms) var(--ease-out, ease-out),
-                background var(--duration-fast, 120ms) var(--ease-out, ease-out);
+    transition:
+      transform var(--duration-fast, 120ms) var(--ease-out, ease-out),
+      background var(--duration-fast, 120ms) var(--ease-out, ease-out);
   }
 
   .ssb-toggle.flipped {

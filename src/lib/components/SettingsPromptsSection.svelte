@@ -44,11 +44,7 @@
     <button class="reset-btn" onclick={resetSystemPrompt}>Reset</button>
   </div>
 
-  <textarea
-    class="system-prompt-input"
-    bind:value={systemPrompt}
-    rows="6"
-    aria-label="Default system prompt"
+  <textarea class="system-prompt-input" bind:value={systemPrompt} rows="6" aria-label="Default system prompt"
   ></textarea>
 
   <span class="prompt-hint">Use {`{{char}}`} for character name • {`{{user}}`} for player name</span>
@@ -61,17 +57,26 @@
       <Icon name="compass" size={16} color="var(--accent-primary)" />
       <span class="section-title">Narrative Direction</span>
     </div>
-    <button class="reset-btn" onclick={() => { settings.reset(); postHistoryInstructions = $settings.postHistoryInstructions; success('Narrative direction reset'); }}>Reset</button>
+    <button
+      class="reset-btn"
+      onclick={() => {
+        settings.reset();
+        postHistoryInstructions = $settings.postHistoryInstructions;
+        success('Narrative direction reset');
+      }}>Reset</button
+    >
   </div>
 
-  <span class="phi-description">Injected after conversation history to shape how the AI structures responses — narrative hooks, scene transitions, and pacing.</span>
+  <span class="phi-description"
+    >Injected after conversation history to shape how the AI structures responses — narrative hooks, scene transitions,
+    and pacing.</span
+  >
 
   <textarea
     class="system-prompt-input"
     bind:value={postHistoryInstructions}
     rows="6"
-    aria-label="Post-history instructions"
-  ></textarea>
+    aria-label="Post-history instructions"></textarea>
 
   <span class="prompt-hint">Controls story momentum • scene transitions • prevents dead-end conversations</span>
 </section>
@@ -86,14 +91,19 @@
     <button class="reset-btn" onclick={resetSystemPrompt}>Reset</button>
   </div>
 
-  <span class="phi-description">Used by "Refresh from Story" — updates an auto-detected character's description, personality, and scenario to match how they've actually appeared, instead of leaving them stuck on the placeholder written when they were first spotted.</span>
+  <span class="phi-description"
+    >Used by "Refresh from Story" — updates an auto-detected character's description, personality, and scenario to match
+    how they've actually appeared, instead of leaving them stuck on the placeholder written when they were first
+    spotted.</span
+  >
 
   <textarea
     class="system-prompt-input"
     bind:value={profileRefreshPrompt}
     rows="6"
-    aria-label="Character profile refresh prompt"
-  ></textarea>
+    aria-label="Character profile refresh prompt"></textarea>
 
-  <span class="prompt-hint">Must keep asking for JSON with description/personality/scenario only — editing that part away will break refreshes</span>
+  <span class="prompt-hint"
+    >Must keep asking for JSON with description/personality/scenario only — editing that part away will break refreshes</span
+  >
 </section>

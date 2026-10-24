@@ -7,14 +7,18 @@
   import TimelineFilter from '#lib/components/TimelineFilter.svelte';
   import Icon from '#lib/components/Icon.svelte';
   import SplitHeading from '#lib/components/SplitHeading.svelte';
-  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { error as toastError } from '#lib/stores/toast.js';
   import { parseCharacterData } from '#lib/utils/character.js';
   import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   // Character selection (multi-select)
-  interface CharOption { id: string; name: string; avatarPath: string | null; }
+  interface CharOption {
+    id: string;
+    name: string;
+    avatarPath: string | null;
+  }
   let characters = $state<CharOption[]>([]);
   let selectedCharIds = $state<string[]>([]);
   let isLoading = $state(true);
@@ -39,7 +43,10 @@
   let knownConvIdsKey = $state('');
 
   $effect(() => {
-    const key = allConvOptions.map(c => c.id).sort().join('|');
+    const key = allConvOptions
+      .map(c => c.id)
+      .sort()
+      .join('|');
     if (key !== knownConvIdsKey) {
       knownConvIdsKey = key;
       selectedConvIds = new Set(allConvOptions.map(c => c.id));
@@ -48,14 +55,14 @@
 
   function toggleConvFilter(id: string): void {
     const next = new Set(selectedConvIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     selectedConvIds = next;
   }
 
   function toggleConvFilterAll(): void {
-    selectedConvIds = selectedConvIds.size === allConvOptions.length
-      ? new Set()
-      : new Set(allConvOptions.map(c => c.id));
+    selectedConvIds =
+      selectedConvIds.size === allConvOptions.length ? new Set() : new Set(allConvOptions.map(c => c.id));
   }
 
   // Selected characters info
@@ -108,14 +115,16 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       const chars = await ipc.listCharacters();
-      characters = chars.map(c => {
-        const parsedData = parseCharacterData(c.data);
-        return {
-          id: c.id,
-          name: (parsedData?.name ?? c.name) as string,
-          avatarPath: c.avatar_path,
-        };
-      }).sort((a, b) => a.name.localeCompare(b.name));
+      characters = chars
+        .map(c => {
+          const parsedData = parseCharacterData(c.data);
+          return {
+            id: c.id,
+            name: (parsedData?.name ?? c.name) as string,
+            avatarPath: c.avatar_path,
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
       if (selectedCharIds.length === 0 && characters.length > 0) {
         selectedCharIds = [characters[0].id];
       }
@@ -200,7 +209,7 @@
       <div class="char-picker" bind:this={dropdownEl}>
         <button
           class="picker-trigger"
-          onclick={() => dropdownOpen = !dropdownOpen}
+          onclick={() => (dropdownOpen = !dropdownOpen)}
           disabled={isLoading || characters.length === 0}
         >
           <!-- Stacked avatars -->
@@ -248,11 +257,7 @@
                   {/if}
                 </div>
                 {#if char.avatarPath}
-                  <img
-                    class="option-avatar"
-                    src="/avatars/{char.avatarPath.split('/').pop()}"
-                    alt={char.name}
-                  />
+                  <img class="option-avatar" src="/avatars/{char.avatarPath.split('/').pop()}" alt={char.name} />
                 {:else}
                   <div class="option-avatar placeholder">
                     <Icon name="user" size={10} />
@@ -267,19 +272,11 @@
 
       <!-- View switch -->
       <div class="view-switch">
-        <button
-          class="view-chip"
-          class:active={activeView === 'graph'}
-          onclick={() => activeView = 'graph'}
-        >
+        <button class="view-chip" class:active={activeView === 'graph'} onclick={() => (activeView = 'graph')}>
           <Icon name="network" size={14} color={activeView === 'graph' ? '#0a0812' : 'var(--fg-muted)'} />
           <span>Graph</span>
         </button>
-        <button
-          class="view-chip"
-          class:active={activeView === 'timeline'}
-          onclick={() => activeView = 'timeline'}
-        >
+        <button class="view-chip" class:active={activeView === 'timeline'} onclick={() => (activeView = 'timeline')}>
           <Icon name="clock" size={14} color={activeView === 'timeline' ? '#0a0812' : 'var(--fg-muted)'} />
           <span>Timeline</span>
         </button>
@@ -349,10 +346,17 @@
           <Icon name="zap" size={32} />
         </div>
         <h2>No Memories Yet</h2>
-        <p>Chat with {selectedChars.map(c => c.name).join(' & ') || 'these characters'} to start building their memory multiverse</p>
+        <p>
+          Chat with {selectedChars.map(c => c.name).join(' & ') || 'these characters'} to start building their memory multiverse
+        </p>
       </div>
     {:else if graphData && activeView === 'graph'}
-      <MemoryGraph data={graphData} avatars={Object.fromEntries(selectedChars.map(c => [c.id, c.avatarPath]))} onRefresh={handleRefresh} visibleConvIds={selectedConvIds} />
+      <MemoryGraph
+        data={graphData}
+        avatars={Object.fromEntries(selectedChars.map(c => [c.id, c.avatarPath]))}
+        onRefresh={handleRefresh}
+        visibleConvIds={selectedConvIds}
+      />
     {:else if graphData && activeView === 'timeline'}
       <MemoryTimeline data={graphData} onRefresh={handleRefresh} visibleConvIds={selectedConvIds} />
     {/if}
@@ -460,7 +464,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #8B5CF6, #BF40FF);
+    background: linear-gradient(135deg, #8b5cf6, #bf40ff);
     color: #fff;
   }
 
@@ -503,19 +507,29 @@
     border-radius: 12px;
     padding: 4px;
     z-index: 100;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.04);
     animation: dropIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .picker-dropdown::-webkit-scrollbar { width: 3px; }
+  .picker-dropdown::-webkit-scrollbar {
+    width: 3px;
+  }
   .picker-dropdown::-webkit-scrollbar-thumb {
     background: rgba(144, 117, 242, 0.2);
     border-radius: 3px;
   }
 
   @keyframes dropIn {
-    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .picker-option {
@@ -618,7 +632,9 @@
     box-shadow: 0 6px 18px -6px #9075f2;
   }
 
-  .view-chip span { white-space: nowrap; }
+  .view-chip span {
+    white-space: nowrap;
+  }
 
   /* ── Icon Button ── */
   .icon-btn {
@@ -744,32 +760,57 @@
   }
 
   @keyframes gentlePulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
-    50% { box-shadow: 0 0 24px 4px rgba(139, 92, 246, 0.08); }
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+    }
+    50% {
+      box-shadow: 0 0 24px 4px rgba(139, 92, 246, 0.08);
+    }
   }
 
   .loading-ring {
     width: 28px;
     height: 28px;
     border: 2px solid rgba(139, 92, 246, 0.1);
-    border-top-color: #8B5CF6;
+    border-top-color: #8b5cf6;
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* ── Phones ── */
   @media (max-width: 768px) {
-    .topbar { padding: 10px 14px; }
-    .topbar-right { flex-wrap: wrap; width: 100%; }
-    .view-chip { padding: 6px 11px; }
+    .topbar {
+      padding: 10px 14px;
+    }
+    .topbar-right {
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .view-chip {
+      padding: 6px 11px;
+    }
     /* The four counts and the timeline filter scroll sideways instead of being cut off. */
-    .stats-strip { padding: 8px 6px; overflow-x: auto; scrollbar-width: none; }
-    .stats-strip::-webkit-scrollbar { display: none; }
-    .stat { padding: 0 10px; flex-shrink: 0; }
-    .stat-divider { flex-shrink: 0; }
+    .stats-strip {
+      padding: 8px 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .stats-strip::-webkit-scrollbar {
+      display: none;
+    }
+    .stat {
+      padding: 0 10px;
+      flex-shrink: 0;
+    }
+    .stat-divider {
+      flex-shrink: 0;
+    }
   }
 </style>

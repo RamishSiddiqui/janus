@@ -11,9 +11,20 @@ import { charAccentColor, type CharMeta } from '#lib/services/presentation-buffe
 import { error as toastError, undoableDelete } from '#lib/stores/toast.js';
 import { browser } from '$app/env';
 import {
-  activeConversationId, characterEmotionStates, conversationCharMeta, conversations,
-  hasMoreMessages, isLoadingMoreMessages, isStreaming, lastStreamError, loadConversations,
-  MESSAGE_RENDER_SIZE, messages, pathState, resetPaginationState, resolveCachedAvatarUrl,
+  activeConversationId,
+  characterEmotionStates,
+  conversationCharMeta,
+  conversations,
+  hasMoreMessages,
+  isLoadingMoreMessages,
+  isStreaming,
+  lastStreamError,
+  loadConversations,
+  MESSAGE_RENDER_SIZE,
+  messages,
+  pathState,
+  resetPaginationState,
+  resolveCachedAvatarUrl,
 } from './chat';
 import { parseEmotionSnapshot } from './chatEmotion';
 
@@ -28,9 +39,10 @@ function parseAttachments(metadata: unknown): { relativePath: string; mimeType: 
   if (!Array.isArray(raw)) return undefined;
   const parsed = raw.filter(
     (a): a is { relativePath: string; mimeType: string } =>
-      typeof a === 'object' && a !== null &&
+      typeof a === 'object' &&
+      a !== null &&
       typeof (a as Record<string, unknown>).relativePath === 'string' &&
-      typeof (a as Record<string, unknown>).mimeType === 'string'
+      typeof (a as Record<string, unknown>).mimeType === 'string',
   );
   return parsed.length > 0 ? parsed : undefined;
 }
@@ -157,13 +169,15 @@ export async function loadMessages(conversationId: string) {
     // Case 1: this conversation IS a branch (has parent_conversation_id)
     if (conv.parent_conversation_id && conv.branch_point_message_id) {
       // Find all conversations that branched from the same parent at the same point
-      const otherBranches = allConvPreviews.filter(c =>
-        c.parentConversationId === conv.parent_conversation_id &&
-        c.branchPointMessageId === conv.branch_point_message_id &&
-        c.id !== conversationId
+      const otherBranches = allConvPreviews.filter(
+        c =>
+          c.parentConversationId === conv.parent_conversation_id &&
+          c.branchPointMessageId === conv.branch_point_message_id &&
+          c.id !== conversationId,
       );
 
-      if (otherBranches.length > 0 || true /* parent itself is always a sibling */) {
+      {
+        // The parent itself is always a sibling, so this block always runs.
         // Ordered list: [parent, ...other branches sorted by id, this branch]
         const parentId = conv.parent_conversation_id;
         const sortedOtherBranches = otherBranches.map(c => c.id).sort();
@@ -235,12 +249,11 @@ export async function loadMessages(conversationId: string) {
 
     // Build full annotated message list (kept in memory for scroll-up pagination)
     let foundStreamError = false;
-    let streamErrorState: { conversationId: string, lastUserContent: string, userMessageId?: string } | null = null;
+    let streamErrorState: { conversationId: string; lastUserContent: string; userMessageId?: string } | null = null;
 
     pathState.fullActivePath = activePath.map((m, index) => {
       const key = m.parent_id ?? '__root__';
       const siblings = byParent.get(key) ?? [];
-      const siblingIndex = siblings.findIndex(s => s.id === m.id);
       const convSibling = convSiblingOverrides.get(m.id);
 
       // Multi-character segments (messages with character_name) are sequential
@@ -264,7 +277,7 @@ export async function loadMessages(conversationId: string) {
           streamErrorState = {
             conversationId,
             lastUserContent: prevUser.content,
-            userMessageId: prevUser.id
+            userMessageId: prevUser.id,
           };
         }
       }
@@ -280,12 +293,8 @@ export async function loadMessages(conversationId: string) {
         // In-conversation siblings (old message-tree branching) — excludes multi-char segments
         siblingIds: hasRealSiblings ? realSiblings.map(s => s.id) : undefined,
         siblingIndex: hasRealSiblings ? realSiblingIndex : undefined,
-        alternates: convSibling
-          ? convSibling.ids.length
-          : (hasRealSiblings ? realSiblings.length : undefined),
-        currentAlternate: convSibling
-          ? convSibling.index + 1
-          : (hasRealSiblings ? realSiblingIndex + 1 : undefined),
+        alternates: convSibling ? convSibling.ids.length : hasRealSiblings ? realSiblings.length : undefined,
+        currentAlternate: convSibling ? convSibling.index + 1 : hasRealSiblings ? realSiblingIndex + 1 : undefined,
         // Cross-conversation branch siblings
         siblingConversationIds: convSibling?.ids,
         siblingConversationIndex: convSibling?.index,
@@ -325,10 +334,14 @@ export async function loadMessages(conversationId: string) {
             try {
               const state = await ipc.getCharacterState(cc.character_id, conversationId);
               if (state) stateMap.set(cc.character_id, state);
-            } catch { /* no state yet — skip */ }
+            } catch {
+              /* no state yet — skip */
+            }
           }
         }
-      } catch { /* no conversation characters — single char mode */ }
+      } catch {
+        /* no conversation characters — single char mode */
+      }
       characterEmotionStates.set(stateMap);
     } catch {
       characterEmotionStates.set(new Map());
@@ -353,7 +366,9 @@ export async function loadMessages(conversationId: string) {
             avatarUrl: avUrl,
             accentColor: charAccentColor(char.name),
           });
-        } catch { /* character may have been deleted */ }
+        } catch {
+          /* character may have been deleted */
+        }
       }
 
       // Additional characters
@@ -370,10 +385,14 @@ export async function loadMessages(conversationId: string) {
                 avatarUrl: avUrl,
                 accentColor: charAccentColor(char.name),
               });
-            } catch { /* skip */ }
+            } catch {
+              /* skip */
+            }
           }
         }
-      } catch { /* single-char mode — no additional characters */ }
+      } catch {
+        /* single-char mode — no additional characters */
+      }
 
       conversationCharMeta.set(metaMap);
 
@@ -381,13 +400,15 @@ export async function loadMessages(conversationId: string) {
       const currentMsgs = get(messages);
       const needsAvatarUpdate = currentMsgs.some(m => m.character_id && !m.character_avatar_url);
       if (needsAvatarUpdate) {
-        messages.update(msgs => msgs.map(m => {
-          if (m.character_id && !m.character_avatar_url) {
-            const meta = metaMap.get(m.character_id);
-            if (meta) return { ...m, character_avatar_url: meta.avatarUrl };
-          }
-          return m;
-        }));
+        messages.update(msgs =>
+          msgs.map(m => {
+            if (m.character_id && !m.character_avatar_url) {
+              const meta = metaMap.get(m.character_id);
+              if (meta) return { ...m, character_avatar_url: meta.avatarUrl };
+            }
+            return m;
+          }),
+        );
         // Also update pathState.fullActivePath
         for (let i = 0; i < pathState.fullActivePath.length; i++) {
           const m = pathState.fullActivePath[i];
@@ -516,6 +537,6 @@ export function deleteMessageWithUndo(id: string) {
         pathState.fullActivePath = copy;
         pathState.currentRenderCount += 1;
       }
-    }
+    },
   );
 }

@@ -13,8 +13,12 @@
   import TimelineFilter from './TimelineFilter.svelte';
   import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
   import {
-    sceneGenerations, getSceneGenerationState, trackPortraitGeneration,
-    portraitGenerationKey, describeProgress, trackGenerationByKey,
+    sceneGenerations,
+    getSceneGenerationState,
+    trackPortraitGeneration,
+    portraitGenerationKey,
+    describeProgress,
+    trackGenerationByKey,
   } from '#lib/stores/sceneGeneration.js';
 
   const refreshKey = (characterId: string) => `npc-refresh-${characterId}`;
@@ -104,9 +108,7 @@
 
   // Role sort order for display: primary first, then secondary, npc, transient.
   const ROLE_ORDER: Record<string, number> = { primary: 0, secondary: 1, npc: 2, transient: 3 };
-  let sortedRoster = $derived(
-    [...roster].sort((a, b) => (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9))
-  );
+  let sortedRoster = $derived([...roster].sort((a, b) => (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9)));
 
   // ── Add Character (ported from the old Group Cast panel) ──
   let showAddChar = $state(false);
@@ -136,14 +138,17 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       const created = await ipc.addConversationCharacter(conversationId, charId, charName);
-      roster = [...roster, {
-        id: created.id,
-        character_id: created.character_id,
-        character_name: created.character_name,
-        role: created.role,
-        talkativeness: created.talkativeness,
-        is_active: created.is_active,
-      }];
+      roster = [
+        ...roster,
+        {
+          id: created.id,
+          character_id: created.character_id,
+          character_name: created.character_name,
+          role: created.role,
+          talkativeness: created.talkativeness,
+          is_active: created.is_active,
+        },
+      ];
       showAddChar = false;
       success(`${charName} joined the cast`);
     } catch {
@@ -171,7 +176,7 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       await ipc.toggleCharacterActive(conversationId, charId, !row.is_active);
-      roster = roster.map(r => r.character_id === charId ? { ...r, is_active: !r.is_active } : r);
+      roster = roster.map(r => (r.character_id === charId ? { ...r, is_active: !r.is_active } : r));
     } catch {
       toastError('Failed to toggle character');
     }
@@ -179,7 +184,7 @@
 
   async function updateRosterTalkativeness(charId: string, value: number) {
     if (!conversationId || !isTauri) return;
-    roster = roster.map(r => r.character_id === charId ? { ...r, talkativeness: value } : r);
+    roster = roster.map(r => (r.character_id === charId ? { ...r, talkativeness: value } : r));
     try {
       const ipc = await import('#lib/services/ipc.js');
       await ipc.updateCharacterTalkativeness(conversationId, charId, value);
@@ -190,10 +195,14 @@
 
   function getRoleBadgeStyle(role: string): string {
     switch (role) {
-      case 'primary': return 'background: rgba(139,92,246,0.15); color: #c4a1ff;';
-      case 'secondary': return 'background: rgba(0,242,255,0.12); color: #00f2ff;';
-      case 'npc': return 'background: rgba(245,158,11,0.12); color: #F59E0B;';
-      default: return 'background: rgba(90,90,122,0.15); color: #8b8ba7;';
+      case 'primary':
+        return 'background: rgba(139,92,246,0.15); color: #c4a1ff;';
+      case 'secondary':
+        return 'background: rgba(0,242,255,0.12); color: #00f2ff;';
+      case 'npc':
+        return 'background: rgba(245,158,11,0.12); color: #F59E0B;';
+      default:
+        return 'background: rgba(90,90,122,0.15); color: #8b8ba7;';
     }
   }
 
@@ -230,7 +239,10 @@
   let knownCastConvIdsKey = $state('');
 
   $effect(() => {
-    const key = castConvOptions.map(c => c.id).sort().join('|');
+    const key = castConvOptions
+      .map(c => c.id)
+      .sort()
+      .join('|');
     if (key !== knownCastConvIdsKey) {
       knownCastConvIdsKey = key;
       selectedCastConvIds = new Set(castConvOptions.map(c => c.id));
@@ -239,14 +251,14 @@
 
   function toggleCastConvFilter(id: string): void {
     const next = new Set(selectedCastConvIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     selectedCastConvIds = next;
   }
 
   function toggleCastConvFilterAll(): void {
-    selectedCastConvIds = selectedCastConvIds.size === castConvOptions.length
-      ? new Set()
-      : new Set(castConvOptions.map(c => c.id));
+    selectedCastConvIds =
+      selectedCastConvIds.size === castConvOptions.length ? new Set() : new Set(castConvOptions.map(c => c.id));
   }
 
   async function openCastGraph() {
@@ -303,10 +315,14 @@
       const path = npc.avatar_path;
       if (path && avatarPathLoaded[npc.id] !== path) {
         avatarPathLoaded[npc.id] = path;
-        loadFileAsBlobUrl(path).then(url => {
-          revokeIfSet(avatarUrls[npc.id]);
-          avatarUrls = { ...avatarUrls, [npc.id]: url };
-        }).catch(() => { /* falls back to initial-circle placeholder */ });
+        loadFileAsBlobUrl(path)
+          .then(url => {
+            revokeIfSet(avatarUrls[npc.id]);
+            avatarUrls = { ...avatarUrls, [npc.id]: url };
+          })
+          .catch(() => {
+            /* falls back to initial-circle placeholder */
+          });
       }
     }
   });
@@ -357,11 +373,13 @@
     // effects) once per accumulated listener.
     let unlisten: (() => void) | undefined;
     import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<{ conversation_id: string }>('npc_created', (event) => {
+      listen<{ conversation_id: string }>('npc_created', event => {
         if (conversationId && event.payload.conversation_id === conversationId) {
           loadCast(conversationId);
         }
-      }).then(fn => { unlisten = fn; });
+      }).then(fn => {
+        unlisten = fn;
+      });
     });
     return () => unlisten?.();
   });
@@ -383,11 +401,15 @@
       if (!hasPrimary && characterId && characterName) {
         try {
           await ipc.addConversationCharacter(convId, characterId, characterName, 'primary', 70);
-        } catch { /* may already exist */ }
+        } catch {
+          /* may already exist */
+        }
         for (const ac of additionalCharacters) {
           try {
             await ipc.addConversationCharacter(convId, ac.id, ac.name, 'secondary', 50);
-          } catch { /* may already exist */ }
+          } catch {
+            /* may already exist */
+          }
         }
         castRows = await ipc.listConversationCharacters(convId);
       }
@@ -402,9 +424,7 @@
       }));
 
       const npcResult = await ipc.listConversationNpcs(convId);
-      npcDetails = Object.fromEntries(
-        (npcResult as unknown as NpcDetail[]).map(n => [n.id, n])
-      );
+      npcDetails = Object.fromEntries((npcResult as unknown as NpcDetail[]).map(n => [n.id, n]));
     } catch (err) {
       console.error('Failed to load cast:', err);
       roster = [];
@@ -418,13 +438,24 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       const updated = await trackPortraitGeneration(npc.id, () =>
-        ipc.generateNpcPortrait(npc.id, conversationId!, $settings.autoApproveNpcPortraits)
+        ipc.generateNpcPortrait(npc.id, conversationId!, $settings.autoApproveNpcPortraits),
       );
-      npcDetails = { ...npcDetails, [npc.id]: { ...npc, avatar_path: (updated as unknown as NpcDetail).avatar_path, portrait_status: (updated as unknown as NpcDetail).portrait_status } };
+      npcDetails = {
+        ...npcDetails,
+        [npc.id]: {
+          ...npc,
+          avatar_path: (updated as unknown as NpcDetail).avatar_path,
+          portrait_status: (updated as unknown as NpcDetail).portrait_status,
+        },
+      };
       if (!npcDetails[npc.id].avatar_path) {
         toastError('No image provider configured — add one in Settings → Models');
       } else {
-        success(npcDetails[npc.id].portrait_status === 'pending_review' ? 'Portrait generated — awaiting your approval' : 'Portrait generated');
+        success(
+          npcDetails[npc.id].portrait_status === 'pending_review'
+            ? 'Portrait generated — awaiting your approval'
+            : 'Portrait generated',
+        );
       }
     } catch (err) {
       toastError((err as { message?: string })?.message || 'Failed to generate portrait');
@@ -446,8 +477,17 @@
     if (!selected) return;
     try {
       const ipc = await import('#lib/services/ipc.js');
-      const updated = await trackGenerationByKey(uploadKey(npc.id), () => ipc.uploadCharacterAvatar(npc.id, selected as string));
-      npcDetails = { ...npcDetails, [npc.id]: { ...npc, avatar_path: (updated as unknown as NpcDetail).avatar_path, portrait_status: (updated as unknown as NpcDetail).portrait_status } };
+      const updated = await trackGenerationByKey(uploadKey(npc.id), () =>
+        ipc.uploadCharacterAvatar(npc.id, selected as string),
+      );
+      npcDetails = {
+        ...npcDetails,
+        [npc.id]: {
+          ...npc,
+          avatar_path: (updated as unknown as NpcDetail).avatar_path,
+          portrait_status: (updated as unknown as NpcDetail).portrait_status,
+        },
+      };
       delete avatarPathLoaded[npc.id];
       success('Portrait uploaded');
     } catch {
@@ -546,7 +586,7 @@
       const newName = nameChanged ? trimmedName : npc.name;
       npcDetails = { ...npcDetails, [npc.id]: { ...npc, data: mergedData, name: newName } };
       if (nameChanged) {
-        roster = roster.map(r => r.character_id === npc.id ? { ...r, character_name: newName } : r);
+        roster = roster.map(r => (r.character_id === npc.id ? { ...r, character_name: newName } : r));
       }
       success(`${newName}'s profile updated`);
     } catch {
@@ -576,7 +616,7 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       await ipc.confirmNpc(conversationId, npc.id);
-      roster = roster.map(r => r.character_id === npc.id ? { ...r, role: 'npc' } : r);
+      roster = roster.map(r => (r.character_id === npc.id ? { ...r, role: 'npc' } : r));
       success(`${npc.name} confirmed as a cast member`);
     } catch {
       toastError('Failed to confirm character');
@@ -595,18 +635,28 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       const result = await trackGenerationByKey(refreshKey(npc.id), () =>
-        ipc.refreshCharacterProfile(npc.id, conversationId!, $settings.profileRefreshPrompt)
+        ipc.refreshCharacterProfile(npc.id, conversationId!, $settings.profileRefreshPrompt),
       );
       if (result.scope === 'character') {
         const updated = result.character;
         const updatedData = (updated.data ?? {}) as Record<string, unknown>;
-        npcDetails = { ...npcDetails, [npc.id]: { ...npc, data: updatedData, name: updated.name, profile_reviewed: updated.profile_reviewed ?? npc.profile_reviewed } };
+        npcDetails = {
+          ...npcDetails,
+          [npc.id]: {
+            ...npc,
+            data: updatedData,
+            name: updated.name,
+            profile_reviewed: updated.profile_reviewed ?? npc.profile_reviewed,
+          },
+        };
         editDescription = (updatedData.description as string) ?? editDescription;
         editPersonality = (updatedData.personality as string) ?? editPersonality;
         editScenario = (updatedData.scenario as string) ?? editScenario;
         success(`${npc.name}'s profile refreshed from the story`);
       } else {
-        success(`${npc.name} appears in other conversations too, so this refresh was saved as a memory for this story instead of changing their shared profile`);
+        success(
+          `${npc.name} appears in other conversations too, so this refresh was saved as a memory for this story instead of changing their shared profile`,
+        );
       }
     } catch {
       toastError('Failed to refresh profile from story');
@@ -629,9 +679,17 @@
             class:danger={showAddChar}
             title={showAddChar ? 'Close the add-character picker' : "Add a character to this conversation's cast"}
             aria-label={showAddChar ? 'Close add character picker' : 'Add character to cast'}
-            onclick={() => { showAddChar = !showAddChar; if (!showAddChar) return; loadAllCharacters(); }}
+            onclick={() => {
+              showAddChar = !showAddChar;
+              if (!showAddChar) return;
+              loadAllCharacters();
+            }}
           >
-            <Icon name={showAddChar ? 'x' : 'user-plus'} size={12} color={showAddChar ? '#f87171' : 'var(--accent-primary)'} />
+            <Icon
+              name={showAddChar ? 'x' : 'user-plus'}
+              size={12}
+              color={showAddChar ? '#f87171' : 'var(--accent-primary)'}
+            />
             <span>{showAddChar ? 'Close' : 'Add'}</span>
           </button>
           <button
@@ -648,20 +706,35 @@
     {:else}
       <div class="lore-header-actions">
         <div class="cast-view-switch">
-          <button class="cast-switch-btn" class:active={castView === 'graph'} onclick={() => castView = 'graph'}>
+          <button class="cast-switch-btn" class:active={castView === 'graph'} onclick={() => (castView = 'graph')}>
             <Icon name="network" size={12} color={castView === 'graph' ? '#e8e0ff' : '#5a5a7a'} />
             <span>Graph</span>
           </button>
-          <button class="cast-switch-btn" class:active={castView === 'timeline'} onclick={() => castView = 'timeline'}>
+          <button
+            class="cast-switch-btn"
+            class:active={castView === 'timeline'}
+            onclick={() => (castView = 'timeline')}
+          >
             <Icon name="clock" size={12} color={castView === 'timeline' ? '#e8e0ff' : '#5a5a7a'} />
             <span>Timeline</span>
           </button>
           <div class="cast-switch-indicator" class:right={castView === 'timeline'}></div>
         </div>
-        <button class="lore-add-btn" title="Refresh" aria-label="Refresh cast graph" onclick={openCastGraph} disabled={isLoadingCastGraph}>
+        <button
+          class="lore-add-btn"
+          title="Refresh"
+          aria-label="Refresh cast graph"
+          onclick={openCastGraph}
+          disabled={isLoadingCastGraph}
+        >
           <Icon name="refresh-cw" size={12} color="var(--accent-primary)" />
         </button>
-        <button class="lore-add-btn" title="Back to Cast" aria-label="Back to Cast list" onclick={() => castView = 'roster'}>
+        <button
+          class="lore-add-btn"
+          title="Back to Cast"
+          aria-label="Back to Cast list"
+          onclick={() => (castView = 'roster')}
+        >
           <Icon name="x" size={12} color="var(--fg-muted)" />
         </button>
       </div>
@@ -737,7 +810,12 @@
           <span>No cast memories to graph yet</span>
         </div>
       {:else if castView === 'graph'}
-        <MemoryGraph data={castGraphData} avatars={castAvatars} onRefresh={openCastGraph} visibleConvIds={selectedCastConvIds} />
+        <MemoryGraph
+          data={castGraphData}
+          avatars={castAvatars}
+          onRefresh={openCastGraph}
+          visibleConvIds={selectedCastConvIds}
+        />
       {:else}
         <MemoryTimeline data={castGraphData} onRefresh={openCastGraph} visibleConvIds={selectedCastConvIds} />
       {/if}
@@ -755,109 +833,139 @@
     </div>
   {:else}
     <div class="cards-grid" class:wide>
-    {#each sortedRoster as row (row.character_id)}
-      {@const npc = npcDetails[row.character_id]}
-      {@const isExpanded = expandedId === row.character_id}
-      {@const isGalleryOrigin = npc ? npc.origin === 'gallery' : (row.role === 'primary' || row.role === 'secondary')}
-      {@const portrait = avatarFor(row.character_id)}
-      <!-- One unified card for every roster row — hand-picked Gallery
+      {#each sortedRoster as row (row.character_id)}
+        {@const npc = npcDetails[row.character_id]}
+        {@const isExpanded = expandedId === row.character_id}
+        {@const isGalleryOrigin = npc ? npc.origin === 'gallery' : row.role === 'primary' || row.role === 'secondary'}
+        {@const portrait = avatarFor(row.character_id)}
+        <!-- One unified card for every roster row — hand-picked Gallery
            characters and auto-detected NPCs alike get the same portrait/
            edit affordances; only which actions apply differs by role. -->
-      <div class="npc-card" class:expanded-span={wide && isExpanded} class:muted={!row.is_active} class:is-open={isExpanded}>
         <div
-          class="npc-card-top"
-          onclick={() => toggleExpand(row)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(row); } }}
-          role="button"
-          tabindex="0"
-          aria-expanded={isExpanded}
+          class="npc-card"
+          class:expanded-span={wide && isExpanded}
+          class:muted={!row.is_active}
+          class:is-open={isExpanded}
         >
-          <button
-            class="cast-avatar"
-            class:cast-avatar-clickable={!!portrait}
-            disabled={!portrait}
-            title={portrait ? `View ${row.character_name}'s portrait` : undefined}
-            aria-label={portrait ? `View ${row.character_name}'s portrait` : `${row.character_name}'s portrait placeholder`}
-            onclick={(e) => { e.stopPropagation(); if (portrait) previewAvatar = { url: portrait, name: row.character_name }; }}
+          <div
+            class="npc-card-top"
+            onclick={() => toggleExpand(row)}
+            onkeydown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleExpand(row);
+              }
+            }}
+            role="button"
+            tabindex="0"
+            aria-expanded={isExpanded}
           >
-            {#if portrait}
-              <img src={portrait} alt="" class="cast-avatar-img" />
+            <button
+              class="cast-avatar"
+              class:cast-avatar-clickable={!!portrait}
+              disabled={!portrait}
+              title={portrait ? `View ${row.character_name}'s portrait` : undefined}
+              aria-label={portrait
+                ? `View ${row.character_name}'s portrait`
+                : `${row.character_name}'s portrait placeholder`}
+              onclick={e => {
+                e.stopPropagation();
+                if (portrait) previewAvatar = { url: portrait, name: row.character_name };
+              }}
+            >
+              {#if portrait}
+                <img src={portrait} alt="" class="cast-avatar-img" />
+              {:else}
+                <span class="cast-avatar-initial">{row.character_name.charAt(0)}</span>
+              {/if}
+            </button>
+            <div class="npc-info">
+              <span class="cast-name">{row.character_name}</span>
+              {#if row.role === 'primary' || row.role === 'secondary'}
+                <span class="cast-role-badge" style={getRoleBadgeStyle(row.role)}>{row.role}</span>
+              {:else if isGalleryOrigin}
+                <span class="npc-badge promoted">Promoted</span>
+              {:else if row.role === 'transient'}
+                <span
+                  class="npc-badge unconfirmed"
+                  title="Just started speaking — not yet confirmed as a recurring character">Unconfirmed</span
+                >
+              {/if}
+              {#if npc?.data?.identity_concealed}
+                <span class="npc-badge concealed" title="Identity not yet revealed by the story">Concealed</span>
+              {/if}
+              {#if npc && isOutdated(npc)}
+                <span
+                  class="npc-badge outdated"
+                  title="Still carrying the placeholder written when first spotted — try Refresh from Story"
+                  >Outdated</span
+                >
+              {/if}
+              {#if npc && needsAttention(npc)}<span class="npc-attention-dot" aria-label="Needs attention"></span>{/if}
+            </div>
+            {#if loadingDetailId === row.character_id}
+              <span class="npc-spinner" aria-hidden="true"></span>
             {:else}
-              <span class="cast-avatar-initial">{row.character_name.charAt(0)}</span>
+              <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={13} color="var(--fg-muted)" />
             {/if}
-          </button>
-          <div class="npc-info">
-            <span class="cast-name">{row.character_name}</span>
-            {#if row.role === 'primary' || row.role === 'secondary'}
-              <span class="cast-role-badge" style={getRoleBadgeStyle(row.role)}>{row.role}</span>
-            {:else if isGalleryOrigin}
-              <span class="npc-badge promoted">Promoted</span>
-            {:else if row.role === 'transient'}
-              <span class="npc-badge unconfirmed" title="Just started speaking — not yet confirmed as a recurring character">Unconfirmed</span>
-            {/if}
-            {#if npc?.data?.identity_concealed}
-              <span class="npc-badge concealed" title="Identity not yet revealed by the story">Concealed</span>
-            {/if}
-            {#if npc && isOutdated(npc)}
-              <span class="npc-badge outdated" title="Still carrying the placeholder written when first spotted — try Refresh from Story">Outdated</span>
-            {/if}
-            {#if npc && needsAttention(npc)}<span class="npc-attention-dot" aria-label="Needs attention"></span>{/if}
           </div>
-          {#if loadingDetailId === row.character_id}
-            <span class="npc-spinner" aria-hidden="true"></span>
-          {:else}
-            <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={13} color="var(--fg-muted)" />
-          {/if}
-        </div>
 
-        <div class="cast-slider-row">
-          <button
-            class="cast-action-btn"
-            title={row.is_active ? 'Mute character' : 'Unmute character'}
-            aria-label={row.is_active ? `Mute ${row.character_name}` : `Unmute ${row.character_name}`}
-            onclick={() => toggleRosterActive(row.character_id)}
-          >
-            <Icon name={row.is_active ? 'volume-2' : 'volume-x'} size={12} color={row.is_active ? 'var(--accent-primary)' : 'var(--fg-muted)'} />
-          </button>
-          <span class="cast-slider-label">Talk</span>
-          <input
-            type="range" min="0" max="100" value={row.talkativeness} class="cast-slider"
-            aria-label={`Talkativeness for ${row.character_name}`}
-            oninput={(e) => updateRosterTalkativeness(row.character_id, Number((e.target as HTMLInputElement).value))}
-          />
-          <span class="cast-slider-value">{row.talkativeness}</span>
-          {#if isGalleryOrigin}
+          <div class="cast-slider-row">
             <button
               class="cast-action-btn"
-              title="View in Gallery"
-              aria-label={`View ${row.character_name} in Gallery`}
-              onclick={() => goto(`/gallery/${row.character_id}`)}
+              title={row.is_active ? 'Mute character' : 'Unmute character'}
+              aria-label={row.is_active ? `Mute ${row.character_name}` : `Unmute ${row.character_name}`}
+              onclick={() => toggleRosterActive(row.character_id)}
             >
-              <Icon name="chevron-right" size={12} color="var(--fg-muted)" />
+              <Icon
+                name={row.is_active ? 'volume-2' : 'volume-x'}
+                size={12}
+                color={row.is_active ? 'var(--accent-primary)' : 'var(--fg-muted)'}
+              />
             </button>
-          {/if}
-          {#if row.role !== 'primary'}
-            <button
-              class="cast-action-btn cast-remove-btn"
-              title="Remove from cast"
-              aria-label={`Remove ${row.character_name}`}
-              onclick={() => removeFromRoster(row.character_id)}
-            >
-              <Icon name="x" size={10} color="var(--fg-muted)" />
-            </button>
-          {/if}
-        </div>
+            <span class="cast-slider-label">Talk</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={row.talkativeness}
+              class="cast-slider"
+              aria-label={`Talkativeness for ${row.character_name}`}
+              oninput={e => updateRosterTalkativeness(row.character_id, Number((e.target as HTMLInputElement).value))}
+            />
+            <span class="cast-slider-value">{row.talkativeness}</span>
+            {#if isGalleryOrigin}
+              <button
+                class="cast-action-btn"
+                title="View in Gallery"
+                aria-label={`View ${row.character_name} in Gallery`}
+                onclick={() => goto(`/gallery/${row.character_id}`)}
+              >
+                <Icon name="chevron-right" size={12} color="var(--fg-muted)" />
+              </button>
+            {/if}
+            {#if row.role !== 'primary'}
+              <button
+                class="cast-action-btn cast-remove-btn"
+                title="Remove from cast"
+                aria-label={`Remove ${row.character_name}`}
+                onclick={() => removeFromRoster(row.character_id)}
+              >
+                <Icon name="x" size={10} color="var(--fg-muted)" />
+              </button>
+            {/if}
+          </div>
 
-        {#if isExpanded}
-          <div class="npc-expand" transition:slide={{ duration: 220, easing: cubicOut }}>
-            {#if !npc}
-              <div class="npc-expand-loading">
-                <span class="loading-dot"></span>
-                <span class="loading-dot d2"></span>
-                <span class="loading-dot d3"></span>
-              </div>
-            {:else}
-              <!-- Generation status reads purely from the global sceneGenerations
+          {#if isExpanded}
+            <div class="npc-expand" transition:slide={{ duration: 220, easing: cubicOut }}>
+              {#if !npc}
+                <div class="npc-expand-loading">
+                  <span class="loading-dot"></span>
+                  <span class="loading-dot d2"></span>
+                  <span class="loading-dot d3"></span>
+                </div>
+              {:else}
+                <!-- Generation status reads purely from the global sceneGenerations
                    store, keyed per-character — never from local component state,
                    which resets on remount. This panel unmounts/remounts on every
                    explorer-view switch (Cast -> Lore -> Cast, or closing back to
@@ -865,111 +973,170 @@
                    would silently forget an in-flight generation the moment you
                    navigated away and back, even though the job itself kept running
                    server-side. -->
-              {@const portraitState = getSceneGenerationState($sceneGenerations, portraitGenerationKey(npc.id))}
-              {@const uploadState = getSceneGenerationState($sceneGenerations, uploadKey(npc.id))}
-              {@const refreshState = getSceneGenerationState($sceneGenerations, refreshKey(npc.id))}
-              {@const portraitBusy = portraitState.isLoading || uploadState.isLoading}
-              <div class="npc-sheet">
-                <div class="npc-sheet-portrait">
-                  <div class="npc-sheet-frame" class:has-image={!!portrait}>
-                    <button
-                      class="npc-sheet-frame-btn"
-                      disabled={!portrait}
-                      title={portrait ? `View ${npc.name}'s portrait` : undefined}
-                      aria-label={portrait ? `View ${npc.name}'s portrait` : `${npc.name}'s portrait placeholder`}
-                      onclick={() => { if (portrait) previewAvatar = { url: portrait, name: npc.name }; }}
-                    >
-                      {#if portrait}
-                        <img src={portrait} alt="" class="npc-sheet-frame-img" />
-                      {:else}
-                        <span class="npc-sheet-frame-initial">{npc.name.charAt(0)}</span>
+                {@const portraitState = getSceneGenerationState($sceneGenerations, portraitGenerationKey(npc.id))}
+                {@const uploadState = getSceneGenerationState($sceneGenerations, uploadKey(npc.id))}
+                {@const refreshState = getSceneGenerationState($sceneGenerations, refreshKey(npc.id))}
+                {@const portraitBusy = portraitState.isLoading || uploadState.isLoading}
+                <div class="npc-sheet">
+                  <div class="npc-sheet-portrait">
+                    <div class="npc-sheet-frame" class:has-image={!!portrait}>
+                      <button
+                        class="npc-sheet-frame-btn"
+                        disabled={!portrait}
+                        title={portrait ? `View ${npc.name}'s portrait` : undefined}
+                        aria-label={portrait ? `View ${npc.name}'s portrait` : `${npc.name}'s portrait placeholder`}
+                        onclick={() => {
+                          if (portrait) previewAvatar = { url: portrait, name: npc.name };
+                        }}
+                      >
+                        {#if portrait}
+                          <img src={portrait} alt="" class="npc-sheet-frame-img" />
+                        {:else}
+                          <span class="npc-sheet-frame-initial">{npc.name.charAt(0)}</span>
+                        {/if}
+                      </button>
+                      {#if portraitState.isLoading}
+                        <div class="npc-sheet-frame-overlay">
+                          <span class="npc-portrait-status-dot"></span>
+                        </div>
                       {/if}
-                    </button>
+                    </div>
+                    <div class="npc-sheet-portrait-actions">
+                      {#if npc.portrait_status === 'pending_review'}
+                        <button
+                          class="npc-icon-btn"
+                          onclick={() => approvePortrait(npc)}
+                          disabled={portraitBusy}
+                          title="Approve portrait"
+                          aria-label="Approve portrait"
+                        >
+                          <Icon name="check" size={14} color="currentColor" />
+                        </button>
+                        <button
+                          class="npc-icon-btn"
+                          onclick={() => generatePortrait(npc)}
+                          disabled={portraitBusy}
+                          title="Regenerate portrait"
+                          aria-label="Regenerate portrait"
+                        >
+                          <Icon name="refresh-cw" size={14} color="currentColor" />
+                        </button>
+                        <button
+                          class="npc-icon-btn npc-icon-btn-danger"
+                          onclick={() => rejectPortrait(npc)}
+                          disabled={portraitBusy}
+                          title="Reject portrait"
+                          aria-label="Reject portrait"
+                        >
+                          <Icon name="x" size={14} color="currentColor" />
+                        </button>
+                      {:else}
+                        <button
+                          class="npc-icon-btn"
+                          onclick={() => generatePortrait(npc)}
+                          disabled={portraitBusy}
+                          title={npc.avatar_path ? 'Regenerate portrait' : 'Generate portrait'}
+                          aria-label={npc.avatar_path ? 'Regenerate portrait' : 'Generate portrait'}
+                        >
+                          <Icon name="image" size={14} color="currentColor" />
+                        </button>
+                      {/if}
+                      <button
+                        class="npc-icon-btn"
+                        onclick={() => uploadPortrait(npc)}
+                        disabled={portraitBusy}
+                        title="Upload portrait"
+                        aria-label="Upload portrait"
+                      >
+                        <Icon name="upload" size={14} color="currentColor" />
+                      </button>
+                    </div>
                     {#if portraitState.isLoading}
-                      <div class="npc-sheet-frame-overlay">
-                        <span class="npc-portrait-status-dot"></span>
+                      <div class="npc-portrait-status" transition:slide={{ duration: 180, easing: cubicOut }}>
+                        <span>{describeProgress(portraitState.progress)}</span>
                       </div>
                     {/if}
                   </div>
-                  <div class="npc-sheet-portrait-actions">
-                    {#if npc.portrait_status === 'pending_review'}
-                      <button class="npc-icon-btn" onclick={() => approvePortrait(npc)} disabled={portraitBusy} title="Approve portrait" aria-label="Approve portrait">
-                        <Icon name="check" size={14} color="currentColor" />
-                      </button>
-                      <button class="npc-icon-btn" onclick={() => generatePortrait(npc)} disabled={portraitBusy} title="Regenerate portrait" aria-label="Regenerate portrait">
-                        <Icon name="refresh-cw" size={14} color="currentColor" />
-                      </button>
-                      <button class="npc-icon-btn npc-icon-btn-danger" onclick={() => rejectPortrait(npc)} disabled={portraitBusy} title="Reject portrait" aria-label="Reject portrait">
-                        <Icon name="x" size={14} color="currentColor" />
-                      </button>
-                    {:else}
-                      <button class="npc-icon-btn" onclick={() => generatePortrait(npc)} disabled={portraitBusy} title={npc.avatar_path ? 'Regenerate portrait' : 'Generate portrait'} aria-label={npc.avatar_path ? 'Regenerate portrait' : 'Generate portrait'}>
-                        <Icon name="image" size={14} color="currentColor" />
-                      </button>
-                    {/if}
-                    <button class="npc-icon-btn" onclick={() => uploadPortrait(npc)} disabled={portraitBusy} title="Upload portrait" aria-label="Upload portrait">
-                      <Icon name="upload" size={14} color="currentColor" />
-                    </button>
-                  </div>
-                  {#if portraitState.isLoading}
-                    <div class="npc-portrait-status" transition:slide={{ duration: 180, easing: cubicOut }}>
-                      <span>{describeProgress(portraitState.progress)}</span>
+
+                  <div class="npc-sheet-fields">
+                    <label class="npc-sheet-name-label" for={`npc-name-${npc.id}`}>
+                      <input
+                        id={`npc-name-${npc.id}`}
+                        class="npc-sheet-name-input"
+                        type="text"
+                        bind:value={editName}
+                        placeholder="Rename once the story reveals who they really are"
+                      />
+                    </label>
+
+                    <div class="npc-sheet-field">
+                      <div class="npc-sheet-field-label">
+                        <Icon name="book-open" size={12} color="currentColor" /><span>Description</span>
+                      </div>
+                      <textarea
+                        id={`npc-desc-${npc.id}`}
+                        class="npc-sheet-textarea"
+                        rows="4"
+                        bind:value={editDescription}></textarea>
                     </div>
+
+                    <div class="npc-sheet-field">
+                      <div class="npc-sheet-field-label">
+                        <Icon name="brain" size={12} color="currentColor" /><span>Personality</span>
+                      </div>
+                      <textarea
+                        id={`npc-pers-${npc.id}`}
+                        class="npc-sheet-textarea"
+                        rows="2"
+                        bind:value={editPersonality}></textarea>
+                    </div>
+
+                    <div class="npc-sheet-field">
+                      <div class="npc-sheet-field-label">
+                        <Icon name="map-pin" size={12} color="currentColor" /><span>Scenario</span>
+                      </div>
+                      <textarea id={`npc-scen-${npc.id}`} class="npc-sheet-textarea" rows="2" bind:value={editScenario}
+                      ></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="npc-expand-actions">
+                  <button class="npc-btn npc-btn-primary" onclick={() => saveProfile(npc)} disabled={isSaving}>
+                    <Icon name="check" size={13} color="currentColor" />
+                    <span>{isSaving ? 'Saving…' : 'Save'}</span>
+                  </button>
+                  <button
+                    class="npc-btn npc-btn-magic"
+                    onclick={() => refreshFromStory(npc)}
+                    disabled={refreshState.isLoading}
+                    title="Re-derive description/personality/scenario from how this character has actually appeared in the story so far"
+                  >
+                    <Icon name="refresh-cw" size={13} color="currentColor" />
+                    <span>{refreshState.isLoading ? 'Refreshing…' : 'Refresh from Story'}</span>
+                  </button>
+                  {#if row.role === 'transient'}
+                    <button
+                      class="npc-btn npc-btn-confirm"
+                      onclick={() => confirmNpc(npc)}
+                      title="Skip the automatic detection wait and confirm this character as a cast member now"
+                    >
+                      <Icon name="check" size={13} color="currentColor" />
+                      <span>Confirm</span>
+                    </button>
+                  {/if}
+                  {#if npc.origin !== 'gallery'}
+                    <button class="npc-btn npc-btn-promote" onclick={() => promote(npc)}>
+                      <Icon name="sparkles" size={13} color="currentColor" />
+                      <span>Promote to Gallery</span>
+                    </button>
                   {/if}
                 </div>
-
-                <div class="npc-sheet-fields">
-                  <label class="npc-sheet-name-label" for={`npc-name-${npc.id}`}>
-                    <input
-                      id={`npc-name-${npc.id}`} class="npc-sheet-name-input" type="text" bind:value={editName}
-                      placeholder="Rename once the story reveals who they really are"
-                    />
-                  </label>
-
-                  <div class="npc-sheet-field">
-                    <div class="npc-sheet-field-label"><Icon name="book-open" size={12} color="currentColor" /><span>Description</span></div>
-                    <textarea id={`npc-desc-${npc.id}`} class="npc-sheet-textarea" rows="4" bind:value={editDescription}></textarea>
-                  </div>
-
-                  <div class="npc-sheet-field">
-                    <div class="npc-sheet-field-label"><Icon name="brain" size={12} color="currentColor" /><span>Personality</span></div>
-                    <textarea id={`npc-pers-${npc.id}`} class="npc-sheet-textarea" rows="2" bind:value={editPersonality}></textarea>
-                  </div>
-
-                  <div class="npc-sheet-field">
-                    <div class="npc-sheet-field-label"><Icon name="map-pin" size={12} color="currentColor" /><span>Scenario</span></div>
-                    <textarea id={`npc-scen-${npc.id}`} class="npc-sheet-textarea" rows="2" bind:value={editScenario}></textarea>
-                  </div>
-                </div>
-              </div>
-
-              <div class="npc-expand-actions">
-                <button class="npc-btn npc-btn-primary" onclick={() => saveProfile(npc)} disabled={isSaving}>
-                  <Icon name="check" size={13} color="currentColor" />
-                  <span>{isSaving ? 'Saving…' : 'Save'}</span>
-                </button>
-                <button class="npc-btn npc-btn-magic" onclick={() => refreshFromStory(npc)} disabled={refreshState.isLoading} title="Re-derive description/personality/scenario from how this character has actually appeared in the story so far">
-                  <Icon name="refresh-cw" size={13} color="currentColor" />
-                  <span>{refreshState.isLoading ? 'Refreshing…' : 'Refresh from Story'}</span>
-                </button>
-                {#if row.role === 'transient'}
-                  <button class="npc-btn npc-btn-confirm" onclick={() => confirmNpc(npc)} title="Skip the automatic detection wait and confirm this character as a cast member now">
-                    <Icon name="check" size={13} color="currentColor" />
-                    <span>Confirm</span>
-                  </button>
-                {/if}
-                {#if npc.origin !== 'gallery'}
-                  <button class="npc-btn npc-btn-promote" onclick={() => promote(npc)}>
-                    <Icon name="sparkles" size={13} color="currentColor" />
-                    <span>Promote to Gallery</span>
-                  </button>
-                {/if}
-              </div>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/each}
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/each}
     </div>
   {/if}
 </section>
@@ -977,14 +1144,14 @@
 {#if previewAvatar}
   <div
     class="avatar-lightbox-backdrop"
-    onclick={() => previewAvatar = null}
-    onkeydown={(e) => e.key === 'Escape' && (previewAvatar = null)}
+    onclick={() => (previewAvatar = null)}
+    onkeydown={e => e.key === 'Escape' && (previewAvatar = null)}
     role="dialog"
     aria-modal="true"
     aria-label={`${previewAvatar.name}'s portrait`}
     tabindex="-1"
   >
-    <button class="avatar-lightbox-close" onclick={() => previewAvatar = null} aria-label="Close">
+    <button class="avatar-lightbox-close" onclick={() => (previewAvatar = null)} aria-label="Close">
       <Icon name="x" size={18} color="#e8e0ff" />
     </button>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -992,89 +1159,196 @@
       src={previewAvatar.url}
       alt={`${previewAvatar.name}'s portrait`}
       class="avatar-lightbox-img"
-      onclick={(e) => e.stopPropagation()}
+      onclick={e => e.stopPropagation()}
     />
     <span class="avatar-lightbox-name">{previewAvatar.name}</span>
   </div>
 {/if}
 
 <style>
-  .ctx-section { display: flex; flex-direction: column; gap: 10px; }
+  .ctx-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
   /* When the wide (full explorer-view) cast graph/timeline is open, stretch
      this section to fill the explorer body's remaining height instead of
      leaving the fixed-height canvas below stranded above dead space —
      relies on ChatExplorerView's `.explorer-body` also being a flex column
      so this `flex: 1` has a definite height to resolve against. */
-  .ctx-section.cast-graph-open { flex: 1; min-height: 0; }
-  .ctx-section-header { display: flex; justify-content: space-between; align-items: center; }
-  .ctx-section-title {
-    font-size: var(--text-xs); font-weight: 700; color: #5a5a7a;
-    font-family: var(--font-mono); letter-spacing: 1.5px;
-    display: flex; align-items: center; gap: 6px;
+  .ctx-section.cast-graph-open {
+    flex: 1;
+    min-height: 0;
   }
-  .ctx-section-meta { font-size: var(--text-xs); color: #4a4a6a; font-family: var(--font-mono); }
+  .ctx-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .ctx-section-title {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: #5a5a7a;
+    font-family: var(--font-mono);
+    letter-spacing: 1.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ctx-section-meta {
+    font-size: var(--text-xs);
+    color: #4a4a6a;
+    font-family: var(--font-mono);
+  }
 
-  .lore-header-actions { display: flex; align-items: center; gap: 8px; }
+  .lore-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
   /* ── Add Character picker (ported from Group Cast) ── */
   .cast-picker {
-    display: flex; flex-direction: column; gap: 2px;
-    padding: 8px; border-radius: 12px;
-    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.1);
-    max-height: 180px; overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px;
+    border-radius: 12px;
+    background: rgba(14, 14, 30, 0.5);
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    max-height: 180px;
+    overflow-y: auto;
   }
-  .cast-picker::-webkit-scrollbar { width: 3px; }
-  .cast-picker::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.15); border-radius: 3px; }
+  .cast-picker::-webkit-scrollbar {
+    width: 3px;
+  }
+  .cast-picker::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.15);
+    border-radius: 3px;
+  }
   .cast-pick-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 8px; border-radius: 8px;
-    background: none; border: none; cursor: pointer;
-    transition: background 150ms; width: 100%; text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 150ms;
+    width: 100%;
+    text-align: left;
   }
-  .cast-pick-item:hover { background: rgba(139,92,246,0.06); }
+  .cast-pick-item:hover {
+    background: rgba(139, 92, 246, 0.06);
+  }
   .cast-pick-avatar {
-    width: clamp(22px, 6cqi, 30px); height: clamp(22px, 6cqi, 30px); border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(191,64,255,0.3));
-    display: flex; align-items: center; justify-content: center;
+    width: clamp(22px, 6cqi, 30px);
+    height: clamp(22px, 6cqi, 30px);
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(191, 64, 255, 0.3));
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .cast-pick-initial { font-size: 10px; font-weight: 700; color: #c4a1ff; text-transform: uppercase; }
+  .cast-pick-initial {
+    font-size: 10px;
+    font-weight: 700;
+    color: #c4a1ff;
+    text-transform: uppercase;
+  }
   .cast-pick-name {
-    flex: 1; min-width: 0; font-size: 11px; color: #8b8ba7;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: #8b8ba7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--font-body);
   }
 
   /* ── Cast Graph: view switch + stats strip (mirrors /memories page) ── */
   .cast-view-switch {
-    display: flex; position: relative;
-    background: rgba(14,14,30,0.5); border: 1px solid rgba(139,92,246,0.08);
-    border-radius: 8px; padding: 2px;
+    display: flex;
+    position: relative;
+    background: rgba(14, 14, 30, 0.5);
+    border: 1px solid rgba(139, 92, 246, 0.08);
+    border-radius: 8px;
+    padding: 2px;
   }
   .cast-switch-btn {
-    display: flex; align-items: center; gap: 4px;
-    padding: 4px 10px; font-size: 11px; font-weight: 600; color: #5a5a7a;
-    background: none; border: none; cursor: pointer; position: relative; z-index: 1;
-    transition: color 250ms; font-family: var(--font-body); white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #5a5a7a;
+    background: none;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    transition: color 250ms;
+    font-family: var(--font-body);
+    white-space: nowrap;
   }
-  .cast-switch-btn.active { color: #e8e0ff; }
+  .cast-switch-btn.active {
+    color: #e8e0ff;
+  }
   .cast-switch-indicator {
-    position: absolute; top: 2px; left: 2px;
-    width: calc(50% - 2px); height: calc(100% - 4px);
-    background: rgba(139,92,246,0.14); border: 1px solid rgba(139,92,246,0.18);
-    border-radius: 6px; transition: transform 300ms cubic-bezier(0.4,0,0.2,1);
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(50% - 2px);
+    height: calc(100% - 4px);
+    background: rgba(139, 92, 246, 0.14);
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    border-radius: 6px;
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .cast-switch-indicator.right { transform: translateX(100%); }
+  .cast-switch-indicator.right {
+    transform: translateX(100%);
+  }
 
   .cast-stats-strip {
-    display: flex; align-items: center; gap: 0;
-    padding: 8px 4px; border-radius: 10px;
-    background: rgba(14,14,30,0.4); border: 1px solid rgba(139,92,246,0.06);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 8px 4px;
+    border-radius: 10px;
+    background: rgba(14, 14, 30, 0.4);
+    border: 1px solid rgba(139, 92, 246, 0.06);
   }
-  .cast-stat { display: flex; align-items: center; gap: 6px; padding: 0 clamp(10px, 3cqi, 16px); }
-  .cast-stat-value { font-size: 13px; font-weight: 700; color: #c4a1ff; font-family: var(--font-mono); }
-  .cast-stat-value.cast-canon { color: #daa520; text-shadow: 0 0 8px rgba(218,165,32,0.3); }
-  .cast-stat-value.cast-link { color: #00f2ff; text-shadow: 0 0 8px rgba(0,242,255,0.25); }
-  .cast-stat-label { font-size: 9px; color: #4a4a6a; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  .cast-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 clamp(10px, 3cqi, 16px);
+  }
+  .cast-stat-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: #c4a1ff;
+    font-family: var(--font-mono);
+  }
+  .cast-stat-value.cast-canon {
+    color: #daa520;
+    text-shadow: 0 0 8px rgba(218, 165, 32, 0.3);
+  }
+  .cast-stat-value.cast-link {
+    color: #00f2ff;
+    text-shadow: 0 0 8px rgba(0, 242, 255, 0.25);
+  }
+  .cast-stat-label {
+    font-size: 9px;
+    color: #4a4a6a;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 600;
+  }
 
   .cast-graph-canvas {
     /* MemoryGraph's own wrapper is `height: 100%`, which only resolves
@@ -1086,57 +1360,132 @@
        container on mount and silently renders nothing, even with real
        data loaded — exactly what showed up as a blank canvas with a
        non-zero stats strip above it. */
-    height: 420px; border-radius: 12px; overflow: hidden;
-    border: 1px solid rgba(139,92,246,0.08);
+    height: 420px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(139, 92, 246, 0.08);
   }
   /* Wide (full explorer-view) context: the flex chain above now gives this
      a real definite height to grow into, so let it fill it instead of
      capping at the popover-sized 420px. */
-  .cast-graph-canvas.wide { height: auto; flex: 1; min-height: 0; }
+  .cast-graph-canvas.wide {
+    height: auto;
+    flex: 1;
+    min-height: 0;
+  }
   .lore-add-btn {
-    background: none; border: 1px solid rgba(139,92,246,0.12);
-    border-radius: 8px; padding: 4px; display: flex; cursor: pointer;
+    background: none;
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    border-radius: 8px;
+    padding: 4px;
+    display: flex;
+    cursor: pointer;
     transition: all 150ms;
   }
-  .lore-add-btn:hover { border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.06); }
+  .lore-add-btn:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.06);
+  }
 
   .cast-action-btn {
-    display: flex; align-items: center; gap: 5px;
-    padding: 4px 9px; border-radius: 7px;
-    background: rgba(139,92,246,0.05); border: 1px solid rgba(139,92,246,0.16);
-    color: #b8a8e8; font-size: 11px; font-weight: 600; font-family: var(--font-body);
-    cursor: pointer; transition: all 150ms; white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border-radius: 7px;
+    background: rgba(139, 92, 246, 0.05);
+    border: 1px solid rgba(139, 92, 246, 0.16);
+    color: #b8a8e8;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all 150ms;
+    white-space: nowrap;
   }
-  .cast-action-btn:hover { border-color: rgba(139,92,246,0.34); background: rgba(139,92,246,0.1); color: #e8e0ff; }
-  .cast-action-btn.danger { border-color: rgba(248,113,113,0.2); color: #f87171; }
-  .cast-action-btn.danger:hover { border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+  .cast-action-btn:hover {
+    border-color: rgba(139, 92, 246, 0.34);
+    background: rgba(139, 92, 246, 0.1);
+    color: #e8e0ff;
+  }
+  .cast-action-btn.danger {
+    border-color: rgba(248, 113, 113, 0.2);
+    color: #f87171;
+  }
+  .cast-action-btn.danger:hover {
+    border-color: rgba(248, 113, 113, 0.4);
+    background: rgba(248, 113, 113, 0.08);
+  }
 
-  .lore-empty { display: flex; align-items: center; gap: 8px; padding: 14px 12px; color: #4a4a6a; font-size: var(--text-sm); }
-  .lore-loading { display: flex; gap: 4px; padding: 14px; justify-content: center; }
-  .loading-dot {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: #5a5a7a; animation: dotPulse 1.2s ease-in-out infinite;
+  .lore-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 12px;
+    color: #4a4a6a;
+    font-size: var(--text-sm);
   }
-  .loading-dot.d2 { animation-delay: 150ms; }
-  .loading-dot.d3 { animation-delay: 300ms; }
-  @keyframes dotPulse { 0%,100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+  .lore-loading {
+    display: flex;
+    gap: 4px;
+    padding: 14px;
+    justify-content: center;
+  }
+  .loading-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #5a5a7a;
+    animation: dotPulse 1.2s ease-in-out infinite;
+  }
+  .loading-dot.d2 {
+    animation-delay: 150ms;
+  }
+  .loading-dot.d3 {
+    animation-delay: 300ms;
+  }
+  @keyframes dotPulse {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 
   /* ══ Needs-attention indicator ══ */
   .npc-attention-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-    background: #F59E0B;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #f59e0b;
     animation: npcPulse 1.1s ease-in-out infinite;
   }
   @keyframes npcPulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.75); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
-    50%      { opacity: 1;   transform: scale(1);    box-shadow: 0 0 6px 2px rgba(245,158,11,0.35); }
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.75);
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: 0 0 6px 2px rgba(245, 158, 11, 0.35);
+    }
   }
 
   /* `display: contents` by default makes this wrapper transparent to
      layout — the card children keep stacking in the parent's flex column
      exactly as before. `.wide` (the full chat-area explorer view) switches
      it to an actual grid of cards. */
-  .cards-grid { display: contents; }
+  .cards-grid {
+    display: contents;
+  }
   .cards-grid.wide {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1145,77 +1494,153 @@
   }
 
   .npc-card {
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     border-radius: 10px;
-    background: rgba(14,14,30,0.4); border: 1px solid rgba(139,92,246,0.06);
-    transition: background 200ms cubic-bezier(0.16, 1, 0.3, 1),
-                border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
-                transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    background: rgba(14, 14, 30, 0.4);
+    border: 1px solid rgba(139, 92, 246, 0.06);
+    transition:
+      background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
   }
-  .npc-card.expanded-span { grid-column: 1 / -1; }
-  .npc-card:hover {
-    background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.14);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  .npc-card.expanded-span {
+    grid-column: 1 / -1;
   }
-  .wide .npc-card:hover { transform: translateY(-1px); }
+  .npc-card:hover {
+    background: rgba(139, 92, 246, 0.05);
+    border-color: rgba(139, 92, 246, 0.14);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  }
+  .wide .npc-card:hover {
+    transform: translateY(-1px);
+  }
   /* A card holding an open profile sheet reads as a focused workspace, not
      just another list row — a touch more presence than the plain hover
      state, and it persists while expanded regardless of hover. */
   .npc-card.is-open {
-    background: rgba(139,92,246,0.045);
-    border-color: rgba(139,92,246,0.18);
-    box-shadow: 0 12px 36px rgba(0,0,0,0.35), 0 0 0 1px rgba(139,92,246,0.05) inset;
+    background: rgba(139, 92, 246, 0.045);
+    border-color: rgba(139, 92, 246, 0.18);
+    box-shadow:
+      0 12px 36px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(139, 92, 246, 0.05) inset;
   }
 
   .npc-card-top {
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: clamp(9px, 2.6cqi, 14px) clamp(10px, 3cqi, 16px);
-    background: none; border: none; cursor: pointer; width: 100%; text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
   }
 
   .cast-avatar {
-    width: clamp(26px, 7cqi, 36px); height: clamp(26px, 7cqi, 36px); min-width: clamp(26px, 7cqi, 36px); border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff);
-    display: flex; align-items: center; justify-content: center;
-    outline: 1.5px solid rgba(139,92,246,0.18); outline-offset: 2px;
-    box-shadow: 0 0 10px rgba(139,92,246,0.15);
+    width: clamp(26px, 7cqi, 36px);
+    height: clamp(26px, 7cqi, 36px);
+    min-width: clamp(26px, 7cqi, 36px);
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #8b5cf6, #bf40ff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: 1.5px solid rgba(139, 92, 246, 0.18);
+    outline-offset: 2px;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.15);
     /* Now a <button> (so a real portrait can open a lightbox preview
        independently of the card's own expand/collapse click) — reset the
        native button chrome back to how the plain div looked before. */
-    border: none; padding: 0; cursor: default;
-    transition: transform 150ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 150ms;
+    border: none;
+    padding: 0;
+    cursor: default;
+    transition:
+      transform 150ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 150ms;
   }
-  .cast-avatar-clickable { cursor: pointer; }
-  .cast-avatar-clickable:hover { transform: scale(1.08); box-shadow: 0 0 16px rgba(139,92,246,0.35); }
-  .cast-avatar-clickable:active { transform: scale(0.96); }
-  .cast-avatar:disabled { cursor: default; }
-  .cast-avatar-initial { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; }
-  .cast-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+  .cast-avatar-clickable {
+    cursor: pointer;
+  }
+  .cast-avatar-clickable:hover {
+    transform: scale(1.08);
+    box-shadow: 0 0 16px rgba(139, 92, 246, 0.35);
+  }
+  .cast-avatar-clickable:active {
+    transform: scale(0.96);
+  }
+  .cast-avatar:disabled {
+    cursor: default;
+  }
+  .cast-avatar-initial {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+  }
+  .cast-avatar-img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
 
-  .npc-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .npc-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .cast-name {
-    font-size: var(--text-sm); font-weight: 600; color: #8b8ba7;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: #8b8ba7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .npc-badge {
-    padding: 2px 7px; border-radius: 99px;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
-    text-transform: uppercase; flex-shrink: 0;
-    background: rgba(34,197,94,0.12); color: #4ade80;
+    padding: 2px 7px;
+    border-radius: 99px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
   }
-  .npc-badge.concealed { background: rgba(139,92,246,0.14); color: #c4a1ff; }
-  .npc-badge.unconfirmed { background: rgba(245,158,11,0.12); color: #F59E0B; }
-  .npc-badge.outdated { background: rgba(249,115,22,0.14); color: #fb923c; }
+  .npc-badge.concealed {
+    background: rgba(139, 92, 246, 0.14);
+    color: #c4a1ff;
+  }
+  .npc-badge.unconfirmed {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+  }
+  .npc-badge.outdated {
+    background: rgba(249, 115, 22, 0.14);
+    color: #fb923c;
+  }
   .cast-role-badge {
-    padding: 2px 7px; border-radius: 99px;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
-    text-transform: uppercase; flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: 99px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
   }
 
   .npc-expand {
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     padding: 4px clamp(10px, 3cqi, 16px) 14px;
   }
 
@@ -1223,231 +1648,500 @@
      room, stacking on narrower popovers. Replaces the old flat label/
      textarea form styling with something closer to a character sheet. ── */
   .npc-sheet {
-    display: flex; gap: 16px; align-items: flex-start;
-    padding-top: 10px; margin-top: 6px;
-    border-top: 1px solid rgba(139,92,246,0.08);
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding-top: 10px;
+    margin-top: 6px;
+    border-top: 1px solid rgba(139, 92, 246, 0.08);
   }
 
   .npc-sheet-portrait {
-    display: flex; flex-direction: column; align-items: center; gap: 8px;
-    flex: 0 0 auto; width: 92px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    width: 92px;
   }
   .npc-sheet-frame {
-    width: 92px; height: 92px; border-radius: 14px; position: relative;
-    display: flex; align-items: center; justify-content: center; overflow: hidden;
-    background: linear-gradient(155deg, rgba(139,92,246,0.16), rgba(191,64,255,0.08));
-    border: 1px solid rgba(139,92,246,0.16);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+    width: 92px;
+    height: 92px;
+    border-radius: 14px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: linear-gradient(155deg, rgba(139, 92, 246, 0.16), rgba(191, 64, 255, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.16);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
-  .npc-sheet-frame.has-image { background: #0b0b1c; }
+  .npc-sheet-frame.has-image {
+    background: #0b0b1c;
+  }
   .npc-sheet-frame-btn {
-    width: 100%; height: 100%; padding: 0; margin: 0; border: none; background: none;
-    display: flex; align-items: center; justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
   }
-  .npc-sheet-frame-btn:disabled { cursor: default; }
-  .npc-sheet-frame-img { width: 100%; height: 100%; object-fit: cover; transition: filter 150ms ease, transform 150ms ease; }
-  .npc-sheet-frame-btn:not(:disabled):hover .npc-sheet-frame-img { filter: brightness(1.12); transform: scale(1.04); }
-  .npc-sheet-frame-btn:not(:disabled):active .npc-sheet-frame-img { transform: scale(0.98); }
+  .npc-sheet-frame-btn:disabled {
+    cursor: default;
+  }
+  .npc-sheet-frame-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition:
+      filter 150ms ease,
+      transform 150ms ease;
+  }
+  .npc-sheet-frame-btn:not(:disabled):hover .npc-sheet-frame-img {
+    filter: brightness(1.12);
+    transform: scale(1.04);
+  }
+  .npc-sheet-frame-btn:not(:disabled):active .npc-sheet-frame-img {
+    transform: scale(0.98);
+  }
   .npc-sheet-frame-initial {
-    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif; font-size: 34px; font-weight: 600;
-    color: rgba(232,224,255,0.5);
+    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+    font-size: 34px;
+    font-weight: 600;
+    color: rgba(232, 224, 255, 0.5);
   }
   .npc-sheet-frame-overlay {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: rgba(7,7,20,0.55); backdrop-filter: blur(2px);
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(7, 7, 20, 0.55);
+    backdrop-filter: blur(2px);
   }
-  .npc-sheet-portrait-actions { display: flex; gap: 4px; }
+  .npc-sheet-portrait-actions {
+    display: flex;
+    gap: 4px;
+  }
   .npc-icon-btn {
-    width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-    background: transparent; border: 1px solid rgba(139,92,246,0.14); color: #8b8ba7;
-    cursor: pointer; transition: all 150ms ease; flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid rgba(139, 92, 246, 0.14);
+    color: #8b8ba7;
+    cursor: pointer;
+    transition: all 150ms ease;
+    flex-shrink: 0;
   }
-  .npc-icon-btn:hover { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); color: #c8c8e0; }
-  .npc-icon-btn:active { transform: scale(0.92); }
-  .npc-icon-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
-  .npc-icon-btn-danger { color: #F43F5E; border-color: rgba(244,63,94,0.18); }
-  .npc-icon-btn-danger:hover { background: rgba(244,63,94,0.12); color: #fb7185; }
+  .npc-icon-btn:hover {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.25);
+    color: #c8c8e0;
+  }
+  .npc-icon-btn:active {
+    transform: scale(0.92);
+  }
+  .npc-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+  }
+  .npc-icon-btn-danger {
+    color: #f43f5e;
+    border-color: rgba(244, 63, 94, 0.18);
+  }
+  .npc-icon-btn-danger:hover {
+    background: rgba(244, 63, 94, 0.12);
+    color: #fb7185;
+  }
 
-  .npc-sheet-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .npc-sheet-fields {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-  .npc-sheet-name-label { display: block; }
+  .npc-sheet-name-label {
+    display: block;
+  }
   .npc-sheet-name-input {
-    width: 100%; font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif; font-size: 19px; font-weight: 600;
-    color: var(--fg-primary, #e8e0ff); background: transparent;
-    border: none; border-bottom: 1px solid rgba(139,92,246,0.14);
-    padding: 2px 1px 8px; letter-spacing: 0.2px;
+    width: 100%;
+    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--fg-primary, #e8e0ff);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.14);
+    padding: 2px 1px 8px;
+    letter-spacing: 0.2px;
     transition: border-color 150ms ease;
   }
-  .npc-sheet-name-input::placeholder { font-family: var(--font-body); font-size: var(--text-sm); font-weight: 400; color: #5a5a7a; }
-  .npc-sheet-name-input:focus { outline: none; border-bottom-color: rgba(139,92,246,0.5); }
+  .npc-sheet-name-input::placeholder {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 400;
+    color: #5a5a7a;
+  }
+  .npc-sheet-name-input:focus {
+    outline: none;
+    border-bottom-color: rgba(139, 92, 246, 0.5);
+  }
 
-  .npc-sheet-field { display: flex; flex-direction: column; gap: 6px; }
+  .npc-sheet-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
   .npc-sheet-field-label {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 10px; font-weight: 700; color: #a78bfa;
-    letter-spacing: 0.6px; text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #a78bfa;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
   }
   .npc-sheet-textarea {
-    width: 100%; resize: vertical; font-family: var(--font-body); font-size: var(--text-sm);
-    line-height: 1.6; color: #c8c8e0;
-    background: rgba(10,9,22,0.55); border: 1px solid rgba(139,92,246,0.1);
-    border-radius: 10px; padding: 10px 12px;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
-    transition: border-color 150ms ease, box-shadow 150ms ease;
+    width: 100%;
+    resize: vertical;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: #c8c8e0;
+    background: rgba(10, 9, 22, 0.55);
+    border: 1px solid rgba(139, 92, 246, 0.1);
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
   }
   .npc-sheet-textarea:focus {
-    outline: none; border-color: rgba(139,92,246,0.35);
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2), 0 0 0 3px rgba(139,92,246,0.08);
+    outline: none;
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.2),
+      0 0 0 3px rgba(139, 92, 246, 0.08);
   }
 
   @container (max-width: 340px) {
-    .npc-sheet { flex-direction: column; align-items: stretch; }
-    .npc-sheet-portrait { flex-direction: row; width: auto; justify-content: flex-start; }
+    .npc-sheet {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .npc-sheet-portrait {
+      flex-direction: row;
+      width: auto;
+      justify-content: flex-start;
+    }
   }
 
-  .npc-expand-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-  .npc-btn-promote { margin-left: auto; }
+  .npc-expand-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .npc-btn-promote {
+    margin-left: auto;
+  }
   /* Resolves the "Unconfirmed" badge — an emerald accent reads as the
      approve/confirm action, distinct from Save's primary violet and
      Refresh's magic-glow violet. */
-  .npc-btn-confirm { border-color: rgba(52,211,153,0.2); color: #34d399; }
+  .npc-btn-confirm {
+    border-color: rgba(52, 211, 153, 0.2);
+    color: #34d399;
+  }
   .npc-btn-confirm:hover {
-    border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.08); color: #6ee7b7;
-    box-shadow: 0 0 0 1px rgba(52,211,153,0.12), 0 4px 16px rgba(52,211,153,0.16);
+    border-color: rgba(52, 211, 153, 0.4);
+    background: rgba(52, 211, 153, 0.08);
+    color: #6ee7b7;
+    box-shadow:
+      0 0 0 1px rgba(52, 211, 153, 0.12),
+      0 4px 16px rgba(52, 211, 153, 0.16);
   }
   /* "Refresh from Story" is an AI-driven rewrite, not a plain utility action
      — a quiet violet glow on hover nods to that without competing with the
      Save button's primary-gradient weight. */
   .npc-btn-magic:hover {
-    border-color: rgba(139,92,246,0.35); color: #c4a1ff;
-    box-shadow: 0 0 0 1px rgba(139,92,246,0.15), 0 4px 16px rgba(139,92,246,0.18);
+    border-color: rgba(139, 92, 246, 0.35);
+    color: #c4a1ff;
+    box-shadow:
+      0 0 0 1px rgba(139, 92, 246, 0.15),
+      0 4px 16px rgba(139, 92, 246, 0.18);
   }
   /* Same outline/primary/danger pill language as Settings' Export/Import/
      Clear-All buttons and the Image Presets Delete/Add-Preset buttons —
      kept in lockstep with `.settings-btn` rather than the smaller, more
      subdued buttons this used to have. */
   .npc-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 9px 16px; border-radius: 10px; font-size: var(--text-sm); font-weight: 600;
-    font-family: var(--font-body); background: transparent;
-    border: 1px solid rgba(139,92,246,0.12); color: #8b8ba7;
-    cursor: pointer; transition: all 180ms ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    font-family: var(--font-body);
+    background: transparent;
+    border: 1px solid rgba(139, 92, 246, 0.12);
+    color: #8b8ba7;
+    cursor: pointer;
+    transition: all 180ms ease;
   }
-  .npc-btn:hover { background: rgba(139,92,246,0.06); border-color: rgba(139,92,246,0.2); color: #c8c8e0; }
-  .npc-btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
+  .npc-btn:hover {
+    background: rgba(139, 92, 246, 0.06);
+    border-color: rgba(139, 92, 246, 0.2);
+    color: #c8c8e0;
+  }
+  .npc-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+  }
   .npc-btn-primary {
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff); border: none; color: #fff;
-    box-shadow: 0 2px 12px rgba(139,92,246,0.3);
+    background: linear-gradient(135deg, #8b5cf6, #bf40ff);
+    border: none;
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(139, 92, 246, 0.3);
   }
-  .npc-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(139,92,246,0.45); background: none; }
+  .npc-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.45);
+    background: none;
+  }
 
   /* Live AI Horde progress — same status language (pulsing dot + phase
      text) as the Scene panel's own generation status. The pulsing dot now
      lives inside the portrait frame overlay itself (closer to what's
      actually loading); this is just the compact phase-text pill beneath it. */
   .npc-portrait-status {
-    text-align: center; font-size: 10px; color: #a78bfa; font-family: var(--font-mono);
-    line-height: 1.4; max-width: 92px;
+    text-align: center;
+    font-size: 10px;
+    color: #a78bfa;
+    font-family: var(--font-mono);
+    line-height: 1.4;
+    max-width: 92px;
   }
   .npc-portrait-status-dot {
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    background: #c4a1ff; box-shadow: 0 0 8px rgba(196,161,255,0.7);
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #c4a1ff;
+    box-shadow: 0 0 8px rgba(196, 161, 255, 0.7);
     animation: npcPulse 1.1s ease-in-out infinite;
   }
 
-  .npc-card.muted { opacity: 0.55; }
+  .npc-card.muted {
+    opacity: 0.55;
+  }
 
   .cast-action-btn {
-    background: none; border: none; padding: 4px; border-radius: 6px;
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: background 150ms, transform 100ms; min-width: 24px; min-height: 24px;
+    background: none;
+    border: none;
+    padding: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 150ms,
+      transform 100ms;
+    min-width: 24px;
+    min-height: 24px;
     flex-shrink: 0;
   }
-  .cast-action-btn:hover { background: rgba(139,92,246,0.08); }
-  .cast-action-btn:active { transform: scale(0.92); }
-  .cast-remove-btn { opacity: 0; transition: opacity 150ms; }
-  .npc-card:hover .cast-remove-btn { opacity: 0.5; }
-  .cast-remove-btn:hover { opacity: 1 !important; }
+  .cast-action-btn:hover {
+    background: rgba(139, 92, 246, 0.08);
+  }
+  .cast-action-btn:active {
+    transform: scale(0.92);
+  }
+  .cast-remove-btn {
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+  .npc-card:hover .cast-remove-btn {
+    opacity: 0.5;
+  }
+  .cast-remove-btn:hover {
+    opacity: 1 !important;
+  }
 
   /* Small inline spinner shown in the chevron slot while a Gallery
      character's full record is being fetched on first expand. */
   .npc-spinner {
-    width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
-    border: 1.5px solid rgba(139,92,246,0.2); border-top-color: #c4a1ff;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(139, 92, 246, 0.2);
+    border-top-color: #c4a1ff;
     animation: npcSpin 700ms linear infinite;
   }
-  @keyframes npcSpin { to { transform: rotate(360deg); } }
+  @keyframes npcSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   .npc-expand-loading {
-    display: flex; gap: 4px; padding: 14px 4px; justify-content: center;
+    display: flex;
+    gap: 4px;
+    padding: 14px 4px;
+    justify-content: center;
   }
 
   .cast-slider-row {
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 0 clamp(10px, 3cqi, 16px) clamp(9px, 2.6cqi, 14px);
   }
   .npc-card .cast-slider-row {
     padding-left: clamp(10px, 3cqi, 16px);
   }
   .cast-slider-label {
-    font-size: 9px; font-weight: 600; color: #4a4a6a;
-    font-family: var(--font-mono); letter-spacing: 0.5px;
-    text-transform: uppercase; flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 600;
+    color: #4a4a6a;
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
   }
   .cast-slider {
-    flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
-    background: rgba(139,92,246,0.1); border-radius: 2px;
-    outline: none; cursor: pointer;
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
   }
   .cast-slider::-webkit-slider-thumb {
-    -webkit-appearance: none; appearance: none;
-    width: 12px; height: 12px; border-radius: 50%;
-    background: var(--accent-primary, #8B5CF6);
-    border: 2px solid rgba(14,14,30,0.8);
-    box-shadow: 0 0 6px rgba(139,92,246,0.3);
-    cursor: pointer; transition: transform 150ms;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-primary, #8b5cf6);
+    border: 2px solid rgba(14, 14, 30, 0.8);
+    box-shadow: 0 0 6px rgba(139, 92, 246, 0.3);
+    cursor: pointer;
+    transition: transform 150ms;
   }
-  .cast-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .cast-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
   .cast-slider::-moz-range-thumb {
-    width: 12px; height: 12px; border-radius: 50%;
-    background: var(--accent-primary, #8B5CF6);
-    border: 2px solid rgba(14,14,30,0.8);
-    box-shadow: 0 0 6px rgba(139,92,246,0.3);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-primary, #8b5cf6);
+    border: 2px solid rgba(14, 14, 30, 0.8);
+    box-shadow: 0 0 6px rgba(139, 92, 246, 0.3);
     cursor: pointer;
   }
   .cast-slider-value {
-    font-size: 10px; font-weight: 600; color: #5a5a7a;
-    font-family: var(--font-mono); min-width: 22px; text-align: right;
+    font-size: 10px;
+    font-weight: 600;
+    color: #5a5a7a;
+    font-family: var(--font-mono);
+    min-width: 22px;
+    text-align: right;
   }
 
   /* ── Portrait lightbox ── */
   .avatar-lightbox-backdrop {
-    position: fixed; inset: 0; z-index: 300;
-    background: rgba(4,4,12,0.88); backdrop-filter: blur(10px);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: rgba(4, 4, 12, 0.88);
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
     cursor: pointer;
-    animation: lightboxIn 180ms cubic-bezier(0.16,1,0.3,1) both;
+    animation: lightboxIn 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  @keyframes lightboxIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes lightboxIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   .avatar-lightbox-img {
-    max-width: min(78vw, 560px); max-height: 72vh;
-    border-radius: 16px; object-fit: contain;
-    box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.15);
+    max-width: min(78vw, 560px);
+    max-height: 72vh;
+    border-radius: 16px;
+    object-fit: contain;
+    box-shadow:
+      0 24px 80px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(139, 92, 246, 0.15);
     cursor: default;
-    animation: lightboxImgIn 220ms cubic-bezier(0.16,1,0.3,1) both;
+    animation: lightboxImgIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  @keyframes lightboxImgIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+  @keyframes lightboxImgIn {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
   .avatar-lightbox-name {
-    font-size: var(--text-md); font-weight: 600; color: #e8e0ff;
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: #e8e0ff;
     letter-spacing: -0.1px;
   }
   .avatar-lightbox-close {
-    position: absolute; top: 20px; right: 24px;
-    width: 38px; height: 38px; border-radius: 10px;
-    background: rgba(20,20,40,0.7); border: 1px solid rgba(139,92,246,0.2);
-    display: flex; align-items: center; justify-content: center; cursor: pointer;
-    transition: background 150ms, border-color 150ms;
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(20, 20, 40, 0.7);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition:
+      background 150ms,
+      border-color 150ms;
   }
-  .avatar-lightbox-close:hover { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.4); }
+  .avatar-lightbox-close:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+  }
 </style>

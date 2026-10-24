@@ -30,7 +30,13 @@ describe('copyText', () => {
     expect(writeText).toHaveBeenCalledWith('hi');
   });
   it('falls back to a hidden textarea and execCommand', async () => {
-    const area: Record<string, unknown> = { setAttribute: vi.fn(), select: vi.fn(), setSelectionRange: vi.fn(), remove: vi.fn(), style: {} };
+    const area: Record<string, unknown> = {
+      setAttribute: vi.fn(),
+      select: vi.fn(),
+      setSelectionRange: vi.fn(),
+      remove: vi.fn(),
+      style: {},
+    };
     const execCommand = vi.fn().mockReturnValue(true);
     vi.stubGlobal('navigator', {});
     vi.stubGlobal('document', { createElement: () => area, body: { appendChild: vi.fn() }, execCommand });

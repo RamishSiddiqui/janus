@@ -198,16 +198,16 @@ interface DialogOptions {
 }
 
 function pickFiles(options: DialogOptions): Promise<string | string[] | null> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = !!options.multiple;
-    const exts = (options.filters ?? []).flatMap((f) => f.extensions.map((e) => `.${e}`));
+    const exts = (options.filters ?? []).flatMap(f => f.extensions.map(e => `.${e}`));
     if (exts.length) input.accept = exts.join(',');
     input.addEventListener('change', () => {
       const files = Array.from(input.files ?? []);
       if (!files.length) return resolve(null);
-      const tokens = files.map((f) => {
+      const tokens = files.map(f => {
         const token = `${PICKED_PREFIX}${nextPick++}/${f.name}`;
         picked.set(token, f);
         return token;
@@ -308,8 +308,8 @@ function ensureSource(): EventSource {
 function attach(name: string) {
   if (hub.names.has(name)) return;
   hub.names.add(name);
-  ensureSource().addEventListener(name, (ev) => {
-    let payload: unknown = null;
+  ensureSource().addEventListener(name, ev => {
+    let payload: unknown;
     try {
       payload = JSON.parse((ev as MessageEvent).data);
     } catch {
@@ -373,11 +373,7 @@ function writeDownload(body: unknown, options: { headers?: Record<string, string
   return null;
 }
 
-async function bridgeInvoke(
-  cmd: string,
-  args?: any,
-  options?: { headers?: Record<string, string> },
-): Promise<unknown> {
+async function bridgeInvoke(cmd: string, args?: any, options?: { headers?: Record<string, string> }): Promise<unknown> {
   if (cmd === 'plugin:dialog|save') return saveDialog((args?.options ?? {}) as DialogOptions);
   if (cmd === 'plugin:fs|write_text_file' || cmd === 'plugin:fs|write_file') {
     return writeDownload(args, options);

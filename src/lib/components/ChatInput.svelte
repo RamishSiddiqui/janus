@@ -19,15 +19,26 @@
   }
 
   let {
-    value = $bindable(''), modelName, tokenCount, onSend, disabled = false,
-    selectedModel = $bindable(''), availableModels = [],
-    onRefreshModels, isBranching = false, onStop,
+    value = $bindable(''),
+    modelName,
+    tokenCount,
+    onSend,
+    disabled = false,
+    selectedModel = $bindable(''),
+    availableModels = [],
+    onRefreshModels,
+    isBranching = false,
+    onStop,
     pendingAttachments = $bindable([]),
     selectedModelSupportsVision = false,
   }: {
-    value: string; modelName: string; tokenCount: string;
-    onSend: () => void; disabled?: boolean;
-    selectedModel?: string; availableModels?: string[];
+    value: string;
+    modelName: string;
+    tokenCount: string;
+    onSend: () => void;
+    disabled?: boolean;
+    selectedModel?: string;
+    availableModels?: string[];
     onRefreshModels?: () => void;
     isBranching?: boolean;
     /** Shown in place of the Send button while `disabled` (streaming) is true. */
@@ -59,7 +70,8 @@
     });
     if (!selected) return;
     const paths = (Array.isArray(selected) ? selected : [selected]).slice(
-      0, MAX_ATTACHMENTS - pendingAttachments.length
+      0,
+      MAX_ATTACHMENTS - pendingAttachments.length,
     );
 
     isUploadingAttachment = true;
@@ -91,7 +103,10 @@
   }
 
   const EXT_BY_MIME: Record<string, string> = {
-    'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif',
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
   };
 
   /** Handles pasting an image (e.g. a screenshot) directly into the
@@ -138,7 +153,10 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
   }
 
   function autoResize(e: Event) {
@@ -149,22 +167,20 @@
 
   let hasContent = $derived(value.trim().length > 0);
 
-/** Wraps the selected text in Markdown bold (or unwraps it). */
-function applyBold() {
-  if (!inputElement) return;
-  const r = toggleBold(value, inputElement.selectionStart, inputElement.selectionEnd);
-  value = r.text;
-  const el = inputElement;
-  requestAnimationFrame(() => {
-    el.focus();
-    el.setSelectionRange(r.start, r.end);
-  });
-}
+  /** Wraps the selected text in Markdown bold (or unwraps it). */
+  function applyBold() {
+    if (!inputElement) return;
+    const r = toggleBold(value, inputElement.selectionStart, inputElement.selectionEnd);
+    value = r.text;
+    const el = inputElement;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(r.start, r.end);
+    });
+  }
 
   let filteredModels = $derived(
-    modelFilter
-      ? availableModels.filter(m => m.toLowerCase().includes(modelFilter.toLowerCase()))
-      : availableModels
+    modelFilter ? availableModels.filter(m => m.toLowerCase().includes(modelFilter.toLowerCase())) : availableModels,
   );
 
   function selectModel(model: string) {
@@ -195,13 +211,21 @@ function applyBold() {
 
 <!-- B3 - TWO-ROW CARD with PILL BUTTON -->
 <div class="ci-wrap" class:is-focused={focused} class:is-branching={isBranching} class:has-content={hasContent}>
-
   <!-- Branch indicator banner -->
   {#if isBranching}
     <div class="ci-branch-banner" role="status">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
-        <path d="M18 9a9 9 0 0 1-9 9"/>
+      <svg
+        width="11"
+        height="11"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
+        <path d="M18 9a9 9 0 0 1-9 9" />
       </svg>
       Branching - your reply creates a new timeline
     </div>
@@ -209,7 +233,6 @@ function applyBold() {
 
   <!-- CARD -->
   <div class="ci-card">
-
     <!-- Pending attachment previews -->
     {#if pendingAttachments.length > 0}
       <div class="ci-attachments-row">
@@ -225,7 +248,12 @@ function applyBold() {
                 <Icon name="alert-circle" size={13} color="#FFFFFF" />
               </span>
             {/if}
-            <button class="ci-attachment-remove" onclick={() => removePendingAttachment(i)} aria-label="Remove attachment" title="Remove">
+            <button
+              class="ci-attachment-remove"
+              onclick={() => removePendingAttachment(i)}
+              aria-label="Remove attachment"
+              title="Remove"
+            >
               <Icon name="x" size={10} color="#FFFFFF" />
             </button>
           </div>
@@ -244,10 +272,9 @@ function applyBold() {
         rows="1"
         onkeydown={handleKeydown}
         oninput={autoResize}
-        onfocus={() => focused = true}
-        onblur={() => focused = false}
-        onpaste={handlePaste}
-      ></textarea>
+        onfocus={() => (focused = true)}
+        onblur={() => (focused = false)}
+        onpaste={handlePaste}></textarea>
     </div>
 
     <!-- Divider -->
@@ -255,7 +282,6 @@ function applyBold() {
 
     <!-- Toolbar row -->
     <div class="ci-toolbar">
-
       <!-- Left tools: paperclip / bold -->
       <div class="ci-left-tools">
         <button
@@ -266,37 +292,83 @@ function applyBold() {
           title="Attach an image"
           aria-label="Attach file"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+            />
           </svg>
         </button>
-        <button class="ci-tool-btn" title="Bold" aria-label="Bold" onmousedown={(e) => e.preventDefault()} onclick={applyBold}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>
+        <button
+          class="ci-tool-btn"
+          title="Bold"
+          aria-label="Bold"
+          onmousedown={e => e.preventDefault()}
+          onclick={applyBold}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" /><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" />
           </svg>
         </button>
       </div>
 
       <!-- Right cluster: model pill + send pill -->
       <div class="ci-right-tools">
-
         <!-- Model picker pill -->
         <div class="ci-model-wrap">
           <button class="ci-model-pill" onclick={togglePicker} aria-label="Select model" title="Select AI model">
             <span class="ci-model-dot" aria-hidden="true"></span>
             <span class="ci-model-name">{selectedModel || modelName}</span>
             <svg class="ci-model-caret" width="9" height="9" viewBox="0 0 10 6" fill="none">
-              <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path
+                d="M1 1l4 4 4-4"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
             </svg>
           </button>
 
           {#if showModelPicker}
             <div class="ci-dropdown" role="listbox" aria-label="Available models">
               <div class="ci-dropdown-search">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" class="ci-search-input" placeholder="Search models..." bind:value={modelFilter} aria-label="Filter models" />
+                <input
+                  type="text"
+                  class="ci-search-input"
+                  placeholder="Search models..."
+                  bind:value={modelFilter}
+                  aria-label="Filter models"
+                />
               </div>
               <div class="ci-dropdown-list">
                 {#if filteredModels.length === 0}
@@ -314,8 +386,17 @@ function applyBold() {
                     >
                       <span class="ci-dropdown-item-name">{model}</span>
                       {#if model === selectedModel}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#BF40FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#BF40FF"
+                          stroke-width="2.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
                         </svg>
                       {/if}
                     </button>
@@ -335,7 +416,7 @@ function applyBold() {
             title="Stop generating"
           >
             <svg class="ci-send-zap" width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="5" y="5" width="14" height="14" rx="2"/>
+              <rect x="5" y="5" width="14" height="14" rx="2" />
             </svg>
             <span>Stop</span>
           </button>
@@ -348,13 +429,22 @@ function applyBold() {
             aria-label="Send message"
             title="Send message"
           >
-            <svg class="ci-send-zap" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            <svg
+              class="ci-send-zap"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
             <span>Send</span>
           </button>
         {/if}
-
       </div>
     </div>
   </div>
@@ -364,7 +454,6 @@ function applyBold() {
     <span class="ci-hints"><kbd>Shift+Enter</kbd> new line | Markdown supported</span>
     <span class="ci-tokens">{tokenCount} <span class="ci-tokens-label">tokens</span></span>
   </div>
-
 </div>
 
 <style>
@@ -400,8 +489,14 @@ function applyBold() {
     animation: bannerSlideIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes bannerSlideIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* -- Card -- */
@@ -415,13 +510,17 @@ function applyBold() {
     /* NO overflow:hidden - dropdown must float above */
     transition:
       border-color 300ms cubic-bezier(0.16, 1, 0.3, 1),
-      box-shadow   300ms cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
   }
   .ci-card::before {
     content: '';
-    position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.055) 50%, transparent);
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.055) 50%, transparent);
     pointer-events: none;
   }
 
@@ -458,11 +557,11 @@ function applyBold() {
     line-height: 1.6;
     resize: none;
     max-height: 160px;
-    caret-color: #BF40FF;
+    caret-color: #bf40ff;
     letter-spacing: 0.01em;
   }
   .ci-textarea::placeholder {
-    color: #3D3560;
+    color: #3d3560;
     font-style: italic;
   }
 
@@ -502,15 +601,25 @@ function applyBold() {
     background: transparent;
     color: rgba(100, 90, 160, 0.45);
     cursor: pointer;
-    transition: color 150ms ease, background 150ms ease;
+    transition:
+      color 150ms ease,
+      background 150ms ease;
   }
   .ci-tool-btn:hover {
     color: rgba(167, 139, 250, 0.75);
     background: rgba(124, 58, 237, 0.08);
   }
-  .ci-tool-btn:active { transform: scale(0.9); }
-  .ci-tool-btn-disabled { opacity: 0.35; cursor: default; }
-  .ci-tool-btn-disabled:hover { color: rgba(100, 90, 160, 0.45); background: transparent; }
+  .ci-tool-btn:active {
+    transform: scale(0.9);
+  }
+  .ci-tool-btn-disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .ci-tool-btn-disabled:hover {
+    color: rgba(100, 90, 160, 0.45);
+    background: transparent;
+  }
 
   /* -- Pending attachment previews -- */
   .ci-attachments-row {
@@ -536,9 +645,13 @@ function applyBold() {
   }
   .ci-attachment-remove {
     position: absolute;
-    top: 2px; right: 2px;
-    width: 16px; height: 16px;
-    display: flex; align-items: center; justify-content: center;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 50%;
     border: none;
     background: rgba(0, 0, 0, 0.6);
@@ -546,7 +659,9 @@ function applyBold() {
     padding: 0;
     transition: background 150ms ease;
   }
-  .ci-attachment-remove:hover { background: rgba(244, 63, 94, 0.85); }
+  .ci-attachment-remove:hover {
+    background: rgba(244, 63, 94, 0.85);
+  }
 
   .ci-attachment-unsupported {
     border-color: rgba(244, 63, 94, 0.35);
@@ -572,7 +687,9 @@ function applyBold() {
   }
 
   /* -- Model pill -- */
-  .ci-model-wrap { position: relative; }
+  .ci-model-wrap {
+    position: relative;
+  }
 
   .ci-model-pill {
     display: flex;
@@ -588,7 +705,9 @@ function applyBold() {
     font-size: 9px;
     letter-spacing: 0.03em;
     white-space: nowrap;
-    transition: background 160ms ease, border-color 160ms ease;
+    transition:
+      background 160ms ease,
+      border-color 160ms ease;
   }
   .ci-model-pill:hover {
     background: rgba(191, 64, 255, 0.1);
@@ -598,15 +717,24 @@ function applyBold() {
 
   /* Pulsing dot */
   .ci-model-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: #BF40FF;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #bf40ff;
     box-shadow: 0 0 5px rgba(191, 64, 255, 0.6);
     flex-shrink: 0;
     animation: dotGlow 2.5s ease-in-out infinite;
   }
   @keyframes dotGlow {
-    0%, 100% { box-shadow: 0 0 4px rgba(191,64,255,0.5); }
-    50%       { box-shadow: 0 0 9px rgba(191,64,255,1.0), 0 0 14px rgba(191,64,255,0.4); }
+    0%,
+    100% {
+      box-shadow: 0 0 4px rgba(191, 64, 255, 0.5);
+    }
+    50% {
+      box-shadow:
+        0 0 9px rgba(191, 64, 255, 1),
+        0 0 14px rgba(191, 64, 255, 0.4);
+    }
   }
 
   .ci-model-name {
@@ -614,7 +742,10 @@ function applyBold() {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .ci-model-caret { color: rgba(140, 100, 200, 0.5); flex-shrink: 0; }
+  .ci-model-caret {
+    color: rgba(140, 100, 200, 0.5);
+    flex-shrink: 0;
+  }
 
   /* -- B3 SEND PILL -- */
   .ci-send-pill {
@@ -635,10 +766,10 @@ function applyBold() {
     background: rgba(80, 40, 140, 0.3);
     color: rgba(167, 139, 250, 0.3);
     transition:
-      background     350ms cubic-bezier(0.16, 1, 0.3, 1),
-      color          350ms ease,
-      box-shadow     350ms ease,
-      transform      200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      background 350ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 350ms ease,
+      box-shadow 350ms ease,
+      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .ci-send-zap {
@@ -649,15 +780,15 @@ function applyBold() {
   /* READY state */
   .ci-send-pill.is-ready {
     cursor: pointer;
-    background: linear-gradient(135deg, #7C3AED 0%, #BF40FF 100%);
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #7c3aed 0%, #bf40ff 100%);
+    color: #ffffff;
     box-shadow:
       0 4px 16px rgba(124, 58, 237, 0.4),
       0 8px 32px rgba(191, 64, 255, 0.13);
   }
 
   .ci-send-pill.is-ready:hover {
-    background: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%);
+    background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
     box-shadow:
       0 4px 20px rgba(124, 58, 237, 0.6),
       0 10px 40px rgba(191, 64, 255, 0.22);
@@ -674,13 +805,13 @@ function applyBold() {
   /* Stop pill — shown in place of Send while a response is streaming */
   .ci-stop-pill.is-ready {
     cursor: pointer;
-    background: linear-gradient(135deg, #7C2D3E 0%, #F43F5E 100%);
+    background: linear-gradient(135deg, #7c2d3e 0%, #f43f5e 100%);
     box-shadow:
       0 4px 16px rgba(244, 63, 94, 0.35),
       0 8px 32px rgba(244, 63, 94, 0.12);
   }
   .ci-stop-pill.is-ready:hover {
-    background: linear-gradient(135deg, #9F2E44 0%, #FB7185 100%);
+    background: linear-gradient(135deg, #9f2e44 0%, #fb7185 100%);
     box-shadow:
       0 4px 20px rgba(244, 63, 94, 0.55),
       0 10px 40px rgba(244, 63, 94, 0.2);
@@ -725,8 +856,14 @@ function applyBold() {
     animation: dropUp 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes dropUp {
-    from { opacity: 0; transform: translateY(10px) scale(0.96); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .ci-dropdown-search {
@@ -746,15 +883,21 @@ function applyBold() {
     font-size: 12px;
     font-family: 'Raleway', sans-serif;
   }
-  .ci-search-input::placeholder { color: rgba(80, 70, 130, 0.5); }
+  .ci-search-input::placeholder {
+    color: rgba(80, 70, 130, 0.5);
+  }
 
   .ci-dropdown-list {
     overflow-y: auto;
     max-height: 300px;
     padding: 5px;
   }
-  .ci-dropdown-list::-webkit-scrollbar { width: 3px; }
-  .ci-dropdown-list::-webkit-scrollbar-track { background: transparent; }
+  .ci-dropdown-list::-webkit-scrollbar {
+    width: 3px;
+  }
+  .ci-dropdown-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
   .ci-dropdown-list::-webkit-scrollbar-thumb {
     background: rgba(191, 64, 255, 0.2);
     border-radius: 3px;
@@ -774,7 +917,9 @@ function applyBold() {
     border-radius: 9px;
     cursor: pointer;
     text-align: left;
-    transition: background 100ms ease, color 100ms ease;
+    transition:
+      background 100ms ease,
+      color 100ms ease;
     letter-spacing: 0.02em;
   }
   .ci-dropdown-item:hover {
@@ -783,7 +928,7 @@ function applyBold() {
   }
   .ci-dropdown-item.is-active {
     background: rgba(191, 64, 255, 0.12);
-    color: #BF40FF;
+    color: #bf40ff;
   }
   .ci-dropdown-item-name {
     overflow: hidden;
@@ -838,12 +983,20 @@ function applyBold() {
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
-  .ci-tokens-label { color: rgba(55, 50, 100, 0.4); }
+  .ci-tokens-label {
+    color: rgba(55, 50, 100, 0.4);
+  }
 
   /* -- Mobile -- */
   @media (max-width: 768px) {
-    .ci-wrap { padding: 0 12px 12px; }
-    .ci-dropdown { width: 280px; }
-    .ci-model-name { max-width: 100px; }
+    .ci-wrap {
+      padding: 0 12px 12px;
+    }
+    .ci-dropdown {
+      width: 280px;
+    }
+    .ci-model-name {
+      max-width: 100px;
+    }
   }
 </style>

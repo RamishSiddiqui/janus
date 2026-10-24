@@ -40,12 +40,20 @@
     <!-- Both hooks are ONE path: bottom-left hook, up the stem, top-right
          hook. The track is the same gradient at low alpha, so the mark
          stays legible and needs no assumption about the background. -->
-    <path stroke="url(#{gradId})" opacity="0.22"
-      d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52" />
+    <path
+      stroke="url(#{gradId})"
+      opacity="0.22"
+      d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"
+    />
     <!-- ONE runner — two runners would need their coverage tiled exactly,
          and any gap renders as a detached round cap floating off the mark. -->
-    <path class="run" stroke="url(#{gradId})" pathLength="100" stroke-dasharray="62 200"
-      d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52" />
+    <path
+      class="run"
+      stroke="url(#{gradId})"
+      pathLength="100"
+      stroke-dasharray="62 200"
+      d="M -52,52 Q -52,74 -30,74 Q 0,74 0,46 L 0,-46 Q 0,-74 30,-74 Q 52,-74 52,-52"
+    />
   </g>
 </svg>
 
@@ -54,14 +62,36 @@
      of the stroke, and a dot can't shrink further — so it blinks out. Fix:
      fade the runner to zero across the first/last ~11% of its run instead
      of letting the dash hide the ends. */
-  @keyframes janus-run  { from { stroke-dashoffset: 62; } to { stroke-dashoffset: -100; } }
-  @keyframes janus-fade { 0%, 100% { opacity: 0; } 11%, 89% { opacity: 1; } }
+  @keyframes janus-run {
+    from {
+      stroke-dashoffset: 62;
+    }
+    to {
+      stroke-dashoffset: -100;
+    }
+  }
+  @keyframes janus-fade {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    11%,
+    89% {
+      opacity: 1;
+    }
+  }
 
   .janus-loader .run {
-    animation: janus-run 2.6s linear infinite, janus-fade 2.6s linear infinite;
+    animation:
+      janus-run 2.6s linear infinite,
+      janus-fade 2.6s linear infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .janus-loader .run { animation: none; stroke-dasharray: none; opacity: 1; }
+    .janus-loader .run {
+      animation: none;
+      stroke-dasharray: none;
+      opacity: 1;
+    }
   }
 </style>

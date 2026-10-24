@@ -92,7 +92,7 @@ RULES:
 - For each fact, identify WHO it's primarily about using the "character" field: the EXACT name from the CAST list below if it matches one of them (including a secondary/NPC character, not just the main one), "the user" if it's about the player, or omit the field for a general world fact not tied to one specific person. Get this right — a fact filed under the wrong character becomes invisible to that character later.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
-[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>","character":"<exact CAST name, \"the user\", or omit>"}]
+[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>","character":"<exact CAST name, "the user", or omit>"}]
 
 Expected output for most messages: []`;
 
@@ -146,12 +146,13 @@ function parseExtractionResponse(raw: string): ExtractedFact[] {
     if (!Array.isArray(parsed)) return [];
 
     return parsed
-      .filter((item: any) =>
-        typeof item.summary === 'string' &&
-        item.summary.length > 10 &&
-        item.summary.length < 300 &&
-        typeof item.category === 'string' &&
-        item.category.length > 0
+      .filter(
+        (item: any) =>
+          typeof item.summary === 'string' &&
+          item.summary.length > 10 &&
+          item.summary.length < 300 &&
+          typeof item.category === 'string' &&
+          item.category.length > 0,
       )
       .slice(0, 2) // Hard cap: max 2 facts per extraction
       .map((item: any) => ({
@@ -293,14 +294,22 @@ export async function extractAndSaveMemories(
   try {
     const raw = await ipc.generateRaw(
       EXTRACTION_SYSTEM_PROMPT,
-      buildExtractionPrompt(userMessage, assistantResponse, existingMemoryTexts, castPairs.map(([name]) => name)),
+      buildExtractionPrompt(
+        userMessage,
+        assistantResponse,
+        existingMemoryTexts,
+        castPairs.map(([name]) => name),
+      ),
       undefined, // use default model
-      256,       // max tokens — responses are short (usually just [])
-      0.1,       // very low temperature for consistent, conservative output
+      256, // max tokens — responses are short (usually just [])
+      0.1, // very low temperature for consistent, conservative output
     );
     facts = parseExtractionResponse(raw);
     if (facts.length > 0) {
-      console.debug(`[Janus] LLM extracted ${facts.length} fact(s):`, facts.map(f => f.summary));
+      console.debug(
+        `[Janus] LLM extracted ${facts.length} fact(s):`,
+        facts.map(f => f.summary),
+      );
     }
   } catch (err) {
     console.warn('[Janus] LLM extraction failed, falling back to heuristics:', err);
@@ -327,12 +336,7 @@ export async function extractAndSaveMemories(
     const resolvedId = fact.character ? resolveFactCharacterId(fact.character, castPairs) : undefined;
     const targetCharacterId = resolvedId ?? characterId ?? undefined;
     try {
-      await ipc.createMemory(
-        `[${fact.category}] ${fact.summary}`,
-        targetCharacterId,
-        conversationId,
-        'auto',
-      );
+      await ipc.createMemory(`[${fact.category}] ${fact.summary}`, targetCharacterId, conversationId, 'auto');
       saved++;
     } catch (err) {
       console.warn('[Janus] Failed to save auto-memory:', err);
@@ -350,13 +354,24 @@ export async function extractAndSaveMemories(
 
 const EXTRACTION_RULES: Array<{ pattern: RegExp; category: ExtractedFact['category'] }> = [
   // Identity reveals
-  { pattern: /(?:my name is|i am called|they call me|i'm known as|introduces? (?:him|her|them)self as)\s+["']?(\w[\w\s]{1,30})/i, category: 'identity' },
+  {
+    pattern:
+      /(?:my name is|i am called|they call me|i'm known as|introduces? (?:him|her|them)self as)\s+["']?(\w[\w\s]{1,30})/i,
+    category: 'identity',
+  },
   // Relationship-altering confessions
-  { pattern: /(?:betray(?:s|ed)?|allies? with|joins? forces|forms? (?:a |an )?alliance|becomes? (?:friends?|enemies?|allies?|rivals?)|confesses? (?:love|feelings)|pledg(?:es?|ed) (?:loyalty|allegiance))/i, category: 'relationship' },
+  {
+    pattern:
+      /(?:betray(?:s|ed)?|allies? with|joins? forces|forms? (?:a |an )?alliance|becomes? (?:friends?|enemies?|allies?|rivals?)|confesses? (?:love|feelings)|pledg(?:es?|ed) (?:loyalty|allegiance))/i,
+    category: 'relationship',
+  },
   // Binding decisions/oaths
   { pattern: /(?:i (?:promise|swear|vow|pledge)|the pact is sealed)/i, category: 'decision' },
   // World-altering revelations
-  { pattern: /(?:the (?:truth|secret|prophecy) (?:is|was)|reveals? (?:that|the truth)|confess(?:es)? (?:that|to))/i, category: 'revelation' },
+  {
+    pattern: /(?:the (?:truth|secret|prophecy) (?:is|was)|reveals? (?:that|the truth)|confess(?:es)? (?:that|to))/i,
+    category: 'revelation',
+  },
 ];
 
 function heuristicExtract(response: string): ExtractedFact[] {

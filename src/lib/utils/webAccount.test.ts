@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  cleanRecoveryKey,
-  formatRecoveryKey,
-  passphraseStrength,
-  usernameOk,
-  agoLabel,
-} from './webAccount';
+import { cleanRecoveryKey, formatRecoveryKey, passphraseStrength, usernameOk, agoLabel } from './webAccount';
 
 describe('passphraseStrength', () => {
   it('grows with length and variety', () => {

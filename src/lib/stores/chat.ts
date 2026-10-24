@@ -13,7 +13,6 @@ import { writable, derived, get } from 'svelte/store';
 import type { Message, ConversationPreview } from '#lib/types/index.js';
 import { browser } from '$app/env';
 import { error as toastError, addToast } from '#lib/stores/toast.js';
-import { settings } from '#lib/stores/settings.js';
 import { parseCharacterData } from '#lib/utils/character.js';
 import type { CharacterState } from '#lib/services/ipc.js';
 import type { CharMeta } from '#lib/services/presentation-buffer.js';
@@ -60,7 +59,11 @@ export const isStreaming = writable<boolean>(false);
 
 // Tracks the last failed stream (set on error, cleared on successful send/regenerate)
 // userMessageId is the real DB id — used by retryLastMessage to reuse the existing record
-export const lastStreamError = writable<{ conversationId: string; lastUserContent: string; userMessageId?: string } | null>(null);
+export const lastStreamError = writable<{
+  conversationId: string;
+  lastUserContent: string;
+  userMessageId?: string;
+} | null>(null);
 
 // Whether conversations are being loaded from backend
 export const isLoadingConversations = writable<boolean>(false);
@@ -75,7 +78,7 @@ export const MESSAGE_RENDER_SIZE = 30;
  *  a bare `let` can't be reassigned across module boundaries in JS/TS, so
  *  this is exported as an object whose properties get mutated instead. */
 export const pathState: { fullActivePath: Message[]; currentRenderCount: number } = {
-  fullActivePath: [],   // complete annotated branch (root → tip)
+  fullActivePath: [], // complete annotated branch (root → tip)
   currentRenderCount: 0, // how many messages are currently in the store
 };
 
@@ -94,16 +97,12 @@ export function resetPaginationState() {
 }
 
 // Active conversation derived from ID
-export const activeConversation = derived(
-  [conversations, activeConversationId],
-  ([$conversations, $id]) => $conversations.find(c => c.id === $id)
+export const activeConversation = derived([conversations, activeConversationId], ([$conversations, $id]) =>
+  $conversations.find(c => c.id === $id),
 );
 
 // Active character ID derived from active conversation
-export const activeCharacterId = derived(
-  activeConversation,
-  ($conv) => $conv?.characterId ?? null
-);
+export const activeCharacterId = derived(activeConversation, $conv => $conv?.characterId ?? null);
 
 // Live emotional states for ALL characters in the active conversation.
 // Keyed by character_id → CharacterState. Updated reactively after each
@@ -112,9 +111,8 @@ export const characterEmotionStates = writable<Map<string, CharacterState>>(new 
 
 // Convenience: get a single character's emotion state from the map.
 // Kept for backward compatibility — reads the primary character's state.
-export const characterEmotionState = derived(
-  [characterEmotionStates, activeCharacterId],
-  ([$map, $charId]) => $charId ? ($map.get($charId) ?? null) : null,
+export const characterEmotionState = derived([characterEmotionStates, activeCharacterId], ([$map, $charId]) =>
+  $charId ? ($map.get($charId) ?? null) : null,
 );
 
 // Pre-resolved character metadata for the active conversation.
@@ -136,13 +134,69 @@ export async function loadConversations() {
     // DEV MODE ONLY — Mock data for browser preview (never runs in production Tauri builds)
     if (import.meta.env.DEV) {
       conversations.set([
-        { id: '1', characterId: 'ch-aria', characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'Are you a first-year too? This place is a labyrinth...', time: '2m' },
-        { id: '6', characterId: 'ch-aria', characterName: 'Aria Silverleaf', avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)', avatarUrl: null, preview: 'The Enchanted Library — Chapter 2', time: '1h',
-          additionalCharacters: [{ id: 'ch-kai', name: 'Kai', description: 'Enigmatic shadow mage with ties to the underground arcane network', avatarUrl: null, avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }] },
-        { id: '2', characterId: 'ch-rin', characterName: 'Rin', avatarColor: 'linear-gradient(135deg, #EC4899, #BF40FF)', avatarUrl: null, preview: 'What\'s the job, and how illegal is it?', time: '1h' },
-        { id: '3', characterId: 'ch-saffron', characterName: 'Saffron Emberheart', avatarColor: 'linear-gradient(135deg, #F43F5E, #F59E0B)', avatarUrl: null, preview: 'The answer is on page 347 of Aldric\'s Third...', time: '3d' },
-        { id: '4', characterId: 'ch-kai', characterName: 'Kai', avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)', avatarUrl: null, preview: 'Sit. Put your phone on the table — I need to check...', time: '5d' },
-        { id: '5', characterId: 'ch-ryker', characterName: 'Ryker', avatarColor: 'linear-gradient(135deg, #EF4444, #F59E0B)', avatarUrl: null, preview: 'Nobody comes to Level 12 looking that clean...', time: '1w' },
+        {
+          id: '1',
+          characterId: 'ch-aria',
+          characterName: 'Aria Silverleaf',
+          avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)',
+          avatarUrl: null,
+          preview: 'Are you a first-year too? This place is a labyrinth...',
+          time: '2m',
+        },
+        {
+          id: '6',
+          characterId: 'ch-aria',
+          characterName: 'Aria Silverleaf',
+          avatarColor: 'linear-gradient(135deg, #8B5CF6, #BF40FF)',
+          avatarUrl: null,
+          preview: 'The Enchanted Library — Chapter 2',
+          time: '1h',
+          additionalCharacters: [
+            {
+              id: 'ch-kai',
+              name: 'Kai',
+              description: 'Enigmatic shadow mage with ties to the underground arcane network',
+              avatarUrl: null,
+              avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+            },
+          ],
+        },
+        {
+          id: '2',
+          characterId: 'ch-rin',
+          characterName: 'Rin',
+          avatarColor: 'linear-gradient(135deg, #EC4899, #BF40FF)',
+          avatarUrl: null,
+          preview: "What's the job, and how illegal is it?",
+          time: '1h',
+        },
+        {
+          id: '3',
+          characterId: 'ch-saffron',
+          characterName: 'Saffron Emberheart',
+          avatarColor: 'linear-gradient(135deg, #F43F5E, #F59E0B)',
+          avatarUrl: null,
+          preview: "The answer is on page 347 of Aldric's Third...",
+          time: '3d',
+        },
+        {
+          id: '4',
+          characterId: 'ch-kai',
+          characterName: 'Kai',
+          avatarColor: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+          avatarUrl: null,
+          preview: 'Sit. Put your phone on the table — I need to check...',
+          time: '5d',
+        },
+        {
+          id: '5',
+          characterId: 'ch-ryker',
+          characterName: 'Ryker',
+          avatarColor: 'linear-gradient(135deg, #EF4444, #F59E0B)',
+          avatarUrl: null,
+          preview: 'Nobody comes to Level 12 looking that clean...',
+          time: '1w',
+        },
       ]);
       activeConversationId.set('1');
     }
@@ -160,7 +214,12 @@ export async function loadConversations() {
       console.log('[Janus] loadConversations: listConversations OK, got', convos.length, 'conversations');
     } catch (listErr) {
       console.error('[Janus] loadConversations: listConversations FAILED:', listErr);
-      console.error('[Janus] listErr type:', typeof listErr, 'keys:', listErr ? Object.keys(listErr as object) : 'null');
+      console.error(
+        '[Janus] listErr type:',
+        typeof listErr,
+        'keys:',
+        listErr ? Object.keys(listErr as object) : 'null',
+      );
       throw listErr;
     }
 
@@ -171,7 +230,12 @@ export async function loadConversations() {
       console.log('[Janus] loadConversations: countConversations OK, count=', count);
     } catch (countErr) {
       console.error('[Janus] loadConversations: countConversations FAILED:', countErr);
-      console.error('[Janus] countErr type:', typeof countErr, 'keys:', countErr ? Object.keys(countErr as object) : 'null');
+      console.error(
+        '[Janus] countErr type:',
+        typeof countErr,
+        'keys:',
+        countErr ? Object.keys(countErr as object) : 'null',
+      );
       throw countErr;
     }
 
@@ -217,10 +281,12 @@ export async function loadMoreConversations() {
 }
 
 /** Resolves character names and avatars for a batch of raw conversations. */
-async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof import('#lib/services/ipc.js').listConversations>>): Promise<ConversationPreview[]> {
+async function resolveConversationPreviews(
+  convos: Awaited<ReturnType<typeof import('#lib/services/ipc.js').listConversations>>,
+): Promise<ConversationPreview[]> {
   const ipc = await import('#lib/services/ipc.js');
   return Promise.all(
-    convos.map(async (conv) => {
+    convos.map(async conv => {
       let characterName = conv.title || 'Unknown';
       let avatarUrl: string | null = null;
       if (conv.character_id) {
@@ -233,7 +299,9 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         }
       }
 
-      let additionalCharacters: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[] | undefined = undefined;
+      let additionalCharacters:
+        { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[] | undefined =
+        undefined;
 
       if (conv.shared_character_ids) {
         additionalCharacters = [];
@@ -251,7 +319,9 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
               avatarUrl: sharedAvatarUrl,
               avatarColor: getAvatarColor(char.name),
             });
-          } catch { /* missing character */ }
+          } catch {
+            /* missing character */
+          }
         }
       }
 
@@ -270,7 +340,7 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
         parentConversationId: conv.parent_conversation_id ?? null,
         branchPointMessageId: conv.branch_point_message_id ?? null,
       };
-    })
+    }),
   );
 }
 
@@ -316,8 +386,9 @@ export async function createConversation(characterId: string, title?: string, pe
           // The greeting never goes through send_message's streaming path,
           // so it'd otherwise never get scene-extracted — fire this off
           // without awaiting, it just needs to happen eventually.
-          ipc.extractInitialScene(conv.id, greeting).catch(err =>
-            console.warn('Could not extract initial scene:', err));
+          ipc
+            .extractInitialScene(conv.id, greeting)
+            .catch(err => console.warn('Could not extract initial scene:', err));
         }
       } catch (err) {
         console.warn('Could not send greeting:', err);
@@ -345,7 +416,7 @@ export async function deleteConversationWithUndo(id: string, label: string) {
   const ipc = await import('#lib/services/ipc.js');
   try {
     await ipc.trashConversation(id);
-  } catch (err) {
+  } catch {
     toastError(`Failed to delete "${label}"`);
     return;
   }
@@ -427,7 +498,6 @@ export async function branchConversation(
 
     // 4. Send the new message into the new conversation — this is the actual fork point
     await sendMessage(newConv.id, content, model);
-
   } catch (err) {
     console.error('[Branch] Failed to branch conversation:', err);
     throw err;

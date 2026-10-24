@@ -106,7 +106,7 @@
     border-radius: var(--rounded-md);
     background: var(--accent-primary);
     border: none;
-    color: #FFFFFF;
+    color: #ffffff;
     font-size: 12px;
     font-weight: 600;
     font-family: var(--font-body);

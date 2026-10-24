@@ -68,10 +68,7 @@ export async function initMultiCharListener(): Promise<() => void> {
         // Also patch PresentationBuffer's synthetic per-segment display ids
         // (parentId, parentId__seg0, __seg1, ...) — whichever the live
         // message store is currently using for these bubbles.
-        const displayIds = [
-          emotionParentId,
-          ...segments.map((_, i) => `${emotionParentId}__seg${i}`),
-        ];
+        const displayIds = [emotionParentId, ...segments.map((_, i) => `${emotionParentId}__seg${i}`)];
         runEmotionUpdatePipeline(payload.conversation_id as string, userMessage, fullText, targetIds, displayIds);
       }
     }
@@ -99,7 +96,7 @@ export async function initMultiCharListener(): Promise<() => void> {
             };
           }
           return m;
-        })
+        }),
       );
       // Sync pathState.fullActivePath
       for (let i = 0; i < pathState.fullActivePath.length; i++) {
@@ -142,10 +139,18 @@ export async function initMultiCharListener(): Promise<() => void> {
     // the segments the backend parsed at that position — correct whether
     // the live buffer created 0, 1, or all of them.
     const isThisTurn = (id: string) => id === parentId || id.startsWith(`${parentId}__seg`);
-    const buildSegMessage = <T extends { id: string; siblingIds?: unknown; siblingIndex?: unknown; siblingConversationIds?: unknown; siblingConversationIndex?: unknown }>(
+    const buildSegMessage = <
+      T extends {
+        id: string;
+        siblingIds?: unknown;
+        siblingIndex?: unknown;
+        siblingConversationIds?: unknown;
+        siblingConversationIndex?: unknown;
+      },
+    >(
       template: T,
       seg: (typeof segments)[number],
-      i: number
+      i: number,
     ): T => {
       const meta = seg.character_id ? charMeta.get(seg.character_id) : null;
       return {

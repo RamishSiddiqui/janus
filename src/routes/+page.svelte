@@ -1,22 +1,22 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
-  import { browser } from "$app/env";
-  import ChatHeader from "#lib/components/ChatHeader.svelte";
-  import JanusLoader from "#lib/components/JanusLoader.svelte";
-  import SplitHeading from "#lib/components/SplitHeading.svelte";
-  import ChatExplorerView from "#lib/components/ChatExplorerView.svelte";
-  import ContextLorebook from "#lib/components/ContextLorebook.svelte";
-  import ContextNpcPanel from "#lib/components/ContextNpcPanel.svelte";
-  import ContextPersonaPanel from "#lib/components/ContextPersonaPanel.svelte";
-  import SceneStateBar from "#lib/components/SceneStateBar.svelte";
-  import type { SceneState } from "#lib/services/ipc.js";
-  import Icon from "#lib/components/Icon.svelte";
-  import ChatInput from "#lib/components/ChatInput.svelte";
-  import ChatMessage from "#lib/components/ChatMessage.svelte";
-  import ContextPanel from "#lib/components/ContextPanel.svelte";
-  import SceneGalleryModal from "#lib/components/SceneGalleryModal.svelte";
-  import { parseCharacterData } from "#lib/utils/character.js";
-  import { humanizeProviderError } from "#lib/utils/providerError.js";
+  import { onMount, tick } from 'svelte';
+  import { browser } from '$app/env';
+  import ChatHeader from '#lib/components/ChatHeader.svelte';
+  import JanusLoader from '#lib/components/JanusLoader.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import ChatExplorerView from '#lib/components/ChatExplorerView.svelte';
+  import ContextLorebook from '#lib/components/ContextLorebook.svelte';
+  import ContextNpcPanel from '#lib/components/ContextNpcPanel.svelte';
+  import ContextPersonaPanel from '#lib/components/ContextPersonaPanel.svelte';
+  import SceneStateBar from '#lib/components/SceneStateBar.svelte';
+  import type { SceneState } from '#lib/services/ipc.js';
+  import Icon from '#lib/components/Icon.svelte';
+  import ChatInput from '#lib/components/ChatInput.svelte';
+  import ChatMessage from '#lib/components/ChatMessage.svelte';
+  import ContextPanel from '#lib/components/ContextPanel.svelte';
+  import SceneGalleryModal from '#lib/components/SceneGalleryModal.svelte';
+  import { parseCharacterData } from '#lib/utils/character.js';
+  import { humanizeProviderError } from '#lib/utils/providerError.js';
   import {
     messages,
     conversations,
@@ -34,13 +34,13 @@
     retryLastMessage,
     branchConversation,
     cancelGeneration,
-  } from "#lib/stores/chat.js";
-  import { settings } from "#lib/stores/settings.js";
-  import { trackPortraitGeneration } from "#lib/stores/sceneGeneration.js";
+  } from '#lib/stores/chat.js';
+  import { settings } from '#lib/stores/settings.js';
+  import { trackPortraitGeneration } from '#lib/stores/sceneGeneration.js';
 
-  const isTauri = browser && "__TAURI_INTERNALS__" in window;
+  const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let inputText = $state("");
+  let inputText = $state('');
   let showContextPanel = $state(false);
   let showGalleryModal = $state(false);
   // Which full-chat-area explorer view (Lorebook/Group Cast/NPC Cast/
@@ -52,7 +52,7 @@
 
   // Branching mode — set when user clicks "Branch from here" on a message
   let branchFromId: string | null = $state(null);
-  let branchFromContent: string = $state(""); // preview text of the branch-point message
+  let branchFromContent: string = $state(''); // preview text of the branch-point message
 
   // Scene state for the current conversation
   let currentSceneState: SceneState | null = $state(null);
@@ -86,7 +86,7 @@
   }
 
   /** Scroll to bottom programmatically (from pill click or new message). */
-  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
+  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
     if (!messagesEl) return;
     isSticky = true;
     showScrollPill = false;
@@ -116,7 +116,7 @@
       if (!messagesEl || !isSticky) return;
       messagesEl.scrollTo({
         top: messagesEl.scrollHeight,
-        behavior: streaming ? "instant" : "smooth",
+        behavior: streaming ? 'instant' : 'smooth',
       });
     });
   });
@@ -156,12 +156,12 @@
     loadMoreObserver?.disconnect();
 
     loadMoreObserver = new IntersectionObserver(
-      (entries) => {
+      entries => {
         if (entries[0]?.isIntersecting && $hasMoreMessages && !$isLoadingMoreMessages) {
           handleLoadMore();
         }
       },
-      { root: messagesEl, rootMargin: '200px 0px 0px 0px', threshold: 0 }
+      { root: messagesEl, rootMargin: '200px 0px 0px 0px', threshold: 0 },
     );
     loadMoreObserver.observe(loadMoreSentinelEl);
 
@@ -191,7 +191,7 @@
   });
 
   // Character data loaded from backend
-  let characterDescription = $state("");
+  let characterDescription = $state('');
   let characterTags: { label: string; color: string }[] = $state([]);
   let avatarUrl: string | null = $state(null);
   // Raw relative avatar path (distinct from avatarUrl's blob: URL) — needed
@@ -199,9 +199,7 @@
   let characterAvatarPath: string | null = $state(null);
 
   // Token count approximation
-  let tokenCount = $derived(
-    $messages.reduce((acc, m) => acc + m.content.length / 4, 0).toFixed(0),
-  );
+  let tokenCount = $derived($messages.reduce((acc, m) => acc + m.content.length / 4, 0).toFixed(0));
 
   // Humanized detail for the retry banner — the backend stores the raw
   // provider error as the failed message's content; without this the banner
@@ -209,19 +207,15 @@
   // matter whether it was a bad API key, a rate limit, or a dead model.
   let retryErrorDetail = $derived.by(() => {
     if (!$lastStreamError) return null;
-    const failed = [...$messages].reverse().find((m) => m.isError);
-    if (!failed?.content || failed.content === "Generation failed") return null;
+    const failed = [...$messages].reverse().find(m => m.isError);
+    if (!failed?.content || failed.content === 'Generation failed') return null;
     return humanizeProviderError(failed.content);
   });
 
   // Character info from active conversation (with fallbacks)
-  let characterName = $derived(
-    $activeConversation?.characterName ?? "Select a character",
-  );
+  let characterName = $derived($activeConversation?.characterName ?? 'Select a character');
   let characterId = $derived($activeCharacterId);
-  let additionalCharacters = $derived(
-    $activeConversation?.additionalCharacters ?? [],
-  );
+  let additionalCharacters = $derived($activeConversation?.additionalCharacters ?? []);
 
   // Build a character_id → avatarUrl map for multi-char avatar resolution
   let characterAvatarMap = $derived.by(() => {
@@ -247,8 +241,8 @@
     }
     return avatarUrl; // fallback to primary character avatar
   }
-  let modelName = $state("No provider configured");
-  let selectedModel = $state("");
+  let modelName = $state('No provider configured');
+  let selectedModel = $state('');
   let availableModels: string[] = $state([]);
   // Populated alongside availableModels — lets ChatInput gate the attach-
   // image button on whether the CURRENTLY selected model can actually use
@@ -256,7 +250,7 @@
   let modelVisionSupport: Record<string, boolean> = $state({});
   let selectedModelSupportsVision = $derived(modelVisionSupport[selectedModel] ?? false);
   let pendingAttachments: { relativePath: string; mimeType: string; previewUrl: string }[] = $state([]);
-  let activeProviderId = $state("");
+  let activeProviderId = $state('');
   // Defaults optimistic (true) so a normal install with providers already
   // configured never sees a flash of the "add a provider" banner before the
   // onMount check below resolves — only flips to show it once we actually
@@ -264,13 +258,10 @@
   let hasLlmProvider = $state(true);
 
   // Branch lineage — if the active conversation was forked from another
-  let parentConversationId = $derived(
-    $activeConversation?.parentConversationId ?? null,
-  );
+  let parentConversationId = $derived($activeConversation?.parentConversationId ?? null);
   let parentConversationTitle = $derived(
     parentConversationId
-      ? ($conversations.find((c) => c.id === parentConversationId)
-          ?.characterName ?? "Previous conversation")
+      ? ($conversations.find(c => c.id === parentConversationId)?.characterName ?? 'Previous conversation')
       : null,
   );
 
@@ -285,30 +276,28 @@
   onMount(async () => {
     loadConversations();
     if (!isTauri) {
-      modelName = "Llama 4 Maverick via OpenRouter";
+      modelName = 'Llama 4 Maverick via OpenRouter';
       return;
     }
     try {
-      const ipc = await import("#lib/services/ipc.js");
-      const providers = await ipc.listProviders("llm");
+      const ipc = await import('#lib/services/ipc.js');
+      const providers = await ipc.listProviders('llm');
       hasLlmProvider = providers.length > 0;
-      const active = providers.find((p) => p.is_default) ?? providers[0];
+      const active = providers.find(p => p.is_default) ?? providers[0];
       if (active) {
         activeProviderId = active.id;
         const config = active.config as Record<string, string>;
-        let defaultModel = config.model || "";
-        if (!defaultModel || defaultModel === "unknown") {
+        let defaultModel = config.model || '';
+        if (!defaultModel || defaultModel === 'unknown') {
           // Fall back to first enabled model for this provider
           try {
             const enabled = await ipc.listEnabledModels(active.id);
-            defaultModel = enabled.filter(e => e.model_type !== 'embedding')[0]?.model_id ?? "";
+            defaultModel = enabled.filter(e => e.model_type !== 'embedding')[0]?.model_id ?? '';
           } catch {
             /* ignore */
           }
         }
-        modelName = defaultModel
-          ? `${defaultModel} via ${active.name}`
-          : `No model set — AI Studio → Models`;
+        modelName = defaultModel ? `${defaultModel} via ${active.name}` : `No model set — AI Studio → Models`;
         selectedModel = defaultModel;
       }
     } catch {
@@ -335,15 +324,15 @@
     // the new avatar doesn't appear until an unrelated full reload happens
     // to re-fetch the character.
     import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<{ conversation_id: string; character: { id: string } }>('npc_created', (event) => {
+      listen<{ conversation_id: string; character: { id: string } }>('npc_created', event => {
         if (!$settings.autoGenerateNpcPortraits) return;
         const convId = $activeConversationId;
         if (!convId || event.payload.conversation_id !== convId) return;
         const characterId = event.payload.character.id;
         import('#lib/services/ipc.js').then(ipc =>
           trackPortraitGeneration(characterId, () =>
-            ipc.generateNpcPortrait(characterId, convId, $settings.autoApproveNpcPortraits)
-          ).catch(err => console.warn('[Janus] NPC portrait generation failed:', err))
+            ipc.generateNpcPortrait(characterId, convId, $settings.autoApproveNpcPortraits),
+          ).catch(err => console.warn('[Janus] NPC portrait generation failed:', err)),
         );
       });
     });
@@ -372,11 +361,11 @@
   async function refreshModels() {
     if (!isTauri || !activeProviderId) return;
     try {
-      const ipc = await import("#lib/services/ipc.js");
+      const ipc = await import('#lib/services/ipc.js');
       const enabled = await ipc.listEnabledModels(activeProviderId);
       const chatModels = enabled.filter(e => e.model_type !== 'embedding');
-      availableModels = chatModels.map((e) => e.model_id);
-      modelVisionSupport = Object.fromEntries(chatModels.map((e) => [e.model_id, e.supports_vision]));
+      availableModels = chatModels.map(e => e.model_id);
+      modelVisionSupport = Object.fromEntries(chatModels.map(e => [e.model_id, e.supports_vision]));
     } catch {
       availableModels = [];
       modelVisionSupport = {};
@@ -398,8 +387,7 @@
       loadCharacterData(charId);
     } else {
       // Reset to defaults
-      characterDescription =
-        "Half-elf with untamed elemental magic at the College of Magic";
+      characterDescription = 'Half-elf with untamed elemental magic at the College of Magic';
       characterTags = [];
       avatarUrl = null;
       characterAvatarPath = null;
@@ -408,14 +396,14 @@
 
   async function loadCharacterData(charId: string) {
     try {
-      const ipc = await import("#lib/services/ipc.js");
+      const ipc = await import('#lib/services/ipc.js');
       const char = await ipc.getCharacter(charId);
       const data = parseCharacterData(char.data);
 
-      characterDescription = data.description || "No description available";
+      characterDescription = data.description || 'No description available';
 
       // Extract tags from character data
-      const tagColors = ["#8B5CF6", "#BF40FF", "#00F2FF", "#F59E0B", "#10B981"];
+      const tagColors = ['#8B5CF6', '#BF40FF', '#00F2FF', '#F59E0B', '#10B981'];
       if (data.tags?.length) {
         characterTags = data.tags.map((t: string, i: number) => ({
           label: t,
@@ -427,7 +415,7 @@
 
       // Resolve avatar URL
       characterAvatarPath = char.avatar_path ?? null;
-      const { loadFileAsBlobUrl, revokeIfSet } = await import("#lib/utils/blobUrl.js");
+      const { loadFileAsBlobUrl, revokeIfSet } = await import('#lib/utils/blobUrl.js');
       if (char.avatar_path) {
         try {
           const newUrl = await loadFileAsBlobUrl(char.avatar_path);
@@ -441,8 +429,8 @@
         avatarUrl = null;
       }
     } catch (err) {
-      console.error("Failed to load character data:", err);
-      characterDescription = "Character data unavailable";
+      console.error('Failed to load character data:', err);
+      characterDescription = 'Character data unavailable';
       characterTags = [];
       avatarUrl = null;
     }
@@ -451,57 +439,42 @@
   async function handleSend() {
     if (!inputText.trim() || $isStreaming) return;
     const text = inputText.trim();
-    inputText = "";
+    inputText = '';
 
     if (branchFromId) {
       // Branching mode: rewind active pointer then send
       const branchId = branchFromId;
       branchFromId = null;
-      branchFromContent = "";
-      await branchConversation(
-        $activeConversationId,
-        branchId,
-        text,
-        selectedModel || undefined,
-      );
+      branchFromContent = '';
+      await branchConversation($activeConversationId, branchId, text, selectedModel || undefined);
     } else {
-      const attachments = pendingAttachments.length > 0
-        ? pendingAttachments.map(({ relativePath, mimeType }) => ({ relativePath, mimeType }))
-        : undefined;
+      const attachments =
+        pendingAttachments.length > 0
+          ? pendingAttachments.map(({ relativePath, mimeType }) => ({ relativePath, mimeType }))
+          : undefined;
       pendingAttachments = [];
-      await sendMessage(
-        $activeConversationId,
-        text,
-        selectedModel || undefined,
-        attachments,
-      );
+      await sendMessage($activeConversationId, text, selectedModel || undefined, attachments);
     }
   }
 
   function handleBranch(messageId: string) {
     // Find the message content for the preview label
-    const msg = $messages.find((m) => m.id === messageId);
-    branchFromContent = msg?.content ?? "";
+    const msg = $messages.find(m => m.id === messageId);
+    branchFromContent = msg?.content ?? '';
     branchFromId = messageId;
     // Scroll input into view and focus it
     tick().then(() => {
-      (
-        document.querySelector(
-          ".chat-input-field",
-        ) as HTMLTextAreaElement | null
-      )?.focus();
+      (document.querySelector('.chat-input-field') as HTMLTextAreaElement | null)?.focus();
     });
   }
 
   function cancelBranch() {
     branchFromId = null;
-    branchFromContent = "";
+    branchFromContent = '';
   }
 
   // Derived: index of the branch point in the current messages list
-  let branchIndex = $derived(
-    branchFromId ? $messages.findIndex((m) => m.id === branchFromId) : -1,
-  );
+  let branchIndex = $derived(branchFromId ? $messages.findIndex(m => m.id === branchFromId) : -1);
 </script>
 
 <svelte:head>
@@ -531,8 +504,8 @@
 
         <h2 class="landing-title"><SplitHeading text="Begin Your Story" /></h2>
         <p class="landing-subtitle">
-          Choose a character from the gallery to start a new conversation, or
-          pick up where you left off from recent chats.
+          Choose a character from the gallery to start a new conversation, or pick up where you left off from recent
+          chats.
         </p>
 
         <div class="landing-actions">
@@ -547,17 +520,12 @@
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <rect x="3" y="3" width="7" height="7" /><rect
-                x="14"
-                y="3"
-                width="7"
-                height="7"
-              /><rect x="3" y="14" width="7" height="7" /><rect
-                x="14"
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect
+                x="3"
                 y="14"
                 width="7"
                 height="7"
-              />
+              /><rect x="14" y="14" width="7" height="7" />
             </svg>
             Browse Characters
           </a>
@@ -571,10 +539,7 @@
                before they hit that dead end. -->
           <a href="/providers" class="landing-provider-notice">
             <Icon name="alert-circle" size={14} color="#f0b429" />
-            <span
-              >No AI provider configured yet — add one to start
-              chatting</span
-            >
+            <span>No AI provider configured yet — add one to start chatting</span>
             <span class="landing-provider-arrow">→</span>
           </a>
         {/if}
@@ -607,7 +572,7 @@
         {parentConversationId}
         {parentConversationTitle}
         {activeExplorerView}
-        onOpenExplorer={(view) => (activeExplorerView = view)}
+        onOpenExplorer={view => (activeExplorerView = view)}
         onNavigateToParent={navigateToParent}
         onTogglePanel={() => (showContextPanel = !showContextPanel)}
         onOpenGallery={() => (showGalleryModal = true)}
@@ -622,9 +587,18 @@
 
       {#if activeExplorerView}
         {@const explorerMeta = {
-          lore: { icon: 'book-open', title: 'Lorebook', description: 'World info injected into the prompt when its keywords appear.' },
-          cast: { icon: 'users', title: 'Cast', description: 'Everyone in this conversation — hand-picked and auto-detected alike, with talkativeness, review, and a shared memory graph.' },
-          persona: { icon: 'user', title: 'Persona', description: 'Who you\'re playing as in this conversation.' },
+          lore: {
+            icon: 'book-open',
+            title: 'Lorebook',
+            description: 'World info injected into the prompt when its keywords appear.',
+          },
+          cast: {
+            icon: 'users',
+            title: 'Cast',
+            description:
+              'Everyone in this conversation — hand-picked and auto-detected alike, with talkativeness, review, and a shared memory graph.',
+          },
+          persona: { icon: 'user', title: 'Persona', description: "Who you're playing as in this conversation." },
         }[activeExplorerView]}
         <ChatExplorerView
           icon={explorerMeta.icon}
@@ -632,199 +606,182 @@
           description={explorerMeta.description}
           onClose={() => (activeExplorerView = null)}
         >
-          {#snippet children()}
-            {#if activeExplorerView === 'lore'}
-              <ContextLorebook {characterId} conversationId={$activeConversationId} wide />
-            {:else if activeExplorerView === 'cast'}
-              <ContextNpcPanel conversationId={$activeConversationId} {characterId} {characterName} primaryAvatarUrl={avatarUrl} {additionalCharacters} wide />
-            {:else if activeExplorerView === 'persona'}
-              <ContextPersonaPanel conversationId={$activeConversationId} wide />
-            {/if}
-          {/snippet}
+          {#if activeExplorerView === 'lore'}
+            <ContextLorebook {characterId} conversationId={$activeConversationId} wide />
+          {:else if activeExplorerView === 'cast'}
+            <ContextNpcPanel
+              conversationId={$activeConversationId}
+              {characterId}
+              {characterName}
+              primaryAvatarUrl={avatarUrl}
+              {additionalCharacters}
+              wide
+            />
+          {:else if activeExplorerView === 'persona'}
+            <ContextPersonaPanel conversationId={$activeConversationId} wide />
+          {/if}
         </ChatExplorerView>
       {:else}
+        <!-- Messages -->
+        <div
+          class="messages-area"
+          bind:this={messagesEl}
+          onscroll={onMessagesScroll}
+          role="log"
+          aria-label="Chat messages"
+          aria-live="polite"
+        >
+          <!-- Reverse-scroll sentinel: triggers loading older messages -->
+          <div bind:this={loadMoreSentinelEl} class="load-more-sentinel" aria-hidden="true"></div>
 
-      <!-- Messages -->
-      <div
-        class="messages-area"
-        bind:this={messagesEl}
-        onscroll={onMessagesScroll}
-        role="log"
-        aria-label="Chat messages"
-        aria-live="polite"
-      >
-        <!-- Reverse-scroll sentinel: triggers loading older messages -->
-        <div bind:this={loadMoreSentinelEl} class="load-more-sentinel" aria-hidden="true"></div>
-
-        <!-- Skeleton loader: visible while loading older messages -->
-        {#if $isLoadingMoreMessages}
-          <div class="load-more-skeleton" aria-label="Loading older messages">
-            <div class="skeleton-shimmer-bar"></div>
-            <div class="skeleton-messages">
-              <div class="skeleton-bubble skeleton-bubble--short"></div>
-              <div class="skeleton-bubble skeleton-bubble--long skeleton-bubble--right"></div>
-              <div class="skeleton-bubble skeleton-bubble--medium"></div>
+          <!-- Skeleton loader: visible while loading older messages -->
+          {#if $isLoadingMoreMessages}
+            <div class="load-more-skeleton" aria-label="Loading older messages">
+              <div class="skeleton-shimmer-bar"></div>
+              <div class="skeleton-messages">
+                <div class="skeleton-bubble skeleton-bubble--short"></div>
+                <div class="skeleton-bubble skeleton-bubble--long skeleton-bubble--right"></div>
+                <div class="skeleton-bubble skeleton-bubble--medium"></div>
+              </div>
             </div>
-          </div>
-        {:else if $hasMoreMessages}
-          <div class="load-more-hint">
-            <span class="load-more-dot"></span>
-            <span>Scroll up for earlier messages</span>
-          </div>
-        {/if}
+          {:else if $hasMoreMessages}
+            <div class="load-more-hint">
+              <span class="load-more-dot"></span>
+              <span>Scroll up for earlier messages</span>
+            </div>
+          {/if}
 
-        {#each $messages as message, i (message.id)}
-          <div
-            class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
-            class:branch-dim={branchFromId !== null && i > branchIndex}
-          >
-            <ChatMessage
-              {message}
-              onBranch={handleBranch}
-              avatarUrl={resolveMessageAvatar(message)}
-              {characterName}
-              model={selectedModel || undefined}
-            />
-          </div>
-        {/each}
-
-        {#if $messages.length === 0}
-          <div class="empty-chat">
-            <span class="empty-icon">✦</span>
-            <span class="empty-title">Start a conversation</span>
-            <span class="empty-desc"
-              >Type a message below to begin your story with {characterName}.</span
+          {#each $messages as message, i (message.id)}
+            <div
+              class="animate-fade-in-scale stagger-{Math.min(i + 1, 6)}"
+              class:branch-dim={branchFromId !== null && i > branchIndex}
             >
-          </div>
-        {/if}
+              <ChatMessage
+                {message}
+                onBranch={handleBranch}
+                avatarUrl={resolveMessageAvatar(message)}
+                {characterName}
+                model={selectedModel || undefined}
+              />
+            </div>
+          {/each}
 
-        {#if $isStreaming && ($messages.length === 0 || !$messages[$messages.length - 1]?.isStreaming)}
-          <!-- Which character is about to speak isn't knowable until the
+          {#if $messages.length === 0}
+            <div class="empty-chat">
+              <span class="empty-icon">✦</span>
+              <span class="empty-title">Start a conversation</span>
+              <span class="empty-desc">Type a message below to begin your story with {characterName}.</span>
+            </div>
+          {/if}
+
+          {#if $isStreaming && ($messages.length === 0 || !$messages[$messages.length - 1]?.isStreaming)}
+            <!-- Which character is about to speak isn't knowable until the
                response finishes streaming and gets parsed (see
                parse_multi_character_response) — guessing at an avatar here
                was actively wrong as often as right in multi-character
                scenes. A neutral, branded Janus loading card sidesteps the
                guess entirely instead of trying to win it. -->
-          <div class="janus-typing-card" role="status" aria-label="Janus is generating a response">
-            <div class="janus-typing-header">
-              <JanusLoader size={16} label="" />
-              <span class="janus-typing-title">JANUS</span>
+            <div class="janus-typing-card" role="status" aria-label="Janus is generating a response">
+              <div class="janus-typing-header">
+                <JanusLoader size={16} label="" />
+                <span class="janus-typing-title">JANUS</span>
+              </div>
+              <div class="janus-typing-lines">
+                <div class="janus-typing-line janus-typing-line--1"></div>
+                <div class="janus-typing-line janus-typing-line--2"></div>
+                <div class="janus-typing-line janus-typing-line--3"></div>
+              </div>
+              <div class="janus-typing-status">
+                <JanusLoader size={12} label="" />
+                <span>Writing a response…</span>
+              </div>
             </div>
-            <div class="janus-typing-lines">
-              <div class="janus-typing-line janus-typing-line--1"></div>
-              <div class="janus-typing-line janus-typing-line--2"></div>
-              <div class="janus-typing-line janus-typing-line--3"></div>
-            </div>
-            <div class="janus-typing-status">
-              <JanusLoader size={12} label="" />
-              <span>Writing a response…</span>
-            </div>
-          </div>
-        {/if}
+          {/if}
 
-        {#if $lastStreamError && !$isStreaming}
-          <div class="retry-banner">
-            <span class="retry-icon">⚠</span>
-            <span class="retry-text">
-              {retryErrorDetail ?? "Response failed. Check your provider connection."}
-            </span>
-            <button class="retry-btn" onclick={() => retryLastMessage(selectedModel || undefined)}>
-              <Icon name="refresh-cw" size={13} color="#fff" />
-              <span>Retry</span>
+          {#if $lastStreamError && !$isStreaming}
+            <div class="retry-banner">
+              <span class="retry-icon">⚠</span>
+              <span class="retry-text">
+                {retryErrorDetail ?? 'Response failed. Check your provider connection.'}
+              </span>
+              <button class="retry-btn" onclick={() => retryLastMessage(selectedModel || undefined)}>
+                <Icon name="refresh-cw" size={13} color="#fff" />
+                <span>Retry</span>
+              </button>
+            </div>
+          {/if}
+
+          <!-- Floating scroll-to-bottom pill — inside messages-area for correct positioning -->
+          {#if showScrollPill}
+            <button
+              class="scroll-pill"
+              onclick={() => scrollToBottom('smooth')}
+              aria-label="Scroll to latest message"
+              title="Jump to latest"
+            >
+              <span class="scroll-pill-glow"></span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path
+                  d="M3 5.5L7 9.5L11 5.5"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span class="scroll-pill-label">{$isStreaming ? 'New message' : 'Jump to bottom'}</span>
+            </button>
+          {/if}
+        </div>
+
+        <!-- Branch mode banner -->
+        {#if branchFromId}
+          <div class="branch-banner" role="status" aria-live="polite">
+            <div class="branch-banner-left">
+              <span class="branch-pulse"></span>
+              <svg
+                class="branch-icon"
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="6" y1="3" x2="6" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+              <span class="branch-label">Branching from:</span>
+              <span class="branch-preview"
+                >"{branchFromContent.slice(0, 60)}{branchFromContent.length > 60 ? '…' : ''}"</span
+              >
+            </div>
+            <button class="branch-cancel" onclick={cancelBranch} aria-label="Cancel branch">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
             </button>
           </div>
         {/if}
 
-        <!-- Floating scroll-to-bottom pill — inside messages-area for correct positioning -->
-        {#if showScrollPill}
-          <button
-            class="scroll-pill"
-            onclick={() => scrollToBottom("smooth")}
-            aria-label="Scroll to latest message"
-            title="Jump to latest"
-          >
-            <span class="scroll-pill-glow"></span>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M3 5.5L7 9.5L11 5.5"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-            <span class="scroll-pill-label"
-              >{$isStreaming ? "New message" : "Jump to bottom"}</span
-            >
-          </button>
-        {/if}
-      </div>
-
-      <!-- Branch mode banner -->
-      {#if branchFromId}
-        <div class="branch-banner" role="status" aria-live="polite">
-          <div class="branch-banner-left">
-            <span class="branch-pulse"></span>
-            <svg
-              class="branch-icon"
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="6" y1="3" x2="6" y2="15" />
-              <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
-            <span class="branch-label">Branching from:</span>
-            <span class="branch-preview"
-              >"{branchFromContent.slice(0, 60)}{branchFromContent.length > 60
-                ? "…"
-                : ""}"</span
-            >
-          </div>
-          <button
-            class="branch-cancel"
-            onclick={cancelBranch}
-            aria-label="Cancel branch"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path
-                d="M2 2l8 8M10 2l-8 8"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-      {/if}
-
-      <ChatInput
-        bind:value={inputText}
-        {modelName}
-        {tokenCount}
-        onSend={handleSend}
-        disabled={$isStreaming}
-        bind:selectedModel
-        {availableModels}
-        onRefreshModels={refreshModels}
-        isBranching={branchFromId !== null}
-        onStop={cancelGeneration}
-        bind:pendingAttachments
-        {selectedModelSupportsVision}
-      />
+        <ChatInput
+          bind:value={inputText}
+          {modelName}
+          {tokenCount}
+          onSend={handleSend}
+          disabled={$isStreaming}
+          bind:selectedModel
+          {availableModels}
+          onRefreshModels={refreshModels}
+          isBranching={branchFromId !== null}
+          onStop={cancelGeneration}
+          bind:pendingAttachments
+          {selectedModelSupportsVision}
+        />
       {/if}
     </div>
 
@@ -846,10 +803,7 @@
     {/if}
 
     {#if showGalleryModal && $activeConversationId}
-      <SceneGalleryModal
-        conversationId={$activeConversationId}
-        onClose={() => (showGalleryModal = false)}
-      />
+      <SceneGalleryModal conversationId={$activeConversationId} onClose={() => (showGalleryModal = false)} />
     {/if}
   {/if}
 </div>
@@ -870,11 +824,7 @@
     justify-content: center;
     position: relative;
     overflow: hidden;
-    background: radial-gradient(
-      ellipse at 50% 40%,
-      rgba(139, 92, 246, 0.06) 0%,
-      transparent 70%
-    );
+    background: radial-gradient(ellipse at 50% 40%, rgba(139, 92, 246, 0.06) 0%, transparent 70%);
   }
 
   .landing-orbs {
@@ -956,11 +906,7 @@
     position: absolute;
     inset: -16px;
     border-radius: 50%;
-    background: radial-gradient(
-      circle,
-      rgba(139, 92, 246, 0.3),
-      transparent 70%
-    );
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent 70%);
     animation: glowPulse 3s ease-in-out infinite;
   }
 
@@ -1018,11 +964,7 @@
   }
 
   .landing-btn.primary {
-    background: linear-gradient(
-      135deg,
-      var(--accent-primary),
-      var(--accent-secondary)
-    );
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
     color: white;
     box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
   }
@@ -1074,7 +1016,9 @@
   }
 
   @media (max-width: 768px) {
-    .landing-bubbles { display: none; }
+    .landing-bubbles {
+      display: none;
+    }
   }
 
   .bubble-text {
@@ -1181,8 +1125,14 @@
   }
 
   @keyframes skeletonFadeIn {
-    from { opacity: 0; transform: translateY(-8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* Animated shimmer bar at top */
@@ -1203,8 +1153,12 @@
   }
 
   @keyframes shimmerSlide {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   .skeleton-messages {
@@ -1229,20 +1183,23 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(139, 92, 246, 0.08) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.08) 50%, transparent 100%);
     background-size: 200% 100%;
     animation: shimmerSlide 1.8s ease-in-out infinite;
   }
 
-  .skeleton-bubble--short { width: 40%; }
-  .skeleton-bubble--medium { width: 60%; }
-  .skeleton-bubble--long { width: 75%; }
-  .skeleton-bubble--right { align-self: flex-end; }
+  .skeleton-bubble--short {
+    width: 40%;
+  }
+  .skeleton-bubble--medium {
+    width: 60%;
+  }
+  .skeleton-bubble--long {
+    width: 75%;
+  }
+  .skeleton-bubble--right {
+    align-self: flex-end;
+  }
 
   /* Stagger the pulse animation */
   .skeleton-bubble:nth-child(2) {
@@ -1259,8 +1216,13 @@
   }
 
   @keyframes skeletonPulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   /* "Scroll up for earlier messages" hint */
@@ -1286,8 +1248,15 @@
   }
 
   @keyframes dotPulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.8); }
-    50% { opacity: 0.8; transform: scale(1.2); }
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.2);
+    }
   }
 
   /* ───────────────────────────────────────────────
@@ -1486,11 +1455,23 @@
     background-size: 200% 100%;
     animation: shimmerSlide 1.8s ease-in-out infinite;
   }
-  .janus-typing-line--1 { width: 84%; }
-  .janus-typing-line--2 { width: 60%; animation-delay: 150ms; }
-  .janus-typing-line--2::after { animation-delay: 150ms; }
-  .janus-typing-line--3 { width: 40%; animation-delay: 300ms; }
-  .janus-typing-line--3::after { animation-delay: 300ms; }
+  .janus-typing-line--1 {
+    width: 84%;
+  }
+  .janus-typing-line--2 {
+    width: 60%;
+    animation-delay: 150ms;
+  }
+  .janus-typing-line--2::after {
+    animation-delay: 150ms;
+  }
+  .janus-typing-line--3 {
+    width: 40%;
+    animation-delay: 300ms;
+  }
+  .janus-typing-line--3::after {
+    animation-delay: 300ms;
+  }
 
   .janus-typing-status {
     display: flex;

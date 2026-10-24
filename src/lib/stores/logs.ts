@@ -35,7 +35,7 @@ function stringifyArg(a: unknown): string {
 
 function push(level: FrontendLogEntry['level'], args: unknown[]) {
   const message = args.map(stringifyArg).join(' ');
-  frontendLogs.update((entries) => {
+  frontendLogs.update(entries => {
     const next = entries.length >= MAX_ENTRIES ? entries.slice(entries.length - MAX_ENTRIES + 1) : entries;
     return [...next, { timestamp: Date.now(), level, message }];
   });
@@ -54,15 +54,27 @@ export function initFrontendLogCapture() {
     error: console.error.bind(console),
   };
 
-  console.log = (...args: unknown[]) => { push('info', args); original.log(...args); };
-  console.debug = (...args: unknown[]) => { push('debug', args); original.debug(...args); };
-  console.warn = (...args: unknown[]) => { push('warn', args); original.warn(...args); };
-  console.error = (...args: unknown[]) => { push('error', args); original.error(...args); };
+  console.log = (...args: unknown[]) => {
+    push('info', args);
+    original.log(...args);
+  };
+  console.debug = (...args: unknown[]) => {
+    push('debug', args);
+    original.debug(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    push('warn', args);
+    original.warn(...args);
+  };
+  console.error = (...args: unknown[]) => {
+    push('error', args);
+    original.error(...args);
+  };
 
-  window.addEventListener('error', (e) => {
+  window.addEventListener('error', e => {
     push('error', [`Uncaught error: ${e.message} (${e.filename}:${e.lineno}:${e.colno})`]);
   });
-  window.addEventListener('unhandledrejection', (e) => {
+  window.addEventListener('unhandledrejection', e => {
     push('error', ['Unhandled promise rejection:', stringifyArg(e.reason)]);
   });
 }

@@ -49,10 +49,13 @@
     if (!visibleConvIds) return map;
     const visibleSet = visibleConvIds;
     const memConvMap = new Map<string, string>();
-    data.memories.forEach(m => { if (m.conversation_id) memConvMap.set(m.id, m.conversation_id); });
+    data.memories.forEach(m => {
+      if (m.conversation_id) memConvMap.set(m.id, m.conversation_id);
+    });
     const convTitleMap = new Map(data.conversations.map(c => [c.id, c.title]));
     const markHidden = (laneId: string | null | undefined, otherConvId: string | null | undefined) => {
-      if (!laneId || !otherConvId || laneId === otherConvId || !visibleSet.has(laneId) || visibleSet.has(otherConvId)) return;
+      if (!laneId || !otherConvId || laneId === otherConvId || !visibleSet.has(laneId) || visibleSet.has(otherConvId))
+        return;
       const title = convTitleMap.get(otherConvId) ?? 'another timeline';
       const existing = map.get(laneId) ?? [];
       if (!existing.includes(title)) map.set(laneId, [...existing, title]);
@@ -68,13 +71,7 @@
   /* ── Action Panel state ── */
   let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
   let selectedGroupMemories = $state<MemoryGraphData['memories']>([]);
-  let selectedMemoryLinks = $derived(
-    selectedMemory
-      ? data.links.filter(l => l.source_memory_id === selectedMemory!.id)
-      : []
-  );
-
-  function handleNodeClick({ event, node }: { event: MouseEvent | TouchEvent; node: Node }) {
+  function handleNodeClick({ node }: { event: MouseEvent | TouchEvent; node: Node }) {
     // Respond to memory and memoryGroup nodes
     if (node.type === 'memory') {
       const memId = node.id.replace('mem-', '');
@@ -135,7 +132,9 @@
         await deleteMemory(memoryId);
         onRefresh();
       },
-      () => { /* nothing was hidden optimistically — nothing to restore */ },
+      () => {
+        /* nothing was hidden optimistically — nothing to restore */
+      },
     );
   }
 
@@ -150,12 +149,12 @@
 
   /* ── Palette ── */
   const PALETTE = [
-    { bg: 'rgba(139,92,246,0.12)',  border: 'rgba(139,92,246,0.3)',  text: '#c4a1ff', edge: 'rgba(139,92,246,0.4)' },
-    { bg: 'rgba(0,242,255,0.10)',   border: 'rgba(0,242,255,0.25)',  text: '#00f2ff', edge: 'rgba(0,242,255,0.35)' },
-    { bg: 'rgba(244,63,94,0.10)',   border: 'rgba(244,63,94,0.25)',  text: '#fb7185', edge: 'rgba(244,63,94,0.35)' },
-    { bg: 'rgba(245,158,11,0.10)',  border: 'rgba(245,158,11,0.25)', text: '#fbbf24', edge: 'rgba(245,158,11,0.35)' },
-    { bg: 'rgba(16,185,129,0.10)',  border: 'rgba(16,185,129,0.25)', text: '#34d399', edge: 'rgba(16,185,129,0.35)' },
-    { bg: 'rgba(191,64,255,0.10)',  border: 'rgba(191,64,255,0.25)', text: '#d580ff', edge: 'rgba(191,64,255,0.35)' },
+    { bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.3)', text: '#c4a1ff', edge: 'rgba(139,92,246,0.4)' },
+    { bg: 'rgba(0,242,255,0.10)', border: 'rgba(0,242,255,0.25)', text: '#00f2ff', edge: 'rgba(0,242,255,0.35)' },
+    { bg: 'rgba(244,63,94,0.10)', border: 'rgba(244,63,94,0.25)', text: '#fb7185', edge: 'rgba(244,63,94,0.35)' },
+    { bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.25)', text: '#fbbf24', edge: 'rgba(245,158,11,0.35)' },
+    { bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)', text: '#34d399', edge: 'rgba(16,185,129,0.35)' },
+    { bg: 'rgba(191,64,255,0.10)', border: 'rgba(191,64,255,0.25)', text: '#d580ff', edge: 'rgba(191,64,255,0.35)' },
   ];
 
   const CANON = {
@@ -165,7 +164,9 @@
     edge: 'rgba(218,165,32,0.4)',
   };
 
-  function pal(i: number) { return PALETTE[i % PALETTE.length]; }
+  function pal(i: number) {
+    return PALETTE[i % PALETTE.length];
+  }
 
   function avatarUrl(charId: string): string | null {
     const path = avatars[charId];
@@ -177,19 +178,19 @@
 
   /* ── Node sizes for dagre ── */
   const NODE_SIZES: Record<string, { w: number; h: number }> = {
-    character:    { w: 240, h: 64 },
+    character: { w: 240, h: 64 },
     conversation: { w: 220, h: 56 },
-    memory:       { w: 240, h: 120 },
-    memoryGroup:  { w: 240, h: 150 },
+    memory: { w: 240, h: 120 },
+    memoryGroup: { w: 240, h: 150 },
   };
 
   /* ── Dagre auto-layout ── */
   function applyLayout(nodes: Node[], treeEdges: Edge[]): Node[] {
     const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
     g.setGraph({
-      rankdir: 'TB',     // top-to-bottom
-      nodesep: 50,       // horizontal gap between siblings
-      ranksep: 70,       // vertical gap between ranks
+      rankdir: 'TB', // top-to-bottom
+      nodesep: 50, // horizontal gap between siblings
+      ranksep: 70, // vertical gap between ranks
       marginx: 40,
       marginy: 40,
     });
@@ -225,7 +226,11 @@
   // whatever subset ends up visible — otherwise a conversation's node color
   // would shift depending on what the timeline filter currently hides,
   // breaking the color match with its dot in the filter dropdown.
-  function buildGraph(g: MemoryGraphData, convColorMap: Map<string, typeof PALETTE[0]>, hiddenLinks: Map<string, string[]>): { nodes: Node[]; edges: Edge[] } {
+  function buildGraph(
+    g: MemoryGraphData,
+    convColorMap: Map<string, (typeof PALETTE)[0]>,
+    hiddenLinks: Map<string, string[]>,
+  ): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const treeEdges: Edge[] = [];
     const extraEdges: Edge[] = [];
@@ -239,9 +244,8 @@
 
     // ── Multi-character support ──
     // Build list of characters: use `characters` array if present, else single root
-    const charList = g.characters && g.characters.length > 0
-      ? g.characters
-      : [{ id: g.character_id, name: g.character_name }];
+    const charList =
+      g.characters && g.characters.length > 0 ? g.characters : [{ id: g.character_id, name: g.character_name }];
 
     const isMultiChar = charList.length > 1;
 
@@ -288,29 +292,36 @@
     }
 
     // ── Canon memories ──
-    g.memories.filter(m => m.is_canon).forEach(m => {
-      const p = CANON;
-      const rootId = rootForMemory(m);
-      nodes.push({
-        id: `mem-${m.id}`,
-        type: 'memory',
-        position: { x: 0, y: 0 },
-        data: {
-          content: m.content, source: m.source, version: m.version,
-          isCanon: true, parentId: m.parent_id,
-          color: p.text, colorBg: p.bg, colorBorder: p.border,
-        },
+    g.memories
+      .filter(m => m.is_canon)
+      .forEach(m => {
+        const p = CANON;
+        const rootId = rootForMemory(m);
+        nodes.push({
+          id: `mem-${m.id}`,
+          type: 'memory',
+          position: { x: 0, y: 0 },
+          data: {
+            content: m.content,
+            source: m.source,
+            version: m.version,
+            isCanon: true,
+            parentId: m.parent_id,
+            color: p.text,
+            colorBg: p.bg,
+            colorBorder: p.border,
+          },
+        });
+        treeEdges.push({
+          id: `e-canon-${m.id}`,
+          source: rootId,
+          target: `mem-${m.id}`,
+          sourceHandle: 'bottom',
+          targetHandle: 'top',
+          type: 'tree',
+          data: { color: p.edge },
+        });
       });
-      treeEdges.push({
-        id: `e-canon-${m.id}`,
-        source: rootId,
-        target: `mem-${m.id}`,
-        sourceHandle: 'bottom',
-        targetHandle: 'top',
-        type: 'tree',
-        data: { color: p.edge },
-      });
-    });
 
     // ── Conversation branches ──
     // Track which conv nodes we've already created (for dedup in multi-char)
@@ -318,7 +329,7 @@
     // Build a quick lookup: conv.id → conv (for parent resolution)
     const convById = new Map(g.conversations.map(c => [c.id, c]));
 
-    g.conversations.forEach((conv) => {
+    g.conversations.forEach(conv => {
       if (createdConvs.has(conv.id)) return;
       createdConvs.add(conv.id);
 
@@ -327,7 +338,12 @@
 
       // For empty conversations, use a muted palette entry; for active, use the colour map
       const p = isEmpty
-        ? { text: '#4a4a6a', bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', edge: 'rgba(120,100,200,0.45)' }
+        ? {
+            text: '#4a4a6a',
+            bg: 'rgba(255,255,255,0.03)',
+            border: 'rgba(255,255,255,0.08)',
+            edge: 'rgba(120,100,200,0.45)',
+          }
         : (convColorMap.get(conv.id) ?? PALETTE[0]);
 
       const sharedBy = convCharacters.get(conv.id);
@@ -341,7 +357,9 @@
           label: conv.title,
           memoryCount: memCount,
           isEmpty,
-          color: p.text, colorBg: p.bg, colorBorder: p.border,
+          color: p.text,
+          colorBg: p.bg,
+          colorBorder: p.border,
           isShared,
           // Pass branch info for potential UI indicators
           isBranch: !!conv.parent_conversation_id,
@@ -430,9 +448,14 @@
           type: 'memory',
           position: { x: 0, y: 0 },
           data: {
-            content: m.content, source: m.source, version: m.version,
-            isCanon: false, parentId: m.parent_id,
-            color: p.text, colorBg: p.bg, colorBorder: p.border,
+            content: m.content,
+            source: m.source,
+            version: m.version,
+            isCanon: false,
+            parentId: m.parent_id,
+            color: p.text,
+            colorBg: p.bg,
+            colorBorder: p.border,
           },
         });
 
@@ -475,7 +498,9 @@
               parentId: item.memory.parent_id,
               memoryId: item.memory.id,
             })),
-            color: p.text, colorBg: p.bg, colorBorder: p.border,
+            color: p.text,
+            colorBg: p.bg,
+            colorBorder: p.border,
           },
         });
 
@@ -499,9 +524,8 @@
     }
 
     // ── Sharing links (custom animated edge) ──
-    g.links.forEach((link) => {
+    g.links.forEach(link => {
       const isSync = link.link_type === 'sync';
-      const isTwoWay = link.direction === 'two_way';
       const lbl = isSync ? 'sync' : 'copy';
 
       // Resolve source/target to group node if the memory is inside a group
@@ -532,7 +556,7 @@
   }
 
   let stableConvColorMap = $derived.by(() => {
-    const map = new Map<string, typeof PALETTE[0]>();
+    const map = new Map<string, (typeof PALETTE)[0]>();
     data.conversations.forEach((c, i) => map.set(c.id, pal(i)));
     return map;
   });
@@ -563,11 +587,7 @@
   >
     <Controls position="bottom-left" />
     <Background variant={BackgroundVariant.Dots} gap={24} size={0.6} patternColor="rgba(139,92,246,0.06)" />
-    <MiniMap
-      pannable
-      zoomable
-      position="bottom-right"
-    />
+    <MiniMap pannable zoomable position="bottom-right" />
   </SvelteFlow>
 
   <!-- Memory Action Panel -->
@@ -635,10 +655,18 @@
     padding: 0 !important;
   }
 
-  .graph-wrap :global(.svelte-flow__node-character) { border-radius: 16px !important; }
-  .graph-wrap :global(.svelte-flow__node-conversation) { border-radius: 12px !important; }
-  .graph-wrap :global(.svelte-flow__node-memory) { border-radius: 10px !important; }
-  .graph-wrap :global(.svelte-flow__node-memoryGroup) { border-radius: 12px !important; }
+  .graph-wrap :global(.svelte-flow__node-character) {
+    border-radius: 16px !important;
+  }
+  .graph-wrap :global(.svelte-flow__node-conversation) {
+    border-radius: 12px !important;
+  }
+  .graph-wrap :global(.svelte-flow__node-memory) {
+    border-radius: 10px !important;
+  }
+  .graph-wrap :global(.svelte-flow__node-memoryGroup) {
+    border-radius: 12px !important;
+  }
 
   .graph-wrap :global(.svelte-flow__node-character.selected),
   .graph-wrap :global(.svelte-flow__node-conversation.selected),
@@ -646,7 +674,9 @@
   .graph-wrap :global(.svelte-flow__node-memoryGroup.selected) {
     background: transparent !important;
     border: none !important;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;
+    box-shadow:
+      0 0 0 2px rgba(139, 92, 246, 0.4),
+      0 0 24px rgba(139, 92, 246, 0.15) !important;
     outline: none !important;
   }
 
@@ -656,7 +686,9 @@
 
   .graph-wrap :global(.svelte-flow__node.selected) {
     outline: none !important;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4), 0 0 24px rgba(139, 92, 246, 0.15) !important;
+    box-shadow:
+      0 0 0 2px rgba(139, 92, 246, 0.4),
+      0 0 24px rgba(139, 92, 246, 0.15) !important;
   }
 
   .graph-wrap :global(.svelte-flow__handle) {
@@ -795,34 +827,34 @@
   }
 
   /* ═══════ Light Theme ═══════ */
-  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__controls) {
-    background: rgba(255,255,255,0.9) !important;
-    border-color: rgba(139,92,246,0.1) !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  :global([data-theme='light']) .graph-wrap :global(.svelte-flow__controls) {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(139, 92, 246, 0.1) !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
   }
 
-  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__controls button) {
+  :global([data-theme='light']) .graph-wrap :global(.svelte-flow__controls button) {
     color: #5a5a7a !important;
   }
 
-  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__controls button:hover) {
-    background: rgba(139,92,246,0.06) !important;
+  :global([data-theme='light']) .graph-wrap :global(.svelte-flow__controls button:hover) {
+    background: rgba(139, 92, 246, 0.06) !important;
     color: #7c3aed !important;
   }
 
-  :global([data-theme="light"]) .graph-wrap :global(.svelte-flow__minimap) {
-    background: rgba(255,255,255,0.9) !important;
-    border-color: rgba(139,92,246,0.1) !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  :global([data-theme='light']) .graph-wrap :global(.svelte-flow__minimap) {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(139, 92, 246, 0.1) !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
   }
 
-  :global([data-theme="light"]) .legend {
-    background: rgba(255,255,255,0.9);
-    border-color: rgba(139,92,246,0.1);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  :global([data-theme='light']) .legend {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   }
 
-  :global([data-theme="light"]) .legend-item {
+  :global([data-theme='light']) .legend-item {
     color: #4a4a6a;
   }
 </style>

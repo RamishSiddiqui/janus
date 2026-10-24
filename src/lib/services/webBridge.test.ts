@@ -40,11 +40,14 @@ beforeEach(() => {
   target = new EventTarget();
   vi.stubGlobal('window', Object.assign(target, {}) as unknown as Window);
   vi.stubGlobal('EventSource', FakeEventSource);
-  vi.stubGlobal('CustomEvent', class extends Event {
-    constructor(type: string) {
-      super(type);
-    }
-  });
+  vi.stubGlobal(
+    'CustomEvent',
+    class extends Event {
+      constructor(type: string) {
+        super(type);
+      }
+    },
+  );
   installBridge();
   internals = (window as any).__TAURI_INTERNALS__;
 });
@@ -86,10 +89,7 @@ describe('commands over HTTP', () => {
   });
 
   it('rejects with the { error, message } shape the app already handles', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(response(404, '{"error":"not_found","message":"Gone."}')),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(404, '{"error":"not_found","message":"Gone."}')));
     await expect(rpcInvoke('get_character', { id: 'x' })).rejects.toEqual({
       error: 'not_found',
       message: 'Gone.',
@@ -251,4 +251,3 @@ describe('saving files in the browser', () => {
     ).rejects.toMatchObject({ error: 'unsupported' });
   });
 });
-

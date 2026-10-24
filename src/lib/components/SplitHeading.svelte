@@ -23,10 +23,14 @@
 </script>
 
 <span class="split-heading">
-  <span class="split-heading-a" style:color={violetColor}>{text.slice(0, splitIndex)}</span
-  ><span class="split-heading-b" style:color={goldColor}>{text.slice(splitIndex)}</span>
+  <span class="split-heading-a" style:color={violetColor}>{text.slice(0, splitIndex)}</span><span
+    class="split-heading-b"
+    style:color={goldColor}>{text.slice(splitIndex)}</span
+  >
 </span>
 
 <style>
-  .split-heading { display: inline; }
+  .split-heading {
+    display: inline;
+  }
 </style>

@@ -91,27 +91,45 @@
       {#if webUser}<span class="tb-user">{webUser}</span>{/if}
       <button class="tb-signout" onclick={() => onSignOut?.()}>Sign out</button>
     {:else}
-    <button class="tb-win-btn" onclick={minimize} aria-label="Minimize">
-      <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0" y="4.5" width="10" height="1" fill="currentColor"/></svg>
-    </button>
-    <button class="tb-win-btn" onclick={toggleMaximize} aria-label={isMaximized ? 'Restore' : 'Maximize'}>
-      {#if isMaximized}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round">
-          <path d="M2.5 0.5H9.5V7.5"/>
-          <rect x="0.5" y="2.5" width="7" height="7"/>
+      <button class="tb-win-btn" onclick={minimize} aria-label="Minimize">
+        <svg width="10" height="10" viewBox="0 0 10 10"
+          ><rect x="0" y="4.5" width="10" height="1" fill="currentColor" /></svg
+        >
+      </button>
+      <button class="tb-win-btn" onclick={toggleMaximize} aria-label={isMaximized ? 'Restore' : 'Maximize'}>
+        {#if isMaximized}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1"
+            stroke-linejoin="round"
+          >
+            <path d="M2.5 0.5H9.5V7.5" />
+            <rect x="0.5" y="2.5" width="7" height="7" />
+          </svg>
+        {:else}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1"
+            stroke-linejoin="round"
+          >
+            <rect x="1" y="1" width="8" height="8" />
+          </svg>
+        {/if}
+      </button>
+      <button class="tb-win-btn tb-win-close" onclick={close} aria-label="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round">
+          <line x1="0.5" y1="0.5" x2="9.5" y2="9.5" />
+          <line x1="9.5" y1="0.5" x2="0.5" y2="9.5" />
         </svg>
-      {:else}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round">
-          <rect x="1" y="1" width="8" height="8"/>
-        </svg>
-      {/if}
-    </button>
-    <button class="tb-win-btn tb-win-close" onclick={close} aria-label="Close">
-      <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round">
-        <line x1="0.5" y1="0.5" x2="9.5" y2="9.5"/>
-        <line x1="9.5" y1="0.5" x2="0.5" y2="9.5"/>
-      </svg>
-    </button>
+      </button>
     {/if}
   </div>
 </div>
@@ -184,8 +202,13 @@
     animation: tb-speaking-pulse 1.4s ease-in-out infinite;
   }
   @keyframes tb-speaking-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
   }
 
   .tb-center {
@@ -209,8 +232,12 @@
     letter-spacing: 0.28em;
     text-transform: uppercase;
   }
-  .tb-brand-ja { color: #9075F2; }
-  .tb-brand-nus { color: #CDA15F; }
+  .tb-brand-ja {
+    color: #9075f2;
+  }
+  .tb-brand-nus {
+    color: #cda15f;
+  }
 
   .tb-right {
     display: flex;
@@ -230,7 +257,9 @@
     background: transparent;
     color: #8b8ba7;
     cursor: pointer;
-    transition: background 120ms ease, color 120ms ease;
+    transition:
+      background 120ms ease,
+      color 120ms ease;
   }
   .tb-win-btn:hover {
     background: rgba(139, 92, 246, 0.12);

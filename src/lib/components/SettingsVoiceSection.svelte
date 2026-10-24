@@ -60,7 +60,10 @@
   let unlistenProgress: (() => void) | null = null;
 
   async function refreshStatus() {
-    if (!isTauri) { checkingStatus = false; return; }
+    if (!isTauri) {
+      checkingStatus = false;
+      return;
+    }
     checkingStatus = true;
     await loadTtsProviders();
     try {
@@ -97,7 +100,7 @@
     downloadPercent = 0;
     try {
       const ipc = await import('#lib/services/ipc.js');
-      unlistenProgress = await ipc.onTtsDownloadProgress((event) => {
+      unlistenProgress = await ipc.onTtsDownloadProgress(event => {
         downloadPhase = event.phase;
         downloadPercent = event.percent;
       });
@@ -123,7 +126,11 @@
     previewing = true;
     try {
       const ipc = await import('#lib/services/ipc.js');
-      const audio = await ipc.ttsTestSpeak('Hello, this is a preview of this voice.', ttsDefaultVoiceId, ttsDefaultProviderId ?? undefined);
+      const audio = await ipc.ttsTestSpeak(
+        'Hello, this is a preview of this voice.',
+        ttsDefaultVoiceId,
+        ttsDefaultProviderId ?? undefined,
+      );
       const playback = await playBase64Wav(audio);
       previewAnalyser = playback.analyser;
       await playback.ended;
@@ -142,7 +149,9 @@
 
 <div class="panel-heading animate-fade-in-up stagger-3">
   <span class="panel-heading-title">Voice</span>
-  <span class="panel-heading-desc">Local, offline text-to-speech — assistant responses are spoken aloud as they stream</span>
+  <span class="panel-heading-desc"
+    >Local, offline text-to-speech — assistant responses are spoken aloud as they stream</span
+  >
 </div>
 
 <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
@@ -154,7 +163,7 @@
     <button
       class="toggle-switch"
       class:on={ttsEnabled}
-      onclick={() => ttsEnabled = !ttsEnabled}
+      onclick={() => (ttsEnabled = !ttsEnabled)}
       role="switch"
       aria-checked={ttsEnabled}
       aria-label="Toggle voice output"
@@ -169,7 +178,9 @@
     <div class="setting-row">
       <div class="setting-label">
         <span class="setting-name">Voice provider</span>
-        <span class="setting-desc">Built-in Kokoro runs fully offline; a configured provider uses your own API key instead</span>
+        <span class="setting-desc"
+          >Built-in Kokoro runs fully offline; a configured provider uses your own API key instead</span
+        >
       </div>
     </div>
     <select class="edit-input" bind:value={ttsDefaultProviderId} onchange={handleProviderChange}>
@@ -194,7 +205,9 @@
   {:else if ttsDefaultProviderId}
     <div class="setting-row">
       <div class="setting-label">
-        <span class="setting-name">{ttsProviders.find(p => p.id === ttsDefaultProviderId)?.name ?? 'Cloud provider'}</span>
+        <span class="setting-name"
+          >{ttsProviders.find(p => p.id === ttsDefaultProviderId)?.name ?? 'Cloud provider'}</span
+        >
         <span class="setting-desc">{voices.length} voices available</span>
       </div>
     </div>
@@ -277,8 +290,8 @@
     height: 34px;
     padding: 0 32px 0 10px;
     border-radius: 10px;
-    background: rgba(14,14,30,0.6);
-    border: 1px solid rgba(139,92,246,0.08);
+    background: rgba(14, 14, 30, 0.6);
+    border: 1px solid rgba(139, 92, 246, 0.08);
     color: #e0e0f0;
     font-size: 12.5px;
     font-family: var(--font-body);
