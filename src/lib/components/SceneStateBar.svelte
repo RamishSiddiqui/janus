@@ -9,10 +9,8 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let isExpanded = $state(false);
-
-  // Initialize from prop
-  $effect(() => { isExpanded = expanded; });
+  // Follows the prop, and can be toggled locally until the prop changes again.
+  let isExpanded = $derived(expanded);
 
   // Scene extraction is told to use the literal "{{user}}" token to refer
   // to the player character in `characters_present` — resolve it to the

@@ -9,7 +9,7 @@
   import { formatRoleplayContent } from '#lib/utils/format.js';
   import { humanizeProviderError } from '#lib/utils/providerError.js';
   import { browser } from '$app/env';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage, deleteMessageWithUndo } from '#lib/stores/chat.js';
+  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, deleteMessageWithUndo } from '#lib/stores/chat.js';
   import { settings } from '#lib/stores/settings.js';
   import { success, error as toastError } from '#lib/stores/toast.js';
   import { get } from 'svelte/store';
@@ -215,6 +215,7 @@
 
     // Render only the revealed portion
     const visibleText = text.slice(0, revealedLen);
+    // eslint-disable-next-line svelte/no-dom-manipulating -- live token reveal; formatRoleplayContent sanitizes with DOMPurify
     streamTextEl.innerHTML = formatRoleplayContent(visibleText);
 
     // Keep ticking if there's more to reveal or stream is still active
@@ -332,7 +333,7 @@
       if (!(await copyToClipboard(message.content))) throw new Error('copy failed');
       copied = true;
       setTimeout(() => copied = false, 1500);
-    } catch (err) {
+    } catch {
       toastError('Failed to copy message');
     }
   }
@@ -448,7 +449,7 @@
       await ipc.updateMessage(message.id, editContent);
       messages.update(msgs => msgs.map(m => m.id === message.id ? { ...m, content: editContent } : m));
       success('Message updated');
-    } catch (err) {
+    } catch {
       toastError('Failed to update message');
     }
     isEditing = false;
@@ -541,6 +542,7 @@
               <span class="streaming-cursor cursor-blink" aria-label="Generating">▍</span>
             {:else}
               <!-- After streaming: use normal Svelte {@html} for proper formatting -->
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by formatRoleplayContent; the glow span is a fixed tag -->
               {@html renderWithGlow(liveMarker.rest, activeSentenceText)}
             {/if}
           </div>
@@ -704,6 +706,7 @@
                 </div>
               </div>
             {:else}
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by formatRoleplayContent (DOMPurify) -->
               {@html formatRoleplayContent(message.content)}
             {/if}
           </div>

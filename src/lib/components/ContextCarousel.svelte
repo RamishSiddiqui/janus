@@ -31,7 +31,7 @@
 
   // Reset carousel when conversation changes
   $effect(() => {
-    characterId;  // track
+    void characterId; // track
     activeCardIndex = 0;
   });
 

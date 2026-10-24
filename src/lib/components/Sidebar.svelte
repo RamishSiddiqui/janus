@@ -7,7 +7,6 @@
   import SidebarContextMenu from './SidebarContextMenu.svelte';
   import type { NavItem } from '#lib/types/index.js';
   import { conversations, deleteConversationWithUndo, createConversation } from '#lib/stores/chat.js';
-  import { error as toastError } from '#lib/stores/toast.js';
   import { selectedPersonaId } from '#lib/stores/personas.js';
   import { browser } from '$app/env';
   import { tick } from 'svelte';
@@ -16,7 +15,7 @@
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
   let {
-    navItems, currentPath, collapsed = false, onNavigate, onToggleCollapse,
+    navItems, currentPath, collapsed = false, onNavigate,
     mobileOpen = false, onMobileClose
   }: {
     navItems: readonly NavItem[]; currentPath: string; collapsed?: boolean;

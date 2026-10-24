@@ -106,9 +106,6 @@
     }
   });
 
-  // Edit state per provider
-  let editFields = $state<Record<string, { apiKey: string; model: string; baseUrl: string }>>({});
-
   onMount(async () => {
     await loadProviders();
   });

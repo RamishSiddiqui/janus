@@ -309,7 +309,7 @@ function attach(name: string) {
   if (hub.names.has(name)) return;
   hub.names.add(name);
   ensureSource().addEventListener(name, (ev) => {
-    let payload: unknown = null;
+    let payload: unknown;
     try {
       payload = JSON.parse((ev as MessageEvent).data);
     } catch {

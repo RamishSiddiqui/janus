@@ -135,7 +135,7 @@
   async function finishRename(convId: string) {
     if (!isTauri || !renameValue.trim()) { renamingId = null; return; }
     try { const ipc = await import('#lib/services/ipc.js'); await ipc.updateConversation(convId, renameValue.trim()); await loadConversations(); success('Conversation renamed'); }
-    catch (err) { toastError('Rename failed'); }
+    catch { toastError('Rename failed'); }
     renamingId = null;
   }
 </script>
@@ -175,7 +175,7 @@
 
 <div class="sb-convos">
   {#if $isLoadingConversations && filteredConversations.length === 0}
-    {#each Array(4) as _, i}
+    {#each Array(4) as _}
       <div class="conv-skeleton"><Skeleton variant="circle" width="38px" height="38px" /><div class="skel-lines"><Skeleton variant="text" width="65%" /><Skeleton variant="text" width="85%" /></div></div>
     {/each}
   {:else if characterGroups.length === 0 && ungroupedConversations.length === 0 && sharedConversations.length === 0}
@@ -268,7 +268,7 @@
     {/if}
 
     <!-- Character groups (solo conversations only) -->
-    {#each characterGroups as group, gi (group.characterName)}
+    {#each characterGroups as group (group.characterName)}
       {@const expanded = isGroupExpanded(group.characterName, group)}
       <div class="char-group" class:expanded class:has-active={group.hasActiveConv}>
         <button class="char-group-header"

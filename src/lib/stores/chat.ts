@@ -13,7 +13,6 @@ import { writable, derived, get } from 'svelte/store';
 import type { Message, ConversationPreview } from '#lib/types/index.js';
 import { browser } from '$app/env';
 import { error as toastError, addToast } from '#lib/stores/toast.js';
-import { settings } from '#lib/stores/settings.js';
 import { parseCharacterData } from '#lib/utils/character.js';
 import type { CharacterState } from '#lib/services/ipc.js';
 import type { CharMeta } from '#lib/services/presentation-buffer.js';
@@ -345,7 +344,7 @@ export async function deleteConversationWithUndo(id: string, label: string) {
   const ipc = await import('#lib/services/ipc.js');
   try {
     await ipc.trashConversation(id);
-  } catch (err) {
+  } catch {
     toastError(`Failed to delete "${label}"`);
     return;
   }

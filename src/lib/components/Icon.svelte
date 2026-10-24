@@ -93,6 +93,7 @@
   class="icon"
   aria-hidden="true"
 >
+  <!-- eslint-disable-next-line svelte/no-at-html-tags -- constant icon markup defined in this file -->
   {@html icons[name] || ''}
 </svg>
 

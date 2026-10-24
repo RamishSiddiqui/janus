@@ -24,7 +24,7 @@
   import { shouldShowWizard } from '#lib/utils/onboarding.js';
   import { settings } from '#lib/stores/settings.js';
   import { initMultiCharListener, cleanupMultiCharListener } from '#lib/stores/chat.js';
-  import { initTtsPlaybackListener, cleanupTtsPlaybackListener, isSpeaking, stop as stopTtsPlayback } from '#lib/stores/ttsPlayback.js';
+  import { initTtsPlaybackListener, cleanupTtsPlaybackListener } from '#lib/stores/ttsPlayback.js';
   import { initFrontendLogCapture } from '#lib/stores/logs.js';
   import type { NavItem } from '#lib/types/index.js';
 

@@ -92,7 +92,7 @@ RULES:
 - For each fact, identify WHO it's primarily about using the "character" field: the EXACT name from the CAST list below if it matches one of them (including a secondary/NPC character, not just the main one), "the user" if it's about the player, or omit the field for a general world fact not tied to one specific person. Get this right — a fact filed under the wrong character becomes invisible to that character later.
 
 OUTPUT FORMAT (strict JSON array, no markdown fencing, no explanation):
-[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>","character":"<exact CAST name, \"the user\", or omit>"}]
+[{"summary":"...","category":"<short tag, e.g. identity, relationship, world, decision, revelation, secret, promise, or any fitting label>","character":"<exact CAST name, "the user", or omit>"}]
 
 Expected output for most messages: []`;
 

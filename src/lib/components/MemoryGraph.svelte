@@ -68,13 +68,7 @@
   /* ── Action Panel state ── */
   let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
   let selectedGroupMemories = $state<MemoryGraphData['memories']>([]);
-  let selectedMemoryLinks = $derived(
-    selectedMemory
-      ? data.links.filter(l => l.source_memory_id === selectedMemory!.id)
-      : []
-  );
-
-  function handleNodeClick({ event, node }: { event: MouseEvent | TouchEvent; node: Node }) {
+  function handleNodeClick({ node }: { event: MouseEvent | TouchEvent; node: Node }) {
     // Respond to memory and memoryGroup nodes
     if (node.type === 'memory') {
       const memId = node.id.replace('mem-', '');
@@ -501,7 +495,6 @@
     // ── Sharing links (custom animated edge) ──
     g.links.forEach((link) => {
       const isSync = link.link_type === 'sync';
-      const isTwoWay = link.direction === 'two_way';
       const lbl = isSync ? 'sync' : 'copy';
 
       // Resolve source/target to group node if the memory is inside a group

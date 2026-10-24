@@ -13,7 +13,6 @@
   import { humanizeProviderError } from '#lib/utils/providerError.js';
 
   let {
-    characterId = null,
     characterName = '',
     characterDescription = '',
     avatarPath = null,

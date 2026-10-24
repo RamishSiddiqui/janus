@@ -22,7 +22,6 @@
   // error), which reads as "no models exist" instead of "can't reach it
   // right now". This surfaces that distinction explicitly.
   let wangpStatus = $state<Record<string, 'checking' | 'reachable' | 'unreachable'>>({});
-  let wangpProviders = $derived(providers.filter(p => p.adapter === 'wan_gp'));
 
   function wangpStatusLabel(id: string): string {
     const s = wangpStatus[id];

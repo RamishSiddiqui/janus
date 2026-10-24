@@ -2,7 +2,6 @@
   import { getSmoothStepPath } from '@xyflow/svelte';
 
   let {
-    id,
     sourceX,
     sourceY,
     targetX,
@@ -10,7 +9,6 @@
     sourcePosition,
     targetPosition,
     data,
-    style,
   } = $props();
 
   let color   = $derived(data?.color  ?? 'rgba(139,92,246,0.4)');

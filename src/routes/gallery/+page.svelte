@@ -5,11 +5,8 @@
   import { browser } from '$app/env';
   import Icon from '#lib/components/Icon.svelte';
   import Skeleton from '#lib/components/Skeleton.svelte';
-  import { activeConversationId, loadConversations } from '#lib/stores/chat.js';
   import { success, error as toastError, addToast } from '#lib/stores/toast.js';
   import { parseCharacterData } from '#lib/utils/character.js';
-  import { selectedPersonaId } from '#lib/stores/personas.js';
-  import { get } from 'svelte/store';
   import type { Character } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
@@ -162,23 +159,6 @@
     isImporting = false;
   }
 
-  /** Navigate to chat with this character */
-  async function startChat(charId: string) {
-    if (!isTauri) {
-      goto('/');
-      return;
-    }
-
-    try {
-      const { createConversation } = await import('#lib/stores/chat.js');
-      const personaId = get(selectedPersonaId) ?? undefined;
-      await createConversation(charId, characters.find(c => c.id === charId)?.name, personaId);
-      goto('/');
-    } catch (err) {
-      console.error('Failed to start chat:', err);
-    }
-  }
-
   function darkenColor(hex: string): string {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
@@ -283,7 +263,7 @@
       }
 
       showEditor = false;
-    } catch (err) {
+    } catch {
       toastError('Failed to save character');
     }
     isSavingEditor = false;
@@ -303,7 +283,7 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       await ipc.trashCharacter(charId);
-    } catch (err) {
+    } catch {
       toastError(`Failed to delete ${name}`);
       return;
     }
@@ -355,7 +335,7 @@
   <!-- Card Grid -->
   <div class="card-grid">
     {#if isLoading}
-      {#each Array(6) as _, i}
+      {#each Array(6) as _}
         <div class="char-card skeleton-card">
           <Skeleton variant="card" height="180px" />
           <div class="skeleton-body">

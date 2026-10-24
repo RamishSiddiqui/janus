@@ -632,7 +632,6 @@
           description={explorerMeta.description}
           onClose={() => (activeExplorerView = null)}
         >
-          {#snippet children()}
             {#if activeExplorerView === 'lore'}
               <ContextLorebook {characterId} conversationId={$activeConversationId} wide />
             {:else if activeExplorerView === 'cast'}
@@ -640,7 +639,6 @@
             {:else if activeExplorerView === 'persona'}
               <ContextPersonaPanel conversationId={$activeConversationId} wide />
             {/if}
-          {/snippet}
         </ChatExplorerView>
       {:else}
 

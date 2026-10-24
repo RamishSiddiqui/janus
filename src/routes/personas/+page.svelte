@@ -115,7 +115,7 @@
       showCreate = false;
       createName = '';
       goto('/personas/' + persona.id);
-    } catch (err) {
+    } catch {
       toastError('Failed to create persona');
     }
     isCreating = false;
@@ -135,7 +135,7 @@
     try {
       const ipc = await import('#lib/services/ipc.js');
       await ipc.trashPersona(id);
-    } catch (err) {
+    } catch {
       toastError(`Failed to delete ${name}`);
       return;
     }
@@ -185,7 +185,7 @@
 
   <div class="card-grid">
     {#if isLoading}
-      {#each Array(4) as _, i}
+      {#each Array(4) as _}
         <div class="persona-card skeleton-card">
           <Skeleton variant="card" height="180px" />
           <div class="skeleton-body">

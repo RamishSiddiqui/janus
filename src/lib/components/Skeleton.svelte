@@ -30,7 +30,7 @@
   const resolvedWidth = variant === 'circle' ? resolvedHeight : width;
 </script>
 
-{#each Array(count) as _, i}
+{#each Array(count) as _}
   <div
     class="skeleton"
     style="width:{resolvedWidth};height:{resolvedHeight};border-radius:{resolvedRadius};"

@@ -57,7 +57,7 @@ Infer ${characterName ? characterName + "'s" : "the character's"} new emotional 
 function parseEmotionResponse(raw: string): EmotionState | null {
   try {
     // Strip markdown fences if the model adds them despite instructions
-    let cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     const match = cleaned.match(/\{[\s\S]*\}/);
     if (!match) return null;
 

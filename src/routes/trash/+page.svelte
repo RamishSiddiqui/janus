@@ -93,7 +93,7 @@
       else await ipc.restorePersona(row.id);
       rows = rows.filter(r => r.id !== row.id);
       success(`Restored ${row.name}`);
-    } catch (err) {
+    } catch {
       toastError(`Failed to restore ${row.name}`);
     }
     const next = new Set(restoringIds);
@@ -111,7 +111,7 @@
       else await ipc.deletePersona(row.id);
       rows = rows.filter(r => r.id !== row.id);
       success(`Permanently deleted ${row.name}`);
-    } catch (err) {
+    } catch {
       toastError(`Failed to delete ${row.name}`);
     }
     const next = new Set(deletingIds);
@@ -128,7 +128,7 @@
       await ipc.emptyTrash();
       rows = [];
       success('Trash emptied');
-    } catch (err) {
+    } catch {
       toastError('Failed to empty Trash');
     }
     isEmptying = false;

@@ -7,7 +7,7 @@
   import TimelineFilter from '#lib/components/TimelineFilter.svelte';
   import Icon from '#lib/components/Icon.svelte';
   import SplitHeading from '#lib/components/SplitHeading.svelte';
-  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { error as toastError } from '#lib/stores/toast.js';
   import { parseCharacterData } from '#lib/utils/character.js';
   import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
 

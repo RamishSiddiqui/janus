@@ -163,7 +163,7 @@ export async function loadMessages(conversationId: string) {
         c.id !== conversationId
       );
 
-      if (otherBranches.length > 0 || true /* parent itself is always a sibling */) {
+      { // The parent itself is always a sibling, so this block always runs.
         // Ordered list: [parent, ...other branches sorted by id, this branch]
         const parentId = conv.parent_conversation_id;
         const sortedOtherBranches = otherBranches.map(c => c.id).sort();
@@ -240,7 +240,6 @@ export async function loadMessages(conversationId: string) {
     pathState.fullActivePath = activePath.map((m, index) => {
       const key = m.parent_id ?? '__root__';
       const siblings = byParent.get(key) ?? [];
-      const siblingIndex = siblings.findIndex(s => s.id === m.id);
       const convSibling = convSiblingOverrides.get(m.id);
 
       // Multi-character segments (messages with character_name) are sequential

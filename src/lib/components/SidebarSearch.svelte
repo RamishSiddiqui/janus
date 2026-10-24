@@ -140,7 +140,7 @@
     </div>
     <div class="search-results-list">
       {#if isSearching}
-        {#each Array(3) as _, i}
+        {#each Array(3) as _}
           <div class="conv-skeleton"><Skeleton variant="text" width="90%" /><Skeleton variant="text" width="60%" /></div>
         {/each}
       {:else if searchResults.length === 0}
@@ -159,6 +159,7 @@
               <span class="sr-role" class:user={result.role === 'user'}>{result.role === 'user' ? 'You' : 'AI'}</span>
               <span class="sr-time">{formatSearchTime(result.created_at)}</span>
             </div>
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -- escaped by highlightSnippetHtml; only <mark> survives -->
             <div class="sr-snippet">{@html highlightSnippetHtml(result.snippet)}</div>
           </button>
         {/each}

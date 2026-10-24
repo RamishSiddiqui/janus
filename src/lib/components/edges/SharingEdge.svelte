@@ -2,21 +2,13 @@
   import { getBezierPath } from '@xyflow/svelte';
 
   let {
-    id,
     sourceX,
     sourceY,
     targetX,
     targetY,
     sourcePosition,
     targetPosition,
-    sourceHandleId,
-    targetHandleId,
-    source,
-    target,
     data,
-    style,
-    markerEnd,
-    markerStart,
   } = $props();
 
   const isSync = $derived(data?.linkType === 'sync');

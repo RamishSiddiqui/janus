@@ -2,7 +2,6 @@
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import { browser } from "$app/env";
-  import Icon from "#lib/components/Icon.svelte";
   import { success, error as toastError, addToast } from "#lib/stores/toast.js";
   import { parseCharacterData } from "#lib/utils/character.js";
   import { sceneGenerations, getSceneGenerationState, trackPersonaPortraitGeneration, personaPortraitGenerationKey, describeProgress } from "#lib/stores/sceneGeneration.js";

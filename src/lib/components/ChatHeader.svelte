@@ -11,7 +11,7 @@
     conversationId = null,
     activeExplorerView = null,
     onOpenExplorer,
-    onTogglePanel, onGenerateScene, onOpenGallery,
+    onTogglePanel, onOpenGallery,
     parentConversationId = null,
     parentConversationTitle = null,
     onNavigateToParent,

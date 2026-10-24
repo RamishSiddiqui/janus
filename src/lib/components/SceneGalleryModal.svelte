@@ -246,7 +246,6 @@
           >
             {#if thumbUrls[s.id]}
               {#if s.media_type === 'video'}
-                <!-- svelte-ignore a11y_media_has_caption -->
                 <video src={thumbUrls[s.id]} muted></video>
               {:else}
                 <img src={thumbUrls[s.id]} alt={s.caption ?? s.prompt} />

@@ -2,7 +2,7 @@
   import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
   import { shareMemory, unlinkMemory, deleteMemory } from '#lib/services/ipc.js';
   import { undoableDelete } from '#lib/stores/toast.js';
-  import { buildTimelineEntries, type TimelineEntry, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '#lib/utils/groupMemories.js';
+  import { buildTimelineEntries, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '#lib/utils/groupMemories.js';
   import Icon from './Icon.svelte';
   import MemoryActionPanel from './MemoryActionPanel.svelte';
 
@@ -19,11 +19,6 @@
 
   const PALETTE = ['#c4a1ff', '#00f2ff', '#fb7185', '#fbbf24', '#34d399', '#d580ff'];
   const CANON_COLOR = '#daa520';
-
-  const CATEGORY_ICONS: Record<string, string> = {
-    trait: '🧬', event: '⚡', relationship: '💫', goal: '🎯',
-    discovery: '🔮', preference: '💭', fact: '📋',
-  };
 
   // ── Lanes ──
   // Canon lane + one lane per conversation, grouped by character
@@ -234,15 +229,6 @@
     return map;
   });
 
-  // Map memory_id → lane_id
-  let memLaneMap = $derived.by(() => {
-    const map = new Map<string, string>();
-    data.memories.forEach(m => {
-      map.set(m.id, m.is_canon ? 'canon' : (m.conversation_id ?? 'canon'));
-    });
-    return map;
-  });
-
   // Map memory_id → conversation_id (for links)
   let memConvMap = $derived.by(() => {
     const map = new Map<string, string>();
@@ -311,11 +297,6 @@
   // ── Action Panel state ──
   let selectedMemory = $state<MemoryGraphData['memories'][0] | null>(null);
   let selectedGroupMemories = $state<MemoryGraphData['memories']>([]);
-  let selectedMemoryLinks = $derived(
-    selectedMemory
-      ? data.links.filter(l => l.source_memory_id === selectedMemory!.id)
-      : []
-  );
 
   function handleMemoryClick(item: MemoryItem, group: TimelineGroup): void {
     const mem = data.memories.find(m => m.id === item.memory.id);
@@ -383,7 +364,7 @@
       {#if isMultiChar && charGroups.length > 0}
         <!-- Character group name row — names span across their lanes -->
         <div class="char-row" style="--lane-count: {visibleLanes.length};">
-          {#each charGroups as g, gi}
+          {#each charGroups as g}
             <div
               class="char-span"
               class:shared={g.isShared}
@@ -474,7 +455,7 @@
       <div class="tl-body" style="--lane-count: {visibleLanes.length};">
         <!-- Character group zone highlights -->
         {#if isMultiChar && charGroups.length > 0}
-          {#each charGroups as g, gi}
+          {#each charGroups as g}
             <div
               class="char-zone"
               class:shared-zone={g.isShared}
