@@ -86,7 +86,14 @@
 .janus-hero {
   position: relative;
   isolation: isolate;
-  padding: 1.4rem 0 0.4rem;
+  padding: 3rem 0 0.4rem;
+}
+
+/* On narrow screens the mark sits above the headline and supplies the space. */
+@media (max-width: 63em) {
+  .janus-hero {
+    padding-top: 1.4rem;
+  }
 }
 
 /* A faint violet and gold glow behind the hero, the app's two colours. */
@@ -111,11 +118,20 @@
   mask-composite: intersect;
 }
 
+/* The sidebar already shows the mark and wordmark, so repeating the mark in the
+   hero on a wide screen only duplicates it. Furo tucks the sidebar into a
+   drawer at 63em and below; that is where the hero needs to carry the brand. */
 .janus-hero-mark {
-  display: block;
-  height: 4.6rem;
+  display: none;
+  height: 4.2rem;
   width: auto;
   margin-bottom: 1.2rem;
+}
+
+@media (max-width: 63em) {
+  .janus-hero-mark {
+    display: block;
+  }
 }
 
 .janus-hero-title {
