@@ -152,7 +152,7 @@ If you'd rather build it yourself (or want to run a dev build with hot-reload):
 
 #### Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+ and a package manager (`npm`, `pnpm`, or `yarn`)
+- [Node.js](https://nodejs.org/) 22.12+ and a package manager (`npm`, `pnpm`, or `yarn`)
 - [Rust](https://www.rust-lang.org/tools/install) (stable toolchain) — required by Tauri
 - Platform build tools for [Tauri v2](https://v2.tauri.app/start/prerequisites/) (WebView2 on Windows, Xcode CLI tools on macOS, `webkit2gtk` on Linux)
 
