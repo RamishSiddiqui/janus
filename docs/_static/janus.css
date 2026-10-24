@@ -48,6 +48,10 @@
 }
 
 .janus-wordmark {
+  /* Capital letters sit above the middle of a text box. Nudge them down by a
+     small, measured amount so the letters centre on the mark. */
+  position: relative;
+  top: 0.035em;
   font-weight: 500;
   font-size: 1.2rem;
   /* Same tracking as the title bar. Trailing space after the last letter is
@@ -67,17 +71,21 @@
 }
 
 /* The same lockup in the top bar that stands in for the sidebar on a narrow
-   window (placed by janus.js). Text size matches the bar's own title: 16px. */
+   window (placed by janus.js). It is a block-level flex box on purpose: as an
+   inline box it was aligned to the text baseline of an invisible line and sat
+   about 3px above the bar's centre. */
 .janus-brand-header {
-  gap: 0.55rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .janus-brand-header .janus-mark {
-  height: 1.55rem;
+  height: 1.3rem;
 }
 
 .janus-brand-header .janus-wordmark {
-  font-size: 1rem;
+  font-size: 0.875rem;
 }
 
 /* Two-tone page titles, added by janus.js. */
