@@ -9,6 +9,7 @@
 | **Gitleaks** (`gitleaks.yml`) | Secret scanning. |
 | **Security audit** (`security-audit.yml`) | `cargo audit` and `npm audit --audit-level=high`, weekly and whenever a dependency file changes. Known, justified advisories are listed with reasons in the workflow. |
 | **Docs** (`docs.yml`) | Regenerates the reference pages and fails if they differ; builds the docs with Sphinx and warnings as errors; uploads the HTML. |
+| **Release dry run** (`release-dry-run.yml`) | Builds the installers the way a release does, with no secrets and no publishing. Weekly on Linux, Windows and macOS, on demand, and on Linux for pull requests that touch the Tauri packages, config or release workflow. Not a required check, because path-filtered checks cannot be. |
 
 `master` accepts changes only through pull requests. Merge only when every check has finished and passed. A check reported as "skipped" or "neutral" is not a pass; read the individual results, and in particular CodeQL.
 
@@ -18,23 +19,35 @@ Dependabot opens pull requests. Breaking major bumps (for example a new `rig-cor
 
 ## Releasing
 
-Releases are automatic. Push a version tag:
+A release is a version tag, but a few steps come before it and one after.
 
-```bash
-git tag v0.1.3
-git push origin v0.1.3
-```
+1. **Bump the version** in one pull request: `package.json`, `package-lock.json` (two places), `src-tauri/Cargo.toml`, the `janus` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Update version references in the docs. Merge it with every check green.
+2. **Rehearse the release build.** Open **Actions, Release dry run, Run workflow** on `master` and wait for all three platforms to pass. Do this whenever dependencies changed since the last release, and it is cheap enough to do every time. CI proves the code compiles and passes tests, but only a bundling build proves the release itself works.
+3. **Tag the bump commit and push the tag:**
+
+   ```bash
+   git tag v0.1.7 <bump commit>
+   git push origin v0.1.7
+   ```
+
+4. **A maintainer approves the `release` deployment** on the workflow run (Review deployments). The signing key lives in that environment and nothing builds until someone approves.
 
 `.github/workflows/release.yml` then:
 
 1. generates release notes with [git-cliff](https://git-cliff.org/) from the commits since the last tag (template in `cliff.toml`);
 2. builds installers in a matrix: macOS (Apple Silicon and Intel), Windows, Linux (`.deb`, `.AppImage`, `.rpm`);
 3. signs the update packages and creates a draft GitHub release with every installer and `latest.json` attached;
-4. publishes it.
+4. only if **every** build succeeded: adds `SHA256SUMS`, records a build attestation and publishes the release.
+
+Finally, **verify** the published release: all installers and `latest.json` are present, `latest.json` carries the new version, and `gh attestation verify <file> --repo RamishSiddiqui/janus` passes for a downloaded installer.
 
 The changelog is used only for the release notes; it is not committed back to `master`.
 
-Before tagging, bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` together, and update version references in the docs.
+### When a release fails
+
+- **A pushed tag is never moved or deleted.** Fix the cause in a pull request, bump to the next patch version and tag that. SemVer says a released version must never change, and Git advises against rewriting published tags. A failed tag simply has no release attached.
+- **A failed run publishes nothing.** The publish job needs all four builds, so there is no partial release, no `latest.json` and no update offered. Installed copies stay on the previous version.
+- **Write it up.** A short blameless note on the tracking issue: what happened, why nothing caught it earlier, and what now prevents it. The aim is a guard or a check, not a reminder to be careful. The v0.1.6 failure (a Tauri plugin's npm package and crate on different minor versions) produced the check in `ci.yml` and the dry-run workflow above.
 
 ### Commit messages drive the notes
 
@@ -44,7 +57,7 @@ Use `type: short description` (`feat`, `fix`, `refactor`, `docs`, `build`, `test
 
 The desktop app (`tauri-plugin-updater`, wired in `lib.rs`, with `updater:default` and `process:allow-restart` in `capabilities/default.json`) reads `https://github.com/RamishSiddiqui/janus/releases/latest/download/latest.json`, which `tauri-action` uploads with each release (`uploadUpdaterJson: true`). The frontend side is `src/lib/stores/updates.ts` (state, checks, install, restart), `UpdatePrompt.svelte` (the corner card) and `SettingsUpdatesSection.svelte`. Browsers, dev builds and users who turned the setting off never check automatically.
 
-**Signing.** Update packages are signed with a minisign key pair made by `npx tauri signer generate`. The **public** key is `plugins.updater.pubkey` in `tauri.conf.json`; the **private** key and its password are repository secrets used by the release job:
+**Signing.** Update packages are signed with a minisign key pair made by `npx tauri signer generate`. The **public** key is `plugins.updater.pubkey` in `tauri.conf.json`; the **private** key and its password are secrets of the `release` environment (not repository secrets), so only a build a maintainer approved can read them:
 
 | Secret | Value |
 |---|---|
@@ -57,7 +70,7 @@ Keep a backup of the private key. If it is lost, installed copies cannot verify 
 
 **For contributors.** `npm run tauri dev` never checks or installs updates: **Settings, Updates, Check now** answers "Updates are turned off in development builds", so a branch based on an older version cannot replace itself with a release. To test the update flow in dev, start it with `VITE_JANUS_UPDATES=1` (the steps below). A branch cut before this feature just picks it up when rebased onto `master`; if `Cargo.lock` or `package-lock.json` conflict, take `master`'s and rerun `npm install` and `cargo check`. A local `tauri build` makes installers that update from the official feed and replace themselves with the official build when asked. If you distribute your own build (a fork), change `plugins.updater.endpoints` and generate your own key pair for `pubkey`. To try the update UI end to end, point `endpoints` at a `latest.json` you host (a `python -m http.server` is enough), sign a higher-versioned build with your own key, and use your own public key.
 
-Bumping the version in the three files (see above) is what makes an update available: the check compares the installed version with the one in `latest.json`.
+Bumping the version in the files listed under Releasing is what makes an update available: the check compares the installed version with the one in `latest.json`.
 
 ## Installers are unsigned
 
