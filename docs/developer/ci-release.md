@@ -73,14 +73,14 @@ These docs are published on [Read the Docs](https://readthedocs.org/) from `.rea
 | `stable` | Created automatically; points at the highest version tag, so it moves forward with each release. |
 | `v0.1.7`, `v0.1.8`, ... | A frozen snapshot of the docs at that tag. |
 
-Tags before `.readthedocs.yaml` existed (up to v0.1.5, and v0.1.6, which was never released) cannot build, because Read the Docs reads the config from the tagged commit. Leave those versions inactive.
+Tags made before `.readthedocs.yaml` was merged (up to v0.1.7) cannot build, because Read the Docs reads the config from the tagged commit. Leave those versions inactive; the first docs version is the first tag cut after the file landed.
 
 **One-time setup, by a maintainer on readthedocs.org:**
 
 1. Sign in with GitHub, *Import a Project*, and choose this repository.
 2. *Advanced settings*: turn on *Build pull requests for this project*.
 3. *Automation rules*: add a rule that activates versions matching *SemVer versions*, so each release tag appears without a manual step.
-4. After the first tag has built, set the default version to `stable`, so the front page shows released docs.
+4. Until the first tag that contains `.readthedocs.yaml` has built (v0.1.8 or later), keep the default version on `latest`. After that, set it to `stable`, so the front page shows released docs.
 5. Put the docs URL in the README and as the repository homepage.
 
 ## Installers are unsigned
