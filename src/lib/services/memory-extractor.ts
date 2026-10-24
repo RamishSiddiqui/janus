@@ -233,7 +233,7 @@ function resolveFactCharacterId(name: string, castPairs: [string, string][]): st
  * back to a real character ID.
  */
 async function buildCastPairs(
-  ipc: typeof import('$lib/services/ipc'),
+  ipc: typeof import('#lib/services/ipc.js'),
   conversationId: string,
   primaryCharacterId: string,
 ): Promise<[string, string][]> {
@@ -267,7 +267,7 @@ export async function extractAndSaveMemories(
     return 0;
   }
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   let facts: ExtractedFact[] = [];
 
   // Fetch existing memories for this character/conversation to avoid duplicates

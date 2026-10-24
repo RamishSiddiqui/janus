@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
+  import { copyText as copyToClipboard } from '#lib/utils/insecureContext.js';
   import Icon from './Icon.svelte';
   import SplitHeading from './SplitHeading.svelte';
-  import type { Scene } from '$lib/services/ipc';
-  import { sceneGenerations, getSceneGenerationState, describeProgress } from '$lib/stores/sceneGeneration';
+  import type { Scene } from '#lib/services/ipc.js';
+  import { sceneGenerations, getSceneGenerationState, describeProgress } from '#lib/stores/sceneGeneration.js';
 
   let { conversationId, onClose }: { conversationId: string; onClose: () => void } = $props();
 
@@ -72,9 +72,9 @@
   async function load() {
     isLoadingList = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       scenes = await ipc.listScenes(conversationId);
-      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
       const urls: Record<string, string> = {};
       for (const s of scenes) {
         try {
@@ -97,7 +97,7 @@
   async function handleDelete(s: Scene, e: MouseEvent) {
     e.stopPropagation();
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.deleteScene(s.id);
       scenes = scenes.filter(x => x.id !== s.id);
       if (thumbUrls[s.id]) {

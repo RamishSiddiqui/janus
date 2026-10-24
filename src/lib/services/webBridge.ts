@@ -172,7 +172,9 @@ async function uploadAttachmentBytes(args: Record<string, unknown>): Promise<unk
     method: 'POST',
     headers: { 'x-janus-request': '1' },
     credentials: 'same-origin',
-    body: bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes),
+    // Always copy into a fresh ArrayBuffer-backed array: a Uint8Array over an
+    // ArrayBufferLike (possibly shared) buffer is not a valid fetch body type.
+    body: Uint8Array.from(bytes),
   });
   const text = await res.text();
   if (!res.ok) throw toWebError(res.status, text);

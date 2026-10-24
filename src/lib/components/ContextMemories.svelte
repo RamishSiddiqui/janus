@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import Icon from './Icon.svelte';
-  import { success, error as toastError, undoableDelete } from '$lib/stores/toast';
+  import { success, error as toastError, undoableDelete } from '#lib/stores/toast.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -51,7 +51,7 @@
 
   async function loadMemoryScope(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const conv = await ipc.getConversation(convId);
       memoryScope = conv.memory_scope;
     } catch {
@@ -64,7 +64,7 @@
     isTogglingMemory = true;
     const newScope = memoryEnabled ? 'none' : 'character';
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.setMemoryScope(conversationId, newScope);
       memoryScope = newScope;
       success(newScope === 'none' ? 'Memory extraction disabled' : 'Memory extraction enabled');
@@ -77,7 +77,7 @@
   async function loadMemories(charId: string) {
     isLoadingMemories = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const result = await ipc.listMemories(charId);
       memories = result
         // Only show canon memories OR memories belonging to THIS conversation.
@@ -103,7 +103,7 @@
     if (!isTauri || !newMemoryText.trim()) return;
     isSavingMemory = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const created = await ipc.createMemory(
         newMemoryText.trim(),
         characterId ?? undefined,
@@ -138,7 +138,7 @@
       'Memory removed',
       async () => {
         try {
-          const ipc = await import('$lib/services/ipc');
+          const ipc = await import('#lib/services/ipc.js');
           await ipc.deleteMemory(memoryId);
         } catch {
           toastError('Failed to delete memory');

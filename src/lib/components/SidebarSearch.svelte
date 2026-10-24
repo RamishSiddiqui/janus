@@ -1,9 +1,9 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import Skeleton from './Skeleton.svelte';
-  import { activeConversationId, loadMessages } from '$lib/stores/chat';
-  import { browser } from '$app/environment';
-  import type { SearchResult } from '$lib/services/ipc';
+  import { activeConversationId, loadMessages } from '#lib/stores/chat.js';
+  import { browser } from '$app/env';
+  import type { SearchResult } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -51,7 +51,7 @@
     showSearchResults = true;
     selectedResultIndex = -1;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       searchResults = await ipc.searchMessages(query, 20);
     } catch (err) {
       console.error('Search failed:', err);

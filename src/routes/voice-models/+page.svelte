@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { browser } from '$app/environment';
-  import Icon from '$lib/components/Icon.svelte';
-  import WaveformBars from '$lib/components/WaveformBars.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import { handleIpcError } from '$lib/utils/error';
-  import { playBase64Wav, primeAudioPreviewContext } from '$lib/utils/audioPreview';
-  import type { VoiceInfo, ProviderConfig, TtsModelStatus } from '$lib/services/ipc';
+  import { browser } from '$app/env';
+  import Icon from '#lib/components/Icon.svelte';
+  import WaveformBars from '#lib/components/WaveformBars.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import { handleIpcError } from '#lib/utils/error.js';
+  import { playBase64Wav, primeAudioPreviewContext } from '#lib/utils/audioPreview.js';
+  import type { VoiceInfo, ProviderConfig, TtsModelStatus } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -44,7 +44,7 @@
     isLoading = true;
     if (isTauri) {
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         const [status, providers] = await Promise.all([
           ipc.ttsModelStatus(),
           ipc.listProviders('tts'),
@@ -72,7 +72,7 @@
     if (source.id === null && !kokoroStatus?.downloaded) return;
     loadingSource = key;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const voices = await ipc.ttsListVoices(source.id ?? undefined);
       voicesBySource = { ...voicesBySource, [key]: voices };
     } catch (err) {
@@ -87,7 +87,7 @@
     primeAudioPreviewContext();
     previewingVoiceKey = key;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const audio = await ipc.ttsTestSpeak(
         'Hello, this is a preview of this voice.',
         voice.id,

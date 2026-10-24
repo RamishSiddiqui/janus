@@ -1,16 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import Icon from '$lib/components/Icon.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import { activeConversationId, loadConversations } from '$lib/stores/chat';
-  import { success, error as toastError, addToast } from '$lib/stores/toast';
-  import { parseCharacterData } from '$lib/utils/character';
-  import { selectedPersonaId } from '$lib/stores/personas';
+  import { browser } from '$app/env';
+  import Icon from '#lib/components/Icon.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import { activeConversationId, loadConversations } from '#lib/stores/chat.js';
+  import { success, error as toastError, addToast } from '#lib/stores/toast.js';
+  import { parseCharacterData } from '#lib/utils/character.js';
+  import { selectedPersonaId } from '#lib/stores/personas.js';
   import { get } from 'svelte/store';
-  import type { Character } from '$lib/services/ipc';
+  import type { Character } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -58,7 +58,7 @@
   async function resolveAvatarUrl(avatarPath: string | null): Promise<string | null> {
     if (!avatarPath || !isTauri) return null;
     try {
-      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
       return await loadFileAsBlobUrl(avatarPath);
     } catch (e) {
       console.warn('Failed to resolve avatar:', avatarPath, e);
@@ -74,7 +74,7 @@
     }
 
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const chars = await ipc.listCharacters();
 
       // Map backend characters to gallery format
@@ -130,7 +130,7 @@
       }
 
       const filePath = selected as string;
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const newChar = await ipc.importCharacterCard(filePath);
 
       // Add to the gallery immediately
@@ -170,7 +170,7 @@
     }
 
     try {
-      const { createConversation } = await import('$lib/stores/chat');
+      const { createConversation } = await import('#lib/stores/chat.js');
       const personaId = get(selectedPersonaId) ?? undefined;
       await createConversation(charId, characters.find(c => c.id === charId)?.name, personaId);
       goto('/');
@@ -213,7 +213,7 @@
   async function openEditEditor(charId: string) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const char = await ipc.getCharacter(charId);
       const data = parseCharacterData(char.data);
 
@@ -245,7 +245,7 @@
     };
 
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       let saved: Character;
 
       if (editingId) {
@@ -301,7 +301,7 @@
     const name = removed?.name ?? 'Character';
 
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.trashCharacter(charId);
     } catch (err) {
       toastError(`Failed to delete ${name}`);
@@ -314,7 +314,7 @@
       label: 'Undo',
       onClick: async () => {
         try {
-          const ipc = await import('$lib/services/ipc');
+          const ipc = await import('#lib/services/ipc.js');
           await ipc.restoreCharacter(charId);
           if (removed) characters = [...characters, removed].sort((a, b) => a.name.localeCompare(b.name));
         } catch {

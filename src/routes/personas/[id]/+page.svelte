@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { browser } from "$app/environment";
-  import Icon from "$lib/components/Icon.svelte";
-  import { success, error as toastError, addToast } from "$lib/stores/toast";
-  import { parseCharacterData } from "$lib/utils/character";
-  import { sceneGenerations, getSceneGenerationState, trackPersonaPortraitGeneration, personaPortraitGenerationKey, describeProgress } from "$lib/stores/sceneGeneration";
+  import { browser } from "$app/env";
+  import Icon from "#lib/components/Icon.svelte";
+  import { success, error as toastError, addToast } from "#lib/stores/toast.js";
+  import { parseCharacterData } from "#lib/utils/character.js";
+  import { sceneGenerations, getSceneGenerationState, trackPersonaPortraitGeneration, personaPortraitGenerationKey, describeProgress } from "#lib/stores/sceneGeneration.js";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
-  const personaId = $derived($page.params.id);
+  const personaId = $derived(page.params.id);
 
   interface PersonaData {
     description: string;
@@ -44,7 +44,7 @@
   async function resolveAvatar(path: string | null): Promise<string | null> {
     if (!path || !isTauri) return null;
     try {
-      const { loadFileAsBlobUrl } = await import("$lib/utils/blobUrl");
+      const { loadFileAsBlobUrl } = await import("#lib/utils/blobUrl.js");
       return await loadFileAsBlobUrl(path);
     } catch {
       return null;
@@ -54,7 +54,7 @@
   async function loadPersona(id: string) {
     isLoading = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const persona = await ipc.getPersona(id);
       personaName = persona.name;
       const parsed = parseCharacterData(persona.data);
@@ -83,7 +83,7 @@
     if (!isTauri || !editName.trim() || !personaId) return;
     isSaving = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const tags = editTags.split(",").map((t) => t.trim()).filter(Boolean);
       await ipc.updatePersona(personaId, editName, {
         description: editDesc,
@@ -108,7 +108,7 @@
   async function generatePortrait() {
     if (!isTauri || !personaId) return;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const updated = await trackPersonaPortraitGeneration(personaId, () => ipc.generatePersonaPortrait(personaId));
       if (updated.avatar_path === avatarPath) {
         toastError("No image provider configured — set one in Providers first.");
@@ -133,7 +133,7 @@
     const name = personaName || "Persona";
 
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       await ipc.trashPersona(id);
     } catch {
       toastError("Failed to delete persona");
@@ -145,7 +145,7 @@
       label: 'Undo',
       onClick: async () => {
         try {
-          const ipc = await import("$lib/services/ipc");
+          const ipc = await import("#lib/services/ipc.js");
           await ipc.restorePersona(id);
           goto(`/personas/${id}`);
         } catch {

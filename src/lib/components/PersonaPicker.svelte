@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
-  import { selectedPersonaId } from '$lib/stores/personas';
-  import { loadFileAsBlobUrl } from '$lib/utils/blobUrl';
+  import { selectedPersonaId } from '#lib/stores/personas.js';
+  import { loadFileAsBlobUrl } from '#lib/utils/blobUrl.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -23,7 +23,7 @@
   onMount(async () => {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const list = await ipc.listPersonas();
       personas = await Promise.all(list.map(async (p) => ({
         id: p.id,

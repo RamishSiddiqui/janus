@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { browser } from '$app/environment';
-  import Icon from '$lib/components/Icon.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import { success } from '$lib/stores/toast';
-  import { handleIpcError } from '$lib/utils/error';
-  import type { ModelEntry } from '$lib/services/ipc';
-  import { priceNum, formatPrice, modelSlug, adapterColor } from '$lib/utils/models';
+  import { browser } from '$app/env';
+  import Icon from '#lib/components/Icon.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import { success } from '#lib/stores/toast.js';
+  import { handleIpcError } from '#lib/utils/error.js';
+  import type { ModelEntry } from '#lib/services/ipc.js';
+  import { priceNum, formatPrice, modelSlug, adapterColor } from '#lib/utils/models.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -47,7 +47,7 @@
   async function checkWangpStatus() {
     const wangp = providers.filter(p => p.adapter === 'wan_gp');
     if (wangp.length === 0) return;
-    const ipc = await import('$lib/services/ipc');
+    const ipc = await import('#lib/services/ipc.js');
     for (const p of wangp) wangpStatus = { ...wangpStatus, [p.id]: 'checking' };
     await Promise.all(wangp.map(async p => {
       try {
@@ -119,7 +119,7 @@
   async function loadAll() {
     isLoading = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       if (isTauri) {
         const [models, pList] = await Promise.all([
           ipc.listAllModels(),
@@ -137,7 +137,7 @@
     const key = `${m.provider_id}::${m.model_id}`;
     togglingId = key;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const newState = !m.enabled;
       await ipc.toggleModelEnabled(m.provider_id, m.model_id, m.model_type, newState);
       allModels = allModels.map(x =>

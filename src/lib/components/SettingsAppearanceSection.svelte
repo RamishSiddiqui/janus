@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { success } from '$lib/stores/toast';
+  import { settings } from '#lib/stores/settings.js';
+  import { success } from '#lib/stores/toast.js';
 
   let theme = $state($settings.theme);
   let fontSize = $state($settings.fontSize);

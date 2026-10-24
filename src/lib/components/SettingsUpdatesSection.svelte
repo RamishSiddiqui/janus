@@ -2,10 +2,10 @@
   // Settings → Updates: the installed version, a manual check, and the automatic-check switch (#139).
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { updates, checkForUpdates, installUpdate } from '$lib/stores/updates';
-  import { releaseNotesGroups } from '$lib/utils/updates';
-  import { agoLabel } from '$lib/utils/webAccount';
+  import { settings } from '#lib/stores/settings.js';
+  import { updates, checkForUpdates, installUpdate } from '#lib/stores/updates.js';
+  import { releaseNotesGroups } from '#lib/utils/updates.js';
+  import { agoLabel } from '#lib/utils/webAccount.js';
 
   let checkForUpdatesOn = $state($settings.checkForUpdates);
   let appVersion = $state<string | null>(null);
@@ -21,7 +21,7 @@
 
   onMount(async () => {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       appVersion = (await ipc.getAppInfo()).version;
     } catch (err) {
       console.error('[settings] Failed to read app info:', err);

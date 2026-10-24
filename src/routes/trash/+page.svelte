@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { browser } from '$app/environment';
-  import Icon from '$lib/components/Icon.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import type { TrashItem, TrashItemType } from '$lib/services/ipc';
+  import { browser } from '$app/env';
+  import Icon from '#lib/components/Icon.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import type { TrashItem, TrashItemType } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -57,7 +57,7 @@
   async function resolveAvatarUrl(avatarPath: string | null): Promise<string | null> {
     if (!avatarPath || !isTauri) return null;
     try {
-      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
       return await loadFileAsBlobUrl(avatarPath);
     } catch {
       return null;
@@ -68,7 +68,7 @@
     if (!isTauri) { isLoading = false; return; }
     isLoading = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const items = await ipc.listTrash();
       rows = await Promise.all(items.map(async (item) => ({
         ...item,
@@ -87,7 +87,7 @@
     if (!isTauri || restoringIds.has(row.id)) return;
     restoringIds = new Set(restoringIds).add(row.id);
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       if (row.item_type === 'conversation') await ipc.restoreConversation(row.id);
       else if (row.item_type === 'character') await ipc.restoreCharacter(row.id);
       else await ipc.restorePersona(row.id);
@@ -105,7 +105,7 @@
     if (!isTauri || deletingIds.has(row.id)) return;
     deletingIds = new Set(deletingIds).add(row.id);
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       if (row.item_type === 'conversation') await ipc.deleteConversation(row.id);
       else if (row.item_type === 'character') await ipc.deleteCharacter(row.id);
       else await ipc.deletePersona(row.id);
@@ -124,7 +124,7 @@
     if (!isTauri || isEmptying) return;
     isEmptying = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.emptyTrash();
       rows = [];
       success('Trash emptied');

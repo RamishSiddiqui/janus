@@ -13,7 +13,7 @@
 //   - Uses requestAnimationFrame batching for smooth rendering
 // ============================================================
 
-import type { Message } from '$lib/types';
+import type { Message } from '#lib/types/index.js';
 
 /** Pre-resolved character metadata for instant bubble creation. */
 export interface CharMeta {

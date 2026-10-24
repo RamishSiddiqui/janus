@@ -31,7 +31,7 @@ export function mimeForPath(path: string): string {
  *  that cache by path (e.g. chat.ts's avatarCache) should never revoke,
  *  since the same URL may still be referenced elsewhere. */
 export async function loadFileAsBlobUrl(relativePath: string, mimeType?: string): Promise<string> {
-  const { isWebMode, fetchFileBlobUrl } = await import('$lib/services/webBridge');
+  const { isWebMode, fetchFileBlobUrl } = await import('#lib/services/webBridge.js');
   if (isWebMode()) return fetchFileBlobUrl(relativePath, mimeType ?? mimeForPath(relativePath));
   const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
   const bytes = await readFile(relativePath, { baseDir: BaseDirectory.AppData });

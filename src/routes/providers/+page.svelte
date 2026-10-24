@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { browser } from '$app/environment';
-  import Icon from '$lib/components/Icon.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { handleIpcError } from '$lib/utils/error';
-  import { humanizeProviderError } from '$lib/utils/providerError';
-  import { HORDE_SAMPLERS } from '$lib/constants/aiHorde';
+  import { browser } from '$app/env';
+  import Icon from '#lib/components/Icon.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { handleIpcError } from '#lib/utils/error.js';
+  import { humanizeProviderError } from '#lib/utils/providerError.js';
+  import { HORDE_SAMPLERS } from '#lib/constants/aiHorde.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -117,7 +117,7 @@
     if (!isTauri) { isLoading = false; return; }
     isLoading = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const rows = await ipc.listProviders();
       providers = rows.map(p => ({
         id: p.id,
@@ -144,7 +144,7 @@
     p.latencyMs = null;
     const t0 = Date.now();
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const result = await ipc.testProviderConnection(p.id);
       p.isConnected = result.ok;
       p.latencyMs = result.ok ? Date.now() - t0 : null;
@@ -166,7 +166,7 @@
   async function setDefault(p: ProviderRow) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.setDefaultProvider(p.id);
       providers = providers.map(r => ({ ...r, is_default: r.id === p.id }));
       success(`${p.name} set as default`);
@@ -176,7 +176,7 @@
   async function deleteProvider(p: ProviderRow) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.deleteProvider(p.id);
       providers = providers.filter(r => r.id !== p.id);
       success(`Deleted ${p.name}`);
@@ -186,7 +186,7 @@
   async function saveField(p: ProviderRow, field: string, value: string) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const existing = await ipc.getProvider(p.id);
       const config = { ...(existing.config as Record<string, unknown>), [field]: value };
       await ipc.updateProvider(p.id, undefined, config);
@@ -206,7 +206,7 @@
     }
     isSaving = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const config: Record<string, unknown> = {};
       if (newApiKey) config.api_key = newApiKey;
       if (newBaseUrl && adapterNeedsBaseUrl) config.base_url = newBaseUrl;
@@ -279,13 +279,13 @@
   // WanGP model catalog per provider — fetched lazily on card expand rather
   // than requiring the user to already know an exact model_type string, the
   // way a free-text field on every other adapter's Default Model does.
-  let wangpModels = $state<Record<string, import('$lib/services/ipc').WangpModelInfo[]>>({});
+  let wangpModels = $state<Record<string, import('#lib/services/ipc.js').WangpModelInfo[]>>({});
   let wangpModelsLoading = $state<Record<string, boolean>>({});
   async function loadWangpModels(p: ProviderRow) {
     if (wangpModels[p.id] || wangpModelsLoading[p.id]) return;
     wangpModelsLoading = { ...wangpModelsLoading, [p.id]: true };
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       wangpModels = { ...wangpModels, [p.id]: await ipc.listWangpModels(p.id) };
     } catch (err) {
       console.error('Failed to list WanGP models:', err);

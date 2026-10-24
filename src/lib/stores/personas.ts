@@ -10,7 +10,7 @@
 // initial choice at creation time.
 
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const STORAGE_KEY = 'mythic-selected-persona-id';
 

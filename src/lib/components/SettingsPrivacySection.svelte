@@ -1,9 +1,9 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { browser } from '$app/environment';
-  import { loadConversations } from '$lib/stores/chat';
+  import { settings } from '#lib/stores/settings.js';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { browser } from '$app/env';
+  import { loadConversations } from '#lib/stores/chat.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -54,7 +54,7 @@
     isExporting = true;
     try {
       const { save } = await import('@tauri-apps/plugin-dialog');
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
 
       backupStatus = 'Gathering conversations...';
       const conversations: Awaited<ReturnType<typeof ipc.listConversations>> = [];
@@ -161,7 +161,7 @@
       const { readTextFile } = await import('@tauri-apps/plugin-fs');
       const raw = await readTextFile(selected as string);
       const data = JSON.parse(raw);
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
 
       if (data.settings) {
         settings.set({ ...$settings, ...data.settings });
@@ -329,7 +329,7 @@
   async function clearAllConversations() {
     if (!isTauri) { showClearConfirm = false; return; }
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const convs = await ipc.listConversations();
       let cleared = 0;
       for (const conv of convs) {

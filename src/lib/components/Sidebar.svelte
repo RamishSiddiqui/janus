@@ -5,11 +5,11 @@
   import SidebarSearch from './SidebarSearch.svelte';
   import SidebarConversationList from './SidebarConversationList.svelte';
   import SidebarContextMenu from './SidebarContextMenu.svelte';
-  import type { NavItem } from '$lib/types';
-  import { conversations, deleteConversationWithUndo, createConversation } from '$lib/stores/chat';
-  import { error as toastError } from '$lib/stores/toast';
-  import { selectedPersonaId } from '$lib/stores/personas';
-  import { browser } from '$app/environment';
+  import type { NavItem } from '#lib/types/index.js';
+  import { conversations, deleteConversationWithUndo, createConversation } from '#lib/stores/chat.js';
+  import { error as toastError } from '#lib/stores/toast.js';
+  import { selectedPersonaId } from '#lib/stores/personas.js';
+  import { browser } from '$app/env';
   import { tick } from 'svelte';
   import { get } from 'svelte/store';
 

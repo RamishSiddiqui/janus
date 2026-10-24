@@ -13,11 +13,11 @@
 // ============================================================
 
 import { writable, get } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { activeConversationId } from './chat';
 import { settings } from './settings';
-import { decodeBase64Wav } from '$lib/utils/audioPreview';
-import type { TtsChunkEvent, TtsStreamEndEvent } from '$lib/services/ipc';
+import { decodeBase64Wav } from '#lib/utils/audioPreview.js';
+import type { TtsChunkEvent, TtsStreamEndEvent } from '#lib/services/ipc.js';
 
 const isTauri = browser && '__TAURI_INTERNALS__' in window;
 

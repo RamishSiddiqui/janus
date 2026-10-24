@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { settings } from '$lib/stores/settings';
-  import { success } from '$lib/stores/toast';
+  import { settings } from '#lib/stores/settings.js';
+  import { success } from '#lib/stores/toast.js';
 
   let streamingEnabled = $state($settings.streamingEnabled);
   let showThinking = $state($settings.showThinking);

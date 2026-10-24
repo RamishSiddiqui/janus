@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
-  import { shareMemory, unlinkMemory, deleteMemory } from '$lib/services/ipc';
-  import { undoableDelete } from '$lib/stores/toast';
-  import { buildTimelineEntries, type TimelineEntry, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '$lib/utils/groupMemories';
+  import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
+  import { shareMemory, unlinkMemory, deleteMemory } from '#lib/services/ipc.js';
+  import { undoableDelete } from '#lib/stores/toast.js';
+  import { buildTimelineEntries, type TimelineEntry, type TimelineGroup, type TimelineLinkRow, type MemoryItem } from '#lib/utils/groupMemories.js';
   import Icon from './Icon.svelte';
   import MemoryActionPanel from './MemoryActionPanel.svelte';
 

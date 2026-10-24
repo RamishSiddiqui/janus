@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
-  import { page } from '$app/stores';
+  import { browser } from '$app/env';
+  import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import MemoryGraph from '$lib/components/MemoryGraph.svelte';
-  import MemoryTimeline from '$lib/components/MemoryTimeline.svelte';
-  import TimelineFilter from '$lib/components/TimelineFilter.svelte';
-  import Icon from '$lib/components/Icon.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { parseCharacterData } from '$lib/utils/character';
-  import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import MemoryGraph from '#lib/components/MemoryGraph.svelte';
+  import MemoryTimeline from '#lib/components/MemoryTimeline.svelte';
+  import TimelineFilter from '#lib/components/TimelineFilter.svelte';
+  import Icon from '#lib/components/Icon.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { parseCharacterData } from '#lib/utils/character.js';
+  import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -86,7 +86,7 @@
 
   // Check URL param for pre-selected character
   $effect(() => {
-    const charParam = $page.url.searchParams.get('character');
+    const charParam = page.url.searchParams.get('character');
     if (charParam && characters.length > 0) {
       if (!selectedCharIds.includes(charParam)) {
         selectedCharIds = [charParam];
@@ -106,7 +106,7 @@
   async function loadCharacters() {
     isLoading = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const chars = await ipc.listCharacters();
       characters = chars.map(c => {
         const parsedData = parseCharacterData(c.data);
@@ -129,7 +129,7 @@
   async function loadGraphs(charIds: string[]) {
     isLoadingGraph = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const results = await Promise.all(charIds.map(id => ipc.getMemoryGraph(id)));
       // Merge all graphs into one
       const merged: MemoryGraphData = {

@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
   import SelectCombobox from './SelectCombobox.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { browser } from '$app/environment';
+  import { settings } from '#lib/stores/settings.js';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { browser } from '$app/env';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -53,7 +53,7 @@
     if (!isTauri) return;
     isLoadingIndex = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       indexStatus = await ipc.getEmbeddingIndexStatus(null, ragEmbeddingModel);
     } catch (err) {
       console.warn('[Memory] Failed to load index status:', err);
@@ -66,7 +66,7 @@
     isRebuilding = true;
     rebuildProgress = null;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       indexStatus = await ipc.rebuildEmbeddingIndex(null, ragEmbeddingModel);
       success('Embedding index rebuilt successfully');
     } catch (err) {
@@ -82,7 +82,7 @@
     isBackfilling = true;
     rebuildProgress = null;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       indexStatus = await ipc.backfillMissingEmbeddings(null);
       success('Missing embeddings filled successfully');
     } catch (err) {
@@ -100,7 +100,7 @@
   async function loadEnabledEmbeddingModel() {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const models = await ipc.listEmbeddingModels();
       allEmbeddingModels = models.map(m => ({ model_id: m.model_id, provider_id: m.provider_id, provider_name: m.provider_name, enabled: m.enabled }));
       const enabled = models.filter(m => m.enabled);
@@ -122,7 +122,7 @@
     if (!next) return;
     isSwitchingEmbeddingModel = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const previous = allEmbeddingModels.find(m => m.enabled && m.model_id !== modelId);
       if (previous) {
         await ipc.toggleModelEnabled(previous.provider_id, previous.model_id, 'embedding', false);

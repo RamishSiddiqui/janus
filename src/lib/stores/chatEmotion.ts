@@ -8,7 +8,7 @@
 // ============================================================
 
 import { get } from 'svelte/store';
-import type { CharacterState } from '$lib/services/ipc';
+import type { CharacterState } from '#lib/services/ipc.js';
 import { activeCharacterId, characterEmotionStates, messages, pathState } from './chat';
 
 /** Extracts the per-character emotional-state snapshot from a stored
@@ -48,8 +48,8 @@ export async function runEmotionUpdatePipeline(
 ): Promise<void> {
   if (!assistantResponse || targetMessageIds.length === 0) return;
   try {
-    const { updateEmotionalState } = await import('$lib/services/emotion-updater');
-    const ipcMod = await import('$lib/services/ipc');
+    const { updateEmotionalState } = await import('#lib/services/emotion-updater.js');
+    const ipcMod = await import('#lib/services/ipc.js');
 
     // Collect all character IDs and names to update emotions for
     const charMap = new Map<string, string>(); // charId → charName
