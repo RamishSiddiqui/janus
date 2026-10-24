@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 20 or newer and npm.
+- [Node.js](https://nodejs.org/) 22.12 or newer and npm.
 - The stable Rust toolchain.
 - The platform build tools [Tauri v2 needs](https://v2.tauri.app/start/prerequisites/): WebView2 on Windows, Xcode command-line tools on macOS, `webkit2gtk` and friends on Linux.
 - Python 3.10 or newer, only to build these docs.
