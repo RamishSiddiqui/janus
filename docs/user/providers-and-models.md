@@ -6,7 +6,7 @@ Everything is under **AI Studio** in the sidebar: **Providers**, **LLM Models**,
 
 ## Adding a provider
 
-Open **Providers** and press **Add Provider**. Fill in:
+Open **Providers** and press **Add Provider**. (New to this? **Setup guide**, next to it, walks you through connecting a model and meeting a character.) Fill in:
 
 | Field | Meaning |
 |---|---|

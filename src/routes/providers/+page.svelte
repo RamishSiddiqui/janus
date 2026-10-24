@@ -5,6 +5,7 @@
   import Skeleton from '#lib/components/Skeleton.svelte';
   import SplitHeading from '#lib/components/SplitHeading.svelte';
   import { success, error as toastError } from '#lib/stores/toast.js';
+  import { openSetupGuide } from '#lib/stores/setupGuide.js';
   import { handleIpcError } from '#lib/utils/error.js';
   import { humanizeProviderError } from '#lib/utils/providerError.js';
   import { HORDE_SAMPLERS } from '#lib/constants/aiHorde.js';
@@ -352,10 +353,20 @@
       <h1 class="hdr-title"><SplitHeading text="Providers" /></h1>
       <span class="hdr-sub">Manage API credentials and connections</span>
     </div>
-    <button class="btn-add" onclick={() => (showAddForm = !showAddForm)} aria-label="Add provider">
-      <Icon name={showAddForm ? 'x' : 'plus'} size={13} color="#fff" />
-      {showAddForm ? 'Cancel' : 'Add Provider'}
-    </button>
+    <div class="hdr-actions">
+      <button
+        class="btn-guide"
+        onclick={openSetupGuide}
+        title="Walk through connecting a model and meeting a character"
+      >
+        <Icon name="plug" size={13} />
+        Setup guide
+      </button>
+      <button class="btn-add" onclick={() => (showAddForm = !showAddForm)} aria-label="Add provider">
+        <Icon name={showAddForm ? 'x' : 'plus'} size={13} color="#fff" />
+        {showAddForm ? 'Cancel' : 'Add Provider'}
+      </button>
+    </div>
   </header>
 
   <!-- Add Provider Slide-down Form -->
@@ -1011,6 +1022,40 @@
     color: #4a4a6a;
   }
 
+  .hdr-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  @media (max-width: 768px) {
+    .hdr {
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .hdr-actions {
+      width: 100%;
+    }
+  }
+  .btn-guide {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    background: transparent;
+    color: #a78bfa;
+    border: 1px solid rgba(139, 92, 246, 0.35);
+    font-weight: 600;
+    font-size: 13px;
+    font-family: var(--font-body);
+    transition: all 180ms ease;
+  }
+  .btn-guide:hover {
+    background: rgba(139, 92, 246, 0.12);
+    border-color: rgba(139, 92, 246, 0.6);
+  }
   .btn-add {
     display: flex;
     align-items: center;

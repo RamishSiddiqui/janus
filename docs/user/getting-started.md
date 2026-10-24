@@ -19,7 +19,7 @@ On first launch the setup guide asks where the AI should come from. Pick one:
 
 The guide tests the connection, lists the models it finds, and saves your choice. If the test fails, the message says what went wrong (wrong key, server not running, wrong address).
 
-You can skip the guide and add providers later under **AI Studio, Providers**. Other providers (Anthropic, Gemini, Groq, DeepSeek and more) are added there.
+You can skip the guide and add providers later under **AI Studio, Providers**. Other providers (Anthropic, Gemini, Groq, DeepSeek and more) are added there. To run the guide again, press **Setup guide** at the top of that page.
 
 ## 2. Start a chat
 

@@ -72,3 +72,12 @@ export function rankModels(models: string[]): string[] {
 export function shouldShowWizard(onboardingDone: boolean, llmProviderCount: number): boolean {
   return !onboardingDone && llmProviderCount === 0;
 }
+
+/**
+ * Re-running the guide must not add a second copy of a starter character the
+ * user already has. Matches on the name, ignoring case and surrounding spaces.
+ */
+export function findExistingCharacter<T extends { name: string }>(characters: T[], name: string): T | undefined {
+  const wanted = name.trim().toLowerCase();
+  return characters.find(c => c.name.trim().toLowerCase() === wanted);
+}

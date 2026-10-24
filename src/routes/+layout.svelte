@@ -23,6 +23,7 @@
   } from '#lib/services/webBridge.js';
   import { shouldShowWizard } from '#lib/utils/onboarding.js';
   import { settings } from '#lib/stores/settings.js';
+  import { setupGuideRequested } from '#lib/stores/setupGuide.js';
   import { initMultiCharListener, cleanupMultiCharListener } from '#lib/stores/chat.js';
   import { initTtsPlaybackListener, cleanupTtsPlaybackListener } from '#lib/stores/ttsPlayback.js';
   import { initFrontendLogCapture } from '#lib/stores/logs.js';
@@ -226,8 +227,13 @@
 {#if webMode && !webUser && gateStatus}
   <WebGate status={gateStatus} onenter={u => (webUser = u)} />
 {:else}
-  {#if showWizard}
-    <FirstRunWizard onclose={() => (showWizard = false)} />
+  {#if showWizard || $setupGuideRequested}
+    <FirstRunWizard
+      onclose={() => {
+        showWizard = false;
+        setupGuideRequested.set(false);
+      }}
+    />
   {/if}
 
   <div class="app-frame">
