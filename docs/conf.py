@@ -1,5 +1,7 @@
 """Sphinx configuration for the Janus documentation."""
 
+import os
+
 project = "Janus"
 author = "Janus contributors"
 copyright = "2026, Janus contributors (AGPL-3.0-or-later)"
@@ -19,6 +21,10 @@ myst_enable_extensions = ["colon_fence"]
 
 html_theme = "furo"
 html_title = "Janus"
+# On Read the Docs this is the canonical address of the project's default
+# version, so search engines index that one instead of every release's copy.
+# Anywhere else (local builds, CI) it stays empty and adds nothing.
+html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 html_static_path = ["_static"]
 html_theme_options = {
     "source_repository": "https://github.com/RamishSiddiqui/janus/",
