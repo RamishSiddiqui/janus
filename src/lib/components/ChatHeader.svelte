@@ -5,23 +5,36 @@
   export type ExplorerView = 'lore' | 'cast' | 'persona';
 
   let {
-    characterName, modelName, avatarUrl = null, showContextPanel = true,
+    characterName,
+    modelName,
+    avatarUrl = null,
+    showContextPanel = true,
     additionalCharacters = [],
     characterId = null,
     conversationId = null,
     activeExplorerView = null,
     onOpenExplorer,
-    onTogglePanel, onOpenGallery,
+    onTogglePanel,
+    onOpenGallery,
     parentConversationId = null,
     parentConversationTitle = null,
     onNavigateToParent,
   }: {
-    characterName: string; modelName: string; avatarUrl?: string | null;
-    showContextPanel?: boolean; onTogglePanel: () => void;
+    characterName: string;
+    modelName: string;
+    avatarUrl?: string | null;
+    showContextPanel?: boolean;
+    onTogglePanel: () => void;
     onGenerateScene?: () => void;
     /** Opens the scene gallery for the current conversation. */
     onOpenGallery?: () => void;
-    additionalCharacters?: { id: string; name: string; description: string; avatarUrl: string | null; avatarColor: string }[];
+    additionalCharacters?: {
+      id: string;
+      name: string;
+      description: string;
+      avatarUrl: string | null;
+      avatarColor: string;
+    }[];
     characterId?: string | null;
     conversationId?: string | null;
     /** Which full-chat-area explorer view (if any) is currently open —
@@ -80,19 +93,37 @@
           aria-label="This is a branched conversation. Click to go to the source."
         >
           <!-- Git-branch icon -->
-          <svg class="ch-branch-pill-icon" width="10" height="10" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="6" y1="3" x2="6" y2="15"/>
-            <circle cx="18" cy="6" r="3"/>
-            <circle cx="6" cy="18" r="3"/>
-            <path d="M18 9a9 9 0 0 1-9 9"/>
+          <svg
+            class="ch-branch-pill-icon"
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="6" y1="3" x2="6" y2="15" />
+            <circle cx="18" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M18 9a9 9 0 0 1-9 9" />
           </svg>
           <span class="ch-branch-pill-label">Branched from</span>
           <span class="ch-branch-pill-title">{parentConversationTitle ?? 'previous conversation'}</span>
           <!-- Hover arrow -->
-          <svg class="ch-branch-pill-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"/>
+          <svg
+            class="ch-branch-pill-arrow"
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="9 18 15 12 9 6" />
           </svg>
           <span class="ch-branch-shimmer"></span>
         </button>
@@ -116,22 +147,37 @@
     {/if}
   </div>
   <div class="ch-right" role="toolbar" aria-label="Chat tools">
-    <button class="ch-btn" class:active={activeExplorerView === 'lore'}
-      title="Lorebook" aria-label="Lorebook" aria-pressed={activeExplorerView === 'lore'}
-      onclick={() => toggleExplorer('lore')}>
+    <button
+      class="ch-btn"
+      class:active={activeExplorerView === 'lore'}
+      title="Lorebook"
+      aria-label="Lorebook"
+      aria-pressed={activeExplorerView === 'lore'}
+      onclick={() => toggleExplorer('lore')}
+    >
       <Icon name="book-open" size={15} color={activeExplorerView === 'lore' ? '#c4a1ff' : '#6b6b8a'} />
     </button>
 
-    <button class="ch-btn" class:active={activeExplorerView === 'cast'}
-      title="Cast" aria-label="Cast" aria-pressed={activeExplorerView === 'cast'}
-      onclick={() => toggleExplorer('cast')}>
+    <button
+      class="ch-btn"
+      class:active={activeExplorerView === 'cast'}
+      title="Cast"
+      aria-label="Cast"
+      aria-pressed={activeExplorerView === 'cast'}
+      onclick={() => toggleExplorer('cast')}
+    >
       <Icon name="users" size={15} color={activeExplorerView === 'cast' ? '#c4a1ff' : '#6b6b8a'} />
       {#if npcNeedsAttention}<span class="ch-btn-dot" aria-label="Needs attention"></span>{/if}
     </button>
 
-    <button class="ch-btn" class:active={activeExplorerView === 'persona'}
-      title="Persona" aria-label="Persona" aria-pressed={activeExplorerView === 'persona'}
-      onclick={() => toggleExplorer('persona')}>
+    <button
+      class="ch-btn"
+      class:active={activeExplorerView === 'persona'}
+      title="Persona"
+      aria-label="Persona"
+      aria-pressed={activeExplorerView === 'persona'}
+      onclick={() => toggleExplorer('persona')}
+    >
       <Icon name="user" size={15} color={activeExplorerView === 'persona' ? '#c4a1ff' : '#6b6b8a'} />
     </button>
 
@@ -140,7 +186,14 @@
          it depends on this panel's own data-loading effect running
          continuously, not just while that view happens to be open. -->
     <div class="ch-hidden-mount" aria-hidden="true">
-      <ContextNpcPanel {conversationId} {characterId} {characterName} primaryAvatarUrl={avatarUrl} {additionalCharacters} onAttentionChange={(v) => npcNeedsAttention = v} />
+      <ContextNpcPanel
+        {conversationId}
+        {characterId}
+        {characterName}
+        primaryAvatarUrl={avatarUrl}
+        {additionalCharacters}
+        onAttentionChange={v => (npcNeedsAttention = v)}
+      />
     </div>
 
     <div class="ch-tools-divider" aria-hidden="true"></div>
@@ -150,8 +203,14 @@
         <Icon name="image" size={15} color="#6b6b8a" />
       </button>
     {/if}
-    <button class="ch-btn" class:active={showContextPanel} title="Context Panel"
-      aria-label="Toggle context panel" aria-pressed={showContextPanel} onclick={onTogglePanel}>
+    <button
+      class="ch-btn"
+      class:active={showContextPanel}
+      title="Context Panel"
+      aria-label="Toggle context panel"
+      aria-pressed={showContextPanel}
+      onclick={onTogglePanel}
+    >
       <Icon name="info" size={15} color={showContextPanel ? '#c4a1ff' : '#6b6b8a'} />
     </button>
   </div>
@@ -159,10 +218,14 @@
 
 <style>
   .ch {
-    display: flex; align-items: center; justify-content: space-between;
-    min-height: 60px; padding: 10px 24px; flex-shrink: 0;
-    background: linear-gradient(180deg, rgba(12,12,30,0.95), rgba(9,9,26,0.9));
-    border-bottom: 1px solid rgba(139,92,246,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 60px;
+    padding: 10px 24px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, rgba(12, 12, 30, 0.95), rgba(9, 9, 26, 0.9));
+    border-bottom: 1px solid rgba(139, 92, 246, 0.08);
     backdrop-filter: blur(12px);
     position: relative;
     /* backdrop-filter alone creates a stacking context, but with no explicit
@@ -174,102 +237,203 @@
     z-index: 30;
   }
   .ch::after {
-    content: ''; position: absolute; bottom: 0; left: 24px; right: 24px; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(139,92,246,0.15), transparent);
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 24px;
+    right: 24px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.15), transparent);
   }
 
-  .ch-left { display: flex; align-items: center; gap: 14px; }
+  .ch-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
 
   .ch-ava {
-    width: 38px; height: 38px; min-width: 38px; min-height: 38px;
-    border-radius: 50%; aspect-ratio: 1;
-    background: linear-gradient(135deg, #8B5CF6, #bf40ff);
-    flex-shrink: 0; overflow: hidden; position: relative;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    border-radius: 50%;
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #8b5cf6, #bf40ff);
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
   }
-  .ch-ava-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+  .ch-ava-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 50%;
+  }
   .ch-ava-ring {
-    position: absolute; inset: -3px; border-radius: 50%;
-    border: 1.5px solid rgba(139,92,246,0.2); pointer-events: none;
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(139, 92, 246, 0.2);
+    pointer-events: none;
   }
 
-  .ch-info { display: flex; flex-direction: column; gap: 3px; }
-  .ch-name { font-size: var(--text-lg); font-weight: 650; color: #e8e0ff; letter-spacing: -0.2px; }
+  .ch-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .ch-name {
+    font-size: var(--text-lg);
+    font-weight: 650;
+    color: #e8e0ff;
+    letter-spacing: -0.2px;
+  }
 
-  .ch-status { display: flex; align-items: center; gap: 5px; }
+  .ch-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
   .ch-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: #10B981; box-shadow: 0 0 6px rgba(16,185,129,0.4);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
     animation: dotPulse 2.5s ease-in-out infinite;
   }
-  @keyframes dotPulse { 0%,100% { opacity: 0.7; } 50% { opacity: 1; } }
-  .ch-model { font-size: var(--text-sm); color: #5a5a7a; font-family: var(--font-mono); }
+  @keyframes dotPulse {
+    0%,
+    100% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  .ch-model {
+    font-size: var(--text-sm);
+    color: #5a5a7a;
+    font-family: var(--font-mono);
+  }
 
   /* ── Collaborator Pill ── */
   .ch-collab {
-    display: flex; align-items: center; gap: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .ch-collab-divider {
-    width: 1px; height: 28px;
-    background: linear-gradient(180deg, transparent, rgba(0,242,255,0.2), transparent);
+    width: 1px;
+    height: 28px;
+    background: linear-gradient(180deg, transparent, rgba(0, 242, 255, 0.2), transparent);
   }
   .ch-collab-group {
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 5px 12px 5px 6px;
     border-radius: 20px;
-    background: rgba(0,242,255,0.06);
-    border: 1px solid rgba(0,242,255,0.12);
+    background: rgba(0, 242, 255, 0.06);
+    border: 1px solid rgba(0, 242, 255, 0.12);
     transition: all 200ms var(--ease-out);
   }
   .ch-collab-group:hover {
-    background: rgba(0,242,255,0.1);
-    border-color: rgba(0,242,255,0.25);
+    background: rgba(0, 242, 255, 0.1);
+    border-color: rgba(0, 242, 255, 0.25);
   }
   .ch-collab-ava {
-    width: 24px; height: 24px; border-radius: 50%;
-    overflow: hidden; flex-shrink: 0;
-    border: 1.5px solid rgba(0,242,255,0.2);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(0, 242, 255, 0.2);
     transition: transform 200ms var(--ease-spring);
   }
-  .ch-collab-ava + .ch-collab-ava { margin-left: -8px; }
-  .ch-collab-group:hover .ch-collab-ava { transform: scale(1.08); }
-  .ch-collab-ava-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ch-collab-ava + .ch-collab-ava {
+    margin-left: -8px;
+  }
+  .ch-collab-group:hover .ch-collab-ava {
+    transform: scale(1.08);
+  }
+  .ch-collab-ava-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
   .ch-collab-label {
-    font-size: 11px; font-weight: 600; color: #00d4e0;
-    white-space: nowrap; letter-spacing: -0.1px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #00d4e0;
+    white-space: nowrap;
+    letter-spacing: -0.1px;
     font-family: var(--font-body);
   }
 
-  .ch-right { display: flex; align-items: center; gap: 6px; }
+  .ch-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .ch-tools-divider {
-    width: 1px; height: 20px; margin: 0 2px;
-    background: rgba(139,92,246,0.12);
+    width: 1px;
+    height: 20px;
+    margin: 0 2px;
+    background: rgba(139, 92, 246, 0.12);
   }
   .ch-btn {
-    width: 34px; height: 34px; border-radius: 10px;
-    border: 1px solid rgba(139,92,246,0.08); background: transparent;
-    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(139, 92, 246, 0.08);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
     transition: all 180ms var(--ease-out);
     position: relative;
   }
   .ch-btn:hover {
-    background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.15);
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.15);
     transform: translateY(-1px);
   }
   .ch-btn.active {
-    background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25);
-    box-shadow: 0 0 12px rgba(139,92,246,0.15);
+    background: rgba(139, 92, 246, 0.12);
+    border-color: rgba(139, 92, 246, 0.25);
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
   }
   .ch-btn-dot {
-    position: absolute; top: 4px; right: 4px;
-    width: 6px; height: 6px; border-radius: 50%;
-    background: #F59E0B;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #f59e0b;
     animation: chBtnPulse 1.1s ease-in-out infinite;
   }
   @keyframes chBtnPulse {
-    0%, 100% { opacity: 0.3; transform: scale(0.75); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
-    50%      { opacity: 1;   transform: scale(1);    box-shadow: 0 0 6px 2px rgba(245,158,11,0.35); }
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.75);
+      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: 0 0 6px 2px rgba(245, 158, 11, 0.35);
+    }
   }
-  .ch-hidden-mount { display: none; }
+  .ch-hidden-mount {
+    display: none;
+  }
 
   /* ── Branch Lineage Pill ── */
   .ch-info {
@@ -295,8 +459,14 @@
   }
 
   @keyframes branchPillIn {
-    from { opacity: 0; transform: translateY(4px) scale(0.95); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .ch-branch-pill:hover {
@@ -314,12 +484,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(
-      105deg,
-      transparent 30%,
-      rgba(0, 242, 255, 0.09) 50%,
-      transparent 70%
-    );
+    background: linear-gradient(105deg, transparent 30%, rgba(0, 242, 255, 0.09) 50%, transparent 70%);
     background-size: 200% 100%;
     background-position: -100% 0;
     pointer-events: none;
@@ -373,7 +538,9 @@
     flex-shrink: 0;
     opacity: 0;
     transform: translateX(-4px);
-    transition: opacity 180ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition:
+      opacity 180ms ease,
+      transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   .ch-branch-pill:hover .ch-branch-pill-arrow {
     opacity: 1;
@@ -382,11 +549,31 @@
 
   /* Phones: keep the header to one compact row, with the model name cut short. */
   @media (max-width: 768px) {
-    .ch-left { min-width: 0; flex: 1 1 0; gap: 10px; }
-    .ch-info { min-width: 0; }
-    .ch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ch-status { min-width: 0; }
-    .ch-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-    .ch-right { flex-shrink: 0; gap: 4px; }
+    .ch-left {
+      min-width: 0;
+      flex: 1 1 0;
+      gap: 10px;
+    }
+    .ch-info {
+      min-width: 0;
+    }
+    .ch-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ch-status {
+      min-width: 0;
+    }
+    .ch-model {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .ch-right {
+      flex-shrink: 0;
+      gap: 4px;
+    }
   }
 </style>

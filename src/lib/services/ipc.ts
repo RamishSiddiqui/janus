@@ -115,7 +115,7 @@ export async function updateCharacter(
   id: string,
   name?: string,
   data?: Record<string, unknown>,
-  avatarPath?: string
+  avatarPath?: string,
 ): Promise<Character> {
   return safeInvoke<Character>('update_character', {
     id,
@@ -165,7 +165,7 @@ export async function updatePersona(
   id: string,
   name?: string,
   data?: Record<string, unknown>,
-  avatarPath?: string
+  avatarPath?: string,
 ): Promise<Persona> {
   return safeInvoke<Persona>('update_persona', {
     id,
@@ -233,7 +233,11 @@ export async function debugRunNpcDetection(conversationId: string, aiResponse: s
 }
 
 /** Generates a portrait for an NPC via the configured image provider. A no-op (character returned unchanged) if none is configured. */
-export async function generateNpcPortrait(characterId: string, conversationId: string, autoApprove: boolean): Promise<Character> {
+export async function generateNpcPortrait(
+  characterId: string,
+  conversationId: string,
+  autoApprove: boolean,
+): Promise<Character> {
   return safeInvoke<Character>('generate_npc_portrait', { characterId, conversationId, autoApprove });
 }
 
@@ -248,7 +252,10 @@ export async function getBackendLogs(lines?: number): Promise<string> {
 }
 
 /** One page of backend log lines read backward from `cursor` (a byte offset; omit for the newest lines). Used to load the Logging tab's viewer incrementally as the user scrolls up, instead of reading the whole file at once. */
-export async function getBackendLogsPage(cursor?: number, limit?: number): Promise<{ lines: string[]; nextCursor: number | null }> {
+export async function getBackendLogsPage(
+  cursor?: number,
+  limit?: number,
+): Promise<{ lines: string[]; nextCursor: number | null }> {
   return safeInvoke('get_backend_logs_page', { cursor: cursor ?? null, limit: limit ?? null });
 }
 
@@ -275,8 +282,16 @@ export async function listDataBackups(): Promise<BackupFileInfo[]> {
 export type { ProfileRefreshResult };
 
 /** Refreshes an auto-detected character's description/personality/scenario against how they've actually appeared in this conversation's story so far. `systemPrompt` is the user-editable override from Settings > Prompts > Character Profile Refresh — pass undefined to use the built-in default. If the character is shared across multiple conversations, the refresh is saved as a conversation-scoped memory instead of touching the shared card (see `ProfileRefreshResult.scope`). */
-export async function refreshCharacterProfile(characterId: string, conversationId: string, systemPrompt?: string): Promise<ProfileRefreshResult> {
-  return safeInvoke<ProfileRefreshResult>('refresh_character_profile', { characterId, conversationId, systemPrompt: systemPrompt ?? null });
+export async function refreshCharacterProfile(
+  characterId: string,
+  conversationId: string,
+  systemPrompt?: string,
+): Promise<ProfileRefreshResult> {
+  return safeInvoke<ProfileRefreshResult>('refresh_character_profile', {
+    characterId,
+    conversationId,
+    systemPrompt: systemPrompt ?? null,
+  });
 }
 
 /** Approves a pending NPC portrait — the avatar image itself is unchanged. */
@@ -299,7 +314,7 @@ export async function getCastMemoryGraph(conversationId: string): Promise<Memory
 export async function createConversation(
   characterId?: string,
   title?: string,
-  personaId?: string
+  personaId?: string,
 ): Promise<Conversation> {
   return safeInvoke<Conversation>('create_conversation', {
     characterId: characterId ?? null,
@@ -355,7 +370,10 @@ export async function setActiveMessage(conversationId: string, messageId: string
 }
 
 /** Set per-conversation memory scope: 'character' (shared), 'conversation' (isolated), or 'none' (disabled). */
-export async function setMemoryScope(conversationId: string, scope: 'character' | 'conversation' | 'none'): Promise<void> {
+export async function setMemoryScope(
+  conversationId: string,
+  scope: 'character' | 'conversation' | 'none',
+): Promise<void> {
   return safeInvoke<void>('set_memory_scope', { conversationId, scope });
 }
 
@@ -384,10 +402,7 @@ export async function branchConversation(
 export type { CharacterState };
 
 /** Returns the current emotional state for a character in a conversation, or null if not yet set. */
-export async function getCharacterState(
-  characterId:    string,
-  conversationId: string,
-): Promise<CharacterState | null> {
+export async function getCharacterState(characterId: string, conversationId: string): Promise<CharacterState | null> {
   return safeInvoke<CharacterState | null>('get_character_state', {
     characterId,
     conversationId,
@@ -396,13 +411,13 @@ export async function getCharacterState(
 
 /** Upserts the emotional state — creates on first call, updates on subsequent calls. */
 export async function upsertCharacterState(
-  characterId:     string,
-  conversationId:  string,
-  mood:            number,
-  trust:           number,
-  arousal:         number,
+  characterId: string,
+  conversationId: string,
+  mood: number,
+  trust: number,
+  arousal: number,
   dominantEmotion: string,
-  stateSummary:    string,
+  stateSummary: string,
 ): Promise<CharacterState> {
   return safeInvoke<CharacterState>('upsert_character_state', {
     characterId,
@@ -436,7 +451,7 @@ export async function createMessage(
   role: 'user' | 'assistant' | 'system',
   content: string,
   parentId?: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ): Promise<Message> {
   return safeInvoke<Message>('create_message', {
     conversationId,
@@ -470,7 +485,7 @@ export async function createProvider(
   providerType: string,
   adapter: string,
   config: Record<string, unknown>,
-  isDefault?: boolean
+  isDefault?: boolean,
 ): Promise<ProviderConfig> {
   return safeInvoke<ProviderConfig>('create_provider', {
     name,
@@ -494,7 +509,7 @@ export async function listProviders(providerType?: string): Promise<ProviderConf
 export async function updateProvider(
   id: string,
   name?: string,
-  config?: Record<string, unknown>
+  config?: Record<string, unknown>,
 ): Promise<ProviderConfig> {
   return safeInvoke<ProviderConfig>('update_provider', {
     id,
@@ -544,7 +559,10 @@ export async function toggleModelEnabled(
   enabled: boolean,
 ): Promise<void> {
   return safeInvoke<void>('toggle_model_enabled', {
-    providerId, modelId, modelType, enabled,
+    providerId,
+    modelId,
+    modelType,
+    enabled,
   });
 }
 
@@ -655,10 +673,8 @@ export async function cancelGeneration(conversationId: string): Promise<void> {
  * Subscribes to chat stream events from the backend.
  * Returns an unlisten function to stop listening.
  */
-export async function onChatStream(
-  callback: (event: StreamEvent) => void
-): Promise<UnlistenFn> {
-  return listen<StreamEvent>('chat-stream', (event) => {
+export async function onChatStream(callback: (event: StreamEvent) => void): Promise<UnlistenFn> {
+  return listen<StreamEvent>('chat-stream', event => {
     callback(event.payload);
   });
 }
@@ -785,19 +801,15 @@ export async function ttsReplayMessage(
 /** Subscribes to per-sentence synthesized audio emitted during a streamed
  *  chat response. Only fires for a conversation whose responding character
  *  has a `voice_id` assigned. Returns an unlisten function. */
-export async function onTtsChunk(
-  callback: (event: TtsChunkEvent) => void
-): Promise<UnlistenFn> {
-  return listen<TtsChunkEvent>('tts-chunk', (event) => {
+export async function onTtsChunk(callback: (event: TtsChunkEvent) => void): Promise<UnlistenFn> {
+  return listen<TtsChunkEvent>('tts-chunk', event => {
     callback(event.payload);
   });
 }
 
 /** Subscribes to model/voice-pack/runtime download progress. */
-export async function onTtsDownloadProgress(
-  callback: (event: TtsDownloadProgressEvent) => void
-): Promise<UnlistenFn> {
-  return listen<TtsDownloadProgressEvent>('tts-download-progress', (event) => {
+export async function onTtsDownloadProgress(callback: (event: TtsDownloadProgressEvent) => void): Promise<UnlistenFn> {
+  return listen<TtsDownloadProgressEvent>('tts-download-progress', event => {
     callback(event.payload);
   });
 }
@@ -850,7 +862,7 @@ export async function generateScene(
      *  tokens — ignored by every other provider adapter. See
      *  `listSceneCastMembers` for where the picker's options come from. */
     characterImages?: { characterId: string; characterName: string; relativePath: string }[];
-  }
+  },
 ): Promise<Scene> {
   return safeInvoke<Scene>('generate_scene', {
     conversationId,
@@ -889,7 +901,7 @@ export async function generateVideoScene(
     /** Cast portraits for multi-character reference — see `generateScene`.
      *  WanGP is currently the only adapter that acts on this for video. */
     characterImages?: { characterId: string; characterName: string; relativePath: string }[];
-  }
+  },
 ): Promise<Scene> {
   return safeInvoke<Scene>('generate_video_scene', {
     conversationId,
@@ -952,7 +964,7 @@ export async function getSceneState(conversationId: string): Promise<SceneState 
 
 export async function upsertSceneState(
   conversationId: string,
-  update: Partial<Omit<SceneState, 'id' | 'conversation_id' | 'updated_at'>>
+  update: Partial<Omit<SceneState, 'id' | 'conversation_id' | 'updated_at'>>,
 ): Promise<SceneState> {
   return safeInvoke<SceneState>('upsert_scene_state', {
     conversationId,
@@ -1007,7 +1019,7 @@ export async function createImagePreset(
      *  single lever for composition/anatomy fixes, ~2x generation time/cost. */
     hiresFix?: boolean;
     hiresFixDenoisingStrength?: number;
-  } = {}
+  } = {},
 ): Promise<ImagePreset> {
   return safeInvoke<ImagePreset>('create_image_preset', {
     name,
@@ -1044,7 +1056,7 @@ export async function updateImagePreset(
     postProcessing?: string[];
     hiresFix?: boolean;
     hiresFixDenoisingStrength?: number;
-  }
+  },
 ): Promise<ImagePreset> {
   return safeInvoke<ImagePreset>('update_image_preset', {
     id,
@@ -1101,10 +1113,7 @@ export async function addConversationCharacter(
   });
 }
 
-export async function removeConversationCharacter(
-  conversationId: string,
-  characterId: string,
-): Promise<void> {
+export async function removeConversationCharacter(conversationId: string, characterId: string): Promise<void> {
   return safeInvoke<void>('remove_conversation_character', { conversationId, characterId });
 }
 
@@ -1166,7 +1175,13 @@ export async function updateLorebookEntry(
   insertionOrder: number,
 ): Promise<LorebookEntry> {
   return safeInvoke<LorebookEntry>('update_lorebook_entry', {
-    id, name, keys, content, alwaysActive, priority, insertionOrder,
+    id,
+    name,
+    keys,
+    content,
+    alwaysActive,
+    priority,
+    insertionOrder,
   });
 }
 
@@ -1214,10 +1229,7 @@ export interface MemoryGraph {
   conversations: MemoryGraphConversation[];
 }
 
-export async function listMemories(
-  characterId?: string,
-  conversationId?: string,
-): Promise<Memory[]> {
+export async function listMemories(characterId?: string, conversationId?: string): Promise<Memory[]> {
   return safeInvoke<Memory[]>('list_memories', {
     characterId: characterId ?? null,
     conversationId: conversationId ?? null,
@@ -1339,9 +1351,7 @@ export async function rebuildEmbeddingIndex(
   });
 }
 
-export async function backfillMissingEmbeddings(
-  conversationId?: string | null,
-): Promise<EmbeddingIndexStatus> {
+export async function backfillMissingEmbeddings(conversationId?: string | null): Promise<EmbeddingIndexStatus> {
   return safeInvoke<EmbeddingIndexStatus>('backfill_missing_embeddings', {
     conversationId: conversationId ?? null,
   });
@@ -1403,10 +1413,7 @@ export async function authStatus(): Promise<AccountStatus> {
   return safeInvoke<AccountStatus>('auth_status');
 }
 
-export async function authRegister(
-  username: string,
-  passphrase: string
-): Promise<AccountCreatedResult> {
+export async function authRegister(username: string, passphrase: string): Promise<AccountCreatedResult> {
   return safeInvoke<AccountCreatedResult>('auth_register', { username, passphrase });
 }
 
@@ -1426,10 +1433,7 @@ export async function authListUsers(): Promise<AccountUser[]> {
   return safeInvoke<AccountUser[]>('auth_list_users');
 }
 
-export async function authCreateUser(
-  username: string,
-  temporaryPassphrase: string
-): Promise<AccountCreatedResult> {
+export async function authCreateUser(username: string, temporaryPassphrase: string): Promise<AccountCreatedResult> {
   return safeInvoke<AccountCreatedResult>('auth_create_user', { username, temporaryPassphrase });
 }
 
@@ -1441,10 +1445,6 @@ export async function webStatus(): Promise<WebAccessStatus> {
   return safeInvoke<WebAccessStatus>('web_status');
 }
 
-export async function webSetNetwork(
-  enabled: boolean,
-  lan: boolean,
-  port: number
-): Promise<WebAccessStatus> {
+export async function webSetNetwork(enabled: boolean, lan: boolean, port: number): Promise<WebAccessStatus> {
   return safeInvoke<WebAccessStatus>('web_set_network', { enabled, lan, port });
 }

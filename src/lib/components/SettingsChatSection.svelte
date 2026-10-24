@@ -26,14 +26,22 @@
   <div class="toggle-card">
     <div class="setting-label">
       <span class="setting-name">Streaming Responses</span>
-      <span class="setting-desc">{streamingEnabled ? 'Text appears word-by-word as it generates' : 'Full response appears at once when complete'}</span>
+      <span class="setting-desc"
+        >{streamingEnabled
+          ? 'Text appears word-by-word as it generates'
+          : 'Full response appears at once when complete'}</span
+      >
     </div>
     <button
       class="toggle-switch"
       class:on={streamingEnabled}
       onclick={() => {
         streamingEnabled = !streamingEnabled;
-        success(streamingEnabled ? 'Streaming enabled — responses stream in real-time' : 'Streaming disabled — responses appear when complete');
+        success(
+          streamingEnabled
+            ? 'Streaming enabled — responses stream in real-time'
+            : 'Streaming disabled — responses appear when complete',
+        );
       }}
       role="switch"
       aria-checked={streamingEnabled}
@@ -46,7 +54,11 @@
   <div class="toggle-card">
     <div class="setting-label">
       <span class="setting-name">Show Model Thinking</span>
-      <span class="setting-desc">{showThinking ? 'Reasoning models show a collapsible "Thinking" trace above their reply' : 'Reasoning is hidden entirely — only the in-character reply is shown'}</span>
+      <span class="setting-desc"
+        >{showThinking
+          ? 'Reasoning models show a collapsible "Thinking" trace above their reply'
+          : 'Reasoning is hidden entirely — only the in-character reply is shown'}</span
+      >
     </div>
     <button
       class="toggle-switch"
@@ -71,7 +83,7 @@
     <button
       class="toggle-switch"
       class:on={autoGenerateImages}
-      onclick={() => autoGenerateImages = !autoGenerateImages}
+      onclick={() => (autoGenerateImages = !autoGenerateImages)}
       role="switch"
       aria-checked={autoGenerateImages}
       aria-label="Toggle auto-generate scene images"
@@ -83,7 +95,11 @@
   <div class="toggle-card">
     <div class="setting-label">
       <span class="setting-name">Auto-Save Memories</span>
-      <span class="setting-desc">{autoSaveMemories ? 'Key events are extracted every few messages' : 'Memories are only saved when pinned manually'}</span>
+      <span class="setting-desc"
+        >{autoSaveMemories
+          ? 'Key events are extracted every few messages'
+          : 'Memories are only saved when pinned manually'}</span
+      >
     </div>
     <button
       class="toggle-switch"

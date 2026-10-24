@@ -33,10 +33,13 @@ function removeToastFromStore(id: string) {
 }
 
 function startTimer(id: string, duration: number, onExpire: () => void) {
-  const timeoutId = duration > 0 ? setTimeout(() => {
-    timers.delete(id);
-    onExpire();
-  }, duration) : null;
+  const timeoutId =
+    duration > 0
+      ? setTimeout(() => {
+          timers.delete(id);
+          onExpire();
+        }, duration)
+      : null;
   timers.set(id, { timeoutId, remaining: duration, startedAt: Date.now(), onExpire });
 }
 
@@ -71,7 +74,12 @@ export function dismissToast(id: string) {
   removeToastFromStore(id);
 }
 
-export function addToast(message: string, type: Toast['type'] = 'info', duration = 3000, action?: Toast['action']): string {
+export function addToast(
+  message: string,
+  type: Toast['type'] = 'info',
+  duration = 3000,
+  action?: Toast['action'],
+): string {
   const id = `toast-${++counter}`;
   toasts.update(t => [...t, { id, message, type, duration, action }]);
   startTimer(id, duration, () => removeToastFromStore(id));

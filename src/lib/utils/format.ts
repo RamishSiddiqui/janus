@@ -55,7 +55,8 @@ export function formatRoleplayContent(text: string): string {
     });
   });
 
-  const formatted = formattedLines.join('\n')
+  const formatted = formattedLines
+    .join('\n')
     // Double newlines → paragraph break. A single <br/> is enough — block-level
     // action paragraphs (.rp-action-block) already carry their own margin, so
     // doubling up here (as this used to) stacked a full blank line on top of

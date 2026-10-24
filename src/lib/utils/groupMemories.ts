@@ -1,9 +1,9 @@
 /**
  * groupMemories.ts
- * 
+ *
  * Groups consecutive memories within each lane that don't have
  * link events (copy/sync) between them into single logical groups.
- * 
+ *
  * Used by both MemoryTimeline and MemoryGraph to reduce visual clutter.
  */
 
@@ -13,14 +13,14 @@ export interface MemoryItem {
   memory: Memory;
   category: string;
   categoryIcon: string;
-  content: string;  // category-prefix stripped
+  content: string; // category-prefix stripped
 }
 
 export interface MemoryGroup {
-  id: string;             // first memory's id
-  laneId: string;         // 'canon' or conversation_id
+  id: string; // first memory's id
+  laneId: string; // 'canon' or conversation_id
   memories: MemoryItem[];
-  isGroup: boolean;       // true if 2+ memories
+  isGroup: boolean; // true if 2+ memories
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -47,7 +47,7 @@ function parseMemory(m: Memory): MemoryItem {
 
 /**
  * Groups memories by lane, splitting at link boundaries.
- * 
+ *
  * Algorithm:
  * 1. Build a set of memory IDs that are sources of links
  * 2. Sort memories by lane, then chronologically
@@ -56,10 +56,7 @@ function parseMemory(m: Memory): MemoryItem {
  *    in the current group, and the next memory starts a new group
  * 5. Result: array of MemoryGroup, one per contiguous run
  */
-export function groupMemories(
-  memories: Memory[],
-  links: MemoryLink[],
-): MemoryGroup[] {
+export function groupMemories(memories: Memory[], links: MemoryLink[]): MemoryGroup[] {
   // Set of memory IDs that are sources of links (copy/sync)
   const linkSourceIds = new Set(links.map(l => l.source_memory_id));
 
@@ -120,7 +117,7 @@ export interface TimelineGroup {
   laneId: string;
   memories: MemoryItem[];
   isGroup: boolean;
-  time: string;          // first memory's created_at
+  time: string; // first memory's created_at
   sortKey: string;
 }
 
@@ -136,10 +133,7 @@ export interface TimelineLinkRow {
 
 export type TimelineEntry = TimelineGroup | TimelineLinkRow;
 
-export function buildTimelineEntries(
-  memories: Memory[],
-  links: MemoryLink[],
-): TimelineEntry[] {
+export function buildTimelineEntries(memories: Memory[], links: MemoryLink[]): TimelineEntry[] {
   const linkSourceIds = new Set(links.map(l => l.source_memory_id));
   const entries: TimelineEntry[] = [];
 
@@ -194,9 +188,7 @@ export function buildTimelineEntries(
         memLinks.forEach((link, li) => {
           const isSync = link.link_type === 'sync';
           const isTwoWay = link.direction === 'two_way';
-          const label = isSync
-            ? (isTwoWay ? '⇄ sync' : '→ sync')
-            : (isTwoWay ? '⇄ copy' : '→ copy');
+          const label = isSync ? (isTwoWay ? '⇄ sync' : '→ sync') : isTwoWay ? '⇄ copy' : '→ copy';
 
           entries.push({
             type: 'link',

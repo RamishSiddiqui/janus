@@ -15,7 +15,7 @@
     const snapshot = { checkForUpdates: checkForUpdatesOn };
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      settings.update((prev) => ({ ...prev, ...snapshot }));
+      settings.update(prev => ({ ...prev, ...snapshot }));
     }, 50);
   });
 
@@ -38,7 +38,9 @@
 
 <div class="panel-heading animate-fade-in-up stagger-2">
   <span class="panel-heading-title">Updates</span>
-  <span class="panel-heading-desc">Keep Janus current. Installing an update restarts the app and keeps all your data.</span>
+  <span class="panel-heading-desc"
+    >Keep Janus current. Installing an update restarts the app and keeps all your data.</span
+  >
 </div>
 
 <section class="settings-section settings-section-bounded animate-fade-in-up stagger-2">
@@ -71,10 +73,27 @@
   </div>
 
   {#if $updates.status === 'downloading' || $updates.status === 'installing'}
-    <div class="update-progress" role="progressbar" aria-label="Update download" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent ?? undefined}>
-      <div class="update-progress-bar" class:indeterminate={percent == null} style:width={percent == null ? undefined : `${percent}%`}></div>
+    <div
+      class="update-progress"
+      role="progressbar"
+      aria-label="Update download"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow={percent ?? undefined}
+    >
+      <div
+        class="update-progress-bar"
+        class:indeterminate={percent == null}
+        style:width={percent == null ? undefined : `${percent}%`}
+      ></div>
     </div>
-    <span class="setting-desc">{$updates.status === 'installing' ? 'Installing, Janus will restart…' : percent == null ? 'Downloading…' : `Downloading… ${percent}%`}</span>
+    <span class="setting-desc"
+      >{$updates.status === 'installing'
+        ? 'Installing, Janus will restart…'
+        : percent == null
+          ? 'Downloading…'
+          : `Downloading… ${percent}%`}</span
+    >
   {/if}
 
   {#if $updates.status === 'available' && notes.length}
@@ -94,9 +113,19 @@
   <div class="setting-row">
     <div class="setting-label">
       <span class="setting-name">Check for updates automatically</span>
-      <span class="setting-desc">At launch and every few hours. This asks GitHub for the latest release and sends nothing about you or your data.</span>
+      <span class="setting-desc"
+        >At launch and every few hours. This asks GitHub for the latest release and sends nothing about you or your
+        data.</span
+      >
     </div>
-    <button class="toggle-switch" class:on={checkForUpdatesOn} role="switch" aria-checked={checkForUpdatesOn} aria-label="Check for updates automatically" onclick={() => (checkForUpdatesOn = !checkForUpdatesOn)}>
+    <button
+      class="toggle-switch"
+      class:on={checkForUpdatesOn}
+      role="switch"
+      aria-checked={checkForUpdatesOn}
+      aria-label="Check for updates automatically"
+      onclick={() => (checkForUpdatesOn = !checkForUpdatesOn)}
+    >
       <span class="toggle-knob"></span>
     </button>
   </div>
@@ -104,7 +133,10 @@
 
 <style>
   /* The shared outline button stretches to fill its row; these sit at their own width. */
-  button.update-action { flex: 0 0 auto; white-space: nowrap; }
+  button.update-action {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
   .update-progress {
     height: 6px;
     border-radius: 999px;
@@ -122,11 +154,18 @@
     animation: updateSlide 1.2s ease-in-out infinite;
   }
   @keyframes updateSlide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(250%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
-    .update-progress-bar.indeterminate { animation: none; width: 100%; }
+    .update-progress-bar.indeterminate {
+      animation: none;
+      width: 100%;
+    }
   }
   .update-notes {
     margin-top: 6px;
@@ -136,7 +175,13 @@
     font-size: var(--text-sm);
     color: var(--fg-muted);
   }
-  .update-notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+  .update-notes ul {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
   .update-notes-heading {
     font-size: var(--text-xs);
     font-weight: 700;

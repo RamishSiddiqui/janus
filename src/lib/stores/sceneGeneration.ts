@@ -48,7 +48,7 @@ export const sceneGenerations = writable<Record<string, SceneGenerationState>>({
 
 export function getSceneGenerationState(
   all: Record<string, SceneGenerationState>,
-  conversationId: string | null | undefined
+  conversationId: string | null | undefined,
 ): SceneGenerationState {
   if (!conversationId) return EMPTY_STATE;
   return all[conversationId] ?? EMPTY_STATE;
@@ -87,11 +87,11 @@ let listenerReady: Promise<void> | null = null;
 function ensureProgressListener(): Promise<void> {
   if (!listenerReady) {
     listenerReady = import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<{ conversation_id: string } & AiHordeProgress>('ai_horde_progress', (event) => {
+      listen<{ conversation_id: string } & AiHordeProgress>('ai_horde_progress', event => {
         const { conversation_id, ...progress } = event.payload;
         patchState(conversation_id, { isLoading: true, progress });
       });
-      listen<{ conversation_id: string } & WanGpProgress>('wangp_progress', (event) => {
+      listen<{ conversation_id: string } & WanGpProgress>('wangp_progress', event => {
         const { conversation_id, ...progress } = event.payload;
         patchState(conversation_id, { isLoading: true, progress });
       });
@@ -168,11 +168,16 @@ export async function runSceneGeneration(
   conversationId: string,
   prompt: string,
   options?: {
-    messageId?: string; negativePrompt?: string; width?: number; height?: number;
-    modelOverride?: string; referenceImagePath?: string; denoisingStrength?: number;
+    messageId?: string;
+    negativePrompt?: string;
+    width?: number;
+    height?: number;
+    modelOverride?: string;
+    referenceImagePath?: string;
+    denoisingStrength?: number;
     allowNsfw?: boolean;
     characterImages?: { characterId: string; characterName: string; relativePath: string }[];
-  }
+  },
 ) {
   // Set isLoading synchronously, BEFORE awaiting the listener setup — the
   // await below yields to the event loop, and on the very first call
@@ -203,10 +208,16 @@ export async function runVideoSceneGeneration(
   conversationId: string,
   prompt: string,
   options?: {
-    messageId?: string; negativePrompt?: string; width?: number; height?: number;
-    durationSeconds?: number; fps?: number; modelOverride?: string; allowNsfw?: boolean;
+    messageId?: string;
+    negativePrompt?: string;
+    width?: number;
+    height?: number;
+    durationSeconds?: number;
+    fps?: number;
+    modelOverride?: string;
+    allowNsfw?: boolean;
     characterImages?: { characterId: string; characterName: string; relativePath: string }[];
-  }
+  },
 ) {
   patchState(conversationId, { isLoading: true, progress: null });
   await ensureProgressListener();

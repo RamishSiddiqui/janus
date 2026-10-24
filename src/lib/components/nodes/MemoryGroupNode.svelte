@@ -4,13 +4,13 @@
   let { data } = $props();
 
   const categoryMeta: Record<string, { icon: string; label: string }> = {
-    trait:         { icon: '🧬', label: 'Trait' },
-    event:        { icon: '⚡', label: 'Event' },
+    trait: { icon: '🧬', label: 'Trait' },
+    event: { icon: '⚡', label: 'Event' },
     relationship: { icon: '💜', label: 'Relationship' },
-    preference:   { icon: '⭐', label: 'Preference' },
-    goal:         { icon: '🎯', label: 'Goal' },
-    discovery:    { icon: '🔮', label: 'Discovery' },
-    fact:         { icon: '📄', label: 'Fact' },
+    preference: { icon: '⭐', label: 'Preference' },
+    goal: { icon: '🎯', label: 'Goal' },
+    discovery: { icon: '🔮', label: 'Discovery' },
+    fact: { icon: '📄', label: 'Fact' },
   };
 
   /** Parse the first memory for display on the top card face */
@@ -60,7 +60,8 @@
       <!-- Count badge with category dots -->
       <div class="memgroup-footer">
         <span class="memgroup-badge">
-          {count} {count === 1 ? 'memory' : 'memories'}
+          {count}
+          {count === 1 ? 'memory' : 'memories'}
           <span class="cat-dots">
             {#each categoryDots as dot}
               <span class="cat-dot" title={dot.category}></span>
@@ -82,7 +83,10 @@
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
-    font-family: 'Raleway', -apple-system, sans-serif;
+    font-family:
+      'Raleway',
+      -apple-system,
+      sans-serif;
   }
 
   /* Inner wrapper clips the accent strip at the rounded corners */
@@ -131,11 +135,7 @@
   .memgroup-accent-strip {
     width: 3px;
     flex-shrink: 0;
-    background: linear-gradient(
-      180deg,
-      var(--accent),
-      color-mix(in srgb, var(--accent) 25%, transparent)
-    );
+    background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 25%, transparent));
   }
 
   .memgroup-body {
@@ -218,29 +218,29 @@
   }
 
   /* ── Light theme ── */
-  :global([data-theme="light"]) .memgroup-inner {
-    background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(245,242,250,0.95));
-    border-color: rgba(139,92,246,0.1);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  :global([data-theme='light']) .memgroup-inner {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 242, 250, 0.95));
+    border-color: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   }
 
-  :global([data-theme="light"]) .memgroup-node::before {
-    background: linear-gradient(135deg, rgba(250,250,255,0.7), rgba(240,237,248,0.8));
-    border-color: rgba(139,92,246,0.08);
+  :global([data-theme='light']) .memgroup-node::before {
+    background: linear-gradient(135deg, rgba(250, 250, 255, 0.7), rgba(240, 237, 248, 0.8));
+    border-color: rgba(139, 92, 246, 0.08);
     opacity: 0.6;
   }
 
-  :global([data-theme="light"]) .memgroup-node::after {
-    background: linear-gradient(135deg, rgba(248,248,255,0.5), rgba(238,235,246,0.6));
-    border-color: rgba(139,92,246,0.06);
+  :global([data-theme='light']) .memgroup-node::after {
+    background: linear-gradient(135deg, rgba(248, 248, 255, 0.5), rgba(238, 235, 246, 0.6));
+    border-color: rgba(139, 92, 246, 0.06);
     opacity: 0.35;
   }
 
-  :global([data-theme="light"]) .memgroup-text {
+  :global([data-theme='light']) .memgroup-text {
     color: #2a2a3e;
   }
 
-  :global([data-theme="light"]) .memgroup-badge {
+  :global([data-theme='light']) .memgroup-badge {
     background: color-mix(in srgb, var(--accent) 6%, transparent);
   }
 </style>

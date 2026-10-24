@@ -45,11 +45,19 @@ export function dimLabel(n: number | null): string {
 }
 
 const ADAPTER_COLORS: Record<string, string> = {
-  open_router: '#8B5CF6', ollama: '#10B981',
-  open_ai_compatible: '#3B82F6', openai_compatible: '#3B82F6',
-  silicon_flow: '#F59E0B', anthropic: '#D97706', gemini: '#4285F4',
-  deepseek: '#06B6D4', groq: '#F97316', cohere: '#8B5CF6',
-  perplexity: '#10B981', xai: '#EF4444', together: '#6366F1',
+  open_router: '#8B5CF6',
+  ollama: '#10B981',
+  open_ai_compatible: '#3B82F6',
+  openai_compatible: '#3B82F6',
+  silicon_flow: '#F59E0B',
+  anthropic: '#D97706',
+  gemini: '#4285F4',
+  deepseek: '#06B6D4',
+  groq: '#F97316',
+  cohere: '#8B5CF6',
+  perplexity: '#10B981',
+  xai: '#EF4444',
+  together: '#6366F1',
   lm_studio: '#06B6D4',
 };
 

@@ -1,15 +1,7 @@
 <script lang="ts">
   import { getBezierPath } from '@xyflow/svelte';
 
-  let {
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    data,
-  } = $props();
+  let { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data } = $props();
 
   const isSync = $derived(data?.linkType === 'sync');
   const isTwoWay = $derived(data?.direction === 'two_way');
@@ -20,12 +12,18 @@
   // We keep sourceY/targetY (correct vertical) but recenter X on the node.
   // For top/bottom connections, sourceX should equal the center of the node.
   // The simplest fix: just use sourceX as-is but fix via the path.
-  
+
   // Bezier path using the coordinates SvelteFlow gives us
-  let pathResult = $derived(getBezierPath({
-    sourceX, sourceY, targetX, targetY,
-    sourcePosition, targetPosition,
-  }));
+  let pathResult = $derived(
+    getBezierPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition,
+      targetPosition,
+    }),
+  );
 
   let mainPath = $derived(pathResult[0]);
   let labelX = $derived(pathResult[1]);
@@ -35,19 +33,29 @@
   let dx = $derived(targetX - sourceX);
   let dy = $derived(targetY - sourceY);
   let len = $derived(Math.sqrt(dx * dx + dy * dy) || 1);
-  let nx = $derived(-dy / len * offset);
-  let ny = $derived(dx / len * offset);
+  let nx = $derived((-dy / len) * offset);
+  let ny = $derived((dx / len) * offset);
 
-  let path1Result = $derived(getBezierPath({
-    sourceX: sourceX + nx, sourceY: sourceY + ny,
-    targetX: targetX + nx, targetY: targetY + ny,
-    sourcePosition, targetPosition,
-  }));
-  let path2Result = $derived(getBezierPath({
-    sourceX: sourceX - nx, sourceY: sourceY - ny,
-    targetX: targetX - nx, targetY: targetY - ny,
-    sourcePosition, targetPosition,
-  }));
+  let path1Result = $derived(
+    getBezierPath({
+      sourceX: sourceX + nx,
+      sourceY: sourceY + ny,
+      targetX: targetX + nx,
+      targetY: targetY + ny,
+      sourcePosition,
+      targetPosition,
+    }),
+  );
+  let path2Result = $derived(
+    getBezierPath({
+      sourceX: sourceX - nx,
+      sourceY: sourceY - ny,
+      targetX: targetX - nx,
+      targetY: targetY - ny,
+      sourcePosition,
+      targetPosition,
+    }),
+  );
 
   let path1 = $derived(path1Result[0]);
   let path2 = $derived(path2Result[0]);
@@ -58,32 +66,12 @@
 </script>
 
 <!-- Glow underlay -->
-<path
-  d={mainPath}
-  fill="none"
-  stroke={glowColor}
-  stroke-width="12"
-  class="glow-path"
-/>
+<path d={mainPath} fill="none" stroke={glowColor} stroke-width="12" class="glow-path" />
 
 {#if isTwoWay}
   <!-- Two-way: parallel lines with opposite flow -->
-  <path
-    d={path1}
-    fill="none"
-    stroke={color}
-    stroke-width="1.5"
-    stroke-dasharray="6 4"
-    class="flow-line forward"
-  />
-  <path
-    d={path2}
-    fill="none"
-    stroke={color}
-    stroke-width="1.5"
-    stroke-dasharray="6 4"
-    class="flow-line reverse"
-  />
+  <path d={path1} fill="none" stroke={color} stroke-width="1.5" stroke-dasharray="6 4" class="flow-line forward" />
+  <path d={path2} fill="none" stroke={color} stroke-width="1.5" stroke-dasharray="6 4" class="flow-line reverse" />
 
   <!-- Dots flowing forward on path1 -->
   <circle r="3" fill={color} class="flow-dot">
@@ -95,14 +83,7 @@
   </circle>
 {:else}
   <!-- One-way: single animated line -->
-  <path
-    d={mainPath}
-    fill="none"
-    stroke={color}
-    stroke-width="1.5"
-    stroke-dasharray="6 4"
-    class="flow-line forward"
-  />
+  <path d={mainPath} fill="none" stroke={color} stroke-width="1.5" stroke-dasharray="6 4" class="flow-line forward" />
   <circle r="3" fill={color} class="flow-dot">
     <animateMotion dur="2.5s" repeatCount="indefinite" path={mainPath} />
   </circle>
@@ -132,11 +113,15 @@
   }
 
   @keyframes dashFlow {
-    to { stroke-dashoffset: -20; }
+    to {
+      stroke-dashoffset: -20;
+    }
   }
 
   @keyframes dashFlowReverse {
-    to { stroke-dashoffset: 20; }
+    to {
+      stroke-dashoffset: 20;
+    }
   }
 
   .flow-dot {

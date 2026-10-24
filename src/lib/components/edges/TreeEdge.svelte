@@ -1,37 +1,29 @@
 <script lang="ts">
   import { getSmoothStepPath } from '@xyflow/svelte';
 
-  let {
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    data,
-  } = $props();
+  let { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data } = $props();
 
-  let color   = $derived(data?.color  ?? 'rgba(139,92,246,0.4)');
+  let color = $derived(data?.color ?? 'rgba(139,92,246,0.4)');
   let isDashed = $derived(data?.dashed ?? false);
 
-  let pathResult = $derived(getSmoothStepPath({
-    sourceX, sourceY, targetX, targetY,
-    sourcePosition, targetPosition,
-    borderRadius: 16,
-  }));
+  let pathResult = $derived(
+    getSmoothStepPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition,
+      targetPosition,
+      borderRadius: 16,
+    }),
+  );
 
   let edgePath = $derived(pathResult[0]);
 </script>
 
 <!-- Soft glow underlay — skip for dashed/empty edges -->
 {#if !isDashed}
-<path
-  d={edgePath}
-  fill="none"
-  stroke={color}
-  stroke-width="8"
-  class="glow-underlay"
-/>
+  <path d={edgePath} fill="none" stroke={color} stroke-width="8" class="glow-underlay" />
 {/if}
 
 <!-- Main edge path -->
@@ -47,9 +39,9 @@
 
 <!-- Bright dot traveling along the path — skip for dashed/empty edges -->
 {#if !isDashed}
-<circle r="2" class="travel-dot" style="--dot-color: {color};">
-  <animateMotion dur="4s" repeatCount="indefinite" path={edgePath} />
-</circle>
+  <circle r="2" class="travel-dot" style="--dot-color: {color};">
+    <animateMotion dur="4s" repeatCount="indefinite" path={edgePath} />
+  </circle>
 {/if}
 
 <style>

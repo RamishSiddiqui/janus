@@ -26,7 +26,7 @@ function loadSelectedPersonaId(): string | null {
 function createSelectedPersonaStore() {
   const { subscribe, set } = writable<string | null>(loadSelectedPersonaId());
 
-  subscribe((value) => {
+  subscribe(value => {
     if (!browser) return;
     try {
       if (value) {

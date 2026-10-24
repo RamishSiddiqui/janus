@@ -51,7 +51,7 @@
     envelope = peak > envelope ? peak : envelope * 0.7;
     const boosted = Math.min(1, envelope * 2.2);
 
-    levels = barWeights.map((w) => Math.max(REST_LEVEL, boosted * w));
+    levels = barWeights.map(w => Math.max(REST_LEVEL, boosted * w));
     rafId = requestAnimationFrame(tick);
   }
 

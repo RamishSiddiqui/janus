@@ -27,7 +27,7 @@ describe('shouldShowWizard', () => {
 
 describe('starter characters', () => {
   it('are complete and uniquely named', () => {
-    const names = STARTER_CHARACTERS.map((c) => c.data.name);
+    const names = STARTER_CHARACTERS.map(c => c.data.name);
     expect(new Set(names).size).toBe(names.length);
     for (const c of STARTER_CHARACTERS) {
       for (const f of ['name', 'description', 'personality', 'scenario', 'first_mes']) {
@@ -39,7 +39,7 @@ describe('starter characters', () => {
 
 describe('model sources', () => {
   it('give a default address to every source that needs one', () => {
-    for (const s of MODEL_SOURCES.filter((m) => m.needsBaseUrl)) {
+    for (const s of MODEL_SOURCES.filter(m => m.needsBaseUrl)) {
       expect(s.defaultBaseUrl).not.toBe('');
     }
   });

@@ -16,7 +16,11 @@
           <Icon
             name={toast.type === 'success' ? 'check' : toast.type === 'error' ? 'alert-circle' : 'info'}
             size={14}
-            color={toast.type === 'success' ? 'var(--success)' : toast.type === 'error' ? 'var(--danger)' : 'var(--accent-primary)'}
+            color={toast.type === 'success'
+              ? 'var(--success)'
+              : toast.type === 'error'
+                ? 'var(--danger)'
+                : 'var(--accent-primary)'}
           />
         </div>
         <span class="toast-msg">{toast.message}</span>
@@ -99,9 +103,15 @@
     border-radius: inherit;
   }
 
-  .toast-success { --toast-accent: var(--success); }
-  .toast-error   { --toast-accent: var(--danger); }
-  .toast-info    { --toast-accent: var(--accent-primary); }
+  .toast-success {
+    --toast-accent: var(--success);
+  }
+  .toast-error {
+    --toast-accent: var(--danger);
+  }
+  .toast-info {
+    --toast-accent: var(--accent-primary);
+  }
 
   .toast-icon-wrap {
     position: relative;
@@ -141,7 +151,10 @@
     font-size: var(--text-sm);
     font-weight: 700;
     cursor: pointer;
-    transition: background 150ms, border-color 150ms, transform 100ms;
+    transition:
+      background 150ms,
+      border-color 150ms,
+      transform 100ms;
   }
   .toast-action:hover {
     background: rgba(139, 92, 246, 0.24);
@@ -166,7 +179,9 @@
     background: none;
     cursor: pointer;
     opacity: 0.55;
-    transition: opacity 150ms, background 150ms;
+    transition:
+      opacity 150ms,
+      background 150ms;
   }
   .toast-close:hover {
     opacity: 1;
@@ -186,12 +201,12 @@
 
   /* Light theme — glass ground shifts from near-black to near-white,
      everything else (accent line, sheen direction, glows) stays the same. */
-  :global([data-theme="light"]) .toast {
+  :global([data-theme='light']) .toast {
     background: rgba(255, 255, 255, 0.88);
     border-color: rgba(139, 92, 246, 0.1);
     color: #2a2a3e;
   }
-  :global([data-theme="light"]) .toast::after {
+  :global([data-theme='light']) .toast::after {
     background: linear-gradient(160deg, rgba(255, 255, 255, 0.5) 0%, transparent 45%);
   }
 </style>

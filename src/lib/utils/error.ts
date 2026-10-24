@@ -25,7 +25,11 @@ export function extractErrorMessage(err: unknown): string {
       if (typeof db.Serialization === 'string') return `Deserialization: ${db.Serialization}`;
       return JSON.stringify(obj.Db);
     }
-    try { return JSON.stringify(err); } catch { return String(err); }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
   }
   return String(err);
 }

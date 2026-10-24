@@ -9,9 +9,7 @@ describe('highlightSnippetHtml', () => {
 
   it('escapes script and event-handler payloads in message text', () => {
     const out = highlightSnippetHtml('<img src=x onerror=alert(1)> and <mark>hit</mark><script>steal()</script>');
-    expect(out).toBe(
-      '&lt;img src=x onerror=alert(1)&gt; and <mark>hit</mark>&lt;script&gt;steal()&lt;/script&gt;',
-    );
+    expect(out).toBe('&lt;img src=x onerror=alert(1)&gt; and <mark>hit</mark>&lt;script&gt;steal()&lt;/script&gt;');
     expect(out).not.toMatch(/<img|<script/);
   });
 

@@ -156,7 +156,10 @@
         multiple: false,
         filters: [{ name: 'Janus Export', extensions: ['json'] }],
       });
-      if (!selected) { isImporting = false; return; }
+      if (!selected) {
+        isImporting = false;
+        return;
+      }
 
       const { readTextFile } = await import('@tauri-apps/plugin-fs');
       const raw = await readTextFile(selected as string);
@@ -180,12 +183,17 @@
 
       const charIdMap = new Map<string, string>();
       const convIdMap = new Map<string, string>();
-      let charsOk = 0, charsFailed = 0;
-      let loreOk = 0, loreFailed = 0;
-      let convsOk = 0, convsFailed = 0;
-      let msgsOk = 0, msgsFailed = 0;
+      let charsOk = 0,
+        charsFailed = 0;
+      let loreOk = 0,
+        loreFailed = 0;
+      let convsOk = 0,
+        convsFailed = 0;
+      let msgsOk = 0,
+        msgsFailed = 0;
       let castFailed = 0;
-      let memOk = 0, memFailed = 0;
+      let memOk = 0,
+        memFailed = 0;
 
       // 1. Characters
       for (const [i, char] of data.characters.entries()) {
@@ -251,7 +259,13 @@
         for (const msg of sorted) {
           const newParentId = msg.parent_id ? msgIdMap.get(msg.parent_id) : undefined;
           try {
-            const created = await ipc.createMessage(newConvId, msg.role, msg.content, newParentId, msg.metadata ?? undefined);
+            const created = await ipc.createMessage(
+              newConvId,
+              msg.role,
+              msg.content,
+              newParentId,
+              msg.metadata ?? undefined,
+            );
             msgIdMap.set(msg.id, created.id);
             lastCreatedId = created.id;
             msgsOk++;
@@ -261,10 +275,14 @@
           }
         }
         // Restore the active/tip pointer (falls back to the last message created)
-        const origConv = conversations.find((c) => c.id === oldConvId);
+        const origConv = conversations.find(c => c.id === oldConvId);
         const activeNewId = (origConv?.active_message_id && msgIdMap.get(origConv.active_message_id)) || lastCreatedId;
         if (activeNewId) {
-          try { await ipc.setActiveMessage(newConvId, activeNewId); } catch { /* non-fatal */ }
+          try {
+            await ipc.setActiveMessage(newConvId, activeNewId);
+          } catch {
+            /* non-fatal */
+          }
         }
       }
 
@@ -277,7 +295,13 @@
           const newMemberCharId = charIdMap.get(member.character_id);
           if (!newMemberCharId) continue;
           try {
-            await ipc.addConversationCharacter(newConvId, newMemberCharId, member.character_name, member.role, member.talkativeness);
+            await ipc.addConversationCharacter(
+              newConvId,
+              newMemberCharId,
+              member.character_name,
+              member.role,
+              member.talkativeness,
+            );
             if (member.is_active === false) {
               await ipc.toggleCharacterActive(newConvId, newMemberCharId, false);
             }
@@ -313,7 +337,9 @@
       await loadConversations();
 
       const failed = charsFailed + loreFailed + convsFailed + msgsFailed + castFailed + memFailed;
-      success(`Imported ${charsOk} characters, ${convsOk} conversations, ${msgsOk} messages, ${loreOk} lorebook entries, ${memOk} memories`);
+      success(
+        `Imported ${charsOk} characters, ${convsOk} conversations, ${msgsOk} messages, ${loreOk} lorebook entries, ${memOk} memories`,
+      );
       if (failed > 0) {
         toastError(`${failed} item(s) failed to import — check the console for details`);
       }
@@ -327,7 +353,10 @@
 
   /** Clear all conversations after user confirmation */
   async function clearAllConversations() {
-    if (!isTauri) { showClearConfirm = false; return; }
+    if (!isTauri) {
+      showClearConfirm = false;
+      return;
+    }
     try {
       const ipc = await import('#lib/services/ipc.js');
       const convs = await ipc.listConversations();
@@ -393,7 +422,7 @@
     <div class="clear-confirm">
       <span class="clear-warn">This will permanently delete all conversations. Are you sure?</span>
       <div class="button-row">
-        <button class="settings-btn outline" onclick={() => showClearConfirm = false}>Cancel</button>
+        <button class="settings-btn outline" onclick={() => (showClearConfirm = false)}>Cancel</button>
         <button class="settings-btn danger" onclick={clearAllConversations}>
           <Icon name="trash-2" size={14} color="var(--danger)" />
           <span>Yes, Delete All</span>
@@ -401,7 +430,7 @@
       </div>
     </div>
   {:else}
-    <button class="settings-btn danger" onclick={() => showClearConfirm = true}>
+    <button class="settings-btn danger" onclick={() => (showClearConfirm = true)}>
       <Icon name="trash-2" size={14} color="var(--danger)" />
       <span>Clear All Conversations</span>
     </button>
@@ -409,10 +438,19 @@
 
   {#if showPrivacyConfirm}
     <div class="clear-confirm">
-      <span class="clear-warn">Disabling privacy mode may allow future cloud features to sync your data externally. Continue?</span>
+      <span class="clear-warn"
+        >Disabling privacy mode may allow future cloud features to sync your data externally. Continue?</span
+      >
       <div class="button-row">
-        <button class="settings-btn outline" onclick={() => showPrivacyConfirm = false}>Keep Private</button>
-        <button class="settings-btn danger" onclick={() => { localStorageOnly = false; showPrivacyConfirm = false; success('Privacy mode disabled'); }}>
+        <button class="settings-btn outline" onclick={() => (showPrivacyConfirm = false)}>Keep Private</button>
+        <button
+          class="settings-btn danger"
+          onclick={() => {
+            localStorageOnly = false;
+            showPrivacyConfirm = false;
+            success('Privacy mode disabled');
+          }}
+        >
           <Icon name="shield-off" size={14} color="var(--danger)" />
           <span>Disable Privacy</span>
         </button>

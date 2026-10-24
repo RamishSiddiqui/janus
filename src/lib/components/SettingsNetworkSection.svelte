@@ -56,9 +56,7 @@
     if (!web?.bound) return [];
     if (!web.bound.startsWith('0.0.0.0')) return [`http://${web.bound}`];
     const port = web.bound.split(':').pop();
-    return web.lan_ips.length
-      ? web.lan_ips.map((ip) => `http://${ip}:${port}`)
-      : [`http://<this-computer>:${port}`];
+    return web.lan_ips.length ? web.lan_ips.map(ip => `http://${ip}:${port}`) : [`http://<this-computer>:${port}`];
   });
 
   async function ipc() {
@@ -125,7 +123,7 @@
   async function removeUser(id: string) {
     try {
       await (await ipc()).authDeleteUser(id);
-      users = users.filter((u) => u.id !== id);
+      users = users.filter(u => u.id !== id);
       confirmDelete = null;
       success('Account and its data deleted');
     } catch (e) {
@@ -167,7 +165,8 @@
     <div class="setting-row">
       <div class="setting-label">
         <span class="setting-name">Acting as {account.user?.username}</span>
-        <span class="setting-desc">You are using this window as that account, for {account.impersonator.username}.</span>
+        <span class="setting-desc">You are using this window as that account, for {account.impersonator.username}.</span
+        >
       </div>
       <button class="settings-btn primary" disabled={busy} onclick={() => switchTo(account!.impersonator!.id)}>
         Return to {account.impersonator.username}
@@ -219,7 +218,9 @@
         <input class="net-input full" type="password" autocomplete="new-password" bind:value={adminPass2} />
       </label>
       <div class="button-row">
-        <button class="settings-btn primary net-submit" disabled={busy || !canCreateAdmin} onclick={createAdmin}>Create admin account</button>
+        <button class="settings-btn primary net-submit" disabled={busy || !canCreateAdmin} onclick={createAdmin}
+          >Create admin account</button
+        >
       </div>
     </div>
   </section>
@@ -237,16 +238,33 @@
         <span class="setting-name">Browser access</span>
         <span class="setting-desc">Serves Janus over HTTP. Everyone signs in with their own account.</span>
       </div>
-      <button class="toggle-switch" class:on={enabled} role="switch" aria-checked={enabled} aria-label="Browser access" onclick={() => (enabled = !enabled)}>
+      <button
+        class="toggle-switch"
+        class:on={enabled}
+        role="switch"
+        aria-checked={enabled}
+        aria-label="Browser access"
+        onclick={() => (enabled = !enabled)}
+      >
         <span class="toggle-knob"></span>
       </button>
     </div>
     <div class="setting-row">
       <div class="setting-label">
         <span class="setting-name">Other devices on my network</span>
-        <span class="setting-desc">Off: only this computer. On: phones and laptops on your Wi-Fi. Do not use on public networks.</span>
+        <span class="setting-desc"
+          >Off: only this computer. On: phones and laptops on your Wi-Fi. Do not use on public networks.</span
+        >
       </div>
-      <button class="toggle-switch" class:on={lan} role="switch" aria-checked={lan} aria-label="Allow other devices" disabled={!enabled} onclick={() => (lan = !lan)}>
+      <button
+        class="toggle-switch"
+        class:on={lan}
+        role="switch"
+        aria-checked={lan}
+        aria-label="Allow other devices"
+        disabled={!enabled}
+        onclick={() => (lan = !lan)}
+      >
         <span class="toggle-knob"></span>
       </button>
     </div>
@@ -261,7 +279,11 @@
       <button class="settings-btn primary" disabled={busy} onclick={applyNetwork}>Apply</button>
     </div>
     {#if web?.running && addresses.length}
-      <span class="backup-status">Running at {addresses.join(' or ')}{addresses.length > 1 ? ' (use the one on the same network as your phone)' : ''}</span>
+      <span class="backup-status"
+        >Running at {addresses.join(' or ')}{addresses.length > 1
+          ? ' (use the one on the same network as your phone)'
+          : ''}</span
+      >
     {:else}
       <span class="backup-status">Not running</span>
     {/if}
@@ -273,17 +295,28 @@
 
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">Accounts</span>
-    <span class="panel-heading-desc">Each account has its own characters, chats and providers. As admin you can use this window as any of them without their passphrase.</span>
+    <span class="panel-heading-desc"
+      >Each account has its own characters, chats and providers. As admin you can use this window as any of them without
+      their passphrase.</span
+    >
   </div>
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <div class="setting-row">
       <div class="setting-label">
         <span class="setting-name">Who can create accounts</span>
-        <span class="setting-desc">{account.signup_mode === 'open' ? 'Anyone who can reach Janus can sign up.' : 'Only you add people.'}</span>
+        <span class="setting-desc"
+          >{account.signup_mode === 'open' ? 'Anyone who can reach Janus can sign up.' : 'Only you add people.'}</span
+        >
       </div>
       <div class="theme-toggle" role="group" aria-label="Signup mode">
-        <button class="theme-btn" class:active={account.signup_mode === 'open'} onclick={() => setSignup('open')}>Open</button>
-        <button class="theme-btn" class:active={account.signup_mode === 'admin_only'} onclick={() => setSignup('admin_only')}>Admin adds</button>
+        <button class="theme-btn" class:active={account.signup_mode === 'open'} onclick={() => setSignup('open')}
+          >Open</button
+        >
+        <button
+          class="theme-btn"
+          class:active={account.signup_mode === 'admin_only'}
+          onclick={() => setSignup('admin_only')}>Admin adds</button
+        >
       </div>
     </div>
 
@@ -292,7 +325,11 @@
         <li>
           <div class="setting-label">
             <span class="setting-name">{u.username}{u.id === account.user?.id ? ' (you)' : ''}</span>
-            <span class="setting-desc">{u.role === 'admin' ? 'Admin' : 'Member'}{u.must_change ? ' · has not chosen a passphrase yet' : ''}</span>
+            <span class="setting-desc"
+              >{u.role === 'admin' ? 'Admin' : 'Member'}{u.must_change
+                ? ' · has not chosen a passphrase yet'
+                : ''}</span
+            >
           </div>
           {#if u.id !== account.user?.id}
             {#if confirmDelete === u.id}
@@ -302,7 +339,9 @@
               </div>
             {:else}
               <div class="button-row">
-                <button class="settings-btn outline" disabled={busy} onclick={() => switchTo(u.id)}>Use this window as them</button>
+                <button class="settings-btn outline" disabled={busy} onclick={() => switchTo(u.id)}
+                  >Use this window as them</button
+                >
                 <button class="settings-btn outline" onclick={() => (confirmDelete = u.id)}>Delete</button>
               </div>
             {/if}
@@ -314,9 +353,24 @@
     <div class="net-add">
       <span class="setting-name">Add an account</span>
       <div class="button-row">
-        <input class="net-input wide" placeholder="Username" autocomplete="off" bind:value={newName} aria-label="New username" />
-        <input class="net-input wide" type="password" placeholder="Temporary passphrase" autocomplete="new-password" bind:value={newTemp} aria-label="Temporary passphrase" />
-        <button class="settings-btn primary" disabled={busy || !newName.trim() || newTemp.length < 12} onclick={addUser}>Add</button>
+        <input
+          class="net-input wide"
+          placeholder="Username"
+          autocomplete="off"
+          bind:value={newName}
+          aria-label="New username"
+        />
+        <input
+          class="net-input wide"
+          type="password"
+          placeholder="Temporary passphrase"
+          autocomplete="new-password"
+          bind:value={newTemp}
+          aria-label="Temporary passphrase"
+        />
+        <button class="settings-btn primary" disabled={busy || !newName.trim() || newTemp.length < 12} onclick={addUser}
+          >Add</button
+        >
       </div>
       <span class="setting-desc">At least 12 characters. They replace it the first time they sign in.</span>
       {#if createdKey}
@@ -329,13 +383,30 @@
 {#if account && account.has_users && !isAdmin && !account.impersonator}
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
     <span class="panel-heading-title">This window</span>
-    <span class="panel-heading-desc">Signed in as {account.user?.username ?? 'nobody'}. Sign in as someone else here.</span>
+    <span class="panel-heading-desc"
+      >Signed in as {account.user?.username ?? 'nobody'}. Sign in as someone else here.</span
+    >
   </div>
   <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
     <div class="button-row">
-      <input class="net-input wide" placeholder="Username" autocomplete="off" bind:value={switchUser} aria-label="Username to switch to" />
-      <input class="net-input wide" type="password" placeholder="Passphrase" autocomplete="current-password" bind:value={switchPass} aria-label="Passphrase" />
-      <button class="settings-btn outline" disabled={busy || !switchUser.trim() || !switchPass} onclick={switchAccount}>Switch</button>
+      <input
+        class="net-input wide"
+        placeholder="Username"
+        autocomplete="off"
+        bind:value={switchUser}
+        aria-label="Username to switch to"
+      />
+      <input
+        class="net-input wide"
+        type="password"
+        placeholder="Passphrase"
+        autocomplete="current-password"
+        bind:value={switchPass}
+        aria-label="Passphrase"
+      />
+      <button class="settings-btn outline" disabled={busy || !switchUser.trim() || !switchPass} onclick={switchAccount}
+        >Switch</button
+      >
     </div>
   </section>
 {/if}

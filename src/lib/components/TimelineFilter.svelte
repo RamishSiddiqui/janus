@@ -98,7 +98,10 @@
     background: rgba(139, 92, 246, 0.05);
     border: 1px solid rgba(139, 92, 246, 0.16);
     color: #b8a8e8;
-    font-family: 'Raleway', -apple-system, sans-serif;
+    font-family:
+      'Raleway',
+      -apple-system,
+      sans-serif;
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
@@ -139,8 +142,14 @@
   }
 
   @keyframes tfDropdownIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .tf-selectall,
@@ -155,7 +164,10 @@
     border-radius: 6px;
     cursor: pointer;
     text-align: left;
-    font-family: 'Raleway', -apple-system, sans-serif;
+    font-family:
+      'Raleway',
+      -apple-system,
+      sans-serif;
     transition: background 120ms ease;
   }
 

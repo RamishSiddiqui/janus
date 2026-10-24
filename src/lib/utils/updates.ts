@@ -7,11 +7,7 @@ export const FIRST_CHECK_DELAY_MS = 15_000;
 export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /** Whether an automatic check should run at all. Manual checks ignore this. */
-export function canAutoCheck(opts: {
-  enabled: boolean;
-  isDesktop: boolean;
-  isDev: boolean;
-}): boolean {
+export function canAutoCheck(opts: { enabled: boolean; isDesktop: boolean; isDev: boolean }): boolean {
   return opts.enabled && opts.isDesktop && !opts.isDev;
 }
 
@@ -77,7 +73,12 @@ export function downloadFraction(downloaded: number, total: number | null | unde
 export function updateErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   const text = raw.toLowerCase();
-  if (text.includes('network') || text.includes('dns') || text.includes('connect') || text.includes('error sending request')) {
+  if (
+    text.includes('network') ||
+    text.includes('dns') ||
+    text.includes('connect') ||
+    text.includes('error sending request')
+  ) {
     return 'Could not reach the update server. Check your internet connection and try again.';
   }
   if (text.includes('signature')) {

@@ -4,7 +4,7 @@ export const LEVELS = ['Too short', 'Weak', 'Okay', 'Strong', 'Excellent'] as co
 
 /** 0 (too short) to 4 (excellent), judged mostly by length. */
 export function passphraseStrength(p: string): number {
-  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(p)).length;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter(r => r.test(p)).length;
   const n = p.length;
   let s = 0;
   if (n >= 8) s = 1;

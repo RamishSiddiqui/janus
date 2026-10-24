@@ -38,7 +38,7 @@
   if (browser) {
     const mobileQuery = window.matchMedia('(max-width: 768px)');
     isMobile = mobileQuery.matches;
-    mobileQuery.addEventListener('change', (e) => {
+    mobileQuery.addEventListener('change', e => {
       isMobile = e.matches;
       if (!e.matches) mobileNavOpen = false;
     });
@@ -54,9 +54,7 @@
   const webMode = isWebMode();
   const startStatus = getInitialStatus();
   let gateStatus = $state<WebStatus | null>(startStatus);
-  let webUser = $state<WebUser | null>(
-    startStatus?.user && !startStatus.user.must_change ? startStatus.user : null,
-  );
+  let webUser = $state<WebUser | null>(startStatus?.user && !startStatus.user.must_change ? startStatus.user : null);
 
   async function backToGate() {
     closeEvents();
@@ -97,7 +95,7 @@
         const ipc = await import('#lib/services/ipc.js');
         const llm = await ipc.listProviders('llm');
         if (shouldShowWizard(false, llm.length)) showWizard = true;
-        else settings.update((s) => ({ ...s, onboardingDone: true }));
+        else settings.update(s => ({ ...s, onboardingDone: true }));
       } catch (err) {
         console.error('[onboarding] provider check failed:', err);
       }
@@ -128,17 +126,17 @@
 
   // Navigation items for the sidebar
   const navItems = [
-    { path: '/',          label: 'Chats',     icon: 'message-circle' },
-    { path: '/gallery',   label: 'Characters', icon: 'users' },
-    { path: '/personas',  label: 'Personas',  icon: 'user' },
-    { path: '/memories',  label: 'Memories',  icon: 'brain' },
-    { path: '/providers',  label: 'Providers',  icon: 'plug',   group: 'ai-studio' },
-    { path: '/models',     label: 'LLM Models',     icon: 'layers', group: 'ai-studio' },
+    { path: '/', label: 'Chats', icon: 'message-circle' },
+    { path: '/gallery', label: 'Characters', icon: 'users' },
+    { path: '/personas', label: 'Personas', icon: 'user' },
+    { path: '/memories', label: 'Memories', icon: 'brain' },
+    { path: '/providers', label: 'Providers', icon: 'plug', group: 'ai-studio' },
+    { path: '/models', label: 'LLM Models', icon: 'layers', group: 'ai-studio' },
     { path: '/media-models', label: 'Image/Video Models', icon: 'image', group: 'ai-studio' },
-    { path: '/embedders',  label: 'Embedding Models',  icon: 'zap',    group: 'ai-studio' },
+    { path: '/embedders', label: 'Embedding Models', icon: 'zap', group: 'ai-studio' },
     { path: '/voice-models', label: 'Voice Models', icon: 'volume-2', group: 'ai-studio' },
-    { path: '/trash',     label: 'Trash',     icon: 'trash-2' },
-    { path: '/settings',  label: 'Settings',  icon: 'settings' },
+    { path: '/trash', label: 'Trash', icon: 'trash-2' },
+    { path: '/settings', label: 'Settings', icon: 'settings' },
   ] as const satisfies readonly NavItem[];
 
   let currentPath = $derived(page.url.pathname);
@@ -148,13 +146,11 @@
   if (browser) {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     systemPrefersDark = mq.matches;
-    mq.addEventListener('change', (e) => systemPrefersDark = e.matches);
+    mq.addEventListener('change', e => (systemPrefersDark = e.matches));
   }
 
   let effectiveTheme = $derived(
-    $settings.theme === 'system'
-      ? (systemPrefersDark ? 'dark' : 'light')
-      : $settings.theme
+    $settings.theme === 'system' ? (systemPrefersDark ? 'dark' : 'light') : $settings.theme,
   );
 
   // Apply theme to document root for CSS variable switching
@@ -168,9 +164,7 @@
   const fontSizeMap: Record<string, string> = { Small: '13px', Medium: '14px', Large: '16px' };
   $effect(() => {
     if (browser) {
-      document.documentElement.style.setProperty(
-        '--app-font-size', fontSizeMap[$settings.fontSize] ?? '14px'
-      );
+      document.documentElement.style.setProperty('--app-font-size', fontSizeMap[$settings.fontSize] ?? '14px');
     }
   });
 
@@ -198,8 +192,8 @@
   // no-ops quietly if the model isn't downloaded yet.
   $effect(() => {
     if (!browser || !('__TAURI_INTERNALS__' in window) || !$settings.ttsEnabled) return;
-    import('#lib/services/ipc.js').then((ipc) => {
-      ipc.ttsPreloadEngine().catch((err) => console.error('[tts] Preload failed:', err));
+    import('#lib/services/ipc.js').then(ipc => {
+      ipc.ttsPreloadEngine().catch(err => console.error('[tts] Preload failed:', err));
     });
   });
 
@@ -230,38 +224,34 @@
 <a href="#main-content" class="sr-only">Skip to content</a>
 
 {#if webMode && !webUser && gateStatus}
-  <WebGate status={gateStatus} onenter={(u) => (webUser = u)} />
+  <WebGate status={gateStatus} onenter={u => (webUser = u)} />
 {:else}
-{#if showWizard}
-  <FirstRunWizard onclose={() => (showWizard = false)} />
-{/if}
+  {#if showWizard}
+    <FirstRunWizard onclose={() => (showWizard = false)} />
+  {/if}
 
-<div class="app-frame">
-  <TitleBar
-    onToggleSidebar={toggleSidebar}
-    webUser={webUser?.username ?? null}
-    onSignOut={signOut}
-  />
-  <div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
-    <Sidebar
-      {navItems}
-      {currentPath}
-      collapsed={sidebarCollapsed && !isMobile}
-      mobileOpen={mobileNavOpen}
-      onMobileClose={() => (mobileNavOpen = false)}
-      onNavigate={(path) => goto(path)}
-      onToggleCollapse={() => sidebarCollapsed = !sidebarCollapsed}
-    />
-    {#if isMobile && mobileNavOpen}
-      <button class="drawer-backdrop" aria-label="Close menu" onclick={() => (mobileNavOpen = false)}></button>
-    {/if}
-    <main id="main-content" class="app-content">
-      <ErrorBoundary fallbackTitle="This page encountered an error">
-        {@render children()}
-      </ErrorBoundary>
-    </main>
+  <div class="app-frame">
+    <TitleBar onToggleSidebar={toggleSidebar} webUser={webUser?.username ?? null} onSignOut={signOut} />
+    <div class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
+      <Sidebar
+        {navItems}
+        {currentPath}
+        collapsed={sidebarCollapsed && !isMobile}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => (mobileNavOpen = false)}
+        onNavigate={path => goto(path)}
+        onToggleCollapse={() => (sidebarCollapsed = !sidebarCollapsed)}
+      />
+      {#if isMobile && mobileNavOpen}
+        <button class="drawer-backdrop" aria-label="Close menu" onclick={() => (mobileNavOpen = false)}></button>
+      {/if}
+      <main id="main-content" class="app-content">
+        <ErrorBoundary fallbackTitle="This page encountered an error">
+          {@render children()}
+        </ErrorBoundary>
+      </main>
+    </div>
   </div>
-</div>
 {/if}
 
 <ToastContainer />

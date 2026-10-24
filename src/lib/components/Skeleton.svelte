@@ -43,16 +43,20 @@
   .skeleton {
     background: linear-gradient(
       90deg,
-      rgba(14,14,30,0.5) 25%,
-      rgba(139,92,246,0.06) 50%,
-      rgba(14,14,30,0.5) 75%
+      rgba(14, 14, 30, 0.5) 25%,
+      rgba(139, 92, 246, 0.06) 50%,
+      rgba(14, 14, 30, 0.5) 75%
     );
     background-size: 200% 100%;
     animation: shimmer 1.8s ease-in-out infinite;
   }
 
   @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 </style>

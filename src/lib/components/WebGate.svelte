@@ -6,12 +6,7 @@
    */
   import { copyText as copyToClipboard } from '#lib/utils/insecureContext.js';
   import { onMount } from 'svelte';
-  import {
-    webAuth,
-    type WebSession,
-    type WebStatus,
-    type WebUser,
-  } from '#lib/services/webBridge.js';
+  import { webAuth, type WebSession, type WebStatus, type WebUser } from '#lib/services/webBridge.js';
   import {
     LEVELS,
     MIN_PASSPHRASE,
@@ -132,7 +127,7 @@
       }
       loginPass = '';
     } catch (err) {
-      fail('login', (m) => (loginMsg = m), err);
+      fail('login', m => (loginMsg = m), err);
     } finally {
       busy = false;
     }
@@ -189,7 +184,7 @@
       newPass = '';
       newPass2 = '';
     } catch (err) {
-      fail('pass', (m) => (acctMsg = m), err);
+      fail('pass', m => (acctMsg = m), err);
     } finally {
       busy = false;
     }
@@ -216,7 +211,7 @@
   async function signOutDevice(id: string) {
     try {
       await webAuth.revokeSession(id);
-      sessions = sessions.filter((s) => s.id !== id);
+      sessions = sessions.filter(s => s.id !== id);
     } catch {
       // The list refreshes next time; nothing to undo.
     }
@@ -261,7 +256,17 @@
     let H = 0;
     let raf = 0;
     const t0 = performance.now();
-    type P = { x: number; y: number; r: number; vy: number; vx: number; a: number; f: number; ph: number; gold: boolean };
+    type P = {
+      x: number;
+      y: number;
+      r: number;
+      vy: number;
+      vx: number;
+      a: number;
+      f: number;
+      ph: number;
+      gold: boolean;
+    };
     let parts: P[] = [];
     const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -368,7 +373,8 @@
     </span>
     <div class="top-right">
       <span class="chip"><i class="dot"></i><span class="addr">{location.host}</span></span>
-      <span class="chip gate" class:open={view === 'welcome'}>{view === 'welcome' ? 'Gates open' : 'Gates closed'}</span>
+      <span class="chip gate" class:open={view === 'welcome'}>{view === 'welcome' ? 'Gates open' : 'Gates closed'}</span
+      >
     </div>
   </header>
 
@@ -377,7 +383,11 @@
       {#if stepIndex >= 0}
         <ol class="steps">
           {#each stepLabels as label, i (label)}
-            <li class:done={i < stepIndex} class:cur={i === stepIndex} aria-current={i === stepIndex ? 'step' : undefined}>
+            <li
+              class:done={i < stepIndex}
+              class:cur={i === stepIndex}
+              aria-current={i === stepIndex ? 'step' : undefined}
+            >
               {label}
             </li>
           {/each}
@@ -424,10 +434,20 @@
             </div>
           </div>
           <p class="msg" role="alert">{loginMsg}</p>
-          <label class="check"><input type="checkbox" bind:checked={trust} /><span>Keep this device signed in for 30 days</span></label>
+          <label class="check"
+            ><input type="checkbox" bind:checked={trust} /><span>Keep this device signed in for 30 days</span></label
+          >
           <button class="cta" type="submit" disabled={busy}>
             <span>{busy ? 'Unlatching' : 'Unlatch'}</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+            >
           </button>
           <div class="actions">
             <button type="button" class="link" onclick={() => go('recover')}>Use recovery key instead</button>
@@ -439,7 +459,13 @@
           </div>
         </form>
       {:else if view === 'recover'}
-        <form class="view" class:shake={shakeEl === 'recover'} data-view-name="recover" onsubmit={submitRecover} novalidate>
+        <form
+          class="view"
+          class:shake={shakeEl === 'recover'}
+          data-view-name="recover"
+          onsubmit={submitRecover}
+          novalidate
+        >
           <button type="button" class="back" onclick={() => go('login')}>&larr; Back</button>
           <p class="eyebrow">Recovery</p>
           <h2>Use your <em>recovery key.</em></h2>
@@ -450,32 +476,70 @@
           <div class="field">
             <label class="lab" for="recUser">Username</label>
             <div class="input-row">
-              <input class="txt" id="recUser" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" data-autofocus bind:value={recUser} oninput={() => (recMsg = '')} />
+              <input
+                class="txt"
+                id="recUser"
+                type="text"
+                autocomplete="username"
+                autocapitalize="none"
+                spellcheck="false"
+                data-autofocus
+                bind:value={recUser}
+                oninput={() => (recMsg = '')}
+              />
             </div>
           </div>
           <div class="field">
             <label class="lab" for="recKey">Recovery key</label>
             <div class="input-row" class:bad={!!recMsg}>
-              <input class="txt mono" id="recKey" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="JANUS-XXXX-XXXX-XXXX-XXXX" value={recKey} oninput={onRecKey} />
+              <input
+                class="txt mono"
+                id="recKey"
+                type="text"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                placeholder="JANUS-XXXX-XXXX-XXXX-XXXX"
+                value={recKey}
+                oninput={onRecKey}
+              />
             </div>
           </div>
           <p class="msg" role="alert">{recMsg}</p>
           <button class="cta" type="submit">
             <span>Continue</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+            >
           </button>
         </form>
       {:else if view === 'pass'}
         <form class="view" class:shake={shakeEl === 'pass'} data-view-name="pass" onsubmit={submitPass} novalidate>
           {#if flow === 'signup' || flow === 'setup'}
-            <button type="button" class="back" onclick={() => go(flow === 'signup' ? 'login' : 'landing')}>&larr; Back</button>
+            <button type="button" class="back" onclick={() => go(flow === 'signup' ? 'login' : 'landing')}
+              >&larr; Back</button
+            >
           {/if}
           <p class="eyebrow">
-            {flow === 'reset' ? 'Step two' : flow === 'change' ? 'One more thing' : flow === 'setup' ? 'First account' : 'New account'}
+            {flow === 'reset'
+              ? 'Step two'
+              : flow === 'change'
+                ? 'One more thing'
+                : flow === 'setup'
+                  ? 'First account'
+                  : 'New account'}
           </p>
           {#if flow === 'reset'}
             <h2>Choose a <em>new passphrase.</em></h2>
-            <p class="lede">This replaces the old one everywhere. Any device still signed in with it will be signed out.</p>
+            <p class="lede">
+              This replaces the old one everywhere. Any device still signed in with it will be signed out.
+            </p>
           {:else if flow === 'change'}
             <h2>Choose your <em>own passphrase.</em></h2>
             <p class="lede">The admin gave you a temporary one. Pick a passphrase only you know to continue.</p>
@@ -487,28 +551,59 @@
             </p>
           {:else}
             <h2>Create your <em>account.</em></h2>
-            <p class="lede">Choose a username and a passphrase. Janus keeps only a salted argon2id hash, never the passphrase itself.</p>
+            <p class="lede">
+              Choose a username and a passphrase. Janus keeps only a salted argon2id hash, never the passphrase itself.
+            </p>
           {/if}
           {#if needsUser}
             <div class="field">
               <label class="lab" for="newUser">Username</label>
               <div class="input-row">
-                <input class="txt" id="newUser" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" data-autofocus bind:value={newUser} oninput={() => (acctMsg = '')} />
+                <input
+                  class="txt"
+                  id="newUser"
+                  type="text"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  data-autofocus
+                  bind:value={newUser}
+                  oninput={() => (acctMsg = '')}
+                />
               </div>
             </div>
           {/if}
           <div class="field">
             <label class="lab" for="newPass">Passphrase</label>
             <div class="input-row">
-              <input class="txt" id="newPass" type={showNew ? 'text' : 'password'} autocomplete="new-password" spellcheck="false" data-autofocus={!needsUser ? '' : undefined} bind:value={newPass} />
-              <button type="button" class="ghost" aria-pressed={showNew} onclick={() => (showNew = !showNew)}>{showNew ? 'Hide' : 'Show'}</button>
+              <input
+                class="txt"
+                id="newPass"
+                type={showNew ? 'text' : 'password'}
+                autocomplete="new-password"
+                spellcheck="false"
+                data-autofocus={!needsUser ? '' : undefined}
+                bind:value={newPass}
+              />
+              <button type="button" class="ghost" aria-pressed={showNew} onclick={() => (showNew = !showNew)}
+                >{showNew ? 'Hide' : 'Show'}</button
+              >
             </div>
             <div class="meter" data-level={newPass ? strength : 0} aria-hidden="true"><i></i><i></i><i></i><i></i></div>
             <span class="meter-label" aria-live="polite">{newPass ? LEVELS[strength] : LEVELS[0]}</span>
           </div>
           <div class="field">
             <label class="lab" for="newPass2">Confirm</label>
-            <div class="input-row"><input class="txt" id="newPass2" type={showNew ? 'text' : 'password'} autocomplete="new-password" spellcheck="false" bind:value={newPass2} /></div>
+            <div class="input-row">
+              <input
+                class="txt"
+                id="newPass2"
+                type={showNew ? 'text' : 'password'}
+                autocomplete="new-password"
+                spellcheck="false"
+                bind:value={newPass2}
+              />
+            </div>
           </div>
           <ul class="rules">
             {#if needsUser}<li class:met={okUser}>Username is 3 to 24 letters, numbers, . _ or -</li>{/if}
@@ -519,7 +614,15 @@
           <div class="actions">
             <button class="cta" type="submit" disabled={!canContinue}>
               <span>{busy ? 'Working' : 'Continue'}</span>
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+              >
             </button>
           </div>
         </form>
@@ -527,13 +630,15 @@
         <form
           class="view"
           data-view-name="key"
-          onsubmit={(e) => {
+          onsubmit={e => {
             e.preventDefault();
             if (saved) void openWelcome();
           }}
         >
           <p class="eyebrow">{flow === 'reset' ? 'Step three' : 'Step two'}</p>
-          <h2>{flow === 'reset' ? 'Here is your' : 'Keep this'} <em>{flow === 'reset' ? 'new key.' : 'recovery key.'}</em></h2>
+          <h2>
+            {flow === 'reset' ? 'Here is your' : 'Keep this'} <em>{flow === 'reset' ? 'new key.' : 'recovery key.'}</em>
+          </h2>
           <p class="lede">
             If you forget the passphrase, this key lets you set a new one from any device on the network. Janus cannot
             show it again.
@@ -545,10 +650,21 @@
             <button type="button" class="ghost" onclick={copyKey}>Copy key</button>
             <span class="note" aria-live="polite">{copyNote}</span>
           </div>
-          <label class="check"><input type="checkbox" bind:checked={saved} data-autofocus /><span>I have saved it somewhere safe</span></label>
+          <label class="check"
+            ><input type="checkbox" bind:checked={saved} data-autofocus /><span>I have saved it somewhere safe</span
+            ></label
+          >
           <button class="cta" type="submit" disabled={!saved}>
             <span>Seal the door</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+            >
           </button>
         </form>
       {:else if view === 'welcome'}
@@ -568,11 +684,18 @@
               {#each sessions as s (s.id)}
                 <li>
                   <div>
-                    <span>{s.label}{#if s.current}<span class="here">  ●</span>{/if}</span>
+                    <span
+                      >{s.label}{#if s.current}<span class="here"> ●</span>{/if}</span
+                    >
                     <span class="meta-line">{s.current ? 'This device' : 'Signed in'} · {agoLabel(s.last_seen)}</span>
                   </div>
                   {#if !s.current}
-                    <button type="button" class="ghost" aria-label={'Sign out ' + s.label} onclick={() => signOutDevice(s.id)}>Sign out</button>
+                    <button
+                      type="button"
+                      class="ghost"
+                      aria-label={'Sign out ' + s.label}
+                      onclick={() => signOutDevice(s.id)}>Sign out</button
+                    >
                   {/if}
                 </li>
               {/each}
@@ -580,7 +703,15 @@
           {/if}
           <button class="cta" type="button" data-autofocus onclick={() => user && onenter(user)}>
             <span>Step inside</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+            >
           </button>
         </section>
       {/if}
@@ -606,9 +737,28 @@
         admin and decides who else gets in.
       </p>
       <div class="actions center">
-        <button class="cta" type="button" onmouseenter={() => (peek = true)} onmouseleave={() => (peek = false)} onfocus={() => (peek = true)} onblur={() => (peek = false)} onclick={() => { peek = false; start('setup'); }}>
+        <button
+          class="cta"
+          type="button"
+          onmouseenter={() => (peek = true)}
+          onmouseleave={() => (peek = false)}
+          onfocus={() => (peek = true)}
+          onblur={() => (peek = false)}
+          onclick={() => {
+            peek = false;
+            start('setup');
+          }}
+        >
           <span>Create the admin account</span>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+          >
         </button>
       </div>
     {:else}
@@ -617,9 +767,28 @@
         where you left it.
       </p>
       <div class="actions center">
-        <button class="cta" type="button" onmouseenter={() => (peek = true)} onmouseleave={() => (peek = false)} onfocus={() => (peek = true)} onblur={() => (peek = false)} onclick={() => { peek = false; go('login'); }}>
+        <button
+          class="cta"
+          type="button"
+          onmouseenter={() => (peek = true)}
+          onmouseleave={() => (peek = false)}
+          onfocus={() => (peek = true)}
+          onblur={() => (peek = false)}
+          onclick={() => {
+            peek = false;
+            go('login');
+          }}
+        >
           <span>Enter</span>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg>
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" /></svg
+          >
         </button>
         {#if signupOpen}
           <button class="link" type="button" onclick={() => start('signup')}>New here? Create an account</button>
@@ -630,7 +799,9 @@
     {/if}
   </section>
 
-  <footer class="meta"><span>Local network only</span><span>Passphrase hashed, never stored</span><span>No account, no cloud</span></footer>
+  <footer class="meta">
+    <span>Local network only</span><span>Passphrase hashed, never stored</span><span>No account, no cloud</span>
+  </footer>
 </div>
 
 <style>
@@ -933,7 +1104,12 @@
     transform-origin: 50% 50%;
     background:
       linear-gradient(90deg, transparent 42%, rgba(255, 241, 210, 0.22) 50%, transparent 58%),
-      radial-gradient(ellipse 50% 60% at 50% 55%, rgba(232, 203, 150, 0.2), rgba(144, 117, 242, 0.1) 45%, transparent 75%);
+      radial-gradient(
+        ellipse 50% 60% at 50% 55%,
+        rgba(232, 203, 150, 0.2),
+        rgba(144, 117, 242, 0.1) 45%,
+        transparent 75%
+      );
     transition:
       transform 1.2s ease,
       opacity 1s ease;

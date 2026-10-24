@@ -13,8 +13,14 @@ import { humanizeProviderError } from '#lib/utils/providerError.js';
 import { settings } from '#lib/stores/settings.js';
 import { PresentationBuffer, type CharMeta, type PresentationCallbacks } from '#lib/services/presentation-buffer.js';
 import {
-  activeCharacterId, activeConversation, activeConversationId, conversationCharMeta,
-  isStreaming, lastStreamError, messages, pathState,
+  activeCharacterId,
+  activeConversation,
+  activeConversationId,
+  conversationCharMeta,
+  isStreaming,
+  lastStreamError,
+  messages,
+  pathState,
 } from './chat';
 import { runEmotionUpdatePipeline } from './chatEmotion';
 import { uuid } from '#lib/utils/insecureContext.js';
@@ -65,12 +71,10 @@ function createPresentationCallbacks(): PresentationCallbacks {
       });
     },
     markThinkingDone(messageId: string) {
-      messages.update(msgs => msgs.map(m => m.id === messageId ? { ...m, isThinking: false } : m));
+      messages.update(msgs => msgs.map(m => (m.id === messageId ? { ...m, isThinking: false } : m)));
     },
     finalizeMessage(messageId: string) {
-      messages.update(msgs =>
-        msgs.map(m => m.id === messageId ? { ...m, isStreaming: false } : m)
-      );
+      messages.update(msgs => msgs.map(m => (m.id === messageId ? { ...m, isStreaming: false } : m)));
     },
   };
 }
@@ -130,7 +134,10 @@ function createStreamWatchdog(onTimeout: () => void, timeoutMs = 105_000) {
       handle = setTimeout(onTimeout, timeoutMs);
     },
     clear() {
-      if (handle) { clearTimeout(handle); handle = undefined; }
+      if (handle) {
+        clearTimeout(handle);
+        handle = undefined;
+      }
     },
   };
 }
@@ -147,12 +154,15 @@ export async function sendMessage(
   primeTtsAudioContext();
   if (!isTauri) {
     // Dev mode — just add user message locally
-    messages.update(msgs => [...msgs, {
-      id: uuid(),
-      role: 'user' as const,
-      content,
-      attachments,
-    }]);
+    messages.update(msgs => [
+      ...msgs,
+      {
+        id: uuid(),
+        role: 'user' as const,
+        content,
+        attachments,
+      },
+    ]);
     return;
   }
 
@@ -194,21 +204,29 @@ export async function sendMessage(
       buffer.reset();
       toastError('AI response timed out — no reply from the backend. Please try again.');
       const timeoutMsgId = uuid();
-      const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
+      const timeoutMsg: Message = {
+        id: timeoutMsgId,
+        role: 'assistant' as const,
+        content: 'No response received (timed out).',
+        isError: true,
+      };
       messages.update(msgs => [...msgs, timeoutMsg]);
       pathState.fullActivePath.push(timeoutMsg);
       pathState.currentRenderCount++;
-      const realUserMsgId = get(messages).filter(m => m.role === 'user').pop()?.id;
+      const realUserMsgId = get(messages)
+        .filter(m => m.role === 'user')
+        .pop()?.id;
       lastStreamError.set({ conversationId, lastUserContent: content, userMessageId: realUserMsgId });
       isStreaming.set(false);
       unlisten?.();
     });
 
     // Set up stream listener BEFORE sending
-    unlisten = await ipc.onChatStream((event) => {
+    unlisten = await ipc.onChatStream(event => {
       // Guard: if the user switched to a different conversation, discard stale events
       if (get(activeConversationId) !== conversationId) {
-        if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten?.();
+        if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled')
+          unlisten?.();
         return;
       }
       watchdog?.reset();
@@ -223,9 +241,10 @@ export async function sendMessage(
         // auto-memory/emotion pipelines below since there's no complete
         // response to extract anything meaningful from.
         buffer.finalize();
-        messages.update(msgs => msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
+        messages.update(msgs => msgs.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
         for (let i = 0; i < pathState.fullActivePath.length; i++) {
-          if (pathState.fullActivePath[i].isStreaming) pathState.fullActivePath[i] = { ...pathState.fullActivePath[i], isStreaming: false };
+          if (pathState.fullActivePath[i].isStreaming)
+            pathState.fullActivePath[i] = { ...pathState.fullActivePath[i], isStreaming: false };
         }
         watchdog?.clear();
         isStreaming.set(false);
@@ -238,9 +257,7 @@ export async function sendMessage(
         // PresentationBuffer already handled all message creation, content
         // appending, and finalization. No need to overwrite content here.
         // Just ensure any remaining streaming flags are cleared.
-        messages.update(msgs =>
-          msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
-        );
+        messages.update(msgs => msgs.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
         watchdog?.clear();
         isStreaming.set(false);
         unlisten?.();
@@ -263,11 +280,13 @@ export async function sendMessage(
               const saved = await extractAndSaveMemories(
                 conversationId,
                 conv.memory_scope === 'character' ? (conv.character_id ?? undefined) : undefined,
-                content,           // user's message
-                event.content,     // assistant's response
+                content, // user's message
+                event.content, // assistant's response
               );
               if (saved > 0) {
-                console.debug(`[Janus] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'} (scope: ${conv.memory_scope})`);
+                console.debug(
+                  `[Janus] Auto-saved ${saved} memor${saved === 1 ? 'y' : 'ies'} (scope: ${conv.memory_scope})`,
+                );
               }
             } catch (err) {
               console.warn('[Janus] Auto-memory extraction failed:', err);
@@ -284,7 +303,6 @@ export async function sendMessage(
         if (event.content) {
           runEmotionUpdatePipeline(conversationId, content, event.content, [event.message_id]);
         }
-
       } else if (event.event_type === 'error') {
         buffer.reset();
         console.error('Stream error:', event.content);
@@ -293,22 +311,42 @@ export async function sendMessage(
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
-            return msgs.map(m => m.id === event.message_id
-              ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
-              : m
+            return msgs.map(m =>
+              m.id === event.message_id
+                ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
+                : m,
             );
           } else {
-            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
+            return [
+              ...msgs,
+              {
+                id: event.message_id,
+                role: 'assistant' as const,
+                content: event.content || 'Generation failed',
+                isStreaming: false,
+                isError: true,
+              },
+            ];
           }
         });
 
-        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content || 'Generation failed', isError: true };
+        const assistantMsg: Message = {
+          id: event.message_id,
+          role: 'assistant',
+          content: event.content || 'Generation failed',
+          isError: true,
+        };
         const apIdx = pathState.fullActivePath.findIndex(m => m.id === event.message_id);
         if (apIdx >= 0) pathState.fullActivePath[apIdx] = assistantMsg;
-        else { pathState.fullActivePath.push(assistantMsg); pathState.currentRenderCount++; }
+        else {
+          pathState.fullActivePath.push(assistantMsg);
+          pathState.currentRenderCount++;
+        }
         // The real user_message_id was set after sendMessage returned (line ~706)
         // Grab it from the current messages array to pass to retry
-        const realUserMsgId = get(messages).filter(m => m.role === 'user').pop()?.id;
+        const realUserMsgId = get(messages)
+          .filter(m => m.role === 'user')
+          .pop()?.id;
         lastStreamError.set({ conversationId, lastUserContent: content, userMessageId: realUserMsgId });
         watchdog?.clear();
         isStreaming.set(false);
@@ -320,7 +358,9 @@ export async function sendMessage(
     // Send the message — backend will stream/generate response via events
     const currentSettings = get(settings);
     const result = await ipc.sendMessage(
-      conversationId, content, model,
+      conversationId,
+      content,
+      model,
       currentSettings.systemPrompt || undefined,
       currentSettings.streamingEnabled,
       currentSettings.postHistoryInstructions || undefined,
@@ -328,12 +368,11 @@ export async function sendMessage(
     );
 
     // Replace temp user message ID with real one from backend
-    messages.update(msgs =>
-      msgs.map(m => m.id === tempUserId ? { ...m, id: result.user_message_id } : m)
-    );
+    messages.update(msgs => msgs.map(m => (m.id === tempUserId ? { ...m, id: result.user_message_id } : m)));
     // Sync pathState.fullActivePath
     const fpIdx = pathState.fullActivePath.findIndex(m => m.id === tempUserId);
-    if (fpIdx >= 0) pathState.fullActivePath[fpIdx] = { ...pathState.fullActivePath[fpIdx], id: result.user_message_id };
+    if (fpIdx >= 0)
+      pathState.fullActivePath[fpIdx] = { ...pathState.fullActivePath[fpIdx], id: result.user_message_id };
   } catch (err) {
     console.error('Failed to send message:', err);
     watchdog?.clear();
@@ -341,12 +380,7 @@ export async function sendMessage(
     const msg = (err as any)?.message ?? 'Failed to send message. Is a provider configured?';
     toastError(msg);
     // Mark the user message as failed so UI shows a retry button
-    messages.update(msgs =>
-      msgs.map(m => m.id === tempUserId
-        ? { ...m, isError: true, content: content }
-        : m
-      )
-    );
+    messages.update(msgs => msgs.map(m => (m.id === tempUserId ? { ...m, isError: true, content: content } : m)));
     lastStreamError.set({ conversationId, lastUserContent: content }); // no userMessageId — sendMessage itself failed, message may not be in DB
     isStreaming.set(false);
   }
@@ -374,7 +408,7 @@ export async function retryLastMessage(model?: string) {
     pathState.currentRenderCount -= beforeCount - pathState.fullActivePath.length;
 
     // Clear error state on the user message
-    messages.update(msgs => msgs.map(m => m.id === err.userMessageId ? { ...m, isError: false } : m));
+    messages.update(msgs => msgs.map(m => (m.id === err.userMessageId ? { ...m, isError: false } : m)));
 
     const ipc = await import('#lib/services/ipc.js');
     isStreaming.set(true);
@@ -388,17 +422,26 @@ export async function retryLastMessage(model?: string) {
       buffer.reset();
       toastError('AI response timed out — no reply from the backend. Please try again.');
       const timeoutMsgId = uuid();
-      const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
+      const timeoutMsg: Message = {
+        id: timeoutMsgId,
+        role: 'assistant' as const,
+        content: 'No response received (timed out).',
+        isError: true,
+      };
       messages.update(msgs => [...msgs, timeoutMsg]);
       pathState.fullActivePath.push(timeoutMsg);
       pathState.currentRenderCount++;
-      lastStreamError.set({ conversationId: err.conversationId, lastUserContent: err.lastUserContent, userMessageId: err.userMessageId });
+      lastStreamError.set({
+        conversationId: err.conversationId,
+        lastUserContent: err.lastUserContent,
+        userMessageId: err.userMessageId,
+      });
       isStreaming.set(false);
       unlisten();
     });
 
     // Set up stream listener
-    const unlisten = await ipc.onChatStream((event) => {
+    const unlisten = await ipc.onChatStream(event => {
       if (get(activeConversationId) !== err.conversationId) {
         if (event.event_type === 'done' || event.event_type === 'error' || event.event_type === 'cancelled') unlisten();
         return;
@@ -411,9 +454,10 @@ export async function retryLastMessage(model?: string) {
         buffer.pushReasoning(event.message_id, event.content);
       } else if (event.event_type === 'cancelled') {
         buffer.finalize();
-        messages.update(msgs => msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
+        messages.update(msgs => msgs.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
         for (let i = 0; i < pathState.fullActivePath.length; i++) {
-          if (pathState.fullActivePath[i].isStreaming) pathState.fullActivePath[i] = { ...pathState.fullActivePath[i], isStreaming: false };
+          if (pathState.fullActivePath[i].isStreaming)
+            pathState.fullActivePath[i] = { ...pathState.fullActivePath[i], isStreaming: false };
         }
         watchdog.clear();
         isStreaming.set(false);
@@ -421,9 +465,7 @@ export async function retryLastMessage(model?: string) {
       } else if (event.event_type === 'done') {
         buffer.finalize();
         // Buffer handles all message creation/content — just clear streaming state
-        messages.update(msgs =>
-          msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
-        );
+        messages.update(msgs => msgs.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
         watchdog.clear();
         isStreaming.set(false);
         unlisten();
@@ -433,20 +475,42 @@ export async function retryLastMessage(model?: string) {
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
-            return msgs.map(m => m.id === event.message_id
-              ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
-              : m
+            return msgs.map(m =>
+              m.id === event.message_id
+                ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
+                : m,
             );
           } else {
-            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
+            return [
+              ...msgs,
+              {
+                id: event.message_id,
+                role: 'assistant' as const,
+                content: event.content || 'Generation failed',
+                isStreaming: false,
+                isError: true,
+              },
+            ];
           }
         });
-        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content || 'Generation failed', isError: true };
+        const assistantMsg: Message = {
+          id: event.message_id,
+          role: 'assistant',
+          content: event.content || 'Generation failed',
+          isError: true,
+        };
         const apIdx = pathState.fullActivePath.findIndex(m => m.id === event.message_id);
         if (apIdx >= 0) pathState.fullActivePath[apIdx] = assistantMsg;
-        else { pathState.fullActivePath.push(assistantMsg); pathState.currentRenderCount++; }
+        else {
+          pathState.fullActivePath.push(assistantMsg);
+          pathState.currentRenderCount++;
+        }
 
-        lastStreamError.set({ conversationId: err.conversationId, lastUserContent: err.lastUserContent, userMessageId: err.userMessageId });
+        lastStreamError.set({
+          conversationId: err.conversationId,
+          lastUserContent: err.lastUserContent,
+          userMessageId: err.userMessageId,
+        });
         watchdog.clear();
         isStreaming.set(false);
         unlisten();
@@ -457,7 +521,9 @@ export async function retryLastMessage(model?: string) {
     try {
       const currentSettings = get(settings);
       await ipc.retryFailedMessage(
-        err.conversationId, err.userMessageId, model,
+        err.conversationId,
+        err.userMessageId,
+        model,
         currentSettings.systemPrompt || undefined,
         currentSettings.streamingEnabled,
         currentSettings.postHistoryInstructions || undefined,
@@ -514,7 +580,12 @@ export async function regenerateMessage(conversationId: string, messageId: strin
       buffer.reset();
       toastError('Regeneration timed out — no reply from the backend. Please try again.');
       const timeoutMsgId = uuid();
-      const timeoutMsg: Message = { id: timeoutMsgId, role: 'assistant' as const, content: 'No response received (timed out).', isError: true };
+      const timeoutMsg: Message = {
+        id: timeoutMsgId,
+        role: 'assistant' as const,
+        content: 'No response received (timed out).',
+        isError: true,
+      };
       messages.update(msgs => [...msgs, timeoutMsg]);
       pathState.fullActivePath.push(timeoutMsg);
       pathState.currentRenderCount++;
@@ -527,7 +598,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
     });
 
     // Set up stream listener BEFORE triggering regeneration
-    unlisten = await ipc.onChatStream((event) => {
+    unlisten = await ipc.onChatStream(event => {
       watchdog?.reset();
       if (event.event_type === 'delta') {
         buffer.push(event.message_id, event.content);
@@ -536,9 +607,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
       } else if (event.event_type === 'done' || event.event_type === 'cancelled') {
         buffer.finalize();
         // Buffer handles all message creation/content — just clear streaming state
-        messages.update(msgs =>
-          msgs.map(m => m.isStreaming ? { ...m, isStreaming: false } : m)
-        );
+        messages.update(msgs => msgs.map(m => (m.isStreaming ? { ...m, isStreaming: false } : m)));
         watchdog?.clear();
         isStreaming.set(false);
         unlisten?.();
@@ -552,22 +621,40 @@ export async function regenerateMessage(conversationId: string, messageId: strin
         messages.update(msgs => {
           const exists = msgs.some(m => m.id === event.message_id);
           if (exists) {
-            return msgs.map(m => m.id === event.message_id
-              ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
-              : m
+            return msgs.map(m =>
+              m.id === event.message_id
+                ? { ...m, isStreaming: false, isError: true, content: event.content || 'Generation failed' }
+                : m,
             );
           } else {
-            return [...msgs, { id: event.message_id, role: 'assistant' as const, content: event.content || 'Generation failed', isStreaming: false, isError: true }];
+            return [
+              ...msgs,
+              {
+                id: event.message_id,
+                role: 'assistant' as const,
+                content: event.content || 'Generation failed',
+                isStreaming: false,
+                isError: true,
+              },
+            ];
           }
         });
         // Mirror into pathState.fullActivePath — unlike sendMessage/retryLastMessage's
         // identical error handlers, this one previously only updated the
         // rendered `messages` window, leaving pathState.fullActivePath (the pagination
         // source of truth) unaware the regenerated message ever failed.
-        const assistantMsg: Message = { id: event.message_id, role: 'assistant', content: event.content || 'Generation failed', isError: true };
+        const assistantMsg: Message = {
+          id: event.message_id,
+          role: 'assistant',
+          content: event.content || 'Generation failed',
+          isError: true,
+        };
         const apIdx = pathState.fullActivePath.findIndex(m => m.id === event.message_id);
         if (apIdx >= 0) pathState.fullActivePath[apIdx] = assistantMsg;
-        else { pathState.fullActivePath.push(assistantMsg); pathState.currentRenderCount++; }
+        else {
+          pathState.fullActivePath.push(assistantMsg);
+          pathState.currentRenderCount++;
+        }
 
         // Surface the Retry banner, same as a failed send. Walk up from the
         // regenerated message to the user message that prompted it (its
@@ -587,7 +674,9 @@ export async function regenerateMessage(conversationId: string, messageId: strin
 
     const currentSettings = get(settings);
     await ipc.regenerateMessage(
-      conversationId, messageId, model,
+      conversationId,
+      messageId,
+      model,
       currentSettings.systemPrompt || undefined,
       currentSettings.streamingEnabled,
       currentSettings.postHistoryInstructions || undefined,

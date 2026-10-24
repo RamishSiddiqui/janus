@@ -24,10 +24,7 @@ export interface CharMeta {
 }
 
 /** Deterministic accent color from character name (matches ChatMessage.svelte). */
-const CHAR_ACCENT_COLORS = [
-  '#8B5CF6', '#06B6D4', '#F59E0B', '#10B981',
-  '#F43F5E', '#3B82F6', '#EC4899', '#6366F1',
-];
+const CHAR_ACCENT_COLORS = ['#8B5CF6', '#06B6D4', '#F59E0B', '#10B981', '#F43F5E', '#3B82F6', '#EC4899', '#6366F1'];
 export function charAccentColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
@@ -65,17 +62,17 @@ export interface PresentationCallbacks {
 export class PresentationBuffer {
   // ── Character context (set before streaming starts) ──
   private primaryChar: CharMeta;
-  private allChars: Map<string, CharMeta>;      // charId → meta
-  private nameToChar: Map<string, CharMeta>;     // charName (lowercase) → meta
-  private knownNames: string[];                  // For marker regex
+  private allChars: Map<string, CharMeta>; // charId → meta
+  private nameToChar: Map<string, CharMeta>; // charName (lowercase) → meta
+  private knownNames: string[]; // For marker regex
   private markerRegex: RegExp | null = null;
 
   // ── Stream parsing state ──
-  private rawBuffer: string = '';                // Accumulated text not yet committed
-  private activeChar: CharMeta | null = null;    // Character currently streaming
-  private activeMsgId: string | null = null;     // Message ID of active bubble
-  private segmentIndex: number = 0;              // 0, 1, 2... for composite IDs
-  private parentMsgId: string = '';              // Original assistant message ID from backend
+  private rawBuffer: string = ''; // Accumulated text not yet committed
+  private activeChar: CharMeta | null = null; // Character currently streaming
+  private activeMsgId: string | null = null; // Message ID of active bubble
+  private segmentIndex: number = 0; // 0, 1, 2... for composite IDs
+  private parentMsgId: string = ''; // Original assistant message ID from backend
   private isFirstDelta: boolean = true;
   private isMultiCharConversation: boolean;
 
@@ -86,11 +83,7 @@ export class PresentationBuffer {
   // ── Callbacks ──
   private callbacks: PresentationCallbacks;
 
-  constructor(
-    primaryChar: CharMeta,
-    allChars: Map<string, CharMeta>,
-    callbacks: PresentationCallbacks,
-  ) {
+  constructor(primaryChar: CharMeta, allChars: Map<string, CharMeta>, callbacks: PresentationCallbacks) {
     this.primaryChar = primaryChar;
     this.allChars = allChars;
     this.callbacks = callbacks;
@@ -106,9 +99,7 @@ export class PresentationBuffer {
 
     // Build marker regex from known names (same pattern as response_parser.rs)
     if (this.knownNames.length > 1) {
-      const escaped = this.knownNames.map(n =>
-        n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      );
+      const escaped = this.knownNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
       // Match [CharName]: at line start (possibly after newlines)
       const bracketPattern = `(?:^|\\n)\\[(?:${escaped.join('|')})\\]:\\s*`;
       // Also match bare CharName: at line start
@@ -307,7 +298,7 @@ export class PresentationBuffer {
    */
   private findPartialMarkerStart(text: string): number {
     // Look for a `[` or a known name prefix near the end
-    // The maximum marker length is ~50 chars: \n[LongestCharName]: 
+    // The maximum marker length is ~50 chars: \n[LongestCharName]:
     const searchWindow = Math.min(text.length, 80);
     const tail = text.slice(-searchWindow);
     const tailStart = text.length - searchWindow;

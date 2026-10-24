@@ -57,8 +57,13 @@
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
-    font-family: 'Raleway', -apple-system, sans-serif;
-    transition: opacity 300ms ease, border-color 300ms ease;
+    font-family:
+      'Raleway',
+      -apple-system,
+      sans-serif;
+    transition:
+      opacity 300ms ease,
+      border-color 300ms ease;
   }
 
   /* Empty state — muted, dashed border */
@@ -84,9 +89,9 @@
     border-right: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
   }
   .conv-node.empty .conv-icon-wrap {
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
     color: #4a4a6a;
-    border-right-color: rgba(255,255,255,0.05);
+    border-right-color: rgba(255, 255, 255, 0.05);
   }
 
   .conv-body {
@@ -111,7 +116,9 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .conv-node.empty .conv-title { color: #5a5a7a; }
+  .conv-node.empty .conv-title {
+    color: #5a5a7a;
+  }
 
   .conv-sub {
     font-size: 9px;
@@ -121,17 +128,27 @@
     align-items: center;
     gap: 4px;
   }
-  .empty-label { color: #3a3a55; font-style: italic; }
+  .empty-label {
+    color: #3a3a55;
+    font-style: italic;
+  }
 
   .empty-dot {
-    width: 4px; height: 4px; border-radius: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
     background: #3a3a55;
     flex-shrink: 0;
     animation: empty-blink 2.5s ease-in-out infinite;
   }
   @keyframes empty-blink {
-    0%,100% { opacity: 0.3; }
-    50%      { opacity: 0.8; }
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 0.8;
+    }
   }
 
   .shared-badge {
@@ -164,21 +181,30 @@
   }
 
   @keyframes hiddenLinkPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 159, 67, 0.45); }
-    50% { box-shadow: 0 0 0 5px rgba(255, 159, 67, 0); }
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 159, 67, 0.45);
+    }
+    50% {
+      box-shadow: 0 0 0 5px rgba(255, 159, 67, 0);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .hidden-link-pill { animation: none; }
+    .hidden-link-pill {
+      animation: none;
+    }
   }
 
   /* ── Light theme ── */
-  :global([data-theme="light"]) .conv-node {
-    background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(248,245,252,0.95));
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent);
+  :global([data-theme='light']) .conv-node {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 245, 252, 0.95));
+    box-shadow:
+      0 2px 12px rgba(0, 0, 0, 0.06),
+      0 0 8px color-mix(in srgb, var(--accent) 12%, transparent);
   }
-  :global([data-theme="light"]) .conv-node.empty {
-    background: rgba(255,255,255,0.5);
+  :global([data-theme='light']) .conv-node.empty {
+    background: rgba(255, 255, 255, 0.5);
     box-shadow: none;
   }
 </style>

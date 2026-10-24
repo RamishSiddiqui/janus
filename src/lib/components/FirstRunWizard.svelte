@@ -89,12 +89,12 @@
   }
 
   function finish() {
-    settings.update((s) => ({ ...s, onboardingDone: true }));
+    settings.update(s => ({ ...s, onboardingDone: true }));
     onclose();
   }
 
   async function startWith(key: string) {
-    const starter = STARTER_CHARACTERS.find((c) => c.key === key);
+    const starter = STARTER_CHARACTERS.find(c => c.key === key);
     if (!starter) return;
     error = '';
     busy = true;
@@ -124,8 +124,8 @@
     {#if step === 'welcome'}
       <h2 id="wiz-title">Welcome to Janus</h2>
       <p class="lead">
-        Janus is a private roleplay chat app. Everything stays on your computer. Setup takes about a
-        minute: connect a model, then meet your first character.
+        Janus is a private roleplay chat app. Everything stays on your computer. Setup takes about a minute: connect a
+        model, then meet your first character.
       </p>
       <div class="row">
         <button class="btn primary" onclick={() => (step = 'source')}>Set up now</button>
@@ -284,7 +284,9 @@
     color: var(--fg-primary);
     font: inherit;
     cursor: pointer;
-    transition: border-color 0.18s ease, background 0.18s ease;
+    transition:
+      border-color 0.18s ease,
+      background 0.18s ease;
   }
   .option span {
     color: var(--fg-secondary);

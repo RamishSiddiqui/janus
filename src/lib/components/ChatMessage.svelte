@@ -9,7 +9,17 @@
   import { formatRoleplayContent } from '#lib/utils/format.js';
   import { humanizeProviderError } from '#lib/utils/providerError.js';
   import { browser } from '$app/env';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, deleteMessageWithUndo } from '#lib/stores/chat.js';
+  import {
+    messages,
+    activeConversationId,
+    activeCharacterId,
+    isStreaming,
+    switchBranch,
+    switchToConversation,
+    regenerateMessage as storeRegenerate,
+    characterEmotionStates,
+    deleteMessageWithUndo,
+  } from '#lib/stores/chat.js';
   import { settings } from '#lib/stores/settings.js';
   import { success, error as toastError } from '#lib/stores/toast.js';
   import { get } from 'svelte/store';
@@ -24,7 +34,13 @@
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
-  let { message, onBranch, avatarUrl = null, characterName = '', model }: {
+  let {
+    message,
+    onBranch,
+    avatarUrl = null,
+    characterName = '',
+    model,
+  }: {
     message: Message;
     onBranch?: (id: string) => void;
     avatarUrl?: string | null;
@@ -66,7 +82,9 @@
     return m ? { name: m[1], rest: text.slice(m[0].length) } : { name: null, rest: text };
   }
   let liveMarker = $derived(
-    message.character_name ? { name: null as string | null, rest: message.content } : stripLeadingMarker(message.content)
+    message.character_name
+      ? { name: null as string | null, rest: message.content }
+      : stripLeadingMarker(message.content),
   );
   let isMultiChar = $derived(!!message.character_name || !!liveMarker.name);
   let displayName = $derived(message.character_name || liveMarker.name || characterName);
@@ -96,8 +114,10 @@
     const marked =
       content.slice(0, idx) + GLOW_START + activeSentence + GLOW_END + content.slice(idx + activeSentence.length);
     return formatRoleplayContent(marked)
-      .split(GLOW_START).join('<span class="tts-glow">')
-      .split(GLOW_END).join('</span>');
+      .split(GLOW_START)
+      .join('<span class="tts-glow">')
+      .split(GLOW_END)
+      .join('</span>');
   }
   // `avatarUrl` is the conversation's primary character's avatar — only a
   // valid fallback for a plain single-character message (no character_name
@@ -107,7 +127,7 @@
   // must NOT silently borrow the primary's face; falling through to no
   // image lets the plain colored-ring placeholder render instead (see
   // markup below).
-  let displayAvatar = $derived(isMultiChar ? message.character_avatar_url : (message.character_avatar_url || avatarUrl));
+  let displayAvatar = $derived(isMultiChar ? message.character_avatar_url : message.character_avatar_url || avatarUrl);
   let accentColor = $derived(isMultiChar ? charColor(displayName) : '');
 
   let showActions = $state(false);
@@ -146,7 +166,7 @@
     }
     import('#lib/utils/blobUrl.js').then(async ({ loadFileAsBlobUrl }) => {
       const urls = await Promise.all(
-        attachments.map(a => loadFileAsBlobUrl(a.relativePath, a.mimeType).catch(() => null))
+        attachments.map(a => loadFileAsBlobUrl(a.relativePath, a.mimeType).catch(() => null)),
       );
       if (!cancelled) attachmentUrls = urls.filter((u): u is string => u !== null);
     });
@@ -161,7 +181,7 @@
   // for a smooth typing feel. Uses an adaptive easing algorithm:
   // speeds up when falling behind, slows down when caught up.
   let streamTextEl: HTMLDivElement | undefined = $state();
-  let revealedLen = 0;        // how many chars currently visible
+  let revealedLen = 0; // how many chars currently visible
   let typewriterRafId: number | null = null;
   let wasStreaming = false;
 
@@ -271,17 +291,15 @@
 
       const map = $characterEmotionStates;
       return map.get(key) ?? null;
-    })()
+    })(),
   );
 
   // Branch navigation — supports both in-conversation siblings and cross-conversation branches
   let hasConvBranches = $derived((message.siblingConversationIds?.length ?? 0) > 1);
   let hasBranches = $derived(hasConvBranches || (message.siblingIds?.length ?? 0) > 1);
-  let branchIndex = $derived(
-    hasConvBranches ? (message.siblingConversationIndex ?? 0) : (message.siblingIndex ?? 0)
-  );
+  let branchIndex = $derived(hasConvBranches ? (message.siblingConversationIndex ?? 0) : (message.siblingIndex ?? 0));
   let branchTotal = $derived(
-    hasConvBranches ? (message.siblingConversationIds?.length ?? 1) : (message.siblingIds?.length ?? 1)
+    hasConvBranches ? (message.siblingConversationIds?.length ?? 1) : (message.siblingIds?.length ?? 1),
   );
   let canPrev = $derived(hasBranches && branchIndex > 0);
   let canNext = $derived(hasBranches && branchIndex < branchTotal - 1);
@@ -300,7 +318,7 @@
       await switchBranch(message.siblingIds[newIndex]);
     }
 
-    setTimeout(() => isSwitching = false, 400);
+    setTimeout(() => (isSwitching = false), 400);
   }
 
   // Arrow-key cycling for the timeline navigator — the prev/next arrows and
@@ -332,7 +350,7 @@
     try {
       if (!(await copyToClipboard(message.content))) throw new Error('copy failed');
       copied = true;
-      setTimeout(() => copied = false, 1500);
+      setTimeout(() => (copied = false), 1500);
     } catch {
       toastError('Failed to copy message');
     }
@@ -443,11 +461,14 @@
   }
 
   async function saveEdit() {
-    if (!isTauri) { isEditing = false; return; }
+    if (!isTauri) {
+      isEditing = false;
+      return;
+    }
     try {
       const ipc = await import('#lib/services/ipc.js');
       await ipc.updateMessage(message.id, editContent);
-      messages.update(msgs => msgs.map(m => m.id === message.id ? { ...m, content: editContent } : m));
+      messages.update(msgs => msgs.map(m => (m.id === message.id ? { ...m, content: editContent } : m)));
       success('Message updated');
     } catch {
       toastError('Failed to update message');
@@ -468,14 +489,16 @@
 </script>
 
 {#if message.role === 'assistant'}
-  <div 
+  <div
     class="message ai-message"
     role="article"
     aria-label="AI message"
-    onmouseenter={() => showActions = true}
-    onmouseleave={() => showActions = false}
-    onfocusin={() => showActions = true}
-    onfocusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) showActions = false; }}
+    onmouseenter={() => (showActions = true)}
+    onmouseleave={() => (showActions = false)}
+    onfocusin={() => (showActions = true)}
+    onfocusout={e => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) showActions = false;
+    }}
   >
     <div class="msg-avatar ai-avatar" aria-hidden="true" style={isMultiChar ? `--char-accent: ${accentColor}` : ''}>
       {#if displayAvatar}
@@ -489,19 +512,30 @@
       {#if isMultiChar}
         <span class="char-name-badge" style="--char-accent: {accentColor}">{displayName}</span>
       {/if}
-      <div class="msg-bubble ai-bubble" class:switching={isSwitching} class:multi-char={isMultiChar} style={isMultiChar ? `--char-accent: ${accentColor}` : ''}>
+      <div
+        class="msg-bubble ai-bubble"
+        class:switching={isSwitching}
+        class:multi-char={isMultiChar}
+        style={isMultiChar ? `--char-accent: ${accentColor}` : ''}
+      >
         {#if isSwitching}
           <div class="timeline-shift-overlay" aria-hidden="true">
             <span class="shift-text">Shifting timeline…</span>
             <div class="shift-particles">
-              {#each [0,1,2,3,4] as i}
+              {#each [0, 1, 2, 3, 4] as i}
                 <span class="shift-particle" style="--i:{i}"></span>
               {/each}
             </div>
           </div>
         {/if}
         {#if isEditing}
-          <textarea class="edit-area" bind:this={editAreaEl} bind:value={editContent} oninput={autoResizeEditArea} rows="4" aria-label="Edit message content"></textarea>
+          <textarea
+            class="edit-area"
+            bind:this={editAreaEl}
+            bind:value={editContent}
+            oninput={autoResizeEditArea}
+            rows="4"
+            aria-label="Edit message content"></textarea>
           <div class="edit-actions">
             <button class="edit-btn save" onclick={saveEdit}>
               <Icon name="check" size={12} color="#FFFFFF" />
@@ -554,15 +588,27 @@
         <!-- Quantum Timeline Branch Navigator -->
         {#if hasBranches}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div class="timeline-nav" role="group" aria-label="Timeline navigation" title="Alternate AI responses — navigate parallel timelines" onkeydown={handleTimelineKeydown}>
-            <button 
+          <div
+            class="timeline-nav"
+            role="group"
+            aria-label="Timeline navigation"
+            title="Alternate AI responses — navigate parallel timelines"
+            onkeydown={handleTimelineKeydown}
+          >
+            <button
               class="tl-arrow tl-prev"
               disabled={!canPrev || isSwitching}
               onclick={() => navigateBranch(-1)}
               aria-label="Previous timeline"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M6.5 1.5L3 5l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path
+                  d="M6.5 1.5L3 5l3.5 3.5"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </button>
 
@@ -578,9 +624,11 @@
                     if (isSwitching) return;
                     isSwitching = true;
                     if (hasConvBranches && message.siblingConversationIds) {
-                      switchToConversation(message.siblingConversationIds[i]).finally(() => setTimeout(() => isSwitching = false, 400));
+                      switchToConversation(message.siblingConversationIds[i]).finally(() =>
+                        setTimeout(() => (isSwitching = false), 400),
+                      );
                     } else if (message.siblingIds) {
-                      switchBranch(message.siblingIds[i]).finally(() => setTimeout(() => isSwitching = false, 600));
+                      switchBranch(message.siblingIds[i]).finally(() => setTimeout(() => (isSwitching = false), 600));
                     } else {
                       isSwitching = false;
                     }
@@ -597,14 +645,20 @@
               <span class="tl-total">{branchTotal}</span>
             </span>
 
-            <button 
+            <button
               class="tl-arrow tl-next"
               disabled={!canNext || isSwitching}
               onclick={() => navigateBranch(1)}
               aria-label="Next timeline"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M3.5 1.5L7 5l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path
+                  d="M3.5 1.5L7 5l-3.5 3.5"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </button>
           </div>
@@ -655,7 +709,12 @@
           <button class="action-btn" title="Edit" aria-label="Edit message" onclick={startEdit}>
             <Icon name="pencil" size={13} color="var(--fg-muted)" />
           </button>
-          <button class="action-btn branch-btn" title="Branch from here" aria-label="Branch conversation from this message" onclick={() => onBranch?.(message.id)}>
+          <button
+            class="action-btn branch-btn"
+            title="Branch from here"
+            aria-label="Branch conversation from this message"
+            onclick={() => onBranch?.(message.id)}
+          >
             <Icon name="git-branch" size={13} color="var(--fg-muted)" />
           </button>
           <button class="action-btn danger-hover" title="Delete" aria-label="Delete message" onclick={handleDelete}>
@@ -666,14 +725,16 @@
     </div>
   </div>
 {:else}
-  <div 
+  <div
     class="message user-message"
     role="article"
     aria-label="Your message"
-    onmouseenter={() => showActions = true}
-    onmouseleave={() => showActions = false}
-    onfocusin={() => showActions = true}
-    onfocusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) showActions = false; }}
+    onmouseenter={() => (showActions = true)}
+    onmouseleave={() => (showActions = false)}
+    onfocusin={() => (showActions = true)}
+    onfocusout={e => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) showActions = false;
+    }}
   >
     <div class="msg-body-user">
       <div class="msg-bubble user-bubble" class:switching={isSwitching}>
@@ -685,7 +746,13 @@
           </div>
         {/if}
         {#if isEditing}
-          <textarea class="edit-area user-edit" bind:this={editAreaEl} bind:value={editContent} oninput={autoResizeEditArea} rows="3" aria-label="Edit message content"></textarea>
+          <textarea
+            class="edit-area user-edit"
+            bind:this={editAreaEl}
+            bind:value={editContent}
+            oninput={autoResizeEditArea}
+            rows="3"
+            aria-label="Edit message content"></textarea>
           <div class="edit-actions">
             <button class="edit-btn save" onclick={saveEdit}>
               <Icon name="check" size={12} color="#FFFFFF" />
@@ -714,7 +781,12 @@
       </div>
 
       <!-- User Action Bar -->
-      <div class="msg-toolbar user-toolbar" class:visible={showActions || hasBranches} role="toolbar" aria-label="Message actions">
+      <div
+        class="msg-toolbar user-toolbar"
+        class:visible={showActions || hasBranches}
+        role="toolbar"
+        aria-label="Message actions"
+      >
         {#if hasBranches}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <div class="timeline-nav" role="group" aria-label="Timeline navigation" onkeydown={handleTimelineKeydown}>
@@ -725,7 +797,13 @@
               aria-label="Previous timeline"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M6.5 1.5L3 5l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path
+                  d="M6.5 1.5L3 5l3.5 3.5"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </button>
 
@@ -740,9 +818,11 @@
                     if (isSwitching) return;
                     isSwitching = true;
                     if (hasConvBranches && message.siblingConversationIds) {
-                      switchToConversation(message.siblingConversationIds[i]).finally(() => setTimeout(() => isSwitching = false, 400));
+                      switchToConversation(message.siblingConversationIds[i]).finally(() =>
+                        setTimeout(() => (isSwitching = false), 400),
+                      );
                     } else if (message.siblingIds) {
-                      switchBranch(message.siblingIds[i]).finally(() => setTimeout(() => isSwitching = false, 600));
+                      switchBranch(message.siblingIds[i]).finally(() => setTimeout(() => (isSwitching = false), 600));
                     } else {
                       isSwitching = false;
                     }
@@ -758,14 +838,20 @@
               <span class="tl-total">{branchTotal}</span>
             </span>
 
-            <button 
+            <button
               class="tl-arrow tl-next"
               disabled={!canNext || isSwitching}
               onclick={() => navigateBranch(1)}
               aria-label="Next timeline"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M3.5 1.5L7 5l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path
+                  d="M3.5 1.5L7 5l-3.5 3.5"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </button>
           </div>
@@ -779,7 +865,12 @@
           <button class="action-btn" title="Edit" aria-label="Edit message" onclick={startEdit}>
             <Icon name="pencil" size={13} color="var(--fg-muted)" />
           </button>
-          <button class="action-btn branch-btn" title="Branch from here" aria-label="Branch conversation from this message" onclick={() => onBranch?.(message.id)}>
+          <button
+            class="action-btn branch-btn"
+            title="Branch from here"
+            aria-label="Branch conversation from this message"
+            onclick={() => onBranch?.(message.id)}
+          >
             <Icon name="git-branch" size={13} color="var(--fg-muted)" />
           </button>
           <button class="action-btn danger-hover" title="Delete" aria-label="Delete message" onclick={handleDelete}>
@@ -802,79 +893,135 @@
     animation: msgIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes msgIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
-  .ai-message  { align-items: flex-start; }
-  .user-message { justify-content: flex-end; }
+  .ai-message {
+    align-items: flex-start;
+  }
+  .user-message {
+    justify-content: flex-end;
+  }
 
   /* ───────────────────────────────────────────────
      ERROR STATE
   ─────────────────────────────────────────────── */
   .error-state {
-    display: flex; flex-direction: column; gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     padding: 4px 0;
   }
   .error-indicator {
-    display: flex; align-items: center; gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .error-label {
-    font-size: 13px; font-weight: 600; color: #F43F5E;
+    font-size: 13px;
+    font-weight: 600;
+    color: #f43f5e;
     letter-spacing: 0.2px;
   }
   .error-content {
-    font-size: 13px; color: #c8c8e0; line-height: 1.5;
+    font-size: 13px;
+    color: #c8c8e0;
+    line-height: 1.5;
     opacity: 0.7;
   }
   .error-detail {
-    font-size: 12.5px; color: rgba(224, 220, 248, 0.6);
-    line-height: 1.5; margin-top: -2px;
+    font-size: 12.5px;
+    color: rgba(224, 220, 248, 0.6);
+    line-height: 1.5;
+    margin-top: -2px;
   }
-  .user-error { align-items: flex-end; }
+  .user-error {
+    align-items: flex-end;
+  }
 
   /* ───────────────────────────────────────────────
      AVATAR
   ─────────────────────────────────────────────── */
   .msg-avatar {
-    width: 36px; height: 36px; border-radius: 50%;
-    flex-shrink: 0; position: relative; margin-top: 2px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+    margin-top: 2px;
   }
   .ai-avatar {
     background: radial-gradient(circle at 35% 30%, #1e1a38, #0e0c1c);
-    box-shadow: 0 0 0 1px rgba(139,92,246,0.2), 0 0 18px rgba(139,92,246,0.15);
+    box-shadow:
+      0 0 0 1px rgba(139, 92, 246, 0.2),
+      0 0 18px rgba(139, 92, 246, 0.15);
     overflow: hidden;
   }
   .ai-avatar-fallback {
-    width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .ai-avatar-img {
-    width: 100%; height: 100%;
-    object-fit: cover; display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
     border-radius: 50%;
   }
   .avatar-glow {
-    position: absolute; inset: -4px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 68%);
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.18) 0%, transparent 68%);
     animation: avatarPulse 3.5s ease-in-out infinite;
     pointer-events: none;
   }
   @keyframes avatarPulse {
-    0%, 100% { opacity: 0.6; transform: scale(1); }
-    50%       { opacity: 1;   transform: scale(1.08); }
+    0%,
+    100% {
+      opacity: 0.6;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.08);
+    }
   }
 
   /* ───────────────────────────────────────────────
      BODY CONTAINERS
   ─────────────────────────────────────────────── */
-  .msg-body     { display: flex; flex-direction: column; gap: 6px; max-width: 640px; }
-  .msg-body-user { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 560px; }
+  .msg-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 640px;
+  }
+  .msg-body-user {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    max-width: 560px;
+  }
 
   /* ───────────────────────────────────────────────
      AI BUBBLE — Liquid Obsidian Glass
   ─────────────────────────────────────────────── */
-  .msg-bubble { position: relative; overflow: hidden; }
+  .msg-bubble {
+    position: relative;
+    overflow: hidden;
+  }
 
   .ai-bubble {
     padding: 18px 22px;
@@ -882,37 +1029,48 @@
     border-radius: 3px 20px 20px 20px;
     border: 1px solid rgba(255, 255, 255, 0.04);
     box-shadow:
-      0 1px 0 rgba(255,255,255,0.04) inset,
-      0 -1px 0 rgba(0,0,0,0.2) inset,
-      0 8px 32px rgba(0,0,0,0.28),
-      0 2px 8px rgba(0,0,0,0.2);
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.2) inset,
+      0 8px 32px rgba(0, 0, 0, 0.28),
+      0 2px 8px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(16px) saturate(160%);
     line-height: 1.72;
-    transition: box-shadow 400ms ease, border-color 400ms ease;
+    transition:
+      box-shadow 400ms ease,
+      border-color 400ms ease;
   }
   /* Left luminous accent line */
   .ai-bubble::before {
     content: '';
-    position: absolute; left: 0; top: 16px; bottom: 16px; width: 2px;
-    background: linear-gradient(180deg, transparent, rgba(139,92,246,0.5), transparent);
+    position: absolute;
+    left: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 2px;
+    background: linear-gradient(180deg, transparent, rgba(139, 92, 246, 0.5), transparent);
     border-radius: 0 1px 1px 0;
     transition: opacity 400ms ease;
     opacity: 0.6;
   }
-  .ai-bubble:hover::before { opacity: 1; }
+  .ai-bubble:hover::before {
+    opacity: 1;
+  }
   /* Top sheen */
   .ai-bubble::after {
     content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(160deg, rgba(255,255,255,0.025) 0%, transparent 40%);
-    pointer-events: none; border-radius: inherit;
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.025) 0%, transparent 40%);
+    pointer-events: none;
+    border-radius: inherit;
   }
 
   .ai-bubble.switching {
-    border-color: rgba(139,92,246,0.18);
-    box-shadow: 0 0 0 1px rgba(139,92,246,0.1),
-                0 0 32px rgba(139,92,246,0.08),
-                0 8px 32px rgba(0,0,0,0.28);
+    border-color: rgba(139, 92, 246, 0.18);
+    box-shadow:
+      0 0 0 1px rgba(139, 92, 246, 0.1),
+      0 0 32px rgba(139, 92, 246, 0.08),
+      0 8px 32px rgba(0, 0, 0, 0.28);
   }
 
   /* ───────────────────────────────────────────────
@@ -924,67 +1082,105 @@
     border-radius: 20px 20px 4px 20px;
     max-width: 480px;
     box-shadow:
-      0 0 0 1px rgba(139,92,246,0.35),
-      0 4px 24px rgba(109,40,217,0.3),
-      0 12px 40px rgba(109,40,217,0.15),
-      inset 0 1px 0 rgba(255,255,255,0.14);
+      0 0 0 1px rgba(139, 92, 246, 0.35),
+      0 4px 24px rgba(109, 40, 217, 0.3),
+      0 12px 40px rgba(109, 40, 217, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.14);
     line-height: 1.65;
-    position: relative; overflow: hidden;
+    position: relative;
+    overflow: hidden;
     transition: box-shadow 300ms ease;
   }
   /* Specular highlight layer */
   .user-bubble::before {
     content: '';
-    position: absolute; inset: 0;
-    background: radial-gradient(ellipse 70% 40% at 50% 0%, rgba(255,255,255,0.12), transparent 60%);
-    pointer-events: none; border-radius: inherit;
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 40% at 50% 0%, rgba(255, 255, 255, 0.12), transparent 60%);
+    pointer-events: none;
+    border-radius: inherit;
   }
   .user-bubble:hover {
     box-shadow:
-      0 0 0 1px rgba(139,92,246,0.5),
-      0 6px 32px rgba(109,40,217,0.4),
-      0 16px 48px rgba(109,40,217,0.2),
-      inset 0 1px 0 rgba(255,255,255,0.18);
+      0 0 0 1px rgba(139, 92, 246, 0.5),
+      0 6px 32px rgba(109, 40, 217, 0.4),
+      0 16px 48px rgba(109, 40, 217, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
   .user-bubble.switching {
     box-shadow:
-      0 0 0 1px rgba(0,242,255,0.25),
-      0 0 40px rgba(0,242,255,0.1),
-      0 8px 32px rgba(109,40,217,0.3);
+      0 0 0 1px rgba(0, 242, 255, 0.25),
+      0 0 40px rgba(0, 242, 255, 0.1),
+      0 8px 32px rgba(109, 40, 217, 0.3);
   }
 
   /* ───────────────────────────────────────────────
      TIMELINE SHIFT OVERLAY
   ─────────────────────────────────────────────── */
   .timeline-shift-overlay {
-    position: absolute; inset: 0; z-index: 10;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 10px;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     background: rgba(6, 6, 18, 0.82);
     backdrop-filter: blur(10px);
     border-radius: inherit;
     animation: shiftFadeIn 200ms ease both;
   }
-  @keyframes shiftFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes shiftFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 
   .shift-text {
-    font-size: 10px; font-weight: 600; color: rgba(196,161,255,0.7);
-    letter-spacing: 1.5px; text-transform: uppercase; font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(196, 161, 255, 0.7);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-family: var(--font-mono);
     animation: shiftPulse 900ms ease-in-out infinite alternate;
   }
   @keyframes shiftPulse {
-    from { opacity: 0.4; }
-    to   { opacity: 0.9; color: #c4a1ff; }
+    from {
+      opacity: 0.4;
+    }
+    to {
+      opacity: 0.9;
+      color: #c4a1ff;
+    }
   }
-  .shift-particles { display: flex; gap: 6px; align-items: center; }
+  .shift-particles {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
   .shift-particle {
-    width: 3px; height: 3px; border-radius: 50%;
-    background: #8B5CF6;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: #8b5cf6;
     animation: particleFloat 700ms ease-in-out calc(var(--i) * 90ms) infinite alternate;
   }
   @keyframes particleFloat {
-    from { transform: translateY(0) scale(0.5); opacity: 0.2; background: #8B5CF6; }
-    to   { transform: translateY(-7px) scale(1.1); opacity: 1; background: #00f2ff; }
+    from {
+      transform: translateY(0) scale(0.5);
+      opacity: 0.2;
+      background: #8b5cf6;
+    }
+    to {
+      transform: translateY(-7px) scale(1.1);
+      opacity: 1;
+      background: #00f2ff;
+    }
   }
 
   /* ───────────────────────────────────────────────
@@ -997,7 +1193,10 @@
     letter-spacing: 0.01em;
     transition: opacity 300ms ease;
   }
-  .msg-text.dim { opacity: 0.2; filter: blur(1px); }
+  .msg-text.dim {
+    opacity: 0.2;
+    filter: blur(1px);
+  }
 
   /* "Glow while speaking" — the sentence currently audible during TTS
      playback (live streaming or the replay button). Sentence-level only;
@@ -1009,11 +1208,18 @@
     animation: ttsGlowPulse 1.6s ease-in-out infinite;
   }
   @keyframes ttsGlowPulse {
-    0%, 100% { background: rgba(139, 92, 246, 0.12); }
-    50% { background: rgba(139, 92, 246, 0.24); }
+    0%,
+    100% {
+      background: rgba(139, 92, 246, 0.12);
+    }
+    50% {
+      background: rgba(139, 92, 246, 0.24);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
-    .msg-text :global(.tts-glow) { animation: none; }
+    .msg-text :global(.tts-glow) {
+      animation: none;
+    }
   }
 
   /* Roleplay action text — italic, muted */
@@ -1076,7 +1282,15 @@
     width: 0.5em;
     vertical-align: baseline;
   }
-  @keyframes cursorBlink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes cursorBlink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
 
   /* Streaming live container — inherits all text styles, avoids layout shifts */
   .stream-live {
@@ -1098,21 +1312,31 @@
      TOOLBAR
   ─────────────────────────────────────────────── */
   .msg-toolbar {
-    display: flex; align-items: center; gap: 3px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
     height: 30px;
-    opacity: 0; transform: translateY(4px);
-    transition: opacity 200ms ease, transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    opacity: 0;
+    transform: translateY(4px);
+    transition:
+      opacity 200ms ease,
+      transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: none;
   }
   .msg-toolbar.visible {
-    opacity: 1; transform: translateY(0);
+    opacity: 1;
+    transform: translateY(0);
     pointer-events: auto;
   }
-  .user-toolbar { justify-content: flex-end; }
+  .user-toolbar {
+    justify-content: flex-end;
+  }
   .toolbar-divider {
-    width: 1px; height: 12px;
-    background: rgba(139,92,246,0.1);
-    margin: 0 3px; flex-shrink: 0;
+    width: 1px;
+    height: 12px;
+    background: rgba(139, 92, 246, 0.1);
+    margin: 0 3px;
+    flex-shrink: 0;
   }
 
   /* ───────────────────────────────────────────────
@@ -1120,48 +1344,79 @@
      "Liquid Thread" — the focal UI element
   ─────────────────────────────────────────────── */
   .timeline-nav {
-    display: flex; align-items: center; gap: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     padding: 4px 6px;
     background: rgba(6, 6, 18, 0.88);
-    border: 1px solid rgba(139,92,246,0.2);
+    border: 1px solid rgba(139, 92, 246, 0.2);
     border-radius: 999px;
     backdrop-filter: blur(20px);
     box-shadow:
-      0 0 0 1px rgba(139,92,246,0.06),
-      0 2px 16px rgba(0,0,0,0.4),
-      inset 0 1px 0 rgba(255,255,255,0.04);
+      0 0 0 1px rgba(139, 92, 246, 0.06),
+      0 2px 16px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
     animation: threadIn 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
   }
   @keyframes threadIn {
-    from { opacity: 0; transform: translateY(6px) scale(0.92); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   /* Arrow buttons */
   .tl-arrow {
-    display: flex; align-items: center; justify-content: center;
-    width: 22px; height: 22px;
-    background: transparent; border: none; padding: 0;
-    border-radius: 50%; cursor: pointer;
-    color: rgba(139,92,246,0.4);
-    transition: color 150ms ease, background 150ms ease, transform 100ms ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    color: rgba(139, 92, 246, 0.4);
+    transition:
+      color 150ms ease,
+      background 150ms ease,
+      transform 100ms ease;
     flex-shrink: 0;
   }
   .tl-arrow:not(:disabled):hover {
     color: #c4a1ff;
-    background: rgba(139,92,246,0.12);
+    background: rgba(139, 92, 246, 0.12);
     transform: scale(1.15);
   }
-  .tl-arrow:not(:disabled):active { transform: scale(0.85); }
-  .tl-arrow:disabled { opacity: 0.2; cursor: default; }
+  .tl-arrow:not(:disabled):active {
+    transform: scale(0.85);
+  }
+  .tl-arrow:disabled {
+    opacity: 0.2;
+    cursor: default;
+  }
 
   /* Dot Track */
-  .tl-track { display: flex; align-items: center; gap: 4px; padding: 0 1px; }
+  .tl-track {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 1px;
+  }
 
   .tl-dot {
-    width: 5px; height: 5px; border-radius: 50%;
-    border: none; padding: 0; cursor: pointer;
-    background: rgba(139,92,246,0.2);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: rgba(139, 92, 246, 0.2);
     transition:
       width 280ms cubic-bezier(0.34, 1.56, 0.64, 1),
       background 200ms ease,
@@ -1170,108 +1425,185 @@
     flex-shrink: 0;
   }
   .tl-dot:hover:not(:disabled) {
-    background: rgba(139,92,246,0.5);
+    background: rgba(139, 92, 246, 0.5);
     transform: scale(1.4);
   }
-  .tl-dot:disabled { cursor: default; }
-  .tl-dot.visited  { background: rgba(139,92,246,0.3); }
+  .tl-dot:disabled {
+    cursor: default;
+  }
+  .tl-dot.visited {
+    background: rgba(139, 92, 246, 0.3);
+  }
   .tl-dot.active {
     width: 18px;
     border-radius: 3px;
     background: linear-gradient(90deg, #7c3aed, #00d4e0);
     box-shadow:
-      0 0 6px rgba(124,58,237,0.7),
-      0 0 14px rgba(0,212,224,0.2);
+      0 0 6px rgba(124, 58, 237, 0.7),
+      0 0 14px rgba(0, 212, 224, 0.2);
     animation: threadDotLive 2.5s ease-in-out infinite;
   }
   @keyframes threadDotLive {
-    0%,100% { box-shadow: 0 0 6px rgba(124,58,237,0.6), 0 0 0px rgba(0,212,224,0.1); }
-    50%      { box-shadow: 0 0 10px rgba(124,58,237,0.9), 0 0 20px rgba(0,212,224,0.3); }
+    0%,
+    100% {
+      box-shadow:
+        0 0 6px rgba(124, 58, 237, 0.6),
+        0 0 0px rgba(0, 212, 224, 0.1);
+    }
+    50% {
+      box-shadow:
+        0 0 10px rgba(124, 58, 237, 0.9),
+        0 0 20px rgba(0, 212, 224, 0.3);
+    }
   }
 
   /* Counter */
   .tl-counter {
-    display: flex; align-items: baseline; gap: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0;
     font-family: var(--font-mono);
-    font-size: 9.5px; font-weight: 700;
-    padding: 0 3px; user-select: none;
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 0 3px;
+    user-select: none;
     letter-spacing: 0.03em;
   }
-  .tl-cur   { color: #b89eff; }
-  .tl-slash { color: rgba(139,92,246,0.2); font-weight: 400; margin: 0 1px; }
-  .tl-total { color: rgba(139,92,246,0.35); }
+  .tl-cur {
+    color: #b89eff;
+  }
+  .tl-slash {
+    color: rgba(139, 92, 246, 0.2);
+    font-weight: 400;
+    margin: 0 1px;
+  }
+  .tl-total {
+    color: rgba(139, 92, 246, 0.35);
+  }
 
   /* ───────────────────────────────────────────────
      ACTION BUTTONS
   ─────────────────────────────────────────────── */
-  .action-group { display: flex; gap: 1px; align-items: center; opacity: 0; transition: opacity 150ms ease; }
-  .action-group.visible { opacity: 1; }
+  .action-group {
+    display: flex;
+    gap: 1px;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 150ms ease;
+  }
+  .action-group.visible {
+    opacity: 1;
+  }
 
   .action-btn {
-    background: none; border: none;
-    padding: 6px; border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
+    background: none;
+    border: none;
+    padding: 6px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    transition: background 130ms ease, transform 100ms ease, box-shadow 130ms ease;
+    transition:
+      background 130ms ease,
+      transform 100ms ease,
+      box-shadow 130ms ease;
   }
   .action-btn:hover {
-    background: rgba(139,92,246,0.09);
+    background: rgba(139, 92, 246, 0.09);
     transform: translateY(-1px);
   }
-  .action-btn:active { transform: scale(0.9); }
-  .action-btn.danger-hover:hover { background: rgba(244,63,94,0.1); }
+  .action-btn:active {
+    transform: scale(0.9);
+  }
+  .action-btn.danger-hover:hover {
+    background: rgba(244, 63, 94, 0.1);
+  }
   .action-btn.branch-btn:hover {
-    background: rgba(0,242,255,0.07);
-    box-shadow: 0 0 0 1px rgba(0,242,255,0.1);
+    background: rgba(0, 242, 255, 0.07);
+    box-shadow: 0 0 0 1px rgba(0, 242, 255, 0.1);
   }
   .action-btn.branch-btn:hover :global(svg) {
     color: #00f2ff;
-    filter: drop-shadow(0 0 5px rgba(0,242,255,0.55));
+    filter: drop-shadow(0 0 5px rgba(0, 242, 255, 0.55));
   }
-  .action-btn.spin :global(.icon) { animation: spin 500ms ease-in-out; }
-  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  .action-btn.spin :global(.icon) {
+    animation: spin 500ms ease-in-out;
+  }
+  @keyframes spin {
+    from {
+      transform: rotate(0);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   /* ───────────────────────────────────────────────
      EDIT MODE
   ─────────────────────────────────────────────── */
   .edit-area {
-    width: 100%; min-height: 64px; max-height: 400px;
+    width: 100%;
+    min-height: 64px;
+    max-height: 400px;
     padding: 13px 16px;
     border-radius: 12px;
-    border: 1px solid rgba(139,92,246,0.3);
-    background: rgba(10,10,26,0.8);
-    color: rgba(224,220,248,0.94);
-    font-size: 14px; font-family: var(--font-body);
-    line-height: 1.65; resize: none; overflow-y: auto; outline: none;
-    box-shadow: 0 0 0 4px rgba(139,92,246,0.06), inset 0 1px 0 rgba(255,255,255,0.03);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: rgba(10, 10, 26, 0.8);
+    color: rgba(224, 220, 248, 0.94);
+    font-size: 14px;
+    font-family: var(--font-body);
+    line-height: 1.65;
+    resize: none;
+    overflow-y: auto;
+    outline: none;
+    box-shadow:
+      0 0 0 4px rgba(139, 92, 246, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
     /* No height transition — the JS-driven resize already runs per
        keystroke; animating height on top of that just adds lag between
        typing and the box actually growing (same reasoning as the existing
        compose box, which doesn't animate it either). */
-    transition: border-color 200ms, box-shadow 200ms;
+    transition:
+      border-color 200ms,
+      box-shadow 200ms;
   }
   .edit-area:focus {
-    border-color: rgba(139,92,246,0.5);
-    box-shadow: 0 0 0 4px rgba(139,92,246,0.1), inset 0 1px 0 rgba(255,255,255,0.03);
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow:
+      0 0 0 4px rgba(139, 92, 246, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
-  .user-edit { text-align: right; }
+  .user-edit {
+    text-align: right;
+  }
 
-  .edit-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .edit-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
   .edit-btn {
-    display: flex; align-items: center; gap: 5px;
-    padding: 7px 16px; border-radius: 10px;
-    font-size: 11.5px; font-family: var(--font-body);
-    font-weight: 600; border: none; cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 16px;
+    border-radius: 10px;
+    font-size: 11.5px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
     transition: all 150ms ease;
     letter-spacing: 0.02em;
   }
   .edit-btn.save {
-    background: linear-gradient(135deg, #7c3aed, #8B5CF6);
+    background: linear-gradient(135deg, #7c3aed, #8b5cf6);
     color: #fff;
-    box-shadow: 0 2px 12px rgba(124,58,237,0.3);
+    box-shadow: 0 2px 12px rgba(124, 58, 237, 0.3);
   }
   .edit-btn.save:hover {
-    box-shadow: 0 4px 20px rgba(124,58,237,0.45);
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.45);
     transform: translateY(-1px);
   }
   .edit-btn.cancel {
@@ -1279,17 +1611,24 @@
        regardless of theme) — the previous muted gray-purple text read as
        near-invisible against it. */
     background: transparent;
-    border: 1px solid rgba(255,255,255,0.25);
-    color: rgba(255,255,255,0.8);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.8);
   }
-  .edit-btn.cancel:hover { background: rgba(255,255,255,0.12); }
+  .edit-btn.cancel:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
 
   /* ───────────────────────────────────────────────
      RESPONSIVE
   ─────────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .msg-body, .msg-body-user { max-width: 88vw; }
-    .user-bubble { max-width: 82vw; }
+    .msg-body,
+    .msg-body-user {
+      max-width: 88vw;
+    }
+    .user-bubble {
+      max-width: 82vw;
+    }
   }
 
   /* ───────────────────────────────────────────────
@@ -1303,9 +1642,9 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
-    color: var(--char-accent, #8B5CF6);
-    background: color-mix(in srgb, var(--char-accent, #8B5CF6) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--char-accent, #8B5CF6) 15%, transparent);
+    color: var(--char-accent, #8b5cf6);
+    background: color-mix(in srgb, var(--char-accent, #8b5cf6) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--char-accent, #8b5cf6) 15%, transparent);
     border-radius: 999px;
     margin-bottom: 4px;
     animation: badgeIn 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
@@ -1314,37 +1653,40 @@
     width: fit-content;
   }
   @keyframes badgeIn {
-    from { opacity: 0; transform: translateY(-4px) scale(0.9); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   /* Multi-char bubble — character-colored left accent */
   .ai-bubble.multi-char::before {
-    background: linear-gradient(
-      180deg,
-      transparent,
-      var(--char-accent, rgba(139,92,246,0.5)),
-      transparent
-    );
+    background: linear-gradient(180deg, transparent, var(--char-accent, rgba(139, 92, 246, 0.5)), transparent);
   }
 
   /* Multi-char avatar — character-colored glow */
-  .ai-avatar[style*="--char-accent"] .avatar-glow {
+  .ai-avatar[style*='--char-accent'] .avatar-glow {
     background: radial-gradient(
       circle,
-      color-mix(in srgb, var(--char-accent, #8B5CF6) 25%, transparent) 0%,
+      color-mix(in srgb, var(--char-accent, #8b5cf6) 25%, transparent) 0%,
       transparent 68%
     );
   }
 
   /* Light theme overrides */
-  :global([data-theme="light"]) .char-name-badge {
-    background: color-mix(in srgb, var(--char-accent, #8B5CF6) 6%, white);
-    border-color: color-mix(in srgb, var(--char-accent, #8B5CF6) 12%, transparent);
+  :global([data-theme='light']) .char-name-badge {
+    background: color-mix(in srgb, var(--char-accent, #8b5cf6) 6%, white);
+    border-color: color-mix(in srgb, var(--char-accent, #8b5cf6) 12%, transparent);
   }
 
   /* Reduced motion support */
   @media (prefers-reduced-motion: reduce) {
-    .char-name-badge { animation: none; }
+    .char-name-badge {
+      animation: none;
+    }
   }
 </style>

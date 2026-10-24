@@ -81,13 +81,13 @@
 
   // ── Category parsing (mirrors MemoryNode) ──────────────────────────
   const categoryMeta: Record<string, { icon: string; label: string }> = {
-    trait:         { icon: 'sparkles',      label: 'Trait' },
-    event:        { icon: 'clock',          label: 'Event' },
-    relationship: { icon: 'heart',          label: 'Relationship' },
-    preference:   { icon: 'star',           label: 'Preference' },
-    goal:         { icon: 'send',           label: 'Goal' },
-    discovery:    { icon: 'search',         label: 'Discovery' },
-    fact:         { icon: 'file-text',      label: 'Fact' },
+    trait: { icon: 'sparkles', label: 'Trait' },
+    event: { icon: 'clock', label: 'Event' },
+    relationship: { icon: 'heart', label: 'Relationship' },
+    preference: { icon: 'star', label: 'Preference' },
+    goal: { icon: 'send', label: 'Goal' },
+    discovery: { icon: 'search', label: 'Discovery' },
+    fact: { icon: 'file-text', label: 'Fact' },
   };
 
   let parsed = $derived.by(() => {
@@ -113,16 +113,12 @@
 
   let accentColor = $derived(categoryColors[parsed.category] ?? '#c4a1ff');
 
-  let activeLinks = $derived(
-    activeMemory ? links.filter(l => l.source_memory_id === activeMemory.id) : []
-  );
+  let activeLinks = $derived(activeMemory ? links.filter(l => l.source_memory_id === activeMemory.id) : []);
 
   // ── Derived: conversations available to share to ───────────────────
   // Filter out conversations that already have a link from this memory
   let linkedConvIds = $derived(new Set(activeLinks.map(l => l.target_conversation_id)));
-  let availableConversations = $derived(
-    conversations.filter(c => !linkedConvIds.has(c.id))
-  );
+  let availableConversations = $derived(conversations.filter(c => !linkedConvIds.has(c.id)));
 
   // ── Derived: can create link ───────────────────────────────────────
   let canCreateLink = $derived(!!selectedConvId && !!memory);
@@ -154,7 +150,9 @@
     } else {
       confirmDeleteId = linkId;
       // Auto-dismiss confirm after 3s
-      setTimeout(() => { if (confirmDeleteId === linkId) confirmDeleteId = null; }, 3000);
+      setTimeout(() => {
+        if (confirmDeleteId === linkId) confirmDeleteId = null;
+      }, 3000);
     }
   }
 
@@ -165,7 +163,9 @@
       confirmDeleteMemory = false;
     } else {
       confirmDeleteMemory = true;
-      setTimeout(() => { confirmDeleteMemory = false; }, 3000);
+      setTimeout(() => {
+        confirmDeleteMemory = false;
+      }, 3000);
     }
   }
 
@@ -219,12 +219,7 @@
   <!-- Backdrop overlay -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="map-backdrop"
-    class:closing={isClosing}
-    onclick={handleOverlayClick}
-    onmousedown={handleBackdropClick}
-  >
+  <div class="map-backdrop" class:closing={isClosing} onclick={handleOverlayClick} onmousedown={handleBackdropClick}>
     <!-- Panel -->
     <div
       class="action-panel"
@@ -236,7 +231,6 @@
     >
       <!-- ═══ Scrollable content wrapper ═══ -->
       <div class="panel-scroll">
-
         <!-- ── 1. Header ──────────────────────────────────────── -->
         <header class="panel-header">
           <div class="header-top">
@@ -273,10 +267,7 @@
         <!-- ── Group Memory Picker (only for groups) ────────────── -->
         {#if isGroupMode}
           <div class="group-picker-section" bind:this={groupPickerEl}>
-            <button
-              class="group-picker-trigger"
-              onclick={() => groupPickerOpen = !groupPickerOpen}
-            >
+            <button class="group-picker-trigger" onclick={() => (groupPickerOpen = !groupPickerOpen)}>
               <span class="group-picker-count">{selectedGroupIdx + 1} of {groupMems.length}</span>
               <span class="group-picker-label">memories in group</span>
               <span class="group-picker-chevron" class:open={groupPickerOpen}>
@@ -295,7 +286,10 @@
                   <button
                     class="group-picker-option"
                     class:active={selectedGroupIdx === gi}
-                    onclick={() => { selectedGroupIdx = gi; groupPickerOpen = false; }}
+                    onclick={() => {
+                      selectedGroupIdx = gi;
+                      groupPickerOpen = false;
+                    }}
                   >
                     <span class="gpo-dot" style="background: {gmColor};"></span>
                     <Icon name={gmMeta.icon} size={11} color={gmColor} />
@@ -378,7 +372,7 @@
           <div class="conv-picker" bind:this={dropdownEl}>
             <button
               class="conv-trigger"
-              onclick={() => convDropdownOpen = !convDropdownOpen}
+              onclick={() => (convDropdownOpen = !convDropdownOpen)}
               disabled={availableConversations.length === 0}
             >
               <Icon name="message-circle" size={13} color={selectedConvId ? '#c4a1ff' : '#5a5a7a'} />
@@ -402,7 +396,10 @@
                   <button
                     class="conv-option"
                     class:selected={selectedConvId === conv.id}
-                    onclick={() => { selectedConvId = conv.id; convDropdownOpen = false; }}
+                    onclick={() => {
+                      selectedConvId = conv.id;
+                      convDropdownOpen = false;
+                    }}
                   >
                     <span class="conv-option-title">{conv.title}</span>
                     <span class="conv-option-count">{conv.memory_count} memories</span>
@@ -420,7 +417,7 @@
                 class="pill-btn"
                 class:active={linkType === 'copy'}
                 class:purple={linkType === 'copy'}
-                onclick={() => linkType = 'copy'}
+                onclick={() => (linkType = 'copy')}
               >
                 <Icon name="copy" size={11} color={linkType === 'copy' ? '#fff' : '#6b6b8a'} />
                 Copy
@@ -429,7 +426,7 @@
                 class="pill-btn"
                 class:active={linkType === 'sync'}
                 class:cyan={linkType === 'sync'}
-                onclick={() => linkType = 'sync'}
+                onclick={() => (linkType = 'sync')}
               >
                 <Icon name="refresh-cw" size={11} color={linkType === 'sync' ? '#fff' : '#6b6b8a'} />
                 Sync
@@ -449,7 +446,7 @@
                   class="pill-btn"
                   class:active={direction === 'one_way'}
                   class:purple={direction === 'one_way'}
-                  onclick={() => direction = 'one_way'}
+                  onclick={() => (direction = 'one_way')}
                 >
                   <span class="direction-arrow">→</span>
                   One-way
@@ -458,7 +455,7 @@
                   class="pill-btn"
                   class:active={direction === 'two_way'}
                   class:cyan={direction === 'two_way'}
-                  onclick={() => direction = 'two_way'}
+                  onclick={() => (direction = 'two_way')}
                 >
                   <span class="direction-arrow">⇌</span>
                   Two-way
@@ -475,7 +472,7 @@
                 class="pill-btn"
                 class:active={syncMode === 'auto'}
                 class:purple={syncMode === 'auto'}
-                onclick={() => syncMode = 'auto'}
+                onclick={() => (syncMode = 'auto')}
               >
                 Auto
               </button>
@@ -483,7 +480,7 @@
                 class="pill-btn"
                 class:active={syncMode === 'manual'}
                 class:purple={syncMode === 'manual'}
-                onclick={() => syncMode = 'manual'}
+                onclick={() => (syncMode = 'manual')}
               >
                 Manual
               </button>
@@ -491,11 +488,7 @@
           </div>
 
           <!-- Create Link Button -->
-          <button
-            class="create-link-btn"
-            disabled={!canCreateLink}
-            onclick={handleShare}
-          >
+          <button class="create-link-btn" disabled={!canCreateLink} onclick={handleShare}>
             <Icon name="send" size={13} color="#fff" />
             Create Link
           </button>
@@ -503,16 +496,11 @@
 
         <!-- ── 5. Actions Footer ──────────────────────────────── -->
         <footer class="actions-footer">
-          <button
-            class="delete-memory-btn"
-            class:confirming={confirmDeleteMemory}
-            onclick={handleDeleteMemory}
-          >
+          <button class="delete-memory-btn" class:confirming={confirmDeleteMemory} onclick={handleDeleteMemory}>
             <Icon name="trash-2" size={13} color="currentColor" />
             {confirmDeleteMemory ? 'Click again to confirm deletion' : 'Delete Memory'}
           </button>
         </footer>
-
       </div>
     </div>
   </div>
@@ -536,13 +524,21 @@
   }
 
   @keyframes backdropIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   @keyframes backdropOut {
-    from { opacity: 1; }
-    to   { opacity: 0; }
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
   }
 
   /* ═══════════════════════════════════════════════════════════════════
@@ -573,13 +569,21 @@
   }
 
   @keyframes panelSlideIn {
-    from { transform: translateX(100%); }
-    to   { transform: translateX(0); }
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
   }
 
   @keyframes panelSlideOut {
-    from { transform: translateX(0); }
-    to   { transform: translateX(100%); }
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
   }
 
   /* ── Scrollable Content ── */
@@ -593,12 +597,16 @@
     padding: 20px 18px 24px;
   }
 
-  .panel-scroll::-webkit-scrollbar { width: 3px; }
+  .panel-scroll::-webkit-scrollbar {
+    width: 3px;
+  }
   .panel-scroll::-webkit-scrollbar-thumb {
     background: rgba(139, 92, 246, 0.15);
     border-radius: 3px;
   }
-  .panel-scroll::-webkit-scrollbar-track { background: transparent; }
+  .panel-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
   /* ═══════════════════════════════════════════════════════════════════
      1. Header
@@ -765,7 +773,9 @@
     overflow-y: auto;
   }
 
-  .group-picker-dropdown::-webkit-scrollbar { width: 3px; }
+  .group-picker-dropdown::-webkit-scrollbar {
+    width: 3px;
+  }
   .group-picker-dropdown::-webkit-scrollbar-thumb {
     background: rgba(139, 92, 246, 0.15);
     border-radius: 3px;
@@ -835,11 +845,7 @@
   .content-accent-strip {
     width: 3px;
     flex-shrink: 0;
-    background: linear-gradient(
-      180deg,
-      var(--card-accent),
-      color-mix(in srgb, var(--card-accent) 25%, transparent)
-    );
+    background: linear-gradient(180deg, var(--card-accent), color-mix(in srgb, var(--card-accent) 25%, transparent));
   }
 
   .content-text {
@@ -971,8 +977,15 @@
   }
 
   @keyframes syncPulse {
-    0%, 100% { opacity: 0.4; box-shadow: 0 0 0 0 rgba(0, 242, 255, 0); }
-    50%      { opacity: 1;   box-shadow: 0 0 6px 2px rgba(0, 242, 255, 0.3); }
+    0%,
+    100% {
+      opacity: 0.4;
+      box-shadow: 0 0 0 0 rgba(0, 242, 255, 0);
+    }
+    50% {
+      opacity: 1;
+      box-shadow: 0 0 6px 2px rgba(0, 242, 255, 0.3);
+    }
   }
 
   .link-direction {
@@ -1103,15 +1116,23 @@
     animation: dropIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .conv-dropdown::-webkit-scrollbar { width: 3px; }
+  .conv-dropdown::-webkit-scrollbar {
+    width: 3px;
+  }
   .conv-dropdown::-webkit-scrollbar-thumb {
     background: rgba(139, 92, 246, 0.15);
     border-radius: 3px;
   }
 
   @keyframes dropIn {
-    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .conv-option {
@@ -1229,8 +1250,14 @@
   }
 
   @keyframes fadeSlideIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* ── Create Link Button ── */
@@ -1242,7 +1269,7 @@
     padding: 10px 16px;
     border-radius: 10px;
     border: none;
-    background: linear-gradient(135deg, #8B5CF6, #7c3aed);
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
     color: #fff;
     font-size: 13px;
     font-weight: 600;
@@ -1308,15 +1335,22 @@
   }
 
   @keyframes confirmShake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-3px); }
-    75% { transform: translateX(3px); }
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-3px);
+    }
+    75% {
+      transform: translateX(3px);
+    }
   }
 
   /* ═══════════════════════════════════════════════════════════════════
      Light Theme Overrides
      ═══════════════════════════════════════════════════════════════════ */
-  :global([data-theme="light"]) .action-panel {
+  :global([data-theme='light']) .action-panel {
     background: rgba(255, 255, 255, 0.96);
     border-left-color: rgba(139, 92, 246, 0.1);
     box-shadow:
@@ -1324,146 +1358,146 @@
       -1px 0 0 rgba(139, 92, 246, 0.06);
   }
 
-  :global([data-theme="light"]) .map-backdrop {
+  :global([data-theme='light']) .map-backdrop {
     background: rgba(0, 0, 0, 0.15);
   }
 
-  :global([data-theme="light"]) .panel-header {
+  :global([data-theme='light']) .panel-header {
     border-bottom-color: rgba(139, 92, 246, 0.08);
   }
 
-  :global([data-theme="light"]) .close-btn {
+  :global([data-theme='light']) .close-btn {
     background: rgba(139, 92, 246, 0.06);
   }
 
-  :global([data-theme="light"]) .close-btn:hover {
+  :global([data-theme='light']) .close-btn:hover {
     background: rgba(139, 92, 246, 0.12);
   }
 
-  :global([data-theme="light"]) .content-card {
+  :global([data-theme='light']) .content-card {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 242, 250, 0.95));
     border-color: rgba(139, 92, 246, 0.1);
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   }
 
-  :global([data-theme="light"]) .content-text {
+  :global([data-theme='light']) .content-text {
     color: #2a2a3e;
   }
 
-  :global([data-theme="light"]) .section-title {
+  :global([data-theme='light']) .section-title {
     color: #7c7c9a;
   }
 
-  :global([data-theme="light"]) .link-card {
+  :global([data-theme='light']) .link-card {
     background: rgba(245, 242, 250, 0.6);
     border-color: rgba(139, 92, 246, 0.06);
   }
 
-  :global([data-theme="light"]) .link-card:hover {
+  :global([data-theme='light']) .link-card:hover {
     background: rgba(139, 92, 246, 0.04);
   }
 
-  :global([data-theme="light"]) .link-conv-title {
+  :global([data-theme='light']) .link-conv-title {
     color: #2a2a3e;
   }
 
-  :global([data-theme="light"]) .conv-trigger {
+  :global([data-theme='light']) .conv-trigger {
     background: rgba(245, 242, 250, 0.7);
     border-color: rgba(139, 92, 246, 0.1);
   }
 
-  :global([data-theme="light"]) .conv-trigger:hover:not(:disabled) {
+  :global([data-theme='light']) .conv-trigger:hover:not(:disabled) {
     background: rgba(245, 242, 250, 0.9);
     border-color: rgba(139, 92, 246, 0.2);
   }
 
-  :global([data-theme="light"]) .conv-trigger-label {
+  :global([data-theme='light']) .conv-trigger-label {
     color: #4a4a6a;
   }
 
-  :global([data-theme="light"]) .conv-dropdown {
+  :global([data-theme='light']) .conv-dropdown {
     background: rgba(255, 255, 255, 0.98);
     border-color: rgba(139, 92, 246, 0.1);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
   }
 
-  :global([data-theme="light"]) .conv-option {
+  :global([data-theme='light']) .conv-option {
     color: #4a4a6a;
   }
 
-  :global([data-theme="light"]) .conv-option:hover {
+  :global([data-theme='light']) .conv-option:hover {
     background: rgba(139, 92, 246, 0.06);
     color: #2a2a3e;
   }
 
-  :global([data-theme="light"]) .pill-toggle {
+  :global([data-theme='light']) .pill-toggle {
     background: rgba(245, 242, 250, 0.5);
     border-color: rgba(139, 92, 246, 0.08);
   }
 
-  :global([data-theme="light"]) .pill-btn {
+  :global([data-theme='light']) .pill-btn {
     color: #7c7c9a;
   }
 
-  :global([data-theme="light"]) .pill-btn:hover:not(.active) {
+  :global([data-theme='light']) .pill-btn:hover:not(.active) {
     color: #4a4a6a;
     background: rgba(139, 92, 246, 0.04);
   }
 
-  :global([data-theme="light"]) .toggle-label {
+  :global([data-theme='light']) .toggle-label {
     color: #7c7c9a;
   }
 
-  :global([data-theme="light"]) .toggle-desc {
+  :global([data-theme='light']) .toggle-desc {
     color: #9c9cb4;
   }
 
-  :global([data-theme="light"]) .delete-memory-btn {
+  :global([data-theme='light']) .delete-memory-btn {
     color: #9c9cb4;
     background: rgba(239, 68, 68, 0.02);
     border-color: rgba(239, 68, 68, 0.06);
   }
 
-  :global([data-theme="light"]) .delete-memory-btn:hover {
+  :global([data-theme='light']) .delete-memory-btn:hover {
     color: #dc2626;
     background: rgba(239, 68, 68, 0.06);
   }
 
-  :global([data-theme="light"]) .delete-memory-btn.confirming {
+  :global([data-theme='light']) .delete-memory-btn.confirming {
     color: #dc2626;
     background: rgba(239, 68, 68, 0.08);
     border-color: rgba(239, 68, 68, 0.2);
   }
 
-  :global([data-theme="light"]) .links-section {
+  :global([data-theme='light']) .links-section {
     border-bottom-color: rgba(139, 92, 246, 0.06);
   }
 
-  :global([data-theme="light"]) .share-section {
+  :global([data-theme='light']) .share-section {
     border-bottom-color: rgba(139, 92, 246, 0.06);
   }
 
-  :global([data-theme="light"]) .unlink-btn {
+  :global([data-theme='light']) .unlink-btn {
     color: #9c9cb4;
   }
 
-  :global([data-theme="light"]) .badge {
+  :global([data-theme='light']) .badge {
     background: rgba(139, 92, 246, 0.08);
   }
 
-  :global([data-theme="light"]) .source-badge {
+  :global([data-theme='light']) .source-badge {
     background: rgba(129, 140, 248, 0.08);
   }
 
-  :global([data-theme="light"]) .source-badge:not(.auto) {
+  :global([data-theme='light']) .source-badge:not(.auto) {
     background: rgba(245, 158, 11, 0.08);
   }
 
-  :global([data-theme="light"]) .link-direction {
+  :global([data-theme='light']) .link-direction {
     color: #9c9cb4;
   }
 
-  :global([data-theme="light"]) .link-sync-mode {
+  :global([data-theme='light']) .link-sync-mode {
     color: #9c9cb4;
   }
 </style>

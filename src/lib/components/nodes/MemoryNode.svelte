@@ -4,13 +4,13 @@
   let { data } = $props();
 
   const categoryMeta: Record<string, { icon: string; label: string }> = {
-    trait:         { icon: '🧬', label: 'Trait' },
-    event:        { icon: '⚡', label: 'Event' },
+    trait: { icon: '🧬', label: 'Trait' },
+    event: { icon: '⚡', label: 'Event' },
     relationship: { icon: '💜', label: 'Relationship' },
-    preference:   { icon: '⭐', label: 'Preference' },
-    goal:         { icon: '🎯', label: 'Goal' },
-    discovery:    { icon: '🔮', label: 'Discovery' },
-    fact:         { icon: '📄', label: 'Fact' },
+    preference: { icon: '⭐', label: 'Preference' },
+    goal: { icon: '🎯', label: 'Goal' },
+    discovery: { icon: '🔮', label: 'Discovery' },
+    fact: { icon: '📄', label: 'Fact' },
   };
 
   let parsed = $derived.by(() => {
@@ -76,18 +76,17 @@
     width: 100%;
     box-sizing: border-box;
     cursor: grab;
-    font-family: 'Raleway', -apple-system, sans-serif;
+    font-family:
+      'Raleway',
+      -apple-system,
+      sans-serif;
   }
 
   /* Left accent strip — the only place accent color appears */
   .mem-accent-strip {
     width: 3px;
     flex-shrink: 0;
-    background: linear-gradient(
-      180deg,
-      var(--accent),
-      color-mix(in srgb, var(--accent) 25%, transparent)
-    );
+    background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 25%, transparent));
   }
 
   .mem-body {
@@ -194,17 +193,17 @@
   }
 
   /* ── Light theme ── */
-  :global([data-theme="light"]) .mem-node {
-    background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(245,242,250,0.95));
-    border-color: rgba(139,92,246,0.1);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  :global([data-theme='light']) .mem-node {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 242, 250, 0.95));
+    border-color: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   }
 
-  :global([data-theme="light"]) .mem-text {
+  :global([data-theme='light']) .mem-text {
     color: #2a2a3e;
   }
 
-  :global([data-theme="light"]) .badge.inherited {
-    background: rgba(139,92,246,0.06);
+  :global([data-theme='light']) .badge.inherited {
+    background: rgba(139, 92, 246, 0.06);
   }
 </style>

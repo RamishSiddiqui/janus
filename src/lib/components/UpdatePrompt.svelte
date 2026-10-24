@@ -35,8 +35,19 @@
     </div>
 
     {#if working}
-      <div class="update-bar" role="progressbar" aria-label="Update download" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent ?? undefined}>
-        <div class="update-bar-fill" class:indeterminate={percent == null} style:width={percent == null ? undefined : `${percent}%`}></div>
+      <div
+        class="update-bar"
+        role="progressbar"
+        aria-label="Update download"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={percent ?? undefined}
+      >
+        <div
+          class="update-bar-fill"
+          class:indeterminate={percent == null}
+          style:width={percent == null ? undefined : `${percent}%`}
+        ></div>
       </div>
     {:else}
       {#if showNotes && notes.length}
@@ -76,14 +87,26 @@
     border-radius: 14px;
     background: linear-gradient(175deg, #12122a, #0b0b1d);
     border: 1px solid rgba(139, 92, 246, 0.28);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(139, 92, 246, 0.12);
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.5),
+      0 0 24px rgba(139, 92, 246, 0.12);
     animation: updateIn 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   @keyframes updateIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
-  .update-head { display: flex; gap: 10px; align-items: flex-start; }
+  .update-head {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
   .update-icon {
     flex-shrink: 0;
     width: 30px;
@@ -93,9 +116,21 @@
     place-items: center;
     background: rgba(139, 92, 246, 0.14);
   }
-  .update-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .update-title strong { font-size: var(--text-md); color: #e8e0ff; font-weight: 650; }
-  .update-sub { font-size: var(--text-sm); color: var(--fg-muted); }
+  .update-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .update-title strong {
+    font-size: var(--text-md);
+    color: #e8e0ff;
+    font-weight: 650;
+  }
+  .update-sub {
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
   .update-notes {
     max-height: 180px;
     overflow-y: auto;
@@ -105,7 +140,13 @@
     font-size: var(--text-sm);
     color: var(--fg-muted);
   }
-  .update-notes ul { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 3px; }
+  .update-notes ul {
+    margin: 0;
+    padding: 0 0 0 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
   .update-notes-heading {
     margin-top: 4px;
     font-size: var(--text-xs);
@@ -114,7 +155,11 @@
     text-transform: uppercase;
     color: #c4a1ff;
   }
-  .update-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .update-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
   .update-btn {
     padding: 7px 12px;
     border-radius: 9px;
@@ -125,19 +170,52 @@
     font-weight: 600;
     cursor: pointer;
   }
-  .update-btn:hover { background: rgba(139, 92, 246, 0.1); }
-  .update-btn.primary { background: linear-gradient(135deg, #8b5cf6, #bf40ff); color: #fff; border-color: transparent; }
-  .update-btn.primary:hover { filter: brightness(1.1); }
-  .update-btn.quiet { border-color: transparent; color: var(--fg-muted); }
-  .update-bar { height: 6px; border-radius: 999px; background: rgba(139, 92, 246, 0.14); overflow: hidden; }
-  .update-bar-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8b5cf6, #bf40ff); transition: width 200ms ease-out; }
-  .update-bar-fill.indeterminate { width: 40%; animation: updateSlide 1.2s ease-in-out infinite; }
+  .update-btn:hover {
+    background: rgba(139, 92, 246, 0.1);
+  }
+  .update-btn.primary {
+    background: linear-gradient(135deg, #8b5cf6, #bf40ff);
+    color: #fff;
+    border-color: transparent;
+  }
+  .update-btn.primary:hover {
+    filter: brightness(1.1);
+  }
+  .update-btn.quiet {
+    border-color: transparent;
+    color: var(--fg-muted);
+  }
+  .update-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.14);
+    overflow: hidden;
+  }
+  .update-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #8b5cf6, #bf40ff);
+    transition: width 200ms ease-out;
+  }
+  .update-bar-fill.indeterminate {
+    width: 40%;
+    animation: updateSlide 1.2s ease-in-out infinite;
+  }
   @keyframes updateSlide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(250%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
-    .update-prompt { animation: none; }
-    .update-bar-fill.indeterminate { animation: none; width: 100%; }
+    .update-prompt {
+      animation: none;
+    }
+    .update-bar-fill.indeterminate {
+      animation: none;
+      width: 100%;
+    }
   }
 </style>
