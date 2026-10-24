@@ -97,6 +97,14 @@ jobs:
           # Janus never opens (it uses the embedded RocksDB engine, no remote
           # connection). Drop this once surrealdb moves to webpki-roots 1.x.
           #
+          # RUSTSEC-2026-0387 (crypto-bigint 0.5.5: timing variability in
+          # operations meant to be constant-time): fixed only in 0.7.6. The
+          # 0.5.5 copy comes from surrealdb-core -> jsonwebtoken -> p256/p384
+          # -> elliptic-curve 0.13, the ECDSA code behind SurrealDB's JWT
+          # sign/verify. Janus runs the embedded engine and never signs or
+          # verifies SurrealDB tokens, so no secret-dependent arithmetic runs.
+          # Drop this once surrealdb moves to elliptic-curve 0.14.
+          #
           ignore: >-
             RUSTSEC-2026-0235,RUSTSEC-2024-0411,RUSTSEC-2024-0412,RUSTSEC-2024-0413,
             RUSTSEC-2024-0414,RUSTSEC-2024-0415,RUSTSEC-2024-0416,RUSTSEC-2024-0417,
@@ -105,7 +113,7 @@ jobs:
             RUSTSEC-2025-0100,RUSTSEC-2024-0436,RUSTSEC-2024-0370,
             RUSTSEC-2023-0089,RUSTSEC-2023-0071,
             RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369,
-            RUSTSEC-2026-0381
+            RUSTSEC-2026-0381,RUSTSEC-2026-0387
 
   npm-audit:
     runs-on: ubuntu-latest
