@@ -4,6 +4,7 @@
   import { activeConversationId, loadMessages } from '#lib/stores/chat.js';
   import { browser } from '$app/env';
   import type { SearchResult } from '#lib/services/ipc.js';
+  import { highlightSnippetHtml } from '#lib/utils/sanitize.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -158,7 +159,7 @@
               <span class="sr-role" class:user={result.role === 'user'}>{result.role === 'user' ? 'You' : 'AI'}</span>
               <span class="sr-time">{formatSearchTime(result.created_at)}</span>
             </div>
-            <div class="sr-snippet">{@html result.snippet}</div>
+            <div class="sr-snippet">{@html highlightSnippetHtml(result.snippet)}</div>
           </button>
         {/each}
       {/if}
