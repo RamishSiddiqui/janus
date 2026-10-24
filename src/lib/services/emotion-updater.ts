@@ -102,7 +102,7 @@ export async function updateEmotionalState(
   // Skip very short responses — not enough signal to infer emotion
   if (assistantResponse.length < 80) return;
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
 
   // Fetch previous state for continuity
   let prev: EmotionState | null = null;

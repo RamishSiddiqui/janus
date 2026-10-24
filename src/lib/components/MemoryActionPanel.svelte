@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import { success, error as toastError } from '#lib/stores/toast.js';
 
   // ── Props ──────────────────────────────────────────────────────────
   interface MemoryShape {

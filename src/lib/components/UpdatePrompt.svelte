@@ -1,8 +1,8 @@
 <script lang="ts">
   // The "new version available" card in the corner of the desktop app (#139).
   import Icon from './Icon.svelte';
-  import { updates, installUpdate, dismissUpdate } from '$lib/stores/updates';
-  import { releaseNotesGroups } from '$lib/utils/updates';
+  import { updates, installUpdate, dismissUpdate } from '#lib/stores/updates.js';
+  import { releaseNotesGroups } from '#lib/utils/updates.js';
 
   let showNotes = $state(false);
 

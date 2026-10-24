@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import type { CharacterState } from '$lib/services/ipc';
+  import type { CharacterState } from '#lib/services/ipc.js';
 
 
   let { state: emotionState }: { state: CharacterState } = $props();

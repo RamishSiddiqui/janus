@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
+  import { copyText as copyToClipboard } from '#lib/utils/insecureContext.js';
   import { onMount } from 'svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import type { AccountStatus, AccountUser, WebAccessStatus } from '$lib/services/ipc';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import type { AccountStatus, AccountUser, WebAccessStatus } from '#lib/services/ipc.js';
 
   let account = $state<AccountStatus | null>(null);
   let web = $state<WebAccessStatus | null>(null);
@@ -62,7 +62,7 @@
   });
 
   async function ipc() {
-    return import('$lib/services/ipc');
+    return import('#lib/services/ipc.js');
   }
 
   async function load() {

@@ -1,22 +1,22 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { goto } from "$app/navigation";
-  import { browser } from "$app/environment";
-  import { activeConversationId, loadConversations } from "$lib/stores/chat";
-  import { success, error as toastError } from "$lib/stores/toast";
-  import { parseCharacterData } from "$lib/utils/character";
-  import MemoryGraph from "$lib/components/MemoryGraph.svelte";
-  import PersonaPicker from "$lib/components/PersonaPicker.svelte";
-  import SplitHeading from "$lib/components/SplitHeading.svelte";
-  import Icon from "$lib/components/Icon.svelte";
-  import WaveformBars from "$lib/components/WaveformBars.svelte";
-  import { selectedPersonaId } from "$lib/stores/personas";
+  import { browser } from "$app/env";
+  import { activeConversationId, loadConversations } from "#lib/stores/chat.js";
+  import { success, error as toastError } from "#lib/stores/toast.js";
+  import { parseCharacterData } from "#lib/utils/character.js";
+  import MemoryGraph from "#lib/components/MemoryGraph.svelte";
+  import PersonaPicker from "#lib/components/PersonaPicker.svelte";
+  import SplitHeading from "#lib/components/SplitHeading.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import WaveformBars from "#lib/components/WaveformBars.svelte";
+  import { selectedPersonaId } from "#lib/stores/personas.js";
   import { get } from "svelte/store";
-  import { playBase64Wav, primeAudioPreviewContext } from "$lib/utils/audioPreview";
-  import type { MemoryGraph as MemoryGraphData, VoiceInfo, ProviderConfig } from "$lib/services/ipc";
+  import { playBase64Wav, primeAudioPreviewContext } from "#lib/utils/audioPreview.js";
+  import type { MemoryGraph as MemoryGraphData, VoiceInfo, ProviderConfig } from "#lib/services/ipc.js";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
-  const charId = $derived($page.params.id);
+  const charId = $derived(page.params.id);
 
   interface CharData {
     name: string;
@@ -119,7 +119,7 @@
   ): Promise<string | null> {
     if (!avatarPath || !isTauri) return null;
     try {
-      const { loadFileAsBlobUrl } = await import("$lib/utils/blobUrl");
+      const { loadFileAsBlobUrl } = await import("#lib/utils/blobUrl.js");
       return await loadFileAsBlobUrl(avatarPath);
     } catch {
       return null;
@@ -129,7 +129,7 @@
   async function loadCharacter(id: string) {
     isLoading = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const char = await ipc.getCharacter(id);
       charName = char.name;
       const parsed = parseCharacterData(char.data);
@@ -154,7 +154,7 @@
 
   async function loadConvs(id: string) {
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const all = await ipc.listConversations(100, 0);
       const charConvs = all.filter((c: any) => c.character_id === id);
       conversations = charConvs
@@ -177,7 +177,7 @@
     if (memoriesLoaded || isLoadingMemories) return;
     isLoadingMemories = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const raw = await ipc.getMemoryGraph(id);
       const canonIds = new Set(
         raw.memories.filter((m: any) => m.is_canon).map((m: any) => m.id),
@@ -199,7 +199,7 @@
     if (loreLoaded || isLoadingLore) return;
     isLoadingLore = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const raw = await ipc.listLorebookEntries(id);
       loreEntries = raw.map((e: any) => ({
         id: e.id,
@@ -218,7 +218,7 @@
   async function loadTtsProviders() {
     if (!isTauri) return;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       ttsProviders = await ipc.listProviders("tts");
     } catch {
       ttsProviders = [];
@@ -228,7 +228,7 @@
   async function loadVoices() {
     if (voicesLoaded || !isTauri) return;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       voices = await ipc.ttsListVoices(voiceProviderId ?? undefined);
       voicesLoaded = true;
     } catch {
@@ -251,7 +251,7 @@
     if (!isTauri || !charId) return;
     savingVoice = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       await ipc.ttsSetCharacterVoice(charId, voiceId, voiceProviderId);
     } catch {
       toastError("Failed to save voice");
@@ -266,7 +266,7 @@
     primeAudioPreviewContext();
     previewingVoice = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const audio = await ipc.ttsTestSpeak(
         `Hello, I'm ${editName || charName}.`,
         voiceId,
@@ -289,7 +289,7 @@
       return;
     }
     try {
-      const { createConversation } = await import("$lib/stores/chat");
+      const { createConversation } = await import("#lib/stores/chat.js");
       const personaId = get(selectedPersonaId) ?? undefined;
       await createConversation(charId ?? '', charName ?? '', personaId);
       goto("/");
@@ -308,7 +308,7 @@
     if (!isTauri || !editName.trim()) return;
     isSaving = true;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const tags = editTags
         .split(",")
         .map((t: string) => t.trim())

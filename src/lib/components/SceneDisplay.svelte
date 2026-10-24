@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import { onMount, onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
-  import { isWebMode } from '$lib/services/webBridge';
-  import { activeConversationId } from '$lib/stores/chat';
-  import { settings } from '$lib/stores/settings';
+  import { isWebMode } from '#lib/services/webBridge.js';
+  import { activeConversationId } from '#lib/stores/chat.js';
+  import { settings } from '#lib/stores/settings.js';
   import { get } from 'svelte/store';
-  import type { SceneState } from '$lib/services/ipc';
+  import type { SceneState } from '#lib/services/ipc.js';
   import {
     sceneGenerations, getSceneGenerationState, runSceneGeneration, runVideoSceneGeneration, describeProgress,
-  } from '$lib/stores/sceneGeneration';
-  import { humanizeProviderError } from '$lib/utils/providerError';
+  } from '#lib/stores/sceneGeneration.js';
+  import { humanizeProviderError } from '#lib/utils/providerError.js';
 
   let {
     characterId = null,
@@ -126,7 +126,7 @@
 
   async function loadProviderAdapter() {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const providers = await ipc.listProviders('image');
       const def = providers.find(p => p.is_default) ?? providers[0];
       providerAdapter = def?.adapter ?? null;
@@ -138,7 +138,7 @@
 
   async function loadVideoProviderAdapter() {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const providers = await ipc.listProviders('video');
       const def = providers.find(p => p.is_default) ?? providers[0];
       videoProviderAdapter = def?.adapter ?? null;
@@ -150,7 +150,7 @@
 
   async function loadSceneCast(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       sceneCast = await ipc.listSceneCastMembers(convId);
       await loadCastThumbnails(sceneCast);
     } catch (err) {
@@ -163,7 +163,7 @@
    *  like chat.ts's avatar cache) since this list is small and conversation-
    *  scoped — simplest to just reload/revoke wholesale on every switch. */
   async function loadCastThumbnails(members: typeof sceneCast) {
-    const { loadFileAsBlobUrl, revokeIfSet } = await import('$lib/utils/blobUrl');
+    const { loadFileAsBlobUrl, revokeIfSet } = await import('#lib/utils/blobUrl.js');
     for (const url of Object.values(castThumbUrls)) revokeIfSet(url);
     const next: Record<string, string> = {};
     await Promise.all(members.filter(m => m.avatarPath).map(async (m) => {
@@ -202,12 +202,12 @@
 
   async function resolvePersona(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const conv = await ipc.getConversation(convId);
       const personaId = (conv as unknown as { persona_id: string | null }).persona_id;
       if (personaId) {
         const persona = await ipc.getPersona(personaId);
-        const { parseCharacterData } = await import('$lib/utils/character');
+        const { parseCharacterData } = await import('#lib/utils/character.js');
         personaName = persona.name;
         personaDescription = (parseCharacterData(persona.data).description as string) || null;
       } else {
@@ -282,7 +282,7 @@
 
   onMount(() => {
     if (!isTauri) return;
-    import('$lib/services/ipc').then(async (ipc) => {
+    import('#lib/services/ipc.js').then(async (ipc) => {
       const [rows, enabled] = await Promise.all([ipc.listImagePresets(), ipc.listEnabledModels()]);
       presets = rows.map(p => ({ id: p.id, name: p.name, model: p.model }));
       enabledImageModels = enabled.filter(m => m.model_type === 'image').map(m => ({
@@ -295,7 +295,7 @@
 
   async function loadPresetSelection(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const conv = await ipc.getConversation(convId);
       selectedPresetId = conv.image_preset_id ?? null;
     } catch (err) {
@@ -309,7 +309,7 @@
     const presetId = value || null;
     selectedPresetId = presetId;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.setConversationImagePreset(convId, presetId);
     } catch (err) {
       console.error('Failed to set conversation preset:', err);
@@ -366,7 +366,7 @@
    *  loaded elsewhere in the app (see chat.ts's resolveCachedAvatarUrl). */
   async function loadSceneImageBlob(fileRelative: string): Promise<string | null> {
     try {
-      const { loadFileAsBlobUrl, revokeIfSet } = await import('$lib/utils/blobUrl');
+      const { loadFileAsBlobUrl, revokeIfSet } = await import('#lib/utils/blobUrl.js');
       const url = await loadFileAsBlobUrl(fileRelative, 'image/png');
       revokeIfSet(currentImageBlobUrl);
       currentImageBlobUrl = url;
@@ -382,7 +382,7 @@
    *  to actually play instead of being silently blocked. */
   async function loadSceneVideoBlob(fileRelative: string): Promise<string | null> {
     try {
-      const { loadFileAsBlobUrl, revokeIfSet } = await import('$lib/utils/blobUrl');
+      const { loadFileAsBlobUrl, revokeIfSet } = await import('#lib/utils/blobUrl.js');
       const url = await loadFileAsBlobUrl(fileRelative, 'video/mp4');
       revokeIfSet(currentVideoBlobUrl);
       currentVideoBlobUrl = url;
@@ -477,7 +477,7 @@
 
   async function loadLatestScene(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const scenes = await ipc.listScenes(convId); // sorted DESC by created_at, mixed media types
       const latestImage = scenes.find(s => s.media_type !== 'video');
       if (latestImage) {
@@ -513,7 +513,7 @@
     const fallback = 'A detailed scene from the current conversation';
     if (!isTauri) return fallback;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const state = await ipc.getSceneState(convId);
       if (state) {
         const built = buildAutoPrompt(state);
@@ -609,7 +609,7 @@
     if (!convId || isCancelling) return;
     isCancelling = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.cancelSceneGeneration(convId);
     } catch (err) {
       console.error('Failed to cancel scene generation:', err);
@@ -635,7 +635,7 @@
     if (isTauri && sceneId) {
       try {
         const { save } = await import('@tauri-apps/plugin-dialog');
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         const scenes = await ipc.listScenes($activeConversationId);
         const scene = scenes.find(s => s.id === sceneId);
         if (scene) {

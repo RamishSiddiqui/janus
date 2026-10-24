@@ -1,11 +1,11 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import WaveformBars from './WaveformBars.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { error as toastError } from '$lib/stores/toast';
-  import { browser } from '$app/environment';
-  import { playBase64Wav, primeAudioPreviewContext } from '$lib/utils/audioPreview';
-  import type { VoiceInfo, TtsDownloadProgressEvent, ProviderConfig } from '$lib/services/ipc';
+  import { settings } from '#lib/stores/settings.js';
+  import { error as toastError } from '#lib/stores/toast.js';
+  import { browser } from '$app/env';
+  import { playBase64Wav, primeAudioPreviewContext } from '#lib/utils/audioPreview.js';
+  import type { VoiceInfo, TtsDownloadProgressEvent, ProviderConfig } from '#lib/services/ipc.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -30,7 +30,7 @@
   async function loadTtsProviders() {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       ttsProviders = await ipc.listProviders('tts');
     } catch (err) {
       console.error('Failed to load TTS providers:', err);
@@ -64,7 +64,7 @@
     checkingStatus = true;
     await loadTtsProviders();
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const status = await ipc.ttsModelStatus();
       modelDownloaded = status.downloaded;
       // A cloud provider's voice list doesn't need the Kokoro model
@@ -81,7 +81,7 @@
     if (!isTauri || loadingVoices) return;
     loadingVoices = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       voices = await ipc.ttsListVoices(ttsDefaultProviderId ?? undefined);
     } catch (err) {
       toastError('Failed to load voice list');
@@ -96,7 +96,7 @@
     downloadPhase = 'model';
     downloadPercent = 0;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       unlistenProgress = await ipc.onTtsDownloadProgress((event) => {
         downloadPhase = event.phase;
         downloadPercent = event.percent;
@@ -122,7 +122,7 @@
     primeAudioPreviewContext();
     previewing = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const audio = await ipc.ttsTestSpeak('Hello, this is a preview of this voice.', ttsDefaultVoiceId, ttsDefaultProviderId ?? undefined);
       const playback = await playBase64Wav(audio);
       previewAnalyser = playback.analyser;

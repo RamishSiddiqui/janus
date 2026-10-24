@@ -1,22 +1,22 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { browser } from "$app/environment";
-  import ChatHeader from "$lib/components/ChatHeader.svelte";
-  import JanusLoader from "$lib/components/JanusLoader.svelte";
-  import SplitHeading from "$lib/components/SplitHeading.svelte";
-  import ChatExplorerView from "$lib/components/ChatExplorerView.svelte";
-  import ContextLorebook from "$lib/components/ContextLorebook.svelte";
-  import ContextNpcPanel from "$lib/components/ContextNpcPanel.svelte";
-  import ContextPersonaPanel from "$lib/components/ContextPersonaPanel.svelte";
-  import SceneStateBar from "$lib/components/SceneStateBar.svelte";
-  import type { SceneState } from "$lib/services/ipc";
-  import Icon from "$lib/components/Icon.svelte";
-  import ChatInput from "$lib/components/ChatInput.svelte";
-  import ChatMessage from "$lib/components/ChatMessage.svelte";
-  import ContextPanel from "$lib/components/ContextPanel.svelte";
-  import SceneGalleryModal from "$lib/components/SceneGalleryModal.svelte";
-  import { parseCharacterData } from "$lib/utils/character";
-  import { humanizeProviderError } from "$lib/utils/providerError";
+  import { browser } from "$app/env";
+  import ChatHeader from "#lib/components/ChatHeader.svelte";
+  import JanusLoader from "#lib/components/JanusLoader.svelte";
+  import SplitHeading from "#lib/components/SplitHeading.svelte";
+  import ChatExplorerView from "#lib/components/ChatExplorerView.svelte";
+  import ContextLorebook from "#lib/components/ContextLorebook.svelte";
+  import ContextNpcPanel from "#lib/components/ContextNpcPanel.svelte";
+  import ContextPersonaPanel from "#lib/components/ContextPersonaPanel.svelte";
+  import SceneStateBar from "#lib/components/SceneStateBar.svelte";
+  import type { SceneState } from "#lib/services/ipc.js";
+  import Icon from "#lib/components/Icon.svelte";
+  import ChatInput from "#lib/components/ChatInput.svelte";
+  import ChatMessage from "#lib/components/ChatMessage.svelte";
+  import ContextPanel from "#lib/components/ContextPanel.svelte";
+  import SceneGalleryModal from "#lib/components/SceneGalleryModal.svelte";
+  import { parseCharacterData } from "#lib/utils/character.js";
+  import { humanizeProviderError } from "#lib/utils/providerError.js";
   import {
     messages,
     conversations,
@@ -34,9 +34,9 @@
     retryLastMessage,
     branchConversation,
     cancelGeneration,
-  } from "$lib/stores/chat";
-  import { settings } from "$lib/stores/settings";
-  import { trackPortraitGeneration } from "$lib/stores/sceneGeneration";
+  } from "#lib/stores/chat.js";
+  import { settings } from "#lib/stores/settings.js";
+  import { trackPortraitGeneration } from "#lib/stores/sceneGeneration.js";
 
   const isTauri = browser && "__TAURI_INTERNALS__" in window;
 
@@ -289,7 +289,7 @@
       return;
     }
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const providers = await ipc.listProviders("llm");
       hasLlmProvider = providers.length > 0;
       const active = providers.find((p) => p.is_default) ?? providers[0];
@@ -340,7 +340,7 @@
         const convId = $activeConversationId;
         if (!convId || event.payload.conversation_id !== convId) return;
         const characterId = event.payload.character.id;
-        import('$lib/services/ipc').then(ipc =>
+        import('#lib/services/ipc.js').then(ipc =>
           trackPortraitGeneration(characterId, () =>
             ipc.generateNpcPortrait(characterId, convId, $settings.autoApproveNpcPortraits)
           ).catch(err => console.warn('[Janus] NPC portrait generation failed:', err))
@@ -361,7 +361,7 @@
 
   async function loadSceneState(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       currentSceneState = await ipc.getSceneState(convId);
     } catch (err) {
       console.error('Failed to load scene state:', err);
@@ -372,7 +372,7 @@
   async function refreshModels() {
     if (!isTauri || !activeProviderId) return;
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const enabled = await ipc.listEnabledModels(activeProviderId);
       const chatModels = enabled.filter(e => e.model_type !== 'embedding');
       availableModels = chatModels.map((e) => e.model_id);
@@ -408,7 +408,7 @@
 
   async function loadCharacterData(charId: string) {
     try {
-      const ipc = await import("$lib/services/ipc");
+      const ipc = await import("#lib/services/ipc.js");
       const char = await ipc.getCharacter(charId);
       const data = parseCharacterData(char.data);
 
@@ -427,7 +427,7 @@
 
       // Resolve avatar URL
       characterAvatarPath = char.avatar_path ?? null;
-      const { loadFileAsBlobUrl, revokeIfSet } = await import("$lib/utils/blobUrl");
+      const { loadFileAsBlobUrl, revokeIfSet } = await import("#lib/utils/blobUrl.js");
       if (char.avatar_path) {
         try {
           const newUrl = await loadFileAsBlobUrl(char.avatar_path);

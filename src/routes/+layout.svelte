@@ -1,17 +1,17 @@
 <script lang="ts">
   import '../app.css';
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import Sidebar from '$lib/components/Sidebar.svelte';
-  import TitleBar from '$lib/components/TitleBar.svelte';
-  import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
-  import ToastContainer from '$lib/components/ToastContainer.svelte';
-  import UpdatePrompt from '$lib/components/UpdatePrompt.svelte';
-  import { startAutoUpdateChecks, stopAutoUpdateChecks } from '$lib/stores/updates';
-  import FirstRunWizard from '$lib/components/FirstRunWizard.svelte';
-  import WebGate from '$lib/components/WebGate.svelte';
+  import { browser } from '$app/env';
+  import Sidebar from '#lib/components/Sidebar.svelte';
+  import TitleBar from '#lib/components/TitleBar.svelte';
+  import ErrorBoundary from '#lib/components/ErrorBoundary.svelte';
+  import ToastContainer from '#lib/components/ToastContainer.svelte';
+  import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
+  import { startAutoUpdateChecks, stopAutoUpdateChecks } from '#lib/stores/updates.js';
+  import FirstRunWizard from '#lib/components/FirstRunWizard.svelte';
+  import WebGate from '#lib/components/WebGate.svelte';
   import {
     SIGNED_OUT_EVENT,
     closeEvents,
@@ -20,13 +20,13 @@
     webAuth,
     type WebStatus,
     type WebUser,
-  } from '$lib/services/webBridge';
-  import { shouldShowWizard } from '$lib/utils/onboarding';
-  import { settings } from '$lib/stores/settings';
-  import { initMultiCharListener, cleanupMultiCharListener } from '$lib/stores/chat';
-  import { initTtsPlaybackListener, cleanupTtsPlaybackListener, isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
-  import { initFrontendLogCapture } from '$lib/stores/logs';
-  import type { NavItem } from '$lib/types';
+  } from '#lib/services/webBridge.js';
+  import { shouldShowWizard } from '#lib/utils/onboarding.js';
+  import { settings } from '#lib/stores/settings.js';
+  import { initMultiCharListener, cleanupMultiCharListener } from '#lib/stores/chat.js';
+  import { initTtsPlaybackListener, cleanupTtsPlaybackListener, isSpeaking, stop as stopTtsPlayback } from '#lib/stores/ttsPlayback.js';
+  import { initFrontendLogCapture } from '#lib/stores/logs.js';
+  import type { NavItem } from '#lib/types/index.js';
 
   let { children } = $props();
 
@@ -94,7 +94,7 @@
     wizardChecked = true;
     void (async () => {
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         const llm = await ipc.listProviders('llm');
         if (shouldShowWizard(false, llm.length)) showWizard = true;
         else settings.update((s) => ({ ...s, onboardingDone: true }));
@@ -141,7 +141,7 @@
     { path: '/settings',  label: 'Settings',  icon: 'settings' },
   ] as const satisfies readonly NavItem[];
 
-  let currentPath = $derived($page.url.pathname);
+  let currentPath = $derived(page.url.pathname);
 
   // Resolve effective theme (dark/light) from user pref + system
   let systemPrefersDark = $state(true);
@@ -198,7 +198,7 @@
   // no-ops quietly if the model isn't downloaded yet.
   $effect(() => {
     if (!browser || !('__TAURI_INTERNALS__' in window) || !$settings.ttsEnabled) return;
-    import('$lib/services/ipc').then((ipc) => {
+    import('#lib/services/ipc.js').then((ipc) => {
       ipc.ttsPreloadEngine().catch((err) => console.error('[tts] Preload failed:', err));
     });
   });

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import { goto } from '$app/navigation';
   import { onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { loadFileAsBlobUrl, revokeIfSet } from '$lib/utils/blobUrl';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { loadFileAsBlobUrl, revokeIfSet } from '#lib/utils/blobUrl.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -63,7 +63,7 @@
   async function loadPersonas(convId: string) {
     isLoading = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const [list, conv] = await Promise.all([
         ipc.listPersonas(),
         ipc.getConversation(convId),
@@ -81,7 +81,7 @@
     if (!isTauri || !conversationId || isSwitching) return;
     isSwitching = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.setConversationPersona(conversationId, id);
       selectedId = id;
       const name = id ? personas.find(p => p.id === id)?.name : null;

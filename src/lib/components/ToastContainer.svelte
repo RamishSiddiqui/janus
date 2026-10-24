@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { toasts, pauseToast, resumeToast, dismissToast } from '$lib/stores/toast';
+  import { toasts, pauseToast, resumeToast, dismissToast } from '#lib/stores/toast.js';
   import Icon from './Icon.svelte';
 </script>
 

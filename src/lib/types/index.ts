@@ -43,7 +43,7 @@ export interface Message {
    *  not whatever their live state is now. Falls back to the live
    *  `characterEmotionStates` map when absent (messages sent before this
    *  existed). Reloaded from the backend's `metadata.emotional_states`. */
-  emotionSnapshot?: Record<string, import('$lib/services/ipc').CharacterState>;
+  emotionSnapshot?: Record<string, import('#lib/services/ipc.js').CharacterState>;
 }
 
 /** A character card used across Gallery and Chat. */

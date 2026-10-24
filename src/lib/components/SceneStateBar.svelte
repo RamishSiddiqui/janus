@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import Icon from './Icon.svelte';
-  import { activeConversationId } from '$lib/stores/chat';
-  import { substituteUserMacro } from '$lib/utils/personaMacros';
-  import type { SceneState } from '$lib/services/ipc';
+  import { activeConversationId } from '#lib/stores/chat.js';
+  import { substituteUserMacro } from '#lib/utils/personaMacros.js';
+  import type { SceneState } from '#lib/services/ipc.js';
 
   let { sceneState = null, expanded = false }: { sceneState: SceneState | null; expanded?: boolean } = $props();
 
@@ -30,7 +30,7 @@
 
   async function resolvePersonaName(convId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const conv = await ipc.getConversation(convId);
       const personaId = (conv as unknown as { persona_id: string | null }).persona_id;
       personaName = personaId ? (await ipc.getPersona(personaId)).name : null;

@@ -5,9 +5,9 @@
 // ============================================================
 
 import { get, writable } from 'svelte/store';
-import { browser } from '$app/environment';
-import { settings } from '$lib/stores/settings';
-import { isWebMode } from '$lib/services/webBridge';
+import { browser } from '$app/env';
+import { settings } from '#lib/stores/settings.js';
+import { isWebMode } from '#lib/services/webBridge.js';
 import {
   CHECK_INTERVAL_MS,
   FIRST_CHECK_DELAY_MS,
@@ -17,7 +17,7 @@ import {
   updateErrorMessage,
   updatesBlockedInDev,
   writeDismissed,
-} from '$lib/utils/updates';
+} from '#lib/utils/updates.js';
 
 export type UpdateStatus =
   | 'idle'

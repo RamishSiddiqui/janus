@@ -1,19 +1,19 @@
 <script lang="ts">
-  import Icon from '$lib/components/Icon.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import SettingsAppearanceSection from '$lib/components/SettingsAppearanceSection.svelte';
-  import SettingsChatSection from '$lib/components/SettingsChatSection.svelte';
-  import SettingsContextSection from '$lib/components/SettingsContextSection.svelte';
-  import SettingsPrivacySection from '$lib/components/SettingsPrivacySection.svelte';
-  import SettingsVoiceSection from '$lib/components/SettingsVoiceSection.svelte';
-  import SettingsImageSection from '$lib/components/SettingsImageSection.svelte';
-  import SettingsPromptsSection from '$lib/components/SettingsPromptsSection.svelte';
-  import SettingsLoggingSection from '$lib/components/SettingsLoggingSection.svelte';
-  import SettingsNetworkSection from '$lib/components/SettingsNetworkSection.svelte';
-  import SettingsUpdatesSection from '$lib/components/SettingsUpdatesSection.svelte';
-  import { isWebMode } from '$lib/services/webBridge';
-  import { settings } from '$lib/stores/settings';
-  import { browser } from '$app/environment';
+  import Icon from '#lib/components/Icon.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import SettingsAppearanceSection from '#lib/components/SettingsAppearanceSection.svelte';
+  import SettingsChatSection from '#lib/components/SettingsChatSection.svelte';
+  import SettingsContextSection from '#lib/components/SettingsContextSection.svelte';
+  import SettingsPrivacySection from '#lib/components/SettingsPrivacySection.svelte';
+  import SettingsVoiceSection from '#lib/components/SettingsVoiceSection.svelte';
+  import SettingsImageSection from '#lib/components/SettingsImageSection.svelte';
+  import SettingsPromptsSection from '#lib/components/SettingsPromptsSection.svelte';
+  import SettingsLoggingSection from '#lib/components/SettingsLoggingSection.svelte';
+  import SettingsNetworkSection from '#lib/components/SettingsNetworkSection.svelte';
+  import SettingsUpdatesSection from '#lib/components/SettingsUpdatesSection.svelte';
+  import { isWebMode } from '#lib/services/webBridge.js';
+  import { settings } from '#lib/stores/settings.js';
+  import { browser } from '$app/env';
 
   // ── Sidebar navigation ──
   // Settings grew to 8 sections crammed into a two-column masonry layout
@@ -66,7 +66,7 @@
     let cancelled = false;
     async function poll() {
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         const usage = await ipc.getResourceUsage();
         if (!cancelled) {
           memoryMb = usage.memory_mb;
@@ -100,7 +100,7 @@
   $effect(() => {
     if (!(browser && '__TAURI_INTERNALS__' in window)) return;
     let cancelled = false;
-    import('$lib/services/ipc').then(async (ipc) => {
+    import('#lib/services/ipc.js').then(async (ipc) => {
       try {
         const info = await ipc.getAppInfo();
         if (!cancelled) appVersion = info.version;

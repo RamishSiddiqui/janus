@@ -3,7 +3,7 @@
 //   Logs errors to console AND shows user-facing toast
 // ============================================================
 
-import { error as toastError } from '$lib/stores/toast';
+import { error as toastError } from '#lib/stores/toast.js';
 
 /**
  * Extracts a readable message from any error type.

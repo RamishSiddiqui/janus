@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { settings } from '$lib/stores/settings';
-  import { MODEL_SOURCES, rankModels, type ModelSource } from '$lib/utils/onboarding';
-  import { STARTER_CHARACTERS } from '$lib/data/starterCharacters';
+  import { settings } from '#lib/stores/settings.js';
+  import { MODEL_SOURCES, rankModels, type ModelSource } from '#lib/utils/onboarding.js';
+  import { STARTER_CHARACTERS } from '#lib/data/starterCharacters.js';
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -18,7 +18,7 @@
   let busy = $state(false);
   let error = $state('');
 
-  const ipcPromise = () => import('$lib/services/ipc');
+  const ipcPromise = () => import('#lib/services/ipc.js');
 
   function pickSource(s: ModelSource) {
     source = s;
@@ -101,7 +101,7 @@
     try {
       const ipc = await ipcPromise();
       const ch = await ipc.createCharacter(String(starter.data.name), starter.data);
-      const { createConversation } = await import('$lib/stores/chat');
+      const { createConversation } = await import('#lib/stores/chat.js');
       await createConversation(ch.id, ch.name);
       finish();
       goto('/');

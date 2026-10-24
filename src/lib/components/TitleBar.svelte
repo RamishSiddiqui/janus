@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import Icon from './Icon.svelte';
   import JanusMark from './JanusMark.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { isSpeaking, stop as stopTtsPlayback } from '$lib/stores/ttsPlayback';
-  import { isWebMode } from '$lib/services/webBridge';
+  import { settings } from '#lib/stores/settings.js';
+  import { isSpeaking, stop as stopTtsPlayback } from '#lib/stores/ttsPlayback.js';
+  import { isWebMode } from '#lib/services/webBridge.js';
 
   let {
     onToggleSidebar,

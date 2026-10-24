@@ -8,7 +8,7 @@
 // ============================================================
 
 import { get } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { activeConversationId, conversationCharMeta, messages, pathState } from './chat';
 import { runEmotionUpdatePipeline } from './chatEmotion';
 

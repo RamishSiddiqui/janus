@@ -1,8 +1,8 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { browser } from '$app/environment';
-  import { error as toastError } from '$lib/stores/toast';
-  import { toggleBold } from '$lib/utils/markdownEdit';
+  import { browser } from '$app/env';
+  import { error as toastError } from '#lib/stores/toast.js';
+  import { toggleBold } from '#lib/utils/markdownEdit.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -65,8 +65,8 @@
     isUploadingAttachment = true;
     try {
       const { stat } = await import('@tauri-apps/plugin-fs');
-      const ipc = await import('$lib/services/ipc');
-      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const ipc = await import('#lib/services/ipc.js');
+      const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
       for (const path of paths) {
         const info = await stat(path);
         if (info.size > MAX_ATTACHMENT_BYTES) {
@@ -125,8 +125,8 @@
     isUploadingAttachment = true;
     try {
       const bytes = new Uint8Array(await blob.arrayBuffer());
-      const ipc = await import('$lib/services/ipc');
-      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const ipc = await import('#lib/services/ipc.js');
+      const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
       const attachment = await ipc.uploadMessageAttachmentBytes(bytes, ext);
       const previewUrl = await loadFileAsBlobUrl(attachment.relativePath, attachment.mimeType);
       pendingAttachments = [...pendingAttachments, { ...attachment, previewUrl }];

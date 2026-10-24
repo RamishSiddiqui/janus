@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
-  import { settings } from '$lib/stores/settings';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { browser } from '$app/environment';
-  import { HORDE_SAMPLERS } from '$lib/constants/aiHorde';
+  import { settings } from '#lib/stores/settings.js';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { browser } from '$app/env';
+  import { HORDE_SAMPLERS } from '#lib/constants/aiHorde.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -106,7 +106,7 @@
   async function loadEnabledImageModels() {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const models = await ipc.listEnabledModels();
       enabledImageModels = models
         .filter(m => m.model_type === 'image')
@@ -134,7 +134,7 @@
     if (!isTauri) return;
     isLoadingPresets = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const rows = await ipc.listImagePresets();
       imagePresets = rows.map(p => ({
         id: p.id, name: p.name, model: p.model, sampler_name: p.sampler_name,
@@ -151,7 +151,7 @@
     if (!newPresetName.trim() || !isTauri) return;
     isSavingPreset = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const p = await ipc.createImagePreset(newPresetName, {
         model: newPresetModel || undefined,
         samplerName: newPresetSampler,
@@ -187,7 +187,7 @@
   async function savePresetField(p: PresetRow, field: string, value: string | number | boolean | string[]) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.updateImagePreset(p.id, { [field]: value } as Record<string, unknown>);
     } catch (err) { toastError('Failed to save preset'); console.error(err); }
   }
@@ -195,7 +195,7 @@
   async function setDefaultPreset(p: PresetRow) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.setDefaultImagePreset(p.id);
       imagePresets = imagePresets.map(r => ({ ...r, is_default: r.id === p.id }));
       success(`"${p.name}" set as default preset`);
@@ -205,7 +205,7 @@
   async function deleteImagePresetRow(p: PresetRow) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.deleteImagePreset(p.id);
       imagePresets = imagePresets.filter(r => r.id !== p.id);
       success(`Deleted preset "${p.name}"`);

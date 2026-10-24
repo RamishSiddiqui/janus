@@ -4,14 +4,14 @@
    * fill the screen and slide apart to reveal the forms. Shown only when the
    * page is served by Janus's own web server and nobody is signed in.
    */
-  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
+  import { copyText as copyToClipboard } from '#lib/utils/insecureContext.js';
   import { onMount } from 'svelte';
   import {
     webAuth,
     type WebSession,
     type WebStatus,
     type WebUser,
-  } from '$lib/services/webBridge';
+  } from '#lib/services/webBridge.js';
   import {
     LEVELS,
     MIN_PASSPHRASE,
@@ -20,7 +20,7 @@
     formatRecoveryKey,
     passphraseStrength,
     usernameOk,
-  } from '$lib/utils/webAccount';
+  } from '#lib/utils/webAccount.js';
 
   let { status, onenter }: { status: WebStatus; onenter: (user: WebUser) => void } = $props();
 

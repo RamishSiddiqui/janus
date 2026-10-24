@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
-  import { browser } from '$app/environment';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { frontendLogs, formatFrontendLogsAsText, clearFrontendLogs } from '$lib/stores/logs';
+  import { browser } from '$app/env';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { frontendLogs, formatFrontendLogsAsText, clearFrontendLogs } from '#lib/stores/logs.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -32,7 +32,7 @@
     if (!isTauri) return;
     isLoadingBackendLogs = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const page = await ipc.getBackendLogsPage(undefined, BACKEND_LOG_PAGE_SIZE);
       backendLogLines = page.lines;
       backendLogCursor = page.nextCursor;
@@ -48,7 +48,7 @@
     if (!isTauri || backendLogCursor == null || isLoadingMoreBackendLogs) return;
     isLoadingMoreBackendLogs = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const page = await ipc.getBackendLogsPage(backendLogCursor, BACKEND_LOG_PAGE_SIZE);
       const el = logViewerEl;
       const prevScrollHeight = el?.scrollHeight ?? 0;
@@ -112,7 +112,7 @@
   async function handleExportLogs() {
     isExportingLogs = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { writeTextFile } = await import('@tauri-apps/plugin-fs');
       const fullBackendLog = await ipc.getBackendLogs(5000);

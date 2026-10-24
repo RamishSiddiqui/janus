@@ -6,10 +6,10 @@
 // ============================================================
 
 import { get } from 'svelte/store';
-import type { CharacterState } from '$lib/services/ipc';
-import { charAccentColor, type CharMeta } from '$lib/services/presentation-buffer';
-import { error as toastError, undoableDelete } from '$lib/stores/toast';
-import { browser } from '$app/environment';
+import type { CharacterState } from '#lib/services/ipc.js';
+import { charAccentColor, type CharMeta } from '#lib/services/presentation-buffer.js';
+import { error as toastError, undoableDelete } from '#lib/stores/toast.js';
+import { browser } from '$app/env';
 import {
   activeConversationId, characterEmotionStates, conversationCharMeta, conversations,
   hasMoreMessages, isLoadingMoreMessages, isStreaming, lastStreamError, loadConversations,
@@ -38,14 +38,14 @@ function parseAttachments(metadata: unknown): { relativePath: string; mimeType: 
 /** Loads messages for the active conversation, showing only the active branch chain. */
 export async function loadMessages(conversationId: string) {
   // Reset auto-memory throttle on conversation switch
-  import('$lib/services/memory-extractor').then(m => m.resetCounter()).catch(() => {});
+  import('#lib/services/memory-extractor.js').then(m => m.resetCounter()).catch(() => {});
 
   if (!isTauri) {
     // Dev mode — keep existing mock messages
     return;
   }
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   try {
     // Flush immediately so stale messages don't show during load
     messages.set([]);
@@ -447,7 +447,7 @@ export async function loadMoreMessages(): Promise<number> {
 export async function switchBranch(siblingId: string) {
   if (!isTauri) return;
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   const convId = get(activeConversationId);
   if (!convId) return;
 
@@ -498,7 +498,7 @@ export function deleteMessageWithUndo(id: string) {
     'Message deleted',
     async () => {
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         await ipc.deleteMessage(id);
       } catch {
         toastError('Failed to delete message');

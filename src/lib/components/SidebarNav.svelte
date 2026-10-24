@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { browser } from '$app/environment';
-  import type { NavItem } from '$lib/types';
+  import { browser } from '$app/env';
+  import type { NavItem } from '#lib/types/index.js';
 
   let {
     navItems, currentPath, collapsed = false, onNavigate,

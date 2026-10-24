@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import Icon from './Icon.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { parseCharacterData } from '$lib/utils/character';
-  import type { LorebookEntry } from '$lib/types';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { parseCharacterData } from '#lib/utils/character.js';
+  import type { LorebookEntry } from '#lib/types/index.js';
   import {
     sceneGenerations, getSceneGenerationState, trackGenerationByKey,
-  } from '$lib/stores/sceneGeneration';
+  } from '#lib/stores/sceneGeneration.js';
 
   const generateKey = (characterId: string) => `lorebook-generate-${characterId}`;
 
@@ -75,7 +75,7 @@
   async function loadLorebook(charId: string) {
     isLoadingLore = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
 
       // First try DB entries
       const dbEntries = await ipc.listLorebookEntries(charId);
@@ -129,7 +129,7 @@
     if (!entry || entry.isVirtual) return;
 
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.toggleLorebookEntry(entryId, !entry.isActive);
       lorebookEntries = lorebookEntries.map(e =>
         e.id === entryId ? { ...e, isActive: !e.isActive } : e
@@ -144,7 +144,7 @@
     const entry = lorebookEntries.find(e => e.id === entryId);
     if (entry?.isVirtual) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.deleteLorebookEntry(entryId);
       const name = lorebookEntries.find(e => e.id === entryId)?.title ?? 'Entry';
       lorebookEntries = lorebookEntries.filter(e => e.id !== entryId);
@@ -158,7 +158,7 @@
     if (!isTauri || !newLoreName.trim() || !newLoreContent.trim()) return;
     isSavingLore = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const keys = newLoreKeys.split(',').map(k => k.trim()).filter(Boolean);
       const created = await ipc.createLorebookEntry(
         characterId ?? null,
@@ -206,7 +206,7 @@
     if (!isTauri || !editName.trim() || !editContent.trim()) return;
     isSavingEdit = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const keys = editKeys.split(',').map(k => k.trim()).filter(Boolean);
       const updated = await ipc.updateLorebookEntry(
         entry.id, editName.trim(), keys, editContent.trim(),
@@ -244,7 +244,7 @@
     if (target.isVirtual || entry.isVirtual) return;
 
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const [newOrderA, newOrderB] = [target.insertionOrder, entry.insertionOrder];
       await Promise.all([
         ipc.updateLorebookEntry(entry.id, entry.title, entry.keys, entry.content, entry.alwaysActive, entry.priority, newOrderA),
@@ -268,7 +268,7 @@
     if (!isTauri || !characterId) return;
     isImportingBook = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const imported = await ipc.importCharacterBookEntries(characterId);
       if (imported.length === 0) {
         toastError('No embedded lorebook found on this character card');
@@ -289,7 +289,7 @@
   async function generateFromStory() {
     if (!isTauri || !characterId || !conversationId) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const generated = await trackGenerationByKey(generateKey(characterId), () =>
         ipc.generateCharacterLorebook(characterId!, conversationId!)
       );

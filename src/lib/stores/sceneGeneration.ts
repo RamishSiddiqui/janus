@@ -11,7 +11,7 @@
 // ============================================================
 
 import { writable } from 'svelte/store';
-import { info as infoToast } from '$lib/stores/toast';
+import { info as infoToast } from '#lib/stores/toast.js';
 
 export interface AiHordeProgress {
   phase: 'queued' | 'waiting' | 'processing' | 'finalizing';
@@ -184,7 +184,7 @@ export async function runSceneGeneration(
   patchState(conversationId, { isLoading: true, progress: null });
   await ensureProgressListener();
   try {
-    const ipc = await import('$lib/services/ipc');
+    const ipc = await import('#lib/services/ipc.js');
     const scene = await ipc.generateScene(conversationId, prompt, options);
     patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });
     warnIfModelWasAutoSelected(scene.metadata);
@@ -211,7 +211,7 @@ export async function runVideoSceneGeneration(
   patchState(conversationId, { isLoading: true, progress: null });
   await ensureProgressListener();
   try {
-    const ipc = await import('$lib/services/ipc');
+    const ipc = await import('#lib/services/ipc.js');
     const scene = await ipc.generateVideoScene(conversationId, prompt, options);
     patchState(conversationId, { isLoading: false, progress: null, completedAt: Date.now() });
     return scene;

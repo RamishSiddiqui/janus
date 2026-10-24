@@ -1,21 +1,21 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import { goto } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
   import { slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import Icon from './Icon.svelte';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { settings } from '$lib/stores/settings';
-  import { loadFileAsBlobUrl, revokeIfSet } from '$lib/utils/blobUrl';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { settings } from '#lib/stores/settings.js';
+  import { loadFileAsBlobUrl, revokeIfSet } from '#lib/utils/blobUrl.js';
   import MemoryGraph from './MemoryGraph.svelte';
   import MemoryTimeline from './MemoryTimeline.svelte';
   import TimelineFilter from './TimelineFilter.svelte';
-  import type { MemoryGraph as MemoryGraphData } from '$lib/services/ipc';
+  import type { MemoryGraph as MemoryGraphData } from '#lib/services/ipc.js';
   import {
     sceneGenerations, getSceneGenerationState, trackPortraitGeneration,
     portraitGenerationKey, describeProgress, trackGenerationByKey,
-  } from '$lib/stores/sceneGeneration';
+  } from '#lib/stores/sceneGeneration.js';
 
   const refreshKey = (characterId: string) => `npc-refresh-${characterId}`;
   const uploadKey = (characterId: string) => `npc-upload-${characterId}`;
@@ -122,7 +122,7 @@
     if (allCharacters.length > 0) return;
     isLoadingAllChars = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const chars = await ipc.listCharacters();
       allCharacters = chars.map(c => ({ id: c.id, name: c.name }));
     } catch (err) {
@@ -134,7 +134,7 @@
   async function addCharToRoster(charId: string, charName: string) {
     if (!conversationId || !isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const created = await ipc.addConversationCharacter(conversationId, charId, charName);
       roster = [...roster, {
         id: created.id,
@@ -154,7 +154,7 @@
   async function removeFromRoster(charId: string) {
     if (!conversationId || !isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.removeConversationCharacter(conversationId, charId);
       const name = roster.find(r => r.character_id === charId)?.character_name ?? 'Character';
       roster = roster.filter(r => r.character_id !== charId);
@@ -169,7 +169,7 @@
     const row = roster.find(r => r.character_id === charId);
     if (!row) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.toggleCharacterActive(conversationId, charId, !row.is_active);
       roster = roster.map(r => r.character_id === charId ? { ...r, is_active: !r.is_active } : r);
     } catch {
@@ -181,7 +181,7 @@
     if (!conversationId || !isTauri) return;
     roster = roster.map(r => r.character_id === charId ? { ...r, talkativeness: value } : r);
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.updateCharacterTalkativeness(conversationId, charId, value);
     } catch {
       toastError('Failed to update talkativeness');
@@ -254,7 +254,7 @@
     if (!conversationId || !isTauri) return;
     isLoadingCastGraph = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       castGraphData = await ipc.getCastMemoryGraph(conversationId);
     } catch (err) {
       console.error('Failed to load cast memory graph:', err);
@@ -333,7 +333,7 @@
 
   async function refreshCharacterDetail(characterId: string) {
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const full = await ipc.getCharacter(characterId);
       npcDetails = { ...npcDetails, [characterId]: full as unknown as NpcDetail };
     } catch {
@@ -369,7 +369,7 @@
   async function loadCast(convId: string) {
     isLoading = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       let castRows = await ipc.listConversationCharacters(convId);
 
       // ── Auto-migration ──
@@ -416,7 +416,7 @@
   async function generatePortrait(npc: NpcDetail) {
     if (!isTauri || !conversationId) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const updated = await trackPortraitGeneration(npc.id, () =>
         ipc.generateNpcPortrait(npc.id, conversationId!, $settings.autoApproveNpcPortraits)
       );
@@ -445,7 +445,7 @@
     });
     if (!selected) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const updated = await trackGenerationByKey(uploadKey(npc.id), () => ipc.uploadCharacterAvatar(npc.id, selected as string));
       npcDetails = { ...npcDetails, [npc.id]: { ...npc, avatar_path: (updated as unknown as NpcDetail).avatar_path, portrait_status: (updated as unknown as NpcDetail).portrait_status } };
       delete avatarPathLoaded[npc.id];
@@ -458,7 +458,7 @@
   async function approvePortrait(npc: NpcDetail) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.approveNpcPortrait(npc.id);
       npcDetails = { ...npcDetails, [npc.id]: { ...npc, portrait_status: 'approved' } };
       success('Portrait approved');
@@ -470,7 +470,7 @@
   async function rejectPortrait(npc: NpcDetail) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.rejectNpcPortrait(npc.id);
       npcDetails = { ...npcDetails, [npc.id]: { ...npc, avatar_path: null, portrait_status: 'approved' } };
       delete avatarPathLoaded[npc.id];
@@ -499,7 +499,7 @@
     if (!npcDetails[row.character_id] && isTauri) {
       loadingDetailId = row.character_id;
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         const full = await ipc.getCharacter(row.character_id);
         npcDetails = { ...npcDetails, [row.character_id]: full as unknown as NpcDetail };
       } catch {
@@ -520,7 +520,7 @@
 
     if (!npc.profile_reviewed && isTauri) {
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         await ipc.markNpcReviewed(npc.id);
         npcDetails = { ...npcDetails, [npc.id]: { ...npc, profile_reviewed: true } };
       } catch {
@@ -533,7 +533,7 @@
     if (!isTauri) return;
     isSaving = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const mergedData = {
         ...npc.data,
         description: editDescription,
@@ -558,7 +558,7 @@
   async function promote(npc: NpcDetail) {
     if (!isTauri) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.promoteNpcToGallery(npc.id);
       npcDetails = { ...npcDetails, [npc.id]: { ...npc, origin: 'gallery' } };
       success(`${npc.name} promoted to your Character Gallery`);
@@ -574,7 +574,7 @@
   async function confirmNpc(npc: NpcDetail) {
     if (!isTauri || !conversationId) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.confirmNpc(conversationId, npc.id);
       roster = roster.map(r => r.character_id === npc.id ? { ...r, role: 'npc' } : r);
       success(`${npc.name} confirmed as a cast member`);
@@ -593,7 +593,7 @@
   async function refreshFromStory(npc: NpcDetail) {
     if (!isTauri || !conversationId) return;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const result = await trackGenerationByKey(refreshKey(npc.id), () =>
         ipc.refreshCharacterProfile(npc.id, conversationId!, $settings.profileRefreshPrompt)
       );

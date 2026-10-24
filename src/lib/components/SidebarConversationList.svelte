@@ -1,14 +1,14 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import Skeleton from './Skeleton.svelte';
-  import type { ConversationPreview } from '$lib/types';
+  import type { ConversationPreview } from '#lib/types/index.js';
   import {
     activeConversationId, loadMessages, isLoadingConversations,
     hasMoreConversations, loadMoreConversations, totalConversations,
     loadConversations,
-  } from '$lib/stores/chat';
-  import { success, error as toastError } from '$lib/stores/toast';
-  import { browser } from '$app/environment';
+  } from '#lib/stores/chat.js';
+  import { success, error as toastError } from '#lib/stores/toast.js';
+  import { browser } from '$app/env';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -134,7 +134,7 @@
 
   async function finishRename(convId: string) {
     if (!isTauri || !renameValue.trim()) { renamingId = null; return; }
-    try { const ipc = await import('$lib/services/ipc'); await ipc.updateConversation(convId, renameValue.trim()); await loadConversations(); success('Conversation renamed'); }
+    try { const ipc = await import('#lib/services/ipc.js'); await ipc.updateConversation(convId, renameValue.trim()); await loadConversations(); success('Conversation renamed'); }
     catch (err) { toastError('Rename failed'); }
     renamingId = null;
   }

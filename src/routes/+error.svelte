@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import Icon from '$lib/components/Icon.svelte';
+  import { page } from '$app/state';
+  import Icon from '#lib/components/Icon.svelte';
 </script>
 
 <svelte:head>
@@ -12,8 +12,8 @@
     <div class="error-icon" aria-hidden="true">
       <Icon name="zap" size={48} color="var(--accent-primary)" />
     </div>
-    <h1 class="error-code">{$page.status}</h1>
-    <p class="error-message">{$page.error?.message || 'Something went wrong'}</p>
+    <h1 class="error-code">{page.status}</h1>
+    <p class="error-message">{page.error?.message || 'Something went wrong'}</p>
     <a href="/" class="error-btn">
       <Icon name="home" size={16} color="#FFFFFF" />
       <span>Return Home</span>

@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import Icon from '$lib/components/Icon.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import SplitHeading from '$lib/components/SplitHeading.svelte';
-  import { success, error as toastError, addToast } from '$lib/stores/toast';
-  import { parseCharacterData } from '$lib/utils/character';
+  import { browser } from '$app/env';
+  import Icon from '#lib/components/Icon.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import SplitHeading from '#lib/components/SplitHeading.svelte';
+  import { success, error as toastError, addToast } from '#lib/stores/toast.js';
+  import { parseCharacterData } from '#lib/utils/character.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -33,7 +33,7 @@
   async function resolveAvatarUrl(avatarPath: string | null): Promise<string | null> {
     if (!avatarPath || !isTauri) return null;
     try {
-      const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+      const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
       return await loadFileAsBlobUrl(avatarPath);
     } catch (e) {
       console.warn('Failed to resolve avatar:', avatarPath, e);
@@ -47,7 +47,7 @@
       return;
     }
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const list = await ipc.listPersonas();
       const mapped = await Promise.all(list.map(async (p) => {
         const data = parseCharacterData(p.data);
@@ -82,7 +82,7 @@
         return;
       }
       const filePath = selected as string;
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const newPersona = await ipc.importPersonaCard(filePath);
       const data = parseCharacterData(newPersona.data);
       const avatarUrl = await resolveAvatarUrl(newPersona.avatar_path);
@@ -110,7 +110,7 @@
     if (!isTauri || !createName.trim()) return;
     isCreating = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       const persona = await ipc.createPersona(createName.trim(), {});
       showCreate = false;
       createName = '';
@@ -133,7 +133,7 @@
     const name = removed?.name ?? 'Persona';
 
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.trashPersona(id);
     } catch (err) {
       toastError(`Failed to delete ${name}`);
@@ -146,7 +146,7 @@
       label: 'Undo',
       onClick: async () => {
         try {
-          const ipc = await import('$lib/services/ipc');
+          const ipc = await import('#lib/services/ipc.js');
           await ipc.restorePersona(id);
           if (removed) personas = [...personas, removed].sort((a, b) => a.name.localeCompare(b.name));
         } catch {

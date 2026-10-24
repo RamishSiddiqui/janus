@@ -1,17 +1,17 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { copyText as copyToClipboard } from '$lib/utils/insecureContext';
+  import { copyText as copyToClipboard } from '#lib/utils/insecureContext.js';
   import Icon from './Icon.svelte';
   import JanusMark from './JanusMark.svelte';
   import EmotionHUD from './EmotionHUD.svelte';
   import ThinkingBlock from './ThinkingBlock.svelte';
-  import type { Message } from '$lib/types';
-  import { formatRoleplayContent } from '$lib/utils/format';
-  import { humanizeProviderError } from '$lib/utils/providerError';
-  import { browser } from '$app/environment';
-  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage, deleteMessageWithUndo } from '$lib/stores/chat';
-  import { settings } from '$lib/stores/settings';
-  import { success, error as toastError } from '$lib/stores/toast';
+  import type { Message } from '#lib/types/index.js';
+  import { formatRoleplayContent } from '#lib/utils/format.js';
+  import { humanizeProviderError } from '#lib/utils/providerError.js';
+  import { browser } from '$app/env';
+  import { messages, activeConversationId, activeCharacterId, isStreaming, switchBranch, switchToConversation, regenerateMessage as storeRegenerate, characterEmotionStates, retryLastMessage, deleteMessageWithUndo } from '#lib/stores/chat.js';
+  import { settings } from '#lib/stores/settings.js';
+  import { success, error as toastError } from '#lib/stores/toast.js';
   import { get } from 'svelte/store';
   import WaveformBars from './WaveformBars.svelte';
   import {
@@ -20,7 +20,7 @@
     primeTtsAudioContext,
     getTtsPlaybackAnalyser,
     stop as stopTtsPlayback,
-  } from '$lib/stores/ttsPlayback';
+  } from '#lib/stores/ttsPlayback.js';
 
   const isTauri = browser && '__TAURI_INTERNALS__' in window;
 
@@ -144,7 +144,7 @@
       attachmentUrls = [];
       return;
     }
-    import('$lib/utils/blobUrl').then(async ({ loadFileAsBlobUrl }) => {
+    import('#lib/utils/blobUrl.js').then(async ({ loadFileAsBlobUrl }) => {
       const urls = await Promise.all(
         attachments.map(a => loadFileAsBlobUrl(a.relativePath, a.mimeType).catch(() => null))
       );
@@ -362,7 +362,7 @@
     primeTtsAudioContext();
     isRequestingVoice = true;
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       let voiceId: string | null = get(settings).ttsDefaultVoiceId;
       // `voiceProviderId` always travels paired with `voiceId` — a cloud
       // provider's voice id means nothing under a different provider (or
@@ -444,7 +444,7 @@
   async function saveEdit() {
     if (!isTauri) { isEditing = false; return; }
     try {
-      const ipc = await import('$lib/services/ipc');
+      const ipc = await import('#lib/services/ipc.js');
       await ipc.updateMessage(message.id, editContent);
       messages.update(msgs => msgs.map(m => m.id === message.id ? { ...m, content: editContent } : m));
       success('Message updated');

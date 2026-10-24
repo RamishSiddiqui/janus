@@ -6,18 +6,18 @@
 // ============================================================
 
 import { get } from 'svelte/store';
-import type { Message } from '$lib/types';
-import { browser } from '$app/environment';
-import { error as toastError } from '$lib/stores/toast';
-import { humanizeProviderError } from '$lib/utils/providerError';
-import { settings } from '$lib/stores/settings';
-import { PresentationBuffer, type CharMeta, type PresentationCallbacks } from '$lib/services/presentation-buffer';
+import type { Message } from '#lib/types/index.js';
+import { browser } from '$app/env';
+import { error as toastError } from '#lib/stores/toast.js';
+import { humanizeProviderError } from '#lib/utils/providerError.js';
+import { settings } from '#lib/stores/settings.js';
+import { PresentationBuffer, type CharMeta, type PresentationCallbacks } from '#lib/services/presentation-buffer.js';
 import {
   activeCharacterId, activeConversation, activeConversationId, conversationCharMeta,
   isStreaming, lastStreamError, messages, pathState,
 } from './chat';
 import { runEmotionUpdatePipeline } from './chatEmotion';
-import { uuid } from '$lib/utils/insecureContext';
+import { uuid } from '#lib/utils/insecureContext.js';
 import { loadMessages } from './chatMessages';
 import { primeTtsAudioContext } from './ttsPlayback';
 
@@ -102,7 +102,7 @@ export async function cancelGeneration() {
   const convId = get(activeConversationId);
   if (!isTauri || !convId) return;
   try {
-    const ipc = await import('$lib/services/ipc');
+    const ipc = await import('#lib/services/ipc.js');
     await ipc.cancelGeneration(convId);
   } catch (err) {
     console.error('Failed to cancel generation:', err);
@@ -156,7 +156,7 @@ export async function sendMessage(
     return;
   }
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   const tempUserId = uuid();
   // Declared outside the try block (not `const unlisten = ...` inside it) so
   // the catch block below can reach it too — if the backend call throws
@@ -253,11 +253,11 @@ export async function sendMessage(
           (async () => {
             try {
               // Check per-conversation memory scope FIRST (the authority)
-              const ipcMod = await import('$lib/services/ipc');
+              const ipcMod = await import('#lib/services/ipc.js');
               const conv = await ipcMod.getConversation(conversationId);
               if (conv.memory_scope === 'none') return; // Memory disabled for this chat
 
-              const { shouldExtract, extractAndSaveMemories } = await import('$lib/services/memory-extractor');
+              const { shouldExtract, extractAndSaveMemories } = await import('#lib/services/memory-extractor.js');
               if (!shouldExtract()) return; // Throttle: only every Nth message
 
               const saved = await extractAndSaveMemories(
@@ -376,7 +376,7 @@ export async function retryLastMessage(model?: string) {
     // Clear error state on the user message
     messages.update(msgs => msgs.map(m => m.id === err.userMessageId ? { ...m, isError: false } : m));
 
-    const ipc = await import('$lib/services/ipc');
+    const ipc = await import('#lib/services/ipc.js');
     isStreaming.set(true);
 
     // Create a fresh PresentationBuffer for this retry stream
@@ -486,7 +486,7 @@ export async function regenerateMessage(conversationId: string, messageId: strin
   // primeTtsAudioContext's doc comment for why.
   primeTtsAudioContext();
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   isStreaming.set(true);
 
   // Declared outside the try (see the matching comment in `sendMessage`) so

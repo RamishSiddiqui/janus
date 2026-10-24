@@ -1,5 +1,5 @@
-import type { ClientInit } from '@sveltejs/kit';
-import { initWebMode } from '$lib/services/webBridge';
+import type { ClientInit } from '@sveltejs/kit/hooks';
+import { initWebMode } from '#lib/services/webBridge.js';
 
 // Runs before the first page renders. In a browser served by Janus this puts
 // the Tauri stand-in in place, so components that check for the backend (and

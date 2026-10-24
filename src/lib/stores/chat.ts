@@ -6,20 +6,20 @@
 //   list CRUD, and avatar caching. Message loading/branching, the streaming
 //   pipeline, the emotion pipeline, and the multi-character listener each
 //   live in their own sibling module and are re-exported below, so existing
-//   `import { X } from '$lib/stores/chat'` call sites are unaffected.
+//   `import { X } from '#lib/stores/chat.js'` call sites are unaffected.
 // ============================================================
 
 import { writable, derived, get } from 'svelte/store';
-import type { Message, ConversationPreview } from '$lib/types';
-import { browser } from '$app/environment';
-import { error as toastError, addToast } from '$lib/stores/toast';
-import { settings } from '$lib/stores/settings';
-import { parseCharacterData } from '$lib/utils/character';
-import type { CharacterState } from '$lib/services/ipc';
-import type { CharMeta } from '$lib/services/presentation-buffer';
+import type { Message, ConversationPreview } from '#lib/types/index.js';
+import { browser } from '$app/env';
+import { error as toastError, addToast } from '#lib/stores/toast.js';
+import { settings } from '#lib/stores/settings.js';
+import { parseCharacterData } from '#lib/utils/character.js';
+import type { CharacterState } from '#lib/services/ipc.js';
+import type { CharMeta } from '#lib/services/presentation-buffer.js';
 // Used by this module's own createConversation/deleteConversationWithUndo/
 // switchToConversation/branchConversation — also re-exported below so
-// existing `import { loadMessages, sendMessage } from '$lib/stores/chat'`
+// existing `import { loadMessages, sendMessage } from '#lib/stores/chat.js'`
 // call sites elsewhere in the app keep working unchanged.
 import { loadMessages } from './chatMessages';
 import { sendMessage } from './chatStream';
@@ -37,7 +37,7 @@ export async function resolveCachedAvatarUrl(avatarPath: string | null): Promise
   const cached = avatarCache.get(avatarPath);
   if (cached) return cached;
   try {
-    const { loadFileAsBlobUrl } = await import('$lib/utils/blobUrl');
+    const { loadFileAsBlobUrl } = await import('#lib/utils/blobUrl.js');
     const url = await loadFileAsBlobUrl(avatarPath);
     avatarCache.set(avatarPath, url);
     return url;
@@ -151,7 +151,7 @@ export async function loadConversations() {
 
   isLoadingConversations.set(true);
   conversationPage.set(0);
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   try {
     console.log('[Janus] loadConversations: calling listConversations...');
     let convos;
@@ -197,7 +197,7 @@ export async function loadMoreConversations() {
   const currentPage = get(conversationPage) + 1;
   conversationPage.set(currentPage);
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   try {
     const offset = currentPage * PAGE_SIZE;
     const convos = await ipc.listConversations(PAGE_SIZE, offset);
@@ -217,8 +217,8 @@ export async function loadMoreConversations() {
 }
 
 /** Resolves character names and avatars for a batch of raw conversations. */
-async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof import('$lib/services/ipc').listConversations>>): Promise<ConversationPreview[]> {
-  const ipc = await import('$lib/services/ipc');
+async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof import('#lib/services/ipc.js').listConversations>>): Promise<ConversationPreview[]> {
+  const ipc = await import('#lib/services/ipc.js');
   return Promise.all(
     convos.map(async (conv) => {
       let characterName = conv.title || 'Unknown';
@@ -278,7 +278,7 @@ async function resolveConversationPreviews(convos: Awaited<ReturnType<typeof imp
 export async function createConversation(characterId: string, title?: string, personaId?: string) {
   if (!isTauri) return;
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   try {
     const conv = await ipc.createConversation(characterId, title, personaId);
     activeConversationId.set(conv.id);
@@ -294,7 +294,7 @@ export async function createConversation(characterId: string, title?: string, pe
         if (greeting) {
           try {
             const personaName = personaId ? (await ipc.getPersona(personaId)).name : null;
-            const { substituteUserMacro } = await import('$lib/utils/personaMacros');
+            const { substituteUserMacro } = await import('#lib/utils/personaMacros.js');
             greeting = substituteUserMacro(greeting, personaName);
           } catch (err) {
             console.warn('Could not resolve persona for greeting substitution:', err);
@@ -342,7 +342,7 @@ export async function createConversation(characterId: string, title?: string, pe
 export async function deleteConversationWithUndo(id: string, label: string) {
   if (!isTauri) return;
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   try {
     await ipc.trashConversation(id);
   } catch (err) {
@@ -362,7 +362,7 @@ export async function deleteConversationWithUndo(id: string, label: string) {
     label: 'Undo',
     onClick: async () => {
       try {
-        const ipc = await import('$lib/services/ipc');
+        const ipc = await import('#lib/services/ipc.js');
         await ipc.restoreConversation(id);
         await loadConversations();
         if (wasActive) {
@@ -407,7 +407,7 @@ export async function branchConversation(
 ) {
   if (!isTauri) return;
 
-  const ipc = await import('$lib/services/ipc');
+  const ipc = await import('#lib/services/ipc.js');
   try {
     // 1. Create the new branched conversation (backend copies messages + memories)
     const newConv = await ipc.branchConversation(
@@ -473,7 +473,7 @@ function getAvatarColor(name: string): string {
 }
 
 // ── Re-exports from split modules ──
-// Keeps every existing `import { X } from '$lib/stores/chat'` call site
+// Keeps every existing `import { X } from '#lib/stores/chat.js'` call site
 // working unchanged after the split.
 export { loadMessages, loadMoreMessages, switchBranch, deleteMessageWithUndo } from './chatMessages';
 export { cancelGeneration, sendMessage, retryLastMessage, regenerateMessage } from './chatStream';

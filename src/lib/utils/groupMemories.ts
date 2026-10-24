@@ -7,7 +7,7 @@
  * Used by both MemoryTimeline and MemoryGraph to reduce visual clutter.
  */
 
-import type { Memory, MemoryLink } from '$lib/services/ipc';
+import type { Memory, MemoryLink } from '#lib/services/ipc.js';
 
 export interface MemoryItem {
   memory: Memory;
