@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, Implementation,
+    CallToolRequestParams, CallToolResult, ClientCapabilities, ClientConfig, Implementation,
 };
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::ServiceExt;
@@ -61,8 +61,8 @@ fn mcp_url(base_url: &str) -> String {
     format!("{}/mcp/", base_url.trim_end_matches('/'))
 }
 
-fn client_info() -> ClientInfo {
-    ClientInfo::new(
+fn client_info() -> ClientConfig {
+    ClientConfig::new(
         ClientCapabilities::default(),
         Implementation::new("Janus", env!("CARGO_PKG_VERSION")),
     )
