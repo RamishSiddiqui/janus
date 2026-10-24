@@ -17,7 +17,7 @@ root_doc = "index"
 exclude_patterns = ["_build", "requirements.txt", "Thumbs.db", ".DS_Store", "tools"]
 
 myst_heading_anchors = 3
-myst_enable_extensions = ["colon_fence"]
+myst_enable_extensions = ["colon_fence", "attrs_block"]
 
 html_theme = "furo"
 html_title = "Janus"
@@ -51,7 +51,8 @@ html_theme_options = {
         "color-brand-primary": "#6d4fd6",
         "color-brand-content": "#6d4fd6",
         "janus-violet": "#6d4fd6",
-        "janus-gold": "#9a6a1b",
+        "janus-gold": "#8c6016",
+        "janus-on-violet": "#ffffff",
     },
     "dark_css_variables": {
         "font-stack": _SANS,
@@ -64,5 +65,6 @@ html_theme_options = {
         "color-brand-content": "#b9a7ff",
         "janus-violet": "#9075F2",
         "janus-gold": "#CDA15F",
+        "janus-on-violet": "#0A0A13",
     },
 }
