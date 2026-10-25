@@ -108,4 +108,4 @@ jobs:
 
       - name: List what was built
         shell: bash
-        run: find src-tauri/target -path '*/release/bundle/*' -maxdepth 6 -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -print
+        run: find src-tauri/target -maxdepth 6 -type f -path '*/release/bundle/*' \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -print
