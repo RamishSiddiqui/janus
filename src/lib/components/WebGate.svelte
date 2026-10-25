@@ -338,13 +338,6 @@
 </script>
 
 <svelte:window onkeydown={onKey} />
-<svelte:head>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&display=swap"
-  />
-</svelte:head>
 
 <div
   class="stage"
