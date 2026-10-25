@@ -4,14 +4,15 @@ A **provider** is a stored configuration (`provider_configs`) for an external se
 
 ## Chat (LLM) providers
 
-All chat adapters go through one type, `providers::unified::RigProvider`, built on [rig-core](https://github.com/0xPlaygrounds/rig). `RigProvider::from_config(adapter, config)` reads the stored adapter string and builds the right rig client:
+All chat adapters go through one type, `providers::unified::RigProvider`, built on [rig-core](https://github.com/0xPlaygrounds/rig). `RigProvider::from_config(adapter, config)` reads the stored adapter string and builds the right rig client (rig-core's model API is used directly: one request type and one event stream for every provider):
 
 | Adapter string(s) | Backend |
 |---|---|
-| `openai`, `openai_compatible`, `open_ai_compatible`, `lm_studio`, `lmstudio` | OpenAI-style API with a configurable base URL (LM Studio, KoboldCPP, vLLM, Puter, gateways). |
-| `anthropic`, `gemini`, `cohere`, `deepseek` / `deep_seek`, `groq`, `perplexity`, `xai`, `hugging_face` / `huggingface`, `hyperbolic`, `moonshot`, `together` | The matching rig client (API key). |
+| `openai`, `openai_compatible`, `open_ai_compatible`, `lm_studio`, `lmstudio` | OpenAI. With no base URL it speaks the **Responses API**; with a custom base URL (LM Studio, KoboldCPP, vLLM, Puter, gateways) it speaks Chat Completions, which is what those servers implement. |
+| `anthropic`, `gemini`, `cohere` | The matching rig client (API key). |
+| `deepseek` / `deep_seek`, `groq`, `perplexity`, `xai`, `hugging_face` / `huggingface`, `hyperbolic`, `moonshot`, `together` | Rig's OpenAI-shaped client on that vendor's dialect (API key; endpoint and quirks come from the dialect). |
 | `open_router`, `openrouter` | OpenRouter. |
-| `ollama` | Ollama at the configured base URL. |
+| `ollama` | Ollama at the configured base URL, on its native chat API. |
 
 Adding another provider that rig supports is a few lines in `from_config` plus a UI option (the Providers page adapter list). The **Puter** preset in the UI is not a separate adapter: it pre-fills the OpenAI-compatible adapter with Puter's address.
 
