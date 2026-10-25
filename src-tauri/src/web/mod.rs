@@ -113,6 +113,7 @@ pub fn router(state: WebState) -> Router {
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .layer(middleware::from_fn(util::csrf_guard))
         .layer(middleware::from_fn(util::security_headers))
+        .layer(middleware::from_fn(util::host_guard))
         .with_state(state)
 }
 
@@ -141,7 +142,17 @@ async fn static_files(State(st): State<WebState>, uri: Uri) -> Response {
         }
     });
     match found {
-        Some((bytes, mime)) => ([(header::CONTENT_TYPE, mime)], bytes).into_response(),
+        Some((bytes, mime)) => {
+            let csp = mime
+                .starts_with("text/html")
+                .then(|| util::page_csp(&String::from_utf8_lossy(&bytes)));
+            let mut resp = ([(header::CONTENT_TYPE, mime)], bytes).into_response();
+            if let Some(Ok(csp)) = csp.map(|c| c.parse::<header::HeaderValue>()) {
+                resp.headers_mut()
+                    .insert(header::CONTENT_SECURITY_POLICY, csp);
+            }
+            resp
+        }
         None => (StatusCode::NOT_FOUND, "Not found.").into_response(),
     }
 }

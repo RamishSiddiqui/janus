@@ -114,6 +114,7 @@ async fn login(
         &body.passphrase,
         body.trusted,
         &device_label(&headers),
+        &ip.to_string(),
     )
     .await?;
     Ok(signed_in(&user, &token, body.trusted, None))
@@ -155,6 +156,7 @@ async fn reset(
         &body.username,
         &body.recovery_key,
         &body.new_passphrase,
+        &ip.to_string(),
     )
     .await?;
     let token =

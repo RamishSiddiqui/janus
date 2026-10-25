@@ -65,10 +65,12 @@ async fn login_sessions_and_logout() {
     let (db, dir) = test_db().await;
     auth::register(&db, "ramish", PASS).await.unwrap();
 
-    assert!(auth::login(&db, "ramish", "wrong passphrase!", false, "t")
-        .await
-        .is_err());
-    let (user, token) = auth::login(&db, "Ramish", PASS, true, "Chrome on Windows")
+    assert!(
+        auth::login(&db, "ramish", "wrong passphrase!", false, "t", "t")
+            .await
+            .is_err()
+    );
+    let (user, token) = auth::login(&db, "Ramish", PASS, true, "Chrome on Windows", "t")
         .await
         .unwrap();
 
@@ -93,27 +95,64 @@ async fn login_sessions_and_logout() {
 }
 
 #[tokio::test]
-async fn three_wrong_passphrases_lock_the_account() {
+async fn three_wrong_passphrases_lock_that_place_out_but_not_the_owner() {
     let (db, dir) = test_db().await;
     auth::register(&db, "ramish", PASS).await.unwrap();
 
-    for _ in 0..3 {
-        let err = auth::verify_credentials(&db, "ramish", "nope nope nope nope")
+    // A stranger's address guesses three times: the first two answers are
+    // the plain mismatch, the third is the lock.
+    for _ in 0..2 {
+        let err = auth::verify_credentials(&db, "ramish", "nope nope nope nope", "stranger")
             .await
             .unwrap_err();
-        assert!(is_unauthorized(&err));
+        assert_eq!(err.to_string(), "That username and passphrase don't match.");
     }
-    // Even the right passphrase is refused while locked.
-    let err = auth::verify_credentials(&db, "ramish", PASS)
+    let err = auth::verify_credentials(&db, "ramish", "nope nope nope nope", "stranger")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Try again in"), "{err}");
+    // Even the right passphrase is refused from that address while locked.
+    let err = auth::verify_credentials(&db, "ramish", PASS, "stranger")
         .await
         .unwrap_err();
     assert!(err.to_string().contains("Try again in"), "{err}");
 
-    // Unknown usernames get the same generic answer.
-    let err = auth::verify_credentials(&db, "nobody", PASS)
+    // The owner, from somewhere else, can still sign in.
+    auth::verify_credentials(&db, "ramish", PASS, "owner")
         .await
-        .unwrap_err();
-    assert_eq!(err.to_string(), "That username and passphrase don't match.");
+        .expect("a stranger must not be able to lock the owner out");
+
+    cleanup(dir);
+}
+
+#[tokio::test]
+async fn unknown_names_answer_exactly_like_real_ones() {
+    let (db, dir) = test_db().await;
+    auth::register(&db, "ramish", PASS).await.unwrap();
+
+    // The same three answers, in the same order, for a name that exists and
+    // one that doesn't: nothing says how many tries are left, and the lock
+    // lands on the same try.
+    let mut answers = Vec::new();
+    for name in ["ramish", "nobody"] {
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            let err = auth::verify_credentials(&db, name, "wrong wrong wrong", "enum-test")
+                .await
+                .unwrap_err();
+            // Seconds left in the lock message vary by a tick; compare the shape.
+            let text = err.to_string();
+            seen.push(if text.contains("Try again in") {
+                "locked".to_string()
+            } else {
+                text
+            });
+        }
+        answers.push(seen);
+    }
+    assert_eq!(answers[0], answers[1]);
+    assert_eq!(answers[0][0], "That username and passphrase don't match.");
+    assert_eq!(answers[0][2], "locked");
 
     cleanup(dir);
 }
@@ -122,32 +161,36 @@ async fn three_wrong_passphrases_lock_the_account() {
 async fn recovery_key_resets_passphrase_and_is_single_use() {
     let (db, dir) = test_db().await;
     let (_, key) = auth::register(&db, "ramish", PASS).await.unwrap();
-    let (_, token) = auth::login(&db, "ramish", PASS, false, "t").await.unwrap();
+    let (_, token) = auth::login(&db, "ramish", PASS, false, "t", "t")
+        .await
+        .unwrap();
 
     let sloppy = key.to_lowercase().replace('-', " ");
     let (user, new_key) =
-        auth::reset_with_recovery(&db, "ramish", &sloppy, "a brand new passphrase")
+        auth::reset_with_recovery(&db, "ramish", &sloppy, "a brand new passphrase", "t")
             .await
             .unwrap();
     assert_ne!(new_key, key);
 
     // Old passphrase and old sessions are gone; the new passphrase works.
     assert!(auth::authenticate(&db, &token).await.unwrap().is_none());
-    assert!(auth::verify_credentials(&db, "ramish", PASS).await.is_err());
-    let ok = auth::verify_credentials(&db, "ramish", "a brand new passphrase")
+    assert!(auth::verify_credentials(&db, "ramish", PASS, "t")
+        .await
+        .is_err());
+    let ok = auth::verify_credentials(&db, "ramish", "a brand new passphrase", "t")
         .await
         .unwrap();
     assert_eq!(ok.id, user.id);
 
     // The spent key no longer works.
     assert!(
-        auth::reset_with_recovery(&db, "ramish", &key, "another passphrase here")
+        auth::reset_with_recovery(&db, "ramish", &key, "another passphrase here", "t")
             .await
             .is_err()
     );
     // The new one does.
     assert!(
-        auth::reset_with_recovery(&db, "ramish", &new_key, "yet another passphrase")
+        auth::reset_with_recovery(&db, "ramish", &new_key, "yet another passphrase", "t")
             .await
             .is_ok()
     );
@@ -177,7 +220,7 @@ async fn admin_adds_members_and_account_guards_hold() {
     )
     .await
     .unwrap();
-    let again = auth::verify_credentials(&db, "sara", "sara picked this one")
+    let again = auth::verify_credentials(&db, "sara", "sara picked this one", "t")
         .await
         .unwrap();
     assert!(!again.must_change);

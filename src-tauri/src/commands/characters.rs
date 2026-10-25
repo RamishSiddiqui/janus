@@ -72,6 +72,9 @@ pub async fn update_character(
     }
     let (db, actor) = acting(&state).await?;
     ensure_character(&db, &actor, &id).await?;
+    if let Some(path) = avatar_path.as_deref() {
+        crate::auth::access::ensure_avatar_path(&db, &actor, path).await?;
+    }
     let character = CharacterRepo::update(
         &db,
         &id,

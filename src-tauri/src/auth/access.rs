@@ -241,6 +241,49 @@ pub async fn resolve_web_actor(db: &Surreal<Db>, user_id: &str) -> Result<Actor,
     }
 }
 
+/// The folders under the app data directory that hold files the app stored
+/// for an account.
+const STORED_DIRS: [&str; 5] = ["avatars", "portraits", "personas", "scenes", "attachments"];
+
+/// True for `<stored folder>/<plain file name>`: one of the app's own media
+/// folders and a single file name with no further folders, no `..` and no
+/// leading dot. Everything the app writes has this shape, so anything else
+/// is not a stored file and must never be read, served or deleted as one.
+pub fn is_stored_file_path(relative: &str) -> bool {
+    let Some((dir, file)) = relative.split_once('/') else {
+        return false;
+    };
+    STORED_DIRS.contains(&dir)
+        && !file.is_empty()
+        && !file.starts_with('.')
+        && file
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+/// An avatar path a client wants to set on its own character or persona. It
+/// must be a stored-file path, and must not already belong to another
+/// account's rows, so an account can't claim (and later delete or read) a
+/// file that isn't its own.
+pub async fn ensure_avatar_path(
+    db: &Surreal<Db>,
+    actor: &Actor,
+    relative: &str,
+) -> Result<(), MythicError> {
+    if !is_stored_file_path(relative) {
+        return Err(MythicError::Validation("Invalid image path.".to_string()));
+    }
+    if actor.is_legacy() {
+        return Ok(());
+    }
+    let owners = OwnershipRepo::owners_of_file(db, relative).await?;
+    if owners.is_empty() || owners.iter().any(|o| o == actor.owner()) {
+        Ok(())
+    } else {
+        Err(MythicError::NotFound(format!("File not found: {relative}")))
+    }
+}
+
 /// A chat attachment path the client sends along with a message. It must be
 /// a plain `attachments/<file>` name (no folders, no other directory such as
 /// avatars or the database), and must not already belong to another account's
@@ -269,5 +312,43 @@ pub async fn ensure_attachment_path(
         Ok(())
     } else {
         Err(MythicError::NotFound(format!("File not found: {relative}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_stored_file_path;
+
+    #[test]
+    fn stored_file_paths_are_one_plain_name_in_an_app_folder() {
+        for ok in [
+            "avatars/a1b2.png",
+            "portraits/x-y_z.webp",
+            "personas/p.jpg",
+            "scenes/s9.mp4",
+            "attachments/0f3c1a52-8d1e-4a39-b1c4-5a1d7c9e2b10.png",
+        ] {
+            assert!(is_stored_file_path(ok), "{ok} should be accepted");
+        }
+    }
+
+    #[test]
+    fn anything_else_is_not_a_stored_file() {
+        for bad in [
+            "",
+            "avatars",
+            "avatars/",
+            "avatars/.hidden",
+            "avatars/../surreal.db/CURRENT",
+            "avatars/sub/dir.png",
+            "surreal.db/000001.sst",
+            "tts/onnxruntime-1.31.0.dll",
+            "/etc/passwd",
+            "C:/Windows/win.ini",
+            "avatars\\evil.png",
+            "avatars/a b.png",
+        ] {
+            assert!(!is_stored_file_path(bad), "{bad:?} should be rejected");
+        }
     }
 }

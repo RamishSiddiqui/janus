@@ -84,6 +84,9 @@ pub async fn update_persona(
     }
     let (db, actor) = acting(&state).await?;
     ensure_persona(&db, &actor, &id).await?;
+    if let Some(path) = avatar_path.as_deref() {
+        crate::auth::access::ensure_avatar_path(&db, &actor, path).await?;
+    }
     let persona = PersonaRepo::update(
         &db,
         &id,
