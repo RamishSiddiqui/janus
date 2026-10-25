@@ -68,7 +68,9 @@ png = "0.18"
 base64 = "0.23"
 
 # Accounts: password hashing + session-token hashing
-argon2 = "0.5"
+argon2 = "0.6"
+# The OS random source for session tokens and recovery keys (argon2 no longer re-exports one).
+getrandom = "0.4"
 sha2 = "0.11"
 
 # Web mode: HTTP server for browser access over the local network (issue #94)
@@ -112,7 +114,7 @@ ndarray = "0.16"
 ndarray-npy = { version = "0.9", default-features = false, features = ["npz"] }
 misaki-rs = { version = "0.3", default-features = false }
 hound = "3.5"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "4", default-features = false, features = ["deflate"] }
 
 # Current process's own CPU/memory usage, surfaced in Settings so
 # resource-heavy features (starting with native TTS above) can be visually

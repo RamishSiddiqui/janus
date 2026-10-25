@@ -8,8 +8,8 @@
 pub mod access;
 pub mod service;
 
-use argon2::password_hash::rand_core::{OsRng, RngCore};
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::Argon2;
 use base64::Engine as _;
 use sha2::{Digest, Sha256};
@@ -66,12 +66,17 @@ pub fn validate_passphrase(p: &str) -> Result<(), MythicError> {
     Ok(())
 }
 
+/// Fills `buf` from the operating system's random source. Failing to read it
+/// would make every token and key guessable, so it stops rather than continue.
+fn fill_random(buf: &mut [u8]) {
+    getrandom::fill(buf).expect("the operating system's random source is unavailable");
+}
+
 /// Hashes a passphrase or recovery key with argon2id and a fresh random salt.
 pub fn hash_secret(secret: &str) -> Result<String, MythicError> {
-    let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
-        .hash_password(secret.as_bytes(), &salt)
-        .map(|h| h.to_string())
+        .hash_password(secret.as_bytes())
+        .map(|h: PasswordHash| h.to_string())
         .map_err(|e| MythicError::Config(format!("Failed to hash secret: {e}")))
 }
 
@@ -97,7 +102,7 @@ pub fn dummy_verify(secret: &str) {
 /// is stored; the token itself is handed to the client once.
 pub fn new_session_token() -> String {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    fill_random(&mut bytes);
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
@@ -113,7 +118,7 @@ pub fn generate_recovery_key() -> String {
     let mut out = String::with_capacity(KEY_LEN);
     let mut buf = [0u8; 32];
     while out.len() < KEY_LEN {
-        OsRng.fill_bytes(&mut buf);
+        fill_random(&mut buf);
         for &b in &buf {
             if out.len() == KEY_LEN {
                 break;
@@ -206,5 +211,25 @@ mod tests {
         assert_eq!(normalize_recovery_key(&sloppy).as_deref(), Some(k.as_str()));
         assert!(normalize_recovery_key("JANUS-ABCD").is_none());
         assert!(!k.contains('0') && !k.contains('O') && !k.contains('1') && !k.contains('I'));
+    }
+
+    // Accounts created before the argon2 0.6 upgrade store hashes made by 0.5, and
+    // someone must still be able to sign in. This hash comes from an independent
+    // implementation (argon2-cffi) with the parameters 0.5 used by default.
+    #[test]
+    fn a_hash_made_before_the_upgrade_still_verifies() {
+        let legacy = "$argon2id$v=19$m=19456,t=2,p=1$fwyiwEgy7cRyK1NKh+poRw$oPVyv6iRGCQsbZslvQT+1AldIBhKh+M2Qh8SNEBZo2U";
+        assert!(verify_secret("correct horse battery staple", legacy));
+        assert!(!verify_secret("correct horse battery stapl", legacy));
+    }
+
+    #[test]
+    fn new_hashes_keep_the_same_parameters_and_round_trip() {
+        let h = hash_secret("correct horse battery staple").unwrap();
+        assert!(h.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"), "{h}");
+        assert!(verify_secret("correct horse battery staple", &h));
+        assert!(!verify_secret("wrong passphrase!!", &h));
+        // A fresh salt every time.
+        assert_ne!(h, hash_secret("correct horse battery staple").unwrap());
     }
 }
