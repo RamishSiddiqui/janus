@@ -9,7 +9,7 @@
 | **Gitleaks** (`gitleaks.yml`) | Secret scanning. |
 | **Security audit** (`security-audit.yml`) | `cargo audit` and `npm audit --audit-level=high`, weekly and whenever a dependency file changes. Known, justified advisories are listed with reasons in the workflow. |
 | **Docs** (`docs.yml`) | Regenerates the reference pages and fails if they differ; builds the docs with Sphinx and warnings as errors; uploads the HTML. |
-| **Release dry run** (`release-dry-run.yml`) | Builds the installers the way a release does, with no secrets and no publishing. Weekly on Linux, Windows and macOS, on demand, and on Linux for pull requests that touch the Tauri packages, config or release workflow. Not a required check, because path-filtered checks cannot be. |
+| **Release dry run** (`release-dry-run.yml`) | Builds the installers the way a release does, with no secrets and no publishing. Weekly on Linux, Windows and macOS, on demand, on all platforms when such a change merges to `master`, and on Linux for pull requests that touch the Tauri packages, config or release workflow. The `master` run also saves the Rust build cache that the release restores (a tag build can only read caches saved on `master`), so merging the version bump is what makes the release build fast. Not a required check, because path-filtered checks cannot be. |
 
 `master` accepts changes only through pull requests. Merge only when every check has finished and passed. A check reported as "skipped" or "neutral" is not a pass; read the individual results, and in particular CodeQL.
 
@@ -22,7 +22,7 @@ Dependabot opens pull requests. Breaking major bumps (for example a new `rig-cor
 A release is a version tag, but a few steps come before it and one after.
 
 1. **Bump the version** in one pull request: `package.json`, `package-lock.json` (two places), `src-tauri/Cargo.toml`, the `janus` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Update version references in the docs. Merge it with every check green.
-2. **Rehearse the release build.** Open **Actions, Release dry run, Run workflow** on `master` and wait for all three platforms to pass. Do this whenever dependencies changed since the last release, and it is cheap enough to do every time. CI proves the code compiles and passes tests, but only a bundling build proves the release itself works.
+2. **Rehearse the release build.** Merging the bump already starts the dry run on `master`; wait for all four builds to pass (**Actions, Release dry run**). If it did not run, start it with **Run workflow** on `master`. Do not tag before it finishes: it also saves the Rust cache that the release restores, and a tag pushed too early builds cold. CI proves the code compiles and passes tests, but only a bundling build proves the release itself works.
 3. **Tag the bump commit and push the tag:**
 
    ```bash

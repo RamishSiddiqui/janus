@@ -11,11 +11,27 @@ name: Release dry run
 #   especially after a batch of dependency updates.
 # - On pull requests that touch the Tauri packages, on Linux only, to keep the
 #   feedback quick. Not a required check: path-filtered checks cannot be.
+# - On master when those files change, on all three platforms. The version bump
+#   is such a change, so merging it also warms the Rust build cache that the
+#   release (tagged on that same commit) restores. A tag build can only read
+#   caches saved on master, which is why the release was starting cold.
 
 on:
   schedule:
     - cron: '0 8 * * 1' # every Monday 08:00 UTC (after security-audit and CodeQL)
   workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/tauri.conf.json'
+      - 'src-tauri/tauri.release.conf.json'
+      - 'src-tauri/capabilities/**'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-dry-run.yml'
   pull_request:
     branches: [master]
     paths:
@@ -39,11 +55,12 @@ concurrency:
 
 jobs:
   build:
-    name: Build installers (${{ matrix.platform }})
+    name: Build installers (${{ matrix.cache }})
     strategy:
       fail-fast: false
-      matrix:
-        platform: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-22.04"]' || '["ubuntu-22.04","windows-latest","macos-latest"]') }}
+      # The same four builds as release.yml (macOS builds both architectures);
+      # a pull request only builds Linux.
+      matrix: ${{ fromJSON(github.event_name == 'pull_request' && '{"include":[{"platform":"ubuntu-22.04","args":"","cache":"linux"}]}' || '{"include":[{"platform":"ubuntu-22.04","args":"","cache":"linux"},{"platform":"windows-latest","args":"","cache":"windows"},{"platform":"macos-latest","args":"--target aarch64-apple-darwin","cache":"macos-arm"},{"platform":"macos-latest","args":"--target x86_64-apple-darwin","cache":"macos-intel"}]}') }}
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -72,10 +89,14 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
+          # Shared with release.yml so the release restores what this run saved.
+          shared-key: release-${{ matrix.cache }}
 
       - run: npm ci
 
@@ -83,7 +104,7 @@ jobs:
       # packages, which need the private key that only the approved release
       # environment may read. Everything else is the same as a release build.
       - name: Build the installers
-        run: npm run tauri build
+        run: npm run tauri build -- ${{ matrix.args }}
 
       - name: List what was built
         shell: bash

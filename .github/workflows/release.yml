@@ -45,12 +45,16 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
+            cache: macos-arm
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
+            cache: macos-intel
           - platform: 'ubuntu-22.04'
             args: ''
+            cache: linux
           - platform: 'windows-latest'
             args: ''
+            cache: windows
     runs-on: ${{ matrix.platform }}
     # The signing key lives in this environment, not in the repository's secrets,
     # so only a tag build that a maintainer approves can read it.
@@ -87,6 +91,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
+          # release-dry-run.yml saves this key on master when the version bump
+          # merges; a tag build can only restore caches saved on master.
+          shared-key: release-${{ matrix.cache }}
 
       - run: npm ci
 
