@@ -1,5 +1,4 @@
 {
- "src-tauri/src/bin/test_owl.rs": "Developer scratch binary used to check the ONNX and phoneme pipeline by hand; not part of the app.",
  "src-tauri/src/commands/characters.rs": "Character commands: create, read, list, update, trash, restore and permanently delete characters, and upload a portrait.",
  "src-tauri/src/commands/conversations.rs": "Conversation commands: create, list, search, rename, trash, restore, delete, branch, and set the active message, persona, image preset and memory scope.",
  "src-tauri/src/commands/lorebook.rs": "Lorebook commands: list, create, edit, toggle and delete entries, import a card's embedded lorebook, and generate entries from the story.",
