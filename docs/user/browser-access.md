@@ -7,7 +7,13 @@ Janus can serve itself over your network, so you can chat from a phone, tablet o
 1. Open **Settings, Network Access** in the desktop app. If nobody has an account yet, the page first asks you to **create the admin account** (username, a passphrase of at least 12 characters), then shows you a **recovery key** to save.
 2. Switch **Browser access** on and press **Apply**. The page then shows where Janus is running, for example `http://127.0.0.1:7860`.
 3. To let other devices in, also switch on **Other devices on my network** and press **Apply**. Leave it off to allow only this computer.
-4. On the other device, open `http://<this computer's address>:<port>` in a browser. Find the computer's address in its network settings (it often looks like `192.168.x.x`). The device must be on the same network.
+4. On the other device, open `http://<this computer's address>:<port>` (or `https://` if you turned on HTTPS, see below) in a browser. Find the computer's address in its network settings (it often looks like `192.168.x.x`). The device must be on the same network.
+
+### Encrypting the connection (HTTPS)
+
+Switch on **Encrypt with HTTPS** and press **Apply** to serve Janus over an encrypted connection. Janus makes its own certificate, so nothing leaves your network and no account or internet is needed. Because no certificate authority vouches for it, each browser shows a warning the first time (for example "Your connection is not private"). Choose **Advanced**, then **Continue**; it asks again only if Janus makes a new certificate. To be sure the warning is about your Janus, compare the fingerprint the browser shows with the one on the Network Access page.
+
+Janus makes a new certificate when this computer's network addresses change or it is close to expiring, and the browsers on your other devices will ask again. Turn HTTPS off and the address goes back to `http://`.
 
 If another device cannot connect, your computer's firewall may be blocking the port. Allow Janus (or that port, on private networks only) through it.
 
@@ -45,7 +51,7 @@ Almost everything: saving your data export and scene images to your device (they
 ## Security notes
 
 - Passphrases are stored only as argon2id hashes. Sessions use a cookie the page cannot read.
-- **Janus serves plain HTTP.** Anyone who can watch traffic on your network could read what you send, including passphrases. Use it only on a home network you trust, never on public Wi-Fi, and **do not expose the port to the internet**.
+- **Without HTTPS, Janus serves plain HTTP.** Anyone who can watch traffic on your network could read what you send, including passphrases. Turn on **Encrypt with HTTPS**, or use it only on a home network you trust, never on public Wi-Fi. Either way, **do not expose the port to the internet**.
 - Provider API keys are stored on the host. A browser sees only the providers of the account signed in to it, the same as the desktop app does; other accounts' providers and keys are never returned.
 - Requests from other websites are rejected, so a page you visit cannot act on your Janus.
 - Janus only answers requests addressed to an IP address, `localhost`, a machine name, or a local-network name (`.local`, `.lan`, a Tailscale `.ts.net` name). A request using any other domain name is refused. That stops a website from pointing its own domain at your machine to reach Janus (DNS rebinding). If you put Janus behind your own domain name, list it in the `JANUS_ALLOWED_HOSTS` environment variable (comma separated) before starting Janus.

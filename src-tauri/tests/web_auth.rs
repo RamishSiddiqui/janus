@@ -1133,3 +1133,72 @@ async fn only_our_own_host_names_reach_the_server_and_pages_carry_a_policy() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn https_serves_the_app_over_tls_and_marks_the_cookie_secure() {
+    use janus_lib::web::{tls, WebServer};
+
+    let dir = std::env::temp_dir().join(format!("mythic_test_{}", uuid::Uuid::new_v4()));
+    let db = init_database(&dir).await.unwrap();
+    let assets: AssetFn = Arc::new(|p: &str| match p {
+        "index.html" => Some((b"<html>janus</html>".to_vec(), "text/html".to_string())),
+        _ => None,
+    });
+    let certificate = tls::load_or_create(&dir, &[]).unwrap();
+    let fingerprint = certificate.fingerprint.clone();
+    let server = WebServer::start_with(
+        WebState::new(db, Some(assets)).with_https(true),
+        "127.0.0.1:0".parse().unwrap(),
+        Some(certificate),
+    )
+    .await
+    .unwrap();
+    assert_eq!(server.fingerprint.as_deref(), Some(fingerprint.as_str()));
+    let port = server.addr.port();
+
+    // The certificate is self-signed, so the client has to be told to accept it.
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap();
+
+    let page = client
+        .get(format!("https://localhost:{port}/"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page.status(), 200);
+    assert!(page.text().await.unwrap().contains("janus"));
+
+    let signup = client
+        .post(format!("https://127.0.0.1:{port}/api/auth/register"))
+        .header("x-janus-request", "1")
+        .json(&creds("alice", PASS))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(signup.status(), 200);
+    let cookie = signup
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        cookie.contains("Secure") && cookie.contains("HttpOnly"),
+        "{cookie}"
+    );
+
+    // A client that checks certificates refuses it: no authority vouches for it.
+    assert!(reqwest::get(format!("https://127.0.0.1:{port}/"))
+        .await
+        .is_err());
+    // Plain HTTP to the HTTPS port gets nothing back.
+    assert!(reqwest::get(format!("http://127.0.0.1:{port}/"))
+        .await
+        .is_err());
+
+    server.stop().await;
+    let _ = std::fs::remove_dir_all(dir);
+}

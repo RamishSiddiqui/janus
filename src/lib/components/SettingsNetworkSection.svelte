@@ -13,6 +13,7 @@
   // network form
   let enabled = $state(false);
   let lan = $state(false);
+  let https = $state(false);
   let port = $state(7860);
 
   // add account / switch account
@@ -54,9 +55,12 @@
   // addresses (read locally, so this works with no internet).
   const addresses = $derived.by(() => {
     if (!web?.bound) return [];
-    if (!web.bound.startsWith('0.0.0.0')) return [`http://${web.bound}`];
+    const scheme = web.settings.https ? 'https' : 'http';
+    if (!web.bound.startsWith('0.0.0.0')) return [`${scheme}://${web.bound}`];
     const port = web.bound.split(':').pop();
-    return web.lan_ips.length ? web.lan_ips.map(ip => `http://${ip}:${port}`) : [`http://<this-computer>:${port}`];
+    return web.lan_ips.length
+      ? web.lan_ips.map(ip => `${scheme}://${ip}:${port}`)
+      : [`${scheme}://<this-computer>:${port}`];
   });
 
   async function ipc() {
@@ -71,6 +75,7 @@
         web = await api.webStatus();
         enabled = web.settings.enabled;
         lan = web.settings.lan;
+        https = web.settings.https;
         port = web.settings.port;
         users = await api.authListUsers();
       }
@@ -85,7 +90,7 @@
     busy = true;
     try {
       const api = await ipc();
-      web = await api.webSetNetwork(enabled, lan, Number(port));
+      web = await api.webSetNetwork(enabled, lan, Number(port), https);
       success(web.running ? 'Browser access is on' : 'Browser access is off');
     } catch (e) {
       toastError((e as { message?: string }).message ?? 'Could not change browser access.');
@@ -236,7 +241,7 @@
     <div class="setting-row">
       <div class="setting-label">
         <span class="setting-name">Browser access</span>
-        <span class="setting-desc">Serves Janus over HTTP. Everyone signs in with their own account.</span>
+        <span class="setting-desc">Serves Janus to a browser. Everyone signs in with their own account.</span>
       </div>
       <button
         class="toggle-switch"
@@ -270,6 +275,26 @@
     </div>
     <div class="setting-row">
       <div class="setting-label">
+        <span class="setting-name">Encrypt with HTTPS</span>
+        <span class="setting-desc"
+          >Janus makes its own certificate, so passphrases cannot be read on the network. Each browser shows a warning
+          the first time, because no authority vouches for it.</span
+        >
+      </div>
+      <button
+        class="toggle-switch"
+        class:on={https}
+        role="switch"
+        aria-checked={https}
+        aria-label="Encrypt with HTTPS"
+        disabled={!enabled}
+        onclick={() => (https = !https)}
+      >
+        <span class="toggle-knob"></span>
+      </button>
+    </div>
+    <div class="setting-row">
+      <div class="setting-label">
         <span class="setting-name">Port</span>
         <span class="setting-desc">1024 or higher</span>
       </div>
@@ -287,10 +312,18 @@
     {:else}
       <span class="backup-status">Not running</span>
     {/if}
-    <p class="setting-desc net-note">
-      Connections are plain HTTP, so passphrases are visible to anyone who can watch your network traffic. Use it on a
-      home network you trust.
-    </p>
+    {#if web?.running && web.settings.https && web.cert_fingerprint}
+      <p class="setting-desc net-note">
+        Certificate fingerprint (SHA-256), to compare with what the browser shows under the warning:
+        <code>{web.cert_fingerprint}</code>
+      </p>
+    {/if}
+    {#if !(web?.running ? web.settings.https : https)}
+      <p class="setting-desc net-note">
+        Connections are plain HTTP, so passphrases are visible to anyone who can watch your network traffic. Turn on
+        HTTPS above, or use it only on a home network you trust.
+      </p>
+    {/if}
   </section>
 
   <div class="panel-heading animate-fade-in-up stagger-3 net-gap">

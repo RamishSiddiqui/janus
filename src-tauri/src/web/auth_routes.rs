@@ -66,14 +66,20 @@ struct SignedIn {
     recovery_key: Option<String>,
 }
 
-fn signed_in(user: &DbUser, token: &str, trusted: bool, recovery_key: Option<String>) -> Response {
+fn signed_in(
+    user: &DbUser,
+    token: &str,
+    trusted: bool,
+    secure: bool,
+    recovery_key: Option<String>,
+) -> Response {
     let max_age = if trusted {
         TRUSTED_SESSION_DAYS * 86_400
     } else {
         SHORT_SESSION_HOURS * 3_600
     };
     (
-        [(header::SET_COOKIE, session_cookie(token, max_age))],
+        [(header::SET_COOKIE, session_cookie(token, max_age, secure))],
         Json(SignedIn {
             user: UserInfo::from(user),
             recovery_key,
@@ -95,7 +101,7 @@ async fn register(
     let (user, key) = service::register(&st.db, &body.username, &body.passphrase).await?;
     let token =
         service::issue_session(&st.db, &user.id, &device_label(&headers), body.trusted).await?;
-    Ok(signed_in(&user, &token, body.trusted, Some(key)))
+    Ok(signed_in(&user, &token, body.trusted, st.https, Some(key)))
 }
 
 /// Checks the passphrase and starts a session (a 30-day or a short one). Wrong attempts are rate-limited per address and per account.
@@ -117,7 +123,7 @@ async fn login(
         &ip.to_string(),
     )
     .await?;
-    Ok(signed_in(&user, &token, body.trusted, None))
+    Ok(signed_in(&user, &token, body.trusted, st.https, None))
 }
 
 /// Ends the current session and clears the cookie.
@@ -127,7 +133,7 @@ async fn logout(State(st): State<WebState>, headers: HeaderMap) -> Result<Respon
     }
     Ok((
         StatusCode::NO_CONTENT,
-        [(header::SET_COOKIE, clear_cookie())],
+        [(header::SET_COOKIE, clear_cookie(st.https))],
     )
         .into_response())
 }
@@ -161,7 +167,13 @@ async fn reset(
     .await?;
     let token =
         service::issue_session(&st.db, &user.id, &device_label(&headers), body.trusted).await?;
-    Ok(signed_in(&user, &token, body.trusted, Some(new_key)))
+    Ok(signed_in(
+        &user,
+        &token,
+        body.trusted,
+        st.https,
+        Some(new_key),
+    ))
 }
 
 /// The signed-in account.

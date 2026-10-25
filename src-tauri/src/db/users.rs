@@ -320,7 +320,7 @@ impl AuthSettingsRepo {
         let found: Vec<serde_json::Value> = from_value_vec(
             rows(
                 db,
-                "SELECT network_enabled, network_lan, network_port FROM type::record('auth_settings', 'main')",
+                "SELECT network_enabled, network_lan, network_port, network_https FROM type::record('auth_settings', 'main')",
                 serde_json::json!({}),
             )
             .await?,
@@ -336,6 +336,7 @@ impl AuthSettingsRepo {
             enabled: get_bool("network_enabled").unwrap_or(false),
             lan: get_bool("network_lan").unwrap_or(false),
             port,
+            https: get_bool("network_https").unwrap_or(false),
         })
     }
 
@@ -343,8 +344,8 @@ impl AuthSettingsRepo {
         rows(
             db,
             "UPSERT type::record('auth_settings', 'main')
-             SET network_enabled = $e, network_lan = $l, network_port = $p",
-            serde_json::json!({ "e": s.enabled, "l": s.lan, "p": s.port }),
+             SET network_enabled = $e, network_lan = $l, network_port = $p, network_https = $h",
+            serde_json::json!({ "e": s.enabled, "l": s.lan, "p": s.port, "h": s.https }),
         )
         .await?;
         Ok(())

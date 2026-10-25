@@ -44,12 +44,19 @@ pub async fn apply_settings(
         .path()
         .app_data_dir()
         .map_err(|e| MythicError::Config(format!("Failed to resolve app data dir: {e}")))?;
-    let server = WebServer::start(
+    let tls = if settings.https {
+        Some(crate::web::tls::load_or_create(&data_dir, &lan_ips())?)
+    } else {
+        None
+    };
+    let server = WebServer::start_with(
         WebState::new(db, Some(asset_fn(app)))
             .with_rpc(Arc::new(crate::web::rpc::AppRpc(app.clone())))
             .with_bus(bus)
-            .with_data_dir(data_dir),
+            .with_data_dir(data_dir)
+            .with_https(settings.https),
         bind_addr(settings.lan, settings.port),
+        tls,
     )
     .await?;
     let bound = server.addr.to_string();
@@ -100,6 +107,7 @@ async fn status_of(state: &Arc<RwLock<AppState>>, settings: NetworkSettings) -> 
         running: guard.is_some(),
         bound: guard.as_ref().map(|s| s.addr.to_string()),
         lan_ips: lan_ips(),
+        cert_fingerprint: guard.as_ref().and_then(|s| s.fingerprint.clone()),
     }
 }
 
@@ -113,7 +121,7 @@ pub async fn web_status(state: State<'_, Arc<RwLock<AppState>>>) -> Result<WebSt
     Ok(status_of(state.inner(), settings).await)
 }
 
-/// Admin only: turns browser access on or off, chooses loopback-only or LAN, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned.
+/// Admin only: turns browser access on or off, chooses loopback-only or LAN, turns HTTPS (a self-signed certificate Janus makes) on or off, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned.
 #[tauri::command]
 #[specta::specta]
 pub async fn web_set_network(
@@ -122,6 +130,7 @@ pub async fn web_set_network(
     enabled: bool,
     lan: bool,
     port: u16,
+    https: bool,
 ) -> Result<WebStatus, MythicError> {
     let (db, actor) = acting(&state).await?;
     actor.require_admin()?;
@@ -130,7 +139,12 @@ pub async fn web_set_network(
             "Choose a port of 1024 or higher.".to_string(),
         ));
     }
-    let settings = NetworkSettings { enabled, lan, port };
+    let settings = NetworkSettings {
+        enabled,
+        lan,
+        port,
+        https,
+    };
     AuthSettingsRepo::set_network(&db, &settings).await?;
     if let Err(e) = apply_settings(&app, state.inner()).await {
         // Couldn't bind (port in use, ...): leave it off rather than half-on.

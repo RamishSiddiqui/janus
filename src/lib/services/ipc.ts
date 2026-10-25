@@ -1403,10 +1403,11 @@ export interface AccountCreatedResult {
 }
 
 export interface WebAccessStatus {
-  settings: { enabled: boolean; lan: boolean; port: number };
+  settings: { enabled: boolean; lan: boolean; port: number; https: boolean };
   running: boolean;
   bound: string | null;
   lan_ips: string[];
+  cert_fingerprint: string | null;
 }
 
 export async function authStatus(): Promise<AccountStatus> {
@@ -1445,6 +1446,11 @@ export async function webStatus(): Promise<WebAccessStatus> {
   return safeInvoke<WebAccessStatus>('web_status');
 }
 
-export async function webSetNetwork(enabled: boolean, lan: boolean, port: number): Promise<WebAccessStatus> {
-  return safeInvoke<WebAccessStatus>('web_set_network', { enabled, lan, port });
+export async function webSetNetwork(
+  enabled: boolean,
+  lan: boolean,
+  port: number,
+  https: boolean,
+): Promise<WebAccessStatus> {
+  return safeInvoke<WebAccessStatus>('web_set_network', { enabled, lan, port, https });
 }
