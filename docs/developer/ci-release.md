@@ -22,7 +22,7 @@ Dependabot opens pull requests. Breaking major bumps (for example a new `rig-cor
 A release is a version tag, but a few steps come before it and one after.
 
 1. **Bump the version** in one pull request: `package.json`, `package-lock.json` (two places), `src-tauri/Cargo.toml`, the `janus` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Update version references in the docs. Merge it with every check green.
-2. **Rehearse the release build.** Open **Actions, Release dry run, Run workflow** on `master` and wait for all three platforms to pass. Do this whenever dependencies changed since the last release, and it is cheap enough to do every time. CI proves the code compiles and passes tests, but only a bundling build proves the release itself works.
+2. **Rehearse the release build.** Merging the bump already starts the dry run on `master`; wait for all four builds to pass (**Actions, Release dry run**). If it did not run, start it with **Run workflow** on `master`. Do not tag before it finishes: it also saves the Rust cache that the release restores, and a tag pushed too early builds cold. CI proves the code compiles and passes tests, but only a bundling build proves the release itself works.
 3. **Tag the bump commit and push the tag:**
 
    ```bash
