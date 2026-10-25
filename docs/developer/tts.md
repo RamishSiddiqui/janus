@@ -13,7 +13,7 @@ Janus has one built-in engine and three cloud adapters (see {doc}`providers`).
 | `vocab.rs` | The phoneme-to-token table copied from the model's own config. Phonemes come from `misaki-rs`. |
 | `chunker.rs` | Splits incrementally arriving text into complete sentences (minimum 8 characters) so synthesis can start before the reply finishes. |
 
-Files used: `kokoro-v1.0.int8.onnx` (the `model_q8f16` weights, about 86 MB), `voices-v1.0.bin` (all 54 voices), and `onnxruntime.dll`.
+Files used: `kokoro-v1.0.int8.onnx` (the `model_q8f16` weights, about 86 MB), `voices-v1.0.bin` (all 54 voices), and the ONNX Runtime library. Its filename carries the version (`onnxruntime-1.31.0.dll`), because each `ort` release needs one specific ONNX Runtime: after an `ort` upgrade the old library is not loadable, the new name makes the voice count as not downloaded, and the next download fetches only the runtime (the model and voices are kept). Change `RUNTIME_VERSION`, the URL and the zip path in `download.rs` together with the `ort` dependency.
 
 ```{note}
 The runtime download currently points at the Windows x64 build of ONNX Runtime, so the built-in engine works on Windows only. Supporting macOS and Linux means fetching the matching library per platform.

@@ -129,6 +129,8 @@ fn display_name(voice_id: &str) -> String {
 }
 
 pub struct KokoroEngine {
+    /// Kept alive for as long as the session built under it.
+    _environment: ort::environment::Environment,
     session: Session,
     voices: VoicePack,
     /// Built once here, not per `synthesize()` call — `G2P::new()`'s
@@ -156,11 +158,10 @@ impl KokoroEngine {
         // mismatch). Idempotent — `ort`'s internal `G_ORT_LIB` is a
         // `OnceLock`, so a second call here (e.g. engine reload after a
         // failed first attempt) is a cheap no-op rather than a re-load.
-        // `commit()` returns `bool` (not `Result`) — `false` only means an
-        // environment was already committed elsewhere (e.g. a prior load
-        // attempt this session), which is fine to ignore; the dylib-load
-        // itself is what `init_from`'s `?` above actually guards.
-        ort::init_from(runtime_path)
+        // `build()` creates the process-global ONNX environment that every
+        // session below is made under; `init_from`'s `?` is what guards the
+        // dylib load itself.
+        let environment = ort::init_from(runtime_path)
             .map_err(|e| {
                 MythicError::Provider(format!(
                     "Failed to load ONNX Runtime from {}: {}",
@@ -168,11 +169,12 @@ impl KokoroEngine {
                     e
                 ))
             })?
-            .commit();
+            .build()
+            .map_err(|e| MythicError::Provider(format!("Failed to start ONNX Runtime: {}", e)))?;
         tracing::info!("[tts] ONNX Runtime dylib loaded in {:?}", t0.elapsed());
 
         // `commit_from_file` isn't available in this build (only
-        // `commit_from_memory` is, per the `ort` 2.0.0-rc.13 API actually
+        // `commit_from_memory` is, per the `ort` 2.0.0-rc.15 API actually
         // compiled against here) — read the ~90MB model into memory
         // ourselves and commit from bytes instead. One-time cost at engine
         // load, not per synthesis call.
@@ -196,7 +198,7 @@ impl KokoroEngine {
         // heuristic) already outperformed every explicit override tried
         // here, so leave it alone rather than re-guess a "better" number.
         // Optimization level 3 is independent of that regression and kept.
-        let session = Session::builder()
+        let session = Session::builder(&environment)
             .map_err(|e| {
                 MythicError::Provider(format!("Failed to create ONNX session builder: {}", e))
             })?
@@ -224,6 +226,7 @@ impl KokoroEngine {
 
         tracing::info!("[tts] KokoroEngine::load total: {:?}", t0.elapsed());
         Ok(Self {
+            _environment: environment,
             session,
             voices,
             g2p,
@@ -399,4 +402,61 @@ fn encode_wav(samples: &[f32]) -> Result<Vec<u8>, MythicError> {
             .map_err(|e| MythicError::Provider(format!("WAV finalize failed: {}", e)))?;
     }
     Ok(cursor.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Loads the real Kokoro model and ONNX Runtime and synthesizes a
+    /// sentence. Needs the downloaded assets, so it only runs on request:
+    ///
+    /// ```text
+    /// JANUS_TTS_DIR=<tts folder> JANUS_TTS_RUNTIME=<onnxruntime dll> \
+    ///   [JANUS_TTS_OUT=<where to write the wav>] \
+    ///   cargo test --lib kokoro_synthesizes -- --ignored --nocapture
+    /// ```
+    ///
+    /// Run it after changing `ort`, `misaki-rs` or `ndarray`, and listen to
+    /// the WAV: a green test only proves the audio is not silent.
+    #[test]
+    #[ignore = "needs the downloaded Kokoro model, voices and ONNX Runtime"]
+    fn kokoro_synthesizes_audible_speech() {
+        let dir = std::path::PathBuf::from(std::env::var("JANUS_TTS_DIR").expect("JANUS_TTS_DIR"));
+        let runtime = std::path::PathBuf::from(
+            std::env::var("JANUS_TTS_RUNTIME").expect("JANUS_TTS_RUNTIME"),
+        );
+        let mut engine = KokoroEngine::load(
+            &dir.join("kokoro-v1.0.int8.onnx"),
+            &dir.join("voices-v1.0.bin"),
+            &runtime,
+        )
+        .expect("engine loads");
+
+        let wav = engine
+            .synthesize(
+                "Hello there. This is a test of the built-in voice.",
+                "af_heart",
+                1.0,
+            )
+            .expect("synthesizes");
+        if let Ok(out) = std::env::var("JANUS_TTS_OUT") {
+            std::fs::write(out, &wav).unwrap();
+        }
+
+        let samples: Vec<i16> = hound::WavReader::new(Cursor::new(&wav))
+            .unwrap()
+            .into_samples::<i16>()
+            .map(Result::unwrap)
+            .collect();
+        let seconds = samples.len() as f32 / SAMPLE_RATE as f32;
+        let rms = (samples.iter().map(|&s| (s as f32).powi(2)).sum::<f32>() / samples.len() as f32)
+            .sqrt();
+        println!("{seconds:.2}s of audio, rms {rms:.0}");
+        assert!(
+            (1.5..10.0).contains(&seconds),
+            "implausible length {seconds}s"
+        );
+        assert!(rms > 300.0, "audio is nearly silent (rms {rms})");
+    }
 }
