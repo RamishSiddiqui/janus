@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import { settings } from '#lib/stores/settings.js';
   import { updates, checkForUpdates, installUpdate } from '#lib/stores/updates.js';
-  import { releaseNotesGroups } from '#lib/utils/updates.js';
+  import { downloadDetail, releaseNotesGroups } from '#lib/utils/updates.js';
   import { agoLabel } from '#lib/utils/webAccount.js';
 
   let checkForUpdatesOn = $state($settings.checkForUpdates);
@@ -92,7 +92,9 @@
         ? 'Installing, Janus will restart…'
         : percent == null
           ? 'Downloading…'
-          : `Downloading… ${percent}%`}</span
+          : `Downloading… ${percent}%`}{$updates.status === 'downloading' && $updates.downloaded > 0
+        ? ` · ${downloadDetail($updates.downloaded, $updates.total, $updates.speed)}`
+        : ''}</span
     >
   {/if}
 

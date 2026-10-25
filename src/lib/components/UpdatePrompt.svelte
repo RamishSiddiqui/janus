@@ -2,7 +2,7 @@
   // The "new version available" card in the corner of the desktop app (#139).
   import Icon from './Icon.svelte';
   import { updates, installUpdate, dismissUpdate } from '#lib/stores/updates.js';
-  import { releaseNotesGroups } from '#lib/utils/updates.js';
+  import { downloadDetail, releaseNotesGroups } from '#lib/utils/updates.js';
 
   let showNotes = $state(false);
 
@@ -49,6 +49,9 @@
           style:width={percent == null ? undefined : `${percent}%`}
         ></div>
       </div>
+      {#if $updates.status === 'downloading' && $updates.downloaded > 0}
+        <span class="update-detail">{downloadDetail($updates.downloaded, $updates.total, $updates.speed)}</span>
+      {/if}
     {:else}
       {#if showNotes && notes.length}
         <div class="update-notes">
@@ -130,6 +133,11 @@
   .update-sub {
     font-size: var(--text-sm);
     color: var(--fg-muted);
+  }
+  .update-detail {
+    font-size: var(--text-xs);
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
   }
   .update-notes {
     max-height: 180px;

@@ -2,7 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAutoCheck,
+  downloadDetail,
   downloadFraction,
+  formatBytes,
+  formatSpeed,
+  nextSpeed,
   readDismissed,
   releaseNotesGroups,
   updatesBlockedInDev,
@@ -90,5 +94,34 @@ describe('dismissed version', () => {
     };
     expect(readDismissed(broken)).toBeNull();
     expect(() => writeDismissed(broken, '0.2.0')).not.toThrow();
+  });
+});
+
+describe('download size and speed', () => {
+  it('formats sizes in readable units', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(900)).toBe('900 B');
+    expect(formatBytes(850 * 1024)).toBe('850 KB');
+    expect(formatBytes(12.34 * 1024 * 1024)).toBe('12.3 MB');
+    expect(formatBytes(1.5 * 1024 ** 3)).toBe('1.50 GB');
+    expect(formatBytes(-5)).toBe('0 B');
+  });
+
+  it('formats a speed per second', () => {
+    expect(formatSpeed(3.2 * 1024 * 1024)).toBe('3.2 MB/s');
+  });
+
+  it('smooths the speed instead of jumping to each sample', () => {
+    expect(nextSpeed(null, 1000, 500)).toBe(2000);
+    expect(nextSpeed(2000, 3000, 500)).toBeCloseTo(2000 * 0.7 + 6000 * 0.3);
+    expect(nextSpeed(2000, 100, 0)).toBe(2000);
+  });
+
+  it('describes progress with whatever is known', () => {
+    const mb = 1024 * 1024;
+    expect(downloadDetail(12 * mb, 45 * mb, 3 * mb)).toBe('12.0 MB of 45.0 MB · 3.0 MB/s');
+    expect(downloadDetail(12 * mb, 45 * mb, null)).toBe('12.0 MB of 45.0 MB');
+    expect(downloadDetail(12 * mb, null, 3 * mb)).toBe('12.0 MB · 3.0 MB/s');
+    expect(downloadDetail(12 * mb, 0, null)).toBe('12.0 MB');
   });
 });

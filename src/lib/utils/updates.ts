@@ -69,6 +69,37 @@ export function downloadFraction(downloaded: number, total: number | null | unde
   return Math.min(1, Math.max(0, downloaded / total));
 }
 
+/** "12.3 MB", "850 KB": binary units, one decimal from MB up. */
+export function formatBytes(bytes: number): string {
+  const n = Math.max(0, bytes);
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  return `${(n / 1024 ** 3).toFixed(2)} GB`;
+}
+
+/** "3.2 MB/s" from bytes per second. */
+export function formatSpeed(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+/**
+ * Smooths the download speed. `previous` is the last value (null at the start);
+ * `bytes` arrived over `elapsedMs`. An exponential average keeps the number
+ * from jumping with every chunk.
+ */
+export function nextSpeed(previous: number | null, bytes: number, elapsedMs: number): number | null {
+  if (elapsedMs <= 0) return previous;
+  const instant = (bytes / elapsedMs) * 1000;
+  return previous == null ? instant : previous * 0.7 + instant * 0.3;
+}
+
+/** "12.3 MB of 45.0 MB · 3.2 MB/s"; leaves out whatever is not known yet. */
+export function downloadDetail(downloaded: number, total: number | null | undefined, speed: number | null): string {
+  const size = total && total > 0 ? `${formatBytes(downloaded)} of ${formatBytes(total)}` : formatBytes(downloaded);
+  return speed == null ? size : `${size} · ${formatSpeed(speed)}`;
+}
+
 /** A short, readable reason for a failed check or install. */
 export function updateErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
