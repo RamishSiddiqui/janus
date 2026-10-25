@@ -31,19 +31,27 @@ const MODEL_URL: &str =
 // thewh1teagle/kokoro-onnx's GitHub releases. Verified this URL resolves
 // (200, Content-Length 28214398) before fixing the original 404.
 const VOICES_URL: &str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin";
-// Pinned to the exact ONNX Runtime release `ort-sys` 2.0.0-rc.13's own
+// Pinned to the exact ONNX Runtime release `ort-sys` 2.0.0-rc.15's own
 // `download-binaries` feature fetches (see build/download/dist.tsv in the
-// ort-sys source: `pyke:ort-rs/ms@1.28.0`) — same ABI, fetched from
+// ort-sys source: `pyke:ort-rs/ms@1.31.0`) — same ABI, fetched from
 // Microsoft's official releases instead of pyke's CDN since we're loading
 // it ourselves via `load-dynamic` rather than linking it at build time.
+// Bump these together with the `ort` dependency.
+const RUNTIME_VERSION: &str = "1.31.0";
 const RUNTIME_URL: &str =
-    "https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-win-x64-1.28.0.zip";
+    "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip";
 /// Path *inside* the release zip to the dll we actually want.
-const RUNTIME_ZIP_INNER_PATH: &str = "onnxruntime-win-x64-1.28.0/lib/onnxruntime.dll";
+const RUNTIME_ZIP_INNER_PATH: &str = "onnxruntime-win-x64-1.31.0/lib/onnxruntime.dll";
 
 const MODEL_FILENAME: &str = "kokoro-v1.0.int8.onnx";
 const VOICES_FILENAME: &str = "voices-v1.0.bin";
-const RUNTIME_FILENAME: &str = "onnxruntime.dll";
+// The version is part of the filename: an `ort` upgrade needs a different
+// ONNX Runtime, and a copy downloaded for the previous one (plain
+// `onnxruntime.dll`) would fail to load. A new name makes `is_downloaded`
+// false for those installs so the runtime is fetched again; the model and
+// voices stay.
+const RUNTIME_FILENAME_PREFIX: &str = "onnxruntime";
+const LEGACY_RUNTIME_FILENAME: &str = "onnxruntime.dll";
 const TTS_DIR_NAME: &str = "tts";
 
 pub fn tts_dir(app_data_dir: &Path) -> PathBuf {
@@ -64,7 +72,7 @@ pub fn voices_path(app_data_dir: &Path) -> PathBuf {
 /// and `RUNTIME_ZIP_INNER_PATH` are the only spots that would need a
 /// per-platform match arm to extend this to Linux/macOS.
 pub fn runtime_path(app_data_dir: &Path) -> PathBuf {
-    tts_dir(app_data_dir).join(RUNTIME_FILENAME)
+    tts_dir(app_data_dir).join(format!("{RUNTIME_FILENAME_PREFIX}-{RUNTIME_VERSION}.dll"))
 }
 
 /// True once the model, voice pack, and ONNX Runtime dylib all exist on
@@ -109,6 +117,8 @@ pub async fn download_all(
     if !runtime_dest.exists() {
         download_runtime(app, http_client, &runtime_dest).await?;
     }
+    // The runtime an earlier version of Janus downloaded is no longer used.
+    let _ = tokio::fs::remove_file(dir.join(LEGACY_RUNTIME_FILENAME)).await;
 
     info!(
         "[tts] Model, voice pack, and ONNX Runtime downloaded to {:?}",
