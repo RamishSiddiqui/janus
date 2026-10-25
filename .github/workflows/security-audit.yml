@@ -84,10 +84,12 @@ jobs:
           # RUSTSEC-2026-0367/0368/0369 (zip: SUID/SGID bits, symlinks and Unix
           # permissions applied by ZipArchive::extract / ZipStreamReader::extract):
           # all about the extract() helpers on untrusted archives, patched
-          # only in zip 9 (a major bump). Janus never calls extract(): zip 2.4.2
+          # only in zip 9 (a major bump). Janus never calls extract(): zip 6.0.0
           # is only read for the voice pack's .npz arrays (ndarray-npy), and
-          # zip 4.6.1 comes with tauri-plugin-updater, which unpacks an update
-          # only after its minisign signature has verified. Revisit when the
+          # zip 4.6.1 is shared by Janus (which pulls one named file,
+          # onnxruntime.dll, out of the ONNX Runtime release zip) and
+          # tauri-plugin-updater, which unpacks an update only after its
+          # minisign signature has verified. Revisit when the
           # dependents move to zip 9.
           #
           # RUSTSEC-2026-0381 (webpki-roots: bundled roots trust distrusted emSign
