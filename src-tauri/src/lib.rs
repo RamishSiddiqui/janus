@@ -10,6 +10,7 @@
     clippy::type_complexity
 )]
 
+pub mod seed_vuln;
 pub mod auth;
 pub mod commands;
 pub mod context;
