@@ -15,7 +15,7 @@ Rules (in `auth/mod.rs` and `auth/service.rs`):
 |---|---|
 | Username | 3 to 24 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Stored lowercase. |
 | Passphrase | 12 to 256 characters. Stored only as an argon2id hash. |
-| Lockout | 3 wrong passphrases lock the account for 300 seconds. |
+| Lockout | 3 wrong passphrases in a row from the same place (a browser address, or the desktop) lock that place out of that account for 300 seconds. Kept in memory per (username, place), and also for names that do not exist, so a sign-in answers the same way whether or not the account exists, and the message never says how many tries are left. A stranger cannot lock the owner out. 20 wrong passphrases in a row from anywhere lock the account itself for 300 seconds. |
 | Session | 30 days if "keep this device signed in", otherwise 12 hours. |
 | Recovery key | `JANUS-` plus 16 characters from an unambiguous alphabet, shown once, stored hashed. Using it sets a new passphrase and signs out all other sessions. |
 

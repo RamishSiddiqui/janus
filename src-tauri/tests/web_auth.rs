@@ -1079,3 +1079,57 @@ async fn a_character_card_uploaded_from_a_browser_belongs_to_that_account() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn only_our_own_host_names_reach_the_server_and_pages_carry_a_policy() {
+    let (app, _db, dir) = app().await;
+
+    let get = |host: &'static str, uri: &'static str| {
+        let app = app.clone();
+        async move {
+            let req = Request::builder()
+                .uri(uri)
+                .header(header::HOST, host)
+                .body(Body::empty())
+                .unwrap();
+            app.oneshot(req).await.unwrap()
+        }
+    };
+
+    // A public domain name (DNS rebinding) is refused, for pages and API alike.
+    assert_eq!(
+        get("evil.example.com", "/").await.status(),
+        StatusCode::MISDIRECTED_REQUEST
+    );
+    assert_eq!(
+        get("evil.example.com:8787", "/api/auth/status")
+            .await
+            .status(),
+        StatusCode::MISDIRECTED_REQUEST
+    );
+
+    // Addresses and local names work, and the page carries its policy.
+    for host in [
+        "127.0.0.1:8787",
+        "192.168.1.5:8787",
+        "my-pc:8787",
+        "[::1]:8787",
+    ] {
+        let resp = get(host, "/").await;
+        assert_eq!(resp.status(), StatusCode::OK, "{host}");
+        let csp = resp
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .expect("html pages carry a policy")
+            .to_str()
+            .unwrap();
+        assert!(csp.contains("object-src 'none'"), "{csp}");
+    }
+
+    // Scripts and API answers are not pages: no policy header needed there.
+    let js = get("127.0.0.1:8787", "/app.js").await;
+    assert_eq!(js.status(), StatusCode::OK);
+    assert!(js.headers().get(header::CONTENT_SECURITY_POLICY).is_none());
+
+    let _ = std::fs::remove_dir_all(dir);
+}

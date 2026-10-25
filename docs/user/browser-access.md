@@ -24,7 +24,7 @@ After signing in, the welcome screen lists the devices signed in to your account
 - When the admin adds someone, they give them a **temporary passphrase** of at least 12 characters. The person must choose their own when they first sign in.
 - Each account gets a **recovery key**, shown once.
 - **Each account has its own data**: characters, personas, chats, memories, lorebooks, providers and API keys, and generated images. Accounts cannot see each other's. The admin controls who may sign up and manages the account list. Because the admin can also act as any account from the desktop (below), the admin is trusted with everyone's data on that machine.
-- Three wrong passphrases in a row lock an account for five minutes.
+- Three wrong passphrases in a row from the same device or address lock that device out of the account for five minutes. Someone guessing at your account from elsewhere cannot lock you out; you can still sign in from your own device.
 - The admin can delete an account; that deletes its data and files.
 
 ### Acting as another account (desktop only)
@@ -48,3 +48,5 @@ Almost everything: saving your data export and scene images to your device (they
 - **Janus serves plain HTTP.** Anyone who can watch traffic on your network could read what you send, including passphrases. Use it only on a home network you trust, never on public Wi-Fi, and **do not expose the port to the internet**.
 - Provider API keys are stored on the host. A browser sees only the providers of the account signed in to it, the same as the desktop app does; other accounts' providers and keys are never returned.
 - Requests from other websites are rejected, so a page you visit cannot act on your Janus.
+- Janus only answers requests addressed to an IP address, `localhost`, a machine name, or a local-network name (`.local`, `.lan`, a Tailscale `.ts.net` name). A request using any other domain name is refused. That stops a website from pointing its own domain at your machine to reach Janus (DNS rebinding). If you put Janus behind your own domain name, list it in the `JANUS_ALLOWED_HOSTS` environment variable (comma separated) before starting Janus.
+- The page Janus serves carries a strict Content-Security-Policy: it loads only from Janus itself and cannot send data to other sites.

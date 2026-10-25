@@ -95,7 +95,7 @@ pub async fn auth_login(
     passphrase: String,
 ) -> Result<UserInfo, MythicError> {
     let (db, desktop) = db_and_desktop(&state).await;
-    let user = service::verify_credentials(&db, &username, &passphrase).await?;
+    let user = service::verify_credentials(&db, &username, &passphrase, "desktop").await?;
     *desktop.lock().await = Some(user.id.clone());
     *state.read().await.desktop_admin.lock().await = None;
     Ok(UserInfo::from(&user))
@@ -156,7 +156,8 @@ pub async fn auth_reset_with_recovery(
 ) -> Result<AccountCreated, MythicError> {
     let (db, desktop) = db_and_desktop(&state).await;
     let (user, new_key) =
-        service::reset_with_recovery(&db, &username, &recovery_key, &new_passphrase).await?;
+        service::reset_with_recovery(&db, &username, &recovery_key, &new_passphrase, "desktop")
+            .await?;
     *desktop.lock().await = Some(user.id.clone());
     *state.read().await.desktop_admin.lock().await = None;
     Ok(AccountCreated {
@@ -236,6 +237,12 @@ pub async fn auth_delete_user(
     service::delete_user(&db, &me, &user_id).await?;
     if let Ok(dir) = app.path().app_data_dir() {
         for relative in files {
+            // Only files the app stored itself are ever removed, whatever a
+            // row claims to reference.
+            if !crate::auth::access::is_stored_file_path(&relative) {
+                tracing::warn!("Not removing {relative:?}: not a stored file path");
+                continue;
+            }
             if let Ok(full) = crate::error::resolve_within(&dir, &relative) {
                 if let Err(e) = tokio::fs::remove_file(&full).await {
                     if e.kind() != std::io::ErrorKind::NotFound {

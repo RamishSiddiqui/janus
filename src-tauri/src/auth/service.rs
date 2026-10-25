@@ -135,62 +135,120 @@ pub async fn admin_create_user(
     Ok((user, key))
 }
 
-/// Counts a wrong secret against the account, locking it after
-/// `MAX_FAILED_ATTEMPTS` in a row. Returns the error to show.
+/// Wrong tries per (username, place) in memory. It covers names that don't
+/// exist exactly like real ones, so a sign-in answers the same way (and locks
+/// at the same point) whether or not the account exists. A "place" is a
+/// browser's network address, or the desktop.
+struct AttemptGate {
+    entries: std::sync::Mutex<std::collections::HashMap<(String, String), (u32, i64)>>,
+}
+
+impl AttemptGate {
+    const MAX_ENTRIES: usize = 10_000;
+
+    fn lock_error(remaining: i64) -> MythicError {
+        MythicError::Unauthorized(format!("Too many tries. Try again in {remaining} seconds."))
+    }
+
+    /// Refuses while this place is locked out of this name.
+    fn check(&self, username: &str, place: &str) -> Result<(), MythicError> {
+        let map = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, locked_until)) = map.get(&(username.to_string(), place.to_string())) {
+            let remaining = locked_until - now();
+            if remaining > 0 {
+                return Err(Self::lock_error(remaining));
+            }
+        }
+        Ok(())
+    }
+
+    /// Counts a wrong try. Returns the error to show: the lock message once
+    /// the limit is reached, the plain mismatch message before that.
+    fn fail(&self, username: &str, place: &str, generic: &str) -> MythicError {
+        let mut map = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if map.len() >= Self::MAX_ENTRIES {
+            let t = now();
+            map.retain(|_, (_, locked_until)| *locked_until > t);
+            if map.len() >= Self::MAX_ENTRIES {
+                map.clear();
+            }
+        }
+        let entry = map
+            .entry((username.to_string(), place.to_string()))
+            .or_insert((0, 0));
+        if entry.1 != 0 && entry.1 <= now() {
+            *entry = (0, 0); // a finished lock starts a fresh count
+        }
+        entry.0 += 1;
+        if entry.0 >= MAX_FAILED_ATTEMPTS {
+            *entry = (0, now() + LOCKOUT_SECS);
+            return Self::lock_error(LOCKOUT_SECS);
+        }
+        MythicError::Unauthorized(generic.to_string())
+    }
+
+    fn clear(&self, username: &str, place: &str) {
+        let mut map = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(&(username.to_string(), place.to_string()));
+    }
+}
+
+static GATE: std::sync::LazyLock<AttemptGate> = std::sync::LazyLock::new(|| AttemptGate {
+    entries: std::sync::Mutex::new(std::collections::HashMap::new()),
+});
+
+/// Counts a wrong secret against the account itself (from any place) and
+/// locks it after `MAX_ACCOUNT_FAILED_ATTEMPTS` in a row. Returns the error
+/// to show, which never says how many tries are left.
 async fn register_failure(
     db: &Surreal<Db>,
     user: &DbUser,
     generic: &str,
 ) -> Result<MythicError, MythicError> {
     let attempts = user.failed_attempts + 1;
-    if attempts >= MAX_FAILED_ATTEMPTS {
+    if attempts >= MAX_ACCOUNT_FAILED_ATTEMPTS {
         UserRepo::set_failures(db, &user.id, 0, now() + LOCKOUT_SECS).await?;
-        return Ok(MythicError::Unauthorized(format!(
-            "Too many tries. This account is locked for {} minutes.",
-            LOCKOUT_SECS / 60
-        )));
+        return Ok(AttemptGate::lock_error(LOCKOUT_SECS));
     }
     UserRepo::set_failures(db, &user.id, attempts, 0).await?;
-    let left = MAX_FAILED_ATTEMPTS - attempts;
-    Ok(MythicError::Unauthorized(format!(
-        "{generic} {left} {} left before a {}-minute lock.",
-        if left == 1 { "attempt" } else { "attempts" },
-        LOCKOUT_SECS / 60
-    )))
+    Ok(MythicError::Unauthorized(generic.to_string()))
 }
 
 fn check_not_locked(user: &DbUser) -> Result<(), MythicError> {
     let remaining = user.locked_until - now();
     if remaining > 0 {
-        return Err(MythicError::Unauthorized(format!(
-            "Too many tries. Try again in {} seconds.",
-            remaining
-        )));
+        return Err(AttemptGate::lock_error(remaining));
     }
     Ok(())
 }
 
 /// Checks a username + passphrase and returns the account. Unknown usernames
-/// and wrong passphrases give the same answer in the same time.
+/// and wrong passphrases give the same answer in the same time. `place` says
+/// where the attempt came from (a browser address, or "desktop") for the
+/// per-place lockout.
 pub async fn verify_credentials(
     db: &Surreal<Db>,
     username: &str,
     passphrase: &str,
+    place: &str,
 ) -> Result<DbUser, MythicError> {
     let bad = || MythicError::Unauthorized(BAD_CREDENTIALS.to_string());
     let username = normalize_username(username).map_err(|_| bad())?;
+    GATE.check(&username, place)?;
     let Some(user) = UserRepo::get_by_username(db, &username).await? else {
         dummy_blocking(passphrase.to_string()).await;
-        return Err(bad());
+        return Err(GATE.fail(&username, place, BAD_CREDENTIALS));
     };
     check_not_locked(&user)?;
     if verify_blocking(passphrase.to_string(), user.passphrase_hash.clone()).await? {
+        GATE.clear(&username, place);
         if user.failed_attempts > 0 || user.locked_until != 0 {
             UserRepo::set_failures(db, &user.id, 0, 0).await?;
         }
         Ok(user)
     } else {
-        Err(register_failure(db, &user, BAD_CREDENTIALS).await?)
+        register_failure(db, &user, BAD_CREDENTIALS).await?;
+        Err(GATE.fail(&username, place, BAD_CREDENTIALS))
     }
 }
 
@@ -228,8 +286,9 @@ pub async fn login(
     passphrase: &str,
     trusted: bool,
     label: &str,
+    place: &str,
 ) -> Result<(DbUser, String), MythicError> {
-    let user = verify_credentials(db, username, passphrase).await?;
+    let user = verify_credentials(db, username, passphrase, place).await?;
     let token = issue_session(db, &user.id, label, trusted).await?;
     Ok((user, token))
 }
@@ -272,21 +331,28 @@ pub async fn reset_with_recovery(
     username: &str,
     recovery_key: &str,
     new_passphrase: &str,
+    place: &str,
 ) -> Result<(DbUser, String), MythicError> {
     let bad = || MythicError::Unauthorized(BAD_RECOVERY.to_string());
     validate_passphrase(new_passphrase)?;
     let username = normalize_username(username).map_err(|_| bad())?;
+    GATE.check(&username, place)?;
     let Some(user) = UserRepo::get_by_username(db, &username).await? else {
         dummy_blocking(recovery_key.to_string()).await;
-        return Err(bad());
+        return Err(GATE.fail(&username, place, BAD_RECOVERY));
     };
     check_not_locked(&user)?;
     let Some(key) = normalize_recovery_key(recovery_key) else {
-        return Err(register_failure(db, &user, BAD_RECOVERY).await?);
+        // Same work as a real check, so a malformed key doesn't answer faster.
+        dummy_blocking(recovery_key.to_string()).await;
+        register_failure(db, &user, BAD_RECOVERY).await?;
+        return Err(GATE.fail(&username, place, BAD_RECOVERY));
     };
     if !verify_blocking(key, user.recovery_hash.clone()).await? {
-        return Err(register_failure(db, &user, BAD_RECOVERY).await?);
+        register_failure(db, &user, BAD_RECOVERY).await?;
+        return Err(GATE.fail(&username, place, BAD_RECOVERY));
     }
+    GATE.clear(&username, place);
     let passphrase_hash = hash_blocking(new_passphrase.to_string()).await?;
     let new_key = generate_recovery_key();
     let recovery_hash = hash_blocking(new_key.clone()).await?;

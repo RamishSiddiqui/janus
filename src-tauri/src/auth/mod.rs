@@ -18,8 +18,15 @@ use crate::error::MythicError;
 
 pub const MIN_PASSPHRASE_LEN: usize = 12;
 pub const MAX_PASSPHRASE_LEN: usize = 256;
-/// Wrong passphrases in a row before the account locks.
+/// Wrong passphrases in a row, from one place (a browser address, or the
+/// desktop), before that place is locked out of that account for a while.
+/// Keyed by place so a stranger on the network can't lock the owner out of
+/// their own account by guessing at it.
 pub const MAX_FAILED_ATTEMPTS: u32 = 3;
+/// Wrong passphrases in a row from anywhere, across all places, before the
+/// account itself locks. Much higher: it only stops guessing spread over many
+/// addresses, and is the only way a stranger can lock an account at all.
+pub const MAX_ACCOUNT_FAILED_ATTEMPTS: u32 = 20;
 pub const LOCKOUT_SECS: i64 = 300;
 /// "Keep this device signed in" lifetime.
 pub const TRUSTED_SESSION_DAYS: i64 = 30;

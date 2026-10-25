@@ -7,6 +7,7 @@ use crate::events::EmitScoped;
 use std::path::{Path, PathBuf};
 
 use futures::StreamExt;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use tokio::io::AsyncWriteExt;
 use tracing::info;
@@ -22,7 +23,7 @@ use crate::error::MythicError;
 // instead — the local cache filename below already said "int8", which
 // `model_quantized.onnx` never actually was.
 const MODEL_URL: &str =
-    "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx";
+    "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231/onnx/model_q8f16.onnx";
 // The onnx-community HF repo only ships 59 *individual* per-voice files
 // (voices/af_heart.bin, voices/am_adam.bin, ...), not a combined pack — the
 // combined voices-v1.0.bin (28MB, all 54 v1.0 voices, numpy-format style
@@ -30,6 +31,13 @@ const MODEL_URL: &str =
 // engine's own VoicePack parser) is built against instead lives in
 // thewh1teagle/kokoro-onnx's GitHub releases. Verified this URL resolves
 // (200, Content-Length 28214398) before fixing the original 404.
+// SHA-256 of each download, checked before the file is kept. The ONNX Runtime
+// library is native code that gets loaded into Janus, and the model and
+// voices are parsed by it, so a swapped or tampered file must never be
+// accepted. Update these together with the URL when a file changes.
+const MODEL_SHA256: &str = "04c658aec1b6008857c2ad10f8c589d4180d0ec427e7e6118ceb487e215c3cd0";
+const VOICES_SHA256: &str = "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d";
+const RUNTIME_ZIP_SHA256: &str = "3958d8a44984160692c1b4ffd0de3cb48f8c39f9d34bb31e433db06e30b82195";
 const VOICES_URL: &str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin";
 // Pinned to the exact ONNX Runtime release `ort-sys` 2.0.0-rc.15's own
 // `download-binaries` feature fetches (see build/download/dist.tsv in the
@@ -107,11 +115,27 @@ pub async fn download_all(
     // downloaded fine) would needlessly re-fetch the ~90MB model too.
     let model_dest = model_path(&app_data_dir);
     if !model_dest.exists() {
-        download_one(app, http_client, MODEL_URL, &model_dest, "model").await?;
+        download_one(
+            app,
+            http_client,
+            MODEL_URL,
+            &model_dest,
+            "model",
+            MODEL_SHA256,
+        )
+        .await?;
     }
     let voices_dest = voices_path(&app_data_dir);
     if !voices_dest.exists() {
-        download_one(app, http_client, VOICES_URL, &voices_dest, "voices").await?;
+        download_one(
+            app,
+            http_client,
+            VOICES_URL,
+            &voices_dest,
+            "voices",
+            VOICES_SHA256,
+        )
+        .await?;
     }
     let runtime_dest = runtime_path(&app_data_dir);
     if !runtime_dest.exists() {
@@ -140,7 +164,15 @@ async fn download_runtime(
     // `tmp_zip` here is just where the *whole zip* lands, distinct from
     // `dest`, which is the extracted dll's final path.
     let tmp_zip = dest.with_extension("zip.tmp");
-    download_one(app, http_client, RUNTIME_URL, &tmp_zip, "runtime").await?;
+    download_one(
+        app,
+        http_client,
+        RUNTIME_URL,
+        &tmp_zip,
+        "runtime",
+        RUNTIME_ZIP_SHA256,
+    )
+    .await?;
 
     let tmp_zip_read = tmp_zip.clone();
     let dest_owned = dest.to_path_buf();
@@ -178,6 +210,7 @@ async fn download_one(
     url: &str,
     dest: &Path,
     phase: &str,
+    expected_sha256: &str,
 ) -> Result<(), MythicError> {
     let resp = http_client
         .get(url)
@@ -196,11 +229,13 @@ async fn download_one(
     let tmp_dest = dest.with_extension("part");
     let mut file = tokio::fs::File::create(&tmp_dest).await?;
 
+    let mut hasher = Sha256::new();
     let mut stream = resp.bytes_stream();
     let mut last_emitted_percent: u32 = u32::MAX;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk
             .map_err(|e| MythicError::Provider(format!("TTS download stream error: {}", e)))?;
+        hasher.update(&chunk);
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
         let percent = if total > 0 {
@@ -220,6 +255,44 @@ async fn download_one(
     }
     file.flush().await?;
     drop(file);
+    let actual: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    if !actual.eq_ignore_ascii_case(expected_sha256) {
+        let _ = tokio::fs::remove_file(&tmp_dest).await;
+        return Err(MythicError::Provider(format!(
+            "The downloaded {phase} file did not match its expected checksum and was discarded.              Try again; if it keeps failing, the download source may have changed."
+        )));
+    }
     tokio::fs::rename(&tmp_dest, dest).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pinned_checksums_are_sha256_hex() {
+        for sum in [MODEL_SHA256, VOICES_SHA256, RUNTIME_ZIP_SHA256] {
+            assert_eq!(sum.len(), 64, "{sum}");
+            assert!(sum.chars().all(|c| c.is_ascii_hexdigit()), "{sum}");
+        }
+    }
+
+    #[test]
+    fn runtime_pin_names_one_version_everywhere() {
+        assert!(RUNTIME_URL.contains(&format!("v{RUNTIME_VERSION}/")));
+        assert!(RUNTIME_URL.ends_with(&format!("-{RUNTIME_VERSION}.zip")));
+        assert!(
+            RUNTIME_ZIP_INNER_PATH.starts_with(&format!("onnxruntime-win-x64-{RUNTIME_VERSION}/"))
+        );
+    }
+
+    #[test]
+    fn the_model_is_fetched_from_a_fixed_revision() {
+        assert!(!MODEL_URL.contains("/resolve/main/"));
+    }
 }
