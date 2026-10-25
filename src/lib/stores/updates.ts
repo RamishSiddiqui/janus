@@ -13,6 +13,7 @@ import {
   FIRST_CHECK_DELAY_MS,
   canAutoCheck,
   downloadFraction,
+  nextSpeed,
   readDismissed,
   updateErrorMessage,
   updatesBlockedInDev,
@@ -29,6 +30,10 @@ export interface UpdateState {
   notes: string | null;
   /** 0..1 while downloading, null when the size is unknown. */
   progress: number | null;
+  /** Bytes received so far, the total size (null if unknown) and the smoothed speed in bytes per second. */
+  downloaded: number;
+  total: number | null;
+  speed: number | null;
   error: string | null;
   /** When the last check finished, in ms since the epoch. */
   lastChecked: number | null;
@@ -41,6 +46,9 @@ const initial: UpdateState = {
   version: null,
   notes: null,
   progress: null,
+  downloaded: 0,
+  total: null,
+  speed: null,
   error: null,
   lastChecked: null,
   dismissed: false,
@@ -106,14 +114,35 @@ export async function installUpdate(): Promise<void> {
   if (!pending) return;
   let total: number | undefined;
   let downloaded = 0;
-  updates.update(s => ({ ...s, status: 'downloading', progress: null, error: null }));
+  let speed: number | null = null;
+  let sampleStart = Date.now();
+  let sampleBytes = 0;
+  updates.update(s => ({
+    ...s,
+    status: 'downloading',
+    progress: null,
+    downloaded: 0,
+    total: null,
+    speed: null,
+    error: null,
+  }));
   try {
     await pending.downloadAndInstall(e => {
       if (e.event === 'Started') {
         total = e.data.contentLength;
+        sampleStart = Date.now();
+        updates.update(s => ({ ...s, total: total ?? null }));
       } else if (e.event === 'Progress') {
         downloaded += e.data.chunkLength;
-        updates.update(s => ({ ...s, progress: downloadFraction(downloaded, total) }));
+        sampleBytes += e.data.chunkLength;
+        // Re-measure twice a second, so the figure is readable and steady.
+        const now = Date.now();
+        if (now - sampleStart >= 500) {
+          speed = nextSpeed(speed, sampleBytes, now - sampleStart);
+          sampleStart = now;
+          sampleBytes = 0;
+        }
+        updates.update(s => ({ ...s, progress: downloadFraction(downloaded, total), downloaded, speed }));
       } else {
         updates.update(s => ({ ...s, status: 'installing', progress: 1 }));
       }
