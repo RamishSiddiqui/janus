@@ -26,7 +26,9 @@
 
 use std::path::{Path, PathBuf};
 
-use surrealdb::engine::local::Db;
+use surrealdb::engine::local::{Db, Mem};
+use surrealdb::opt::capabilities::Capabilities;
+use surrealdb::opt::Config;
 use surrealdb::Surreal;
 use tracing::info;
 
@@ -58,21 +60,99 @@ pub async fn export_to_file(db: &Surreal<Db>, dest: &Path) -> Result<(), MythicE
     Ok(())
 }
 
-/// Imports a `.surql` backup file into `db`, skipping every `DEFINE`
-/// statement the file contains and importing only the data (`INSERT`/
-/// `CREATE`/`UPDATE`/`UPSERT`) statements.
+/// Rows copied per statement when restoring.
+const COPY_BATCH: usize = 200;
+
+/// How long the throwaway store may spend on any one statement of the file.
+const SANDBOX_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// A throwaway in-memory store with every capability switched off (no
+/// functions, no network, no scripting), so nothing in a backup file can reach
+/// beyond it.
+async fn open_sandbox() -> Result<Surreal<Db>, MythicError> {
+    let config = Config::new()
+        .capabilities(Capabilities::none())
+        .query_timeout(Some(SANDBOX_QUERY_TIMEOUT));
+    let sandbox = Surreal::new::<Mem>(config)
+        .await
+        .map_err(|e| MythicError::DatabaseOp(format!("could not open the import sandbox: {e}")))?;
+    sandbox
+        .use_ns("backup")
+        .use_db("backup")
+        .await
+        .map_err(|e| MythicError::DatabaseOp(format!("could not open the import sandbox: {e}")))?;
+    Ok(sandbox)
+}
+
+/// The app's own tables, read from the live store's schema: `(name, is a
+/// relation table)`. A backup can only fill these, whatever else it names.
+async fn app_tables(db: &Surreal<Db>) -> Result<Vec<(String, bool)>, MythicError> {
+    let mut result = db.query("INFO FOR DB").await?;
+    let info: Option<surrealdb::types::Value> = result.take(0)?;
+    let info: Option<serde_json::Value> = crate::db::value_bridge::from_value_opt(info)?;
+    let tables = info
+        .as_ref()
+        .and_then(|i| i.get("tables"))
+        .and_then(|t| t.as_object())
+        .ok_or_else(|| MythicError::DatabaseOp("could not read the table list".to_string()))?;
+    Ok(tables
+        .iter()
+        // Names go into query text below, so only plain ones are used.
+        .filter(|(name, _)| {
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+        .map(|(name, def)| {
+            let relation = def.as_str().is_some_and(|d| d.contains("TYPE RELATION"));
+            (name.clone(), relation)
+        })
+        .collect())
+}
+
+/// Copies one table's rows from the sandbox into the live store as values, not
+/// as query text. Rows whose id already exists are left as they are.
+async fn copy_table(
+    sandbox: &Surreal<Db>,
+    db: &Surreal<Db>,
+    table: &str,
+    relation: bool,
+) -> Result<usize, MythicError> {
+    let insert = if relation {
+        format!("INSERT RELATION IGNORE INTO {table} $rows")
+    } else {
+        format!("INSERT IGNORE INTO {table} $rows")
+    };
+    let select = format!("SELECT * FROM {table} LIMIT {COPY_BATCH} START $start");
+    let mut copied = 0usize;
+    loop {
+        let mut page = sandbox.query(&select).bind(("start", copied)).await?;
+        let rows: Vec<surrealdb::types::Value> = page.take(0)?;
+        if rows.is_empty() {
+            return Ok(copied);
+        }
+        let n = rows.len();
+        db.query(&insert)
+            .bind(("rows", rows))
+            .await?
+            .check()
+            .map_err(|e| MythicError::DatabaseOp(format!("restoring {table} failed: {e}")))?;
+        copied += n;
+        if n < COPY_BATCH {
+            return Ok(copied);
+        }
+    }
+}
+
+/// Restores a `.surql` backup file into `db`.
 ///
-/// This is deliberate, not an oversight: `schema::define_schema` (already
-/// run by `init_database` before any import happens) is the sole source of
-/// truth for schema. A backup's own embedded `DEFINE` statements can't be
-/// trusted — confirmed in practice that a real backup's exported `DEFINE
-/// FIELD metadata ON messages ...` line was missing `FLEXIBLE` entirely and
-/// had no `IF NOT EXISTS` guard, so importing it verbatim silently
-/// overwrote the correct schema and broke every subsequent nested-object
-/// insert into that field. Since `DEFINE FIELD IF NOT EXISTS` in
-/// `schema::define_schema` no-ops once a field already exists, a bad
-/// definition from an import can't self-heal on a later app restart either
-/// — skipping the backup's `DEFINE`s entirely avoids the whole class of bug.
+/// The file is never run against the live store. It is loaded into a
+/// throwaway in-memory store with every capability off, and only the rows of
+/// the app's own tables are then copied across, as plain values. So a
+/// hand-edited or malicious file can't run its own statements against your
+/// data, can't define anything in the live schema (the live schema from
+/// `schema::define_schema` stays the only one, as before), and a message
+/// whose text happens to contain a line starting with `DEFINE` is kept intact.
+/// Rows whose id already exists are left as they are, so this is meant for
+/// restoring into a fresh store, not for merging.
 pub async fn import_from_file(db: &Surreal<Db>, src: &Path) -> Result<(), MythicError> {
     if !src.exists() {
         return Err(MythicError::NotFound(format!(
@@ -81,21 +161,17 @@ pub async fn import_from_file(db: &Surreal<Db>, src: &Path) -> Result<(), Mythic
         )));
     }
 
-    let raw = tokio::fs::read_to_string(src).await?;
-    let data_only: String = raw
-        .lines()
-        .filter(|line| !line.trim_start().starts_with("DEFINE"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let sandbox = open_sandbox().await?;
+    sandbox
+        .import(src)
+        .await
+        .map_err(|e| MythicError::DatabaseOp(format!("import failed: {e}")))?;
 
-    let filtered_path = src.with_extension("data_only.surql");
-    tokio::fs::write(&filtered_path, &data_only).await?;
-
-    let result = db.import(&filtered_path).await;
-    let _ = tokio::fs::remove_file(&filtered_path).await;
-
-    result.map_err(|e| MythicError::DatabaseOp(format!("import failed: {e}")))?;
-    info!("[backup] Imported datastore from {:?}", src);
+    let mut total = 0usize;
+    for (table, relation) in app_tables(db).await? {
+        total += copy_table(&sandbox, db, &table, relation).await?;
+    }
+    info!("[backup] Imported {total} rows from {:?}", src);
     Ok(())
 }
 
