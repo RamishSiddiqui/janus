@@ -128,6 +128,24 @@ pub struct ProviderConfig {
     pub is_default: bool,
 }
 
+impl ProviderConfig {
+    /// What this provider's row looks like to a screen or a browser: the API key
+    /// is replaced by its masked form, so the real key never leaves the
+    /// backend after it is saved. Sending the masked form back unchanged keeps
+    /// the stored key (see `ProviderRepo::update`).
+    pub fn masked(mut self) -> Self {
+        if let Some(obj) = self.config.as_object_mut() {
+            if let Some(key) = obj.get("api_key").and_then(|k| k.as_str()) {
+                if !key.is_empty() {
+                    let masked = crate::secrets::mask(key);
+                    obj.insert("api_key".into(), serde_json::Value::String(masked));
+                }
+            }
+        }
+        self
+    }
+}
+
 /// Metadata about a model available from a provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {

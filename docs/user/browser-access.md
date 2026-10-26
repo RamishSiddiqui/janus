@@ -56,7 +56,7 @@ Almost everything: saving your data export and scene images to your device (they
 
 - Passphrases are stored only as argon2id hashes. Sessions use a cookie the page cannot read.
 - **Without HTTPS, Janus serves plain HTTP.** Anyone who can watch traffic on your network could read what you send, including passphrases. Turn on **Encrypt with HTTPS**, or use it only on a home network you trust, never on public Wi-Fi. Either way, **do not expose the port to the internet**.
-- Provider API keys are stored on the host. A browser sees only the providers of the account signed in to it, the same as the desktop app does; other accounts' providers and keys are never returned.
+- Provider API keys are stored encrypted on the host. A browser sees only the providers of the account signed in to it, the same as the desktop app does, and a saved key is shown only as its last four characters; other accounts' providers and keys are never returned.
 - Requests from other websites are rejected, so a page you visit cannot act on your Janus.
 - Janus only answers requests addressed to an IP address, `localhost`, a machine name, or a local-network name (`.local`, `.lan`, a Tailscale `.ts.net` name). A request using any other domain name is refused. That stops a website from pointing its own domain at your machine to reach Janus (DNS rebinding). If you put Janus behind your own domain name, list it in the `JANUS_ALLOWED_HOSTS` environment variable (comma separated) before starting Janus.
 - The page Janus serves carries a strict Content-Security-Policy: it loads only from Janus itself and cannot send data to other sites.
