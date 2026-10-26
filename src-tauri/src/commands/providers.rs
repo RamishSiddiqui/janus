@@ -173,7 +173,7 @@ pub async fn create_provider(
         "Created provider: {} ({}) [{}]",
         name, adapter, provider_type
     );
-    Ok(provider)
+    Ok(provider.masked())
 }
 
 /// Retrieves a single provider by ID.
@@ -185,7 +185,7 @@ pub async fn get_provider(
 ) -> Result<ProviderConfig, MythicError> {
     let (db, actor) = crate::commands::actor::acting(&state).await?;
     crate::auth::access::ensure_provider(&db, &actor, &id).await?;
-    ProviderRepo::get(&db, &id).await
+    Ok(ProviderRepo::get(&db, &id).await?.masked())
 }
 
 /// Lists all providers, optionally filtered by type.
@@ -196,7 +196,8 @@ pub async fn list_providers(
     provider_type: Option<String>,
 ) -> Result<Vec<ProviderConfig>, MythicError> {
     let (db, actor) = crate::commands::actor::acting(&state).await?;
-    ProviderRepo::list(&db, provider_type.as_deref(), actor.owner_filter()).await
+    let providers = ProviderRepo::list(&db, provider_type.as_deref(), actor.owner_filter()).await?;
+    Ok(providers.into_iter().map(ProviderConfig::masked).collect())
 }
 
 /// Updates an existing provider configuration.
@@ -216,7 +217,7 @@ pub async fn update_provider(
     crate::auth::access::ensure_provider(&db, &actor, &id).await?;
     let provider = ProviderRepo::update(&db, &id, name.as_deref(), config.map(|c| c.0)).await?;
     info!("Updated provider: {}", id);
-    Ok(provider)
+    Ok(provider.masked())
 }
 
 /// Deletes a provider configuration.

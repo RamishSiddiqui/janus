@@ -313,8 +313,10 @@
     return t === 'llm' ? '#8B5CF6' : t === 'image' ? '#bf40ff' : '#00f2ff';
   }
 
-  /** Returns e.g. "sk-or-••••••••3a1f" from a full API key. */
+  /** Returns e.g. "sk-or-••••••••3a1f" from a full API key. The backend already
+   *  sends a masked key ("••••3a1f"); that is shown as it is. */
   function maskApiKey(key: string): string {
+    if (key.startsWith('••••')) return key;
     if (!key || key.length < 8) return '••••••••';
     const head = key.slice(0, Math.min(6, Math.floor(key.length / 3)));
     const tail = key.slice(-4);
@@ -765,6 +767,12 @@
                       </button>
                     {/if}
                   </div>
+                  {#if p.config.api_key_unreadable}
+                    <span class="pfhint">
+                      The saved key cannot be read on this computer (for example after restoring a backup made
+                      elsewhere). Enter it again.
+                    </span>
+                  {/if}
                   {#if p.config.api_key && !keyEditMode[p.id]}
                     <div class="key-masked">
                       <span class="key-mask-icon">🔑</span>
@@ -1508,6 +1516,11 @@
   }
 
   /* API Key masked display */
+  .pfhint {
+    font-size: var(--text-xs, 11px);
+    color: #cda15f;
+    line-height: 1.4;
+  }
   .pflabel-row {
     display: flex;
     align-items: center;

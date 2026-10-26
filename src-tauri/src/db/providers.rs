@@ -24,6 +24,51 @@ struct EnabledModelFull {
     enabled: bool,
 }
 
+/// What the row id (its key) is bound to when a key is encrypted for it.
+fn key_context(id: &str) -> String {
+    format!("provider:{id}")
+}
+
+/// Encrypts the `api_key` in a config before it is written. Empty keys and
+/// ones that are already encrypted are left as they are.
+fn seal(mut config: serde_json::Value, id: &str) -> Result<serde_json::Value, MythicError> {
+    if let Some(obj) = config.as_object_mut() {
+        if let Some(key) = obj.get("api_key").and_then(|k| k.as_str()) {
+            if !key.is_empty() && !crate::secrets::is_encrypted(key) {
+                let sealed = crate::secrets::encrypt(key, &key_context(id))?;
+                obj.insert("api_key".into(), serde_json::Value::String(sealed));
+            }
+        }
+    }
+    Ok(config)
+}
+
+/// Decrypts the `api_key` of a row just read, so the rest of the app works
+/// with the real key. A key this computer cannot open (a backup from another
+/// computer) becomes empty and the row is marked `api_key_unreadable`, so a
+/// screen can ask for it again.
+fn open(mut provider: ProviderConfig) -> ProviderConfig {
+    let id = crate::db::value_bridge::record_id_to_string(&provider.id);
+    if let Some(obj) = provider.config.as_object_mut() {
+        if let Some(key) = obj
+            .get("api_key")
+            .and_then(|k| k.as_str())
+            .map(str::to_owned)
+        {
+            match crate::secrets::decrypt(&key, &key_context(&id)) {
+                Ok(plain) => {
+                    obj.insert("api_key".into(), serde_json::Value::String(plain));
+                }
+                Err(_) => {
+                    obj.insert("api_key".into(), serde_json::Value::String(String::new()));
+                    obj.insert("api_key_unreadable".into(), serde_json::Value::Bool(true));
+                }
+            }
+        }
+    }
+    provider
+}
+
 pub struct ProviderRepo;
 
 impl ProviderRepo {
@@ -38,6 +83,7 @@ impl ProviderRepo {
         owner: &str,
     ) -> Result<ProviderConfig, MythicError> {
         let id = uuid::Uuid::new_v4().to_string();
+        let config = seal(config, &id)?;
 
         // If this is set as default, unset the owner's existing default for this type
         if is_default {
@@ -69,14 +115,18 @@ impl ProviderRepo {
 
         let created: Option<ProviderConfig> =
             crate::db::value_bridge::from_value_opt(result.take(0)?)?;
-        created.ok_or_else(|| MythicError::DatabaseOp("Failed to create provider".into()))
+        created
+            .map(open)
+            .ok_or_else(|| MythicError::DatabaseOp("Failed to create provider".into()))
     }
 
     /// Gets a single provider by ID.
     pub async fn get(db: &Surreal<Db>, id: &str) -> Result<ProviderConfig, MythicError> {
         let provider: Option<ProviderConfig> =
             crate::db::value_bridge::from_value_opt(db.select(("provider_configs", id)).await?)?;
-        provider.ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))
+        provider
+            .map(open)
+            .ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))
     }
 
     /// Lists all providers, optionally filtered by type.
@@ -104,7 +154,7 @@ impl ProviderRepo {
                 crate::db::value_bridge::from_value_vec(result.take(0)?)?;
             rows
         };
-        Ok(providers)
+        Ok(providers.into_iter().map(open).collect())
     }
 
     /// Updates provider name and/or config. Returns the updated provider.
@@ -115,7 +165,7 @@ impl ProviderRepo {
         config: Option<serde_json::Value>,
     ) -> Result<ProviderConfig, MythicError> {
         // Verify exists first
-        Self::get(db, id).await?;
+        let existing = Self::get(db, id).await?;
 
         let mut sets = Vec::new();
         let mut bindings = serde_json::Map::new();
@@ -124,9 +174,27 @@ impl ProviderRepo {
             sets.push("name = $name");
             bindings.insert("name".into(), serde_json::Value::String(name.to_string()));
         }
-        if let Some(config) = config {
+        if let Some(mut config) = config {
+            // A screen that shows the masked key sends it back unchanged when
+            // the user did not retype it: keep the stored key. An empty or
+            // absent key still clears it.
+            if let Some(obj) = config.as_object_mut() {
+                let sent_mask = obj
+                    .get("api_key")
+                    .and_then(|k| k.as_str())
+                    .is_some_and(crate::secrets::is_mask);
+                if sent_mask {
+                    let kept = existing
+                        .config
+                        .get("api_key")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::String(String::new()));
+                    obj.insert("api_key".into(), kept);
+                }
+                obj.remove("api_key_unreadable");
+            }
             sets.push("config = $config");
-            bindings.insert("config".into(), config);
+            bindings.insert("config".into(), seal(config, id)?);
         }
 
         if sets.is_empty() {
@@ -148,7 +216,9 @@ impl ProviderRepo {
 
         let updated: Option<ProviderConfig> =
             crate::db::value_bridge::from_value_opt(result.take(0)?)?;
-        updated.ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))
+        updated
+            .map(open)
+            .ok_or_else(|| MythicError::NotFound(format!("Provider not found: {}", id)))
     }
 
     /// Deletes a provider by ID.
@@ -200,7 +270,34 @@ impl ProviderRepo {
             .await?;
         let providers: Vec<ProviderConfig> =
             crate::db::value_bridge::from_value_vec(result.take(0)?)?;
-        Ok(providers.into_iter().next())
+        Ok(providers.into_iter().next().map(open))
+    }
+
+    /// Encrypts every API key an older version stored in plain text. Returns
+    /// how many it changed. Run once at startup, after the master key is open.
+    pub async fn protect_existing(db: &Surreal<Db>) -> Result<usize, MythicError> {
+        let mut result = db.query("SELECT * FROM provider_configs").await?;
+        let rows: Vec<ProviderConfig> = crate::db::value_bridge::from_value_vec(result.take(0)?)?;
+        let mut changed = 0;
+        for row in rows {
+            let id = crate::db::value_bridge::record_id_to_string(&row.id);
+            let plain = row
+                .config
+                .get("api_key")
+                .and_then(|k| k.as_str())
+                .is_some_and(|k| !k.is_empty() && !crate::secrets::is_encrypted(k));
+            if !plain {
+                continue;
+            }
+            let sealed = seal(row.config, &id)?;
+            db.query("UPDATE type::record('provider_configs', $id) SET config = $config")
+                .bind(("id", id))
+                .bind(("config", crate::db::value_bridge::to_surreal_value(sealed)))
+                .await?
+                .check()?;
+            changed += 1;
+        }
+        Ok(changed)
     }
 
     // ── Enabled Models ───────────────────────────────────────────────────

@@ -18,6 +18,7 @@ pub mod error;
 pub mod events;
 pub mod models;
 pub mod providers;
+pub mod secrets;
 pub mod tts;
 pub mod web;
 
@@ -379,6 +380,28 @@ pub fn run() {
             let db =
                 tauri::async_runtime::block_on(async { db::init_database(&app_data_dir).await })
                     .expect("Failed to initialize database");
+
+            // Provider API keys are encrypted at rest. Open the master key (OS
+            // keychain, or a key file where there is none), then encrypt any
+            // key an older version stored in plain text, before anything reads
+            // them and before the rolling backup below is written.
+            match secrets::init(&app_data_dir) {
+                Ok(source) => {
+                    tracing::info!("[secrets] master key held in {source:?}");
+                    match tauri::async_runtime::block_on(
+                        db::providers::ProviderRepo::protect_existing(&db),
+                    ) {
+                        Ok(0) => {}
+                        Ok(n) => tracing::info!("[secrets] encrypted {n} stored API key(s)"),
+                        Err(e) => {
+                            tracing::error!("[secrets] could not encrypt stored API keys: {e}")
+                        }
+                    }
+                }
+                Err(why) => tracing::error!(
+                    "[secrets] the key store is unavailable, API keys cannot be saved: {why}"
+                ),
+            }
 
             // Rolling automatic backup — cheap insurance so a recent, portable
             // export always exists on disk without requiring the user to ever
