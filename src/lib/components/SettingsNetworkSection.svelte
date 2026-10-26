@@ -367,9 +367,7 @@
       <div class="setting-label">
         <span class="setting-name">Tailscale is not running on this computer</span>
         <span class="setting-desc"
-          >Install it from <a class="net-link" href="https://tailscale.com/download" target="_blank" rel="noopener"
-            >tailscale.com/download</a
-          >
+          >Install it from <strong>tailscale.com/download</strong>
           on this computer and on your phone, sign in to the same account, then open this page again. Tailscale needs an internet
           connection to sign in and find your devices; your Janus data travels directly between them.</span
         >
