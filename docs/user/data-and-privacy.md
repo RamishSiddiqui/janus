@@ -38,7 +38,7 @@ Inside it:
 
 ## Backup and restore
 
-- **Automatic:** every time Janus starts it writes a rolling backup of the whole database to `backups/janus_auto_backup.surql`, replacing the previous one. A failure is logged and never stops the app. The file is SurrealDB's portable format, readable by the `surreal import` tool.
+- **Automatic:** every time Janus starts it writes a rolling backup of the whole database to `backups/janus_auto_backup.surql`, replacing the previous one. A failure is logged and never stops the app. The file is SurrealDB's portable format, readable by the `surreal import` tool. The file contains everything in the database, including your provider API keys and sign-in records, so keep it as private as a password. Restoring a backup only fills in Janus's own data; anything else a file contains is ignored.
 - **Manual:** **Settings, Data and Privacy, Export Data** saves your library as a JSON file you choose: conversations with their full message history, characters with their lorebooks, pinned and canon memories, and settings. **Import Data** restores from such a file.
 
 To move Janus to another computer, export on the old one and import on the new one, or copy the application data folder while Janus is closed.

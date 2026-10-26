@@ -7,6 +7,7 @@ Janus can serve itself to browsers on the local network (issue #94 / #14). This 
 `web::WebServer` is an axum server started by `commands::web::apply_settings` when the admin turns browser access on (and again at startup if it was left on).
 
 - **Bind address:** `127.0.0.1` unless LAN access is on, then `0.0.0.0`. The default port is stored in `auth_settings`; the port must be 1024 or higher. If binding fails, browser access is switched back off and the error is returned.
+- **HTTPS (optional):** `auth_settings.network_https`. `web::tls` makes a self-signed certificate (rcgen) under `<app data>/tls/` naming `localhost`, loopback, the computer name and the current LAN addresses, and makes a new one when those change or fewer than 30 days remain. `WebServer::start_with` then runs its own accept loop (`serve_tls`: tokio-rustls handshake, hyper HTTP/1 over the stream, `ConnectInfo` added per connection) instead of `axum::serve`. The certificate fingerprint is returned in `WebStatus.cert_fingerprint`.
 - **Static files:** the built frontend, looked up through an `AssetFn` over Tauri's embedded assets. Unknown route-like paths return `index.html` so the SPA can route; a missing real file (one with an extension) is a 404.
 - **Layers** (outermost first): `security_headers` (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on `/api`), then `csrf_guard`, then a 64 KB default body limit (raised to 12 MB on the image upload routes).
 - **Rate limiting:** sign-up, sign-in and recovery allow 10 attempts per minute per client address, on top of the per-account lockout.
@@ -83,7 +84,7 @@ A 401 from any call raises the `janus:signed-out` window event; `+layout.svelte`
 ## Security properties
 
 - Passphrases are argon2id hashed; sessions are random tokens stored as SHA-256 hashes; recovery keys are stored hashed.
-- The session cookie is `HttpOnly; SameSite=Strict`. It cannot be `Secure` on plain HTTP.
+- The session cookie is `HttpOnly; SameSite=Strict`. `Secure` is added only when HTTPS is on (a browser would not store it over plain HTTP).
 - Ownership checks are the same ones the desktop uses; a missing row and another account's row are indistinguishable.
 - Provider API keys never leave the host to a browser except as the owner's own provider records.
 - Plain HTTP means anyone who can watch the network can read traffic. The product guidance is a trusted home network only; there is no TLS.
