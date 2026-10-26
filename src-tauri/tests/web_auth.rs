@@ -1156,9 +1156,10 @@ async fn https_serves_the_app_over_tls_and_marks_the_cookie_secure() {
     assert_eq!(server.fingerprint.as_deref(), Some(fingerprint.as_str()));
     let port = server.addr.port();
 
-    // The certificate is self-signed, so the client has to be told to accept it.
+    // The certificate is self-signed, so this client is told to trust exactly it.
+    let pem = std::fs::read(dir.join("tls").join("cert.pem")).unwrap();
     let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
+        .add_root_certificate(reqwest::Certificate::from_pem(&pem).unwrap())
         .build()
         .unwrap();
 
