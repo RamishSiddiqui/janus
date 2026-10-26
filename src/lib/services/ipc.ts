@@ -1407,6 +1407,7 @@ export interface WebAccessStatus {
   running: boolean;
   bound: string | null;
   lan_ips: string[];
+  tailscale_ip: string | null;
   cert_fingerprint: string | null;
 }
 

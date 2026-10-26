@@ -152,6 +152,8 @@ pub struct WebStatus {
     pub bound: Option<String>,
     /// This computer's addresses on the local network (works offline), best first, for the "open this on your phone" hint.
     pub lan_ips: Vec<String>,
+    /// This computer's Tailscale address, when Tailscale is running here.
+    pub tailscale_ip: Option<String>,
     /// The running HTTPS certificate's SHA-256 fingerprint, for checking it by eye.
     pub cert_fingerprint: Option<String>,
 }

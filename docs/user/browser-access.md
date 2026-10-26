@@ -15,6 +15,10 @@ Switch on **Encrypt with HTTPS** and press **Apply** to serve Janus over an encr
 
 Janus makes a new certificate when this computer's network addresses change or it is close to expiring, and the browsers on your other devices will ask again. Turn HTTPS off and the address goes back to `http://`.
 
+### Using Tailscale
+
+[Tailscale](https://tailscale.com/download) links your own devices in a private, encrypted network, so you can reach Janus from your phone away from home without opening your router. Install it on this computer and on the other device, sign in to the same account on both, then switch on **Browser access** and **Other devices on my network** in Janus. Under **Tailscale** on the Network Access page, Janus shows the address to open (it starts with `100.`). Traffic between your devices is already encrypted by Tailscale; Janus's own data never goes through Tailscale's servers except as encrypted relay traffic they cannot read. Tailscale needs an internet connection and an account to sign in and find your devices.
+
 If another device cannot connect, your computer's firewall may be blocking the port. Allow Janus (or that port, on private networks only) through it.
 
 ## Signing in

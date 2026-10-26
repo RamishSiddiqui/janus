@@ -58,9 +58,13 @@
     const scheme = web.settings.https ? 'https' : 'http';
     if (!web.bound.startsWith('0.0.0.0')) return [`${scheme}://${web.bound}`];
     const port = web.bound.split(':').pop();
-    return web.lan_ips.length
-      ? web.lan_ips.map(ip => `${scheme}://${ip}:${port}`)
-      : [`${scheme}://<this-computer>:${port}`];
+    // Tailscale's address has its own row below.
+    const ips = web.lan_ips.filter(ip => ip !== web?.tailscale_ip);
+    return ips.length ? ips.map(ip => `${scheme}://${ip}:${port}`) : [`${scheme}://<this-computer>:${port}`];
+  });
+  const tailscaleAddress = $derived.by(() => {
+    if (!web?.running || !web.bound?.startsWith('0.0.0.0') || !web.tailscale_ip) return '';
+    return `${web.settings.https ? 'https' : 'http'}://${web.tailscale_ip}:${web.bound.split(':').pop()}`;
   });
 
   async function ipc() {
@@ -278,7 +282,8 @@
         <span class="setting-name">Encrypt with HTTPS</span>
         <span class="setting-desc"
           >Janus makes its own certificate, so passphrases cannot be read on the network. Each browser shows a warning
-          the first time, because no authority vouches for it.</span
+          the first time ("Your connection is not private"), because no authority vouches for it. Click
+          <strong>Advanced</strong>, then <strong>Continue</strong> to open Janus.</span
         >
       </div>
       <button
@@ -304,13 +309,23 @@
       <button class="settings-btn primary" disabled={busy} onclick={applyNetwork}>Apply</button>
     </div>
     {#if web?.running && addresses.length}
-      <span class="backup-status"
-        >Running at {addresses.join(' or ')}{addresses.length > 1
-          ? ' (use the one on the same network as your phone)'
-          : ''}</span
-      >
+      <span class="backup-status">
+        Running at
+        {#each addresses as url, i (url)}
+          {#if i > 0}&nbsp;or&nbsp;{/if}
+          {#if url.includes('<')}{url}{:else}<a class="net-link" href={url} target="_blank" rel="noopener">{url}</a
+            >{/if}
+        {/each}
+        {addresses.length > 1 ? ' (use the one on the same network as your phone)' : ''}
+      </span>
     {:else}
       <span class="backup-status">Not running</span>
+    {/if}
+    {#if web?.running && web.settings.https}
+      <p class="setting-desc net-note">
+        The browser will warn that the connection is not private. That is expected: Janus made the certificate itself.
+        Click <strong>Advanced</strong>, then <strong>Continue</strong> (or <strong>Proceed</strong>).
+      </p>
     {/if}
     {#if web?.running && web.settings.https && web.cert_fingerprint}
       <p class="setting-desc net-note">
@@ -323,6 +338,42 @@
         Connections are plain HTTP, so passphrases are visible to anyone who can watch your network traffic. Turn on
         HTTPS above, or use it only on a home network you trust.
       </p>
+    {/if}
+  </section>
+
+  <div class="panel-heading animate-fade-in-up stagger-3 net-gap">
+    <span class="panel-heading-title">Tailscale</span>
+    <span class="panel-heading-desc"
+      >Reach Janus from your phone anywhere, without opening your router. Tailscale links your own devices in a private,
+      encrypted network.</span
+    >
+  </div>
+  <section class="settings-section settings-section-bounded animate-fade-in-up stagger-3">
+    {#if web?.tailscale_ip}
+      <div class="setting-label">
+        <span class="setting-name">Tailscale is running on this computer</span>
+        <span class="setting-desc">
+          {#if tailscaleAddress}
+            On a device signed in to the same Tailscale account, open
+            <a class="net-link" href={tailscaleAddress} target="_blank" rel="noopener">{tailscaleAddress}</a>. Traffic
+            between your devices is already encrypted by Tailscale.
+          {:else}
+            Turn on <strong>Browser access</strong> and <strong>Other devices on my network</strong>, then press Apply.
+            Janus will show its Tailscale address here ({web.tailscale_ip}).
+          {/if}
+        </span>
+      </div>
+    {:else}
+      <div class="setting-label">
+        <span class="setting-name">Tailscale is not running on this computer</span>
+        <span class="setting-desc"
+          >Install it from <a class="net-link" href="https://tailscale.com/download" target="_blank" rel="noopener"
+            >tailscale.com/download</a
+          >
+          on this computer and on your phone, sign in to the same account, then open this page again. Tailscale needs an internet
+          connection to sign in and find your devices; your Janus data travels directly between them.</span
+        >
+      </div>
     {/if}
   </section>
 
@@ -525,5 +576,16 @@
   code {
     font-family: var(--font-mono);
     color: #cda15f;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .net-link {
+    color: var(--accent-primary);
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+  }
+  .backup-status,
+  .net-note {
+    overflow-wrap: anywhere;
   }
 </style>
