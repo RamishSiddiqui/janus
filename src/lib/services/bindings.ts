@@ -734,8 +734,8 @@ export const commands = {
 	authDeleteUser: (userId: string) => typedError<null, MythicError>(__TAURI_INVOKE("auth_delete_user", { userId })),
 	/**  Admin only: whether browser access is on, its saved settings, and the address it is listening on. */
 	webStatus: () => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_status")),
-	/**  Admin only: turns browser access on or off, chooses loopback-only or LAN, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned. */
-	webSetNetwork: (enabled: boolean, lan: boolean, port: number) => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_set_network", { enabled, lan, port })),
+	/**  Admin only: turns browser access on or off, chooses loopback-only or LAN, turns HTTPS (a self-signed certificate Janus makes) on or off, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned. */
+	webSetNetwork: (enabled: boolean, lan: boolean, port: number, https: boolean) => typedError<WebStatus, MythicError>(__TAURI_INVOKE("web_set_network", { enabled, lan, port, https })),
 };
 
 /* Types */
@@ -1778,6 +1778,8 @@ export type NetworkSettings = {
 	enabled: boolean,
 	lan: boolean,
 	port: number,
+	/**  Serve over HTTPS with a certificate Janus makes itself. */
+	https?: boolean,
 };
 
 /**
@@ -2302,6 +2304,10 @@ export type WebStatus = {
 	bound: string | null,
 	/**  This computer's addresses on the local network (works offline), best first, for the "open this on your phone" hint. */
 	lan_ips: string[],
+	/**  This computer's Tailscale address, when Tailscale is running here. */
+	tailscale_ip: string | null,
+	/**  The running HTTPS certificate's SHA-256 fingerprint, for checking it by eye. */
+	cert_fingerprint: string | null,
 };
 
 /* Tauri Specta runtime */

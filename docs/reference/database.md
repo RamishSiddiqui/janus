@@ -7,7 +7,7 @@ Janus stores everything in an embedded SurrealDB database (22 tables). The schem
 | Table | Fields | Indexes |
 |---|---|---|
 | [ai_horde_model_info](#table-ai-horde-model-info) | 8 | 0 |
-| [auth_settings](#table-auth-settings) | 4 | 0 |
+| [auth_settings](#table-auth-settings) | 5 | 0 |
 | [character_states](#table-character-states) | 8 | 1 |
 | [characters](#table-characters) | 13 | 4 |
 | [conversation_characters](#table-conversation-characters) | 7 | 2 |
@@ -56,6 +56,7 @@ Definition: `SCHEMAFULL`
 | `network_enabled` | `TYPE option<bool>` |
 | `network_lan` | `TYPE option<bool>` |
 | `network_port` | `TYPE option<int>` |
+| `network_https` | `TYPE option<bool>` |
 
 (table-character-states)=
 ## `character_states`

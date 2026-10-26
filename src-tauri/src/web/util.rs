@@ -67,15 +67,17 @@ pub fn forbidden(message: &str) -> Response {
 
 // ── cookie ────────────────────────────────────────────────────────────────
 
-/// `Secure` can't be set: this is plain HTTP on a local network. HttpOnly keeps
-/// page scripts from reading it and SameSite=Strict keeps other sites from
-/// sending it.
-pub fn session_cookie(token: &str, max_age_secs: i64) -> String {
-    format!("{SESSION_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age_secs}")
+/// HttpOnly keeps page scripts from reading it and SameSite=Strict keeps other
+/// sites from sending it. `Secure` is added only when the server itself speaks
+/// HTTPS: on plain HTTP a browser would refuse to store it.
+pub fn session_cookie(token: &str, max_age_secs: i64, secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{SESSION_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age_secs}{secure}")
 }
 
-pub fn clear_cookie() -> String {
-    format!("{SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+pub fn clear_cookie(secure: bool) -> String {
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0{secure}")
 }
 
 pub fn token_from_headers(headers: &HeaderMap) -> Option<String> {
