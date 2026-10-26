@@ -14,6 +14,7 @@ pub mod rpc_chat;
 pub mod rpc_conversations;
 pub mod rpc_providers;
 pub mod rpc_tables;
+pub mod tls;
 pub mod util;
 
 use std::net::SocketAddr;
@@ -45,6 +46,8 @@ pub struct WebState {
     pub bus: crate::events::Bus,
     /// The app data directory stored files live under; `None` in tests that don't need it.
     pub data_dir: Option<std::path::PathBuf>,
+    /// True when the server speaks HTTPS, so the session cookie gets `Secure`.
+    pub https: bool,
 }
 
 impl WebState {
@@ -57,6 +60,7 @@ impl WebState {
             rpc: None,
             bus: crate::events::new_bus(),
             data_dir: None,
+            https: false,
         }
     }
 
@@ -67,6 +71,11 @@ impl WebState {
 
     pub fn with_data_dir(mut self, dir: std::path::PathBuf) -> Self {
         self.data_dir = Some(dir);
+        self
+    }
+
+    pub fn with_https(mut self, https: bool) -> Self {
+        self.https = https;
         self
     }
 
@@ -160,29 +169,49 @@ async fn static_files(State(st): State<WebState>, uri: Uri) -> Response {
 /// A running server. Dropping it without `stop` leaves the task running.
 pub struct WebServer {
     pub addr: SocketAddr,
+    /// The HTTPS certificate's fingerprint, when serving HTTPS.
+    pub fingerprint: Option<String>,
     shutdown: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
 
 impl WebServer {
+    /// Plain HTTP.
     pub async fn start(state: WebState, addr: SocketAddr) -> Result<WebServer, MythicError> {
+        Self::start_with(state, addr, None).await
+    }
+
+    /// HTTPS when `tls` is given, otherwise plain HTTP.
+    pub async fn start_with(
+        state: WebState,
+        addr: SocketAddr,
+        tls: Option<tls::Tls>,
+    ) -> Result<WebServer, MythicError> {
         let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
             MythicError::Config(format!("Couldn't start browser access on {addr}: {e}"))
         })?;
         let addr = listener.local_addr()?;
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-        let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
-        let task = tokio::spawn(async move {
-            let served = axum::serve(listener, app).with_graceful_shutdown(async {
-                let _ = rx.await;
-            });
-            if let Err(e) = served.await {
-                tracing::error!("[web] server stopped: {e}");
+        let scheme = if tls.is_some() { "https" } else { "http" };
+        let fingerprint = tls.as_ref().map(|t| t.fingerprint.clone());
+        let task = match tls {
+            None => {
+                let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
+                tokio::spawn(async move {
+                    let served = axum::serve(listener, app).with_graceful_shutdown(async {
+                        let _ = rx.await;
+                    });
+                    if let Err(e) = served.await {
+                        tracing::error!("[web] server stopped: {e}");
+                    }
+                })
             }
-        });
-        tracing::info!("[web] browser access listening on http://{addr}");
+            Some(tls) => tokio::spawn(serve_tls(listener, tls.acceptor, router(state), rx)),
+        };
+        tracing::info!("[web] browser access listening on {scheme}://{addr}");
         Ok(WebServer {
             addr,
+            fingerprint,
             shutdown: tx,
             task,
         })
@@ -191,6 +220,48 @@ impl WebServer {
     pub async fn stop(self) {
         let _ = self.shutdown.send(());
         let _ = tokio::time::timeout(Duration::from_secs(3), self.task).await;
+    }
+}
+
+/// Accepts connections, wraps each in TLS and hands it to the router. A
+/// connection that fails its handshake (a browser refusing the certificate, a
+/// plain-HTTP client) is dropped without a word. Open connections end when the
+/// task does.
+async fn serve_tls(
+    listener: tokio::net::TcpListener,
+    acceptor: tokio_rustls::TlsAcceptor,
+    app: Router,
+    mut stop: tokio::sync::oneshot::Receiver<()>,
+) {
+    let mut connections = tokio::task::JoinSet::new();
+    loop {
+        let (stream, peer) = tokio::select! {
+            _ = &mut stop => break,
+            accepted = listener.accept() => match accepted {
+                Ok(pair) => pair,
+                Err(e) => {
+                    tracing::warn!("[web] accept failed: {e}");
+                    continue;
+                }
+            },
+        };
+        let acceptor = acceptor.clone();
+        let app = app
+            .clone()
+            .layer(axum::Extension(axum::extract::ConnectInfo(peer)));
+        // Reap finished connections so the set doesn't grow forever.
+        while connections.try_join_next().is_some() {}
+        connections.spawn(async move {
+            let Ok(Ok(tls)) =
+                tokio::time::timeout(Duration::from_secs(10), acceptor.accept(stream)).await
+            else {
+                return;
+            };
+            let service = hyper_util::service::TowerToHyperService::new(app);
+            let _ = hyper::server::conn::http1::Builder::new()
+                .serve_connection(hyper_util::rt::TokioIo::new(tls), service)
+                .await;
+        });
     }
 }
 

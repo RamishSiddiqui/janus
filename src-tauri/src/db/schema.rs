@@ -320,6 +320,7 @@ pub async fn define_schema(db: &Surreal<Db>) -> Result<(), MythicError> {
         DEFINE FIELD IF NOT EXISTS network_enabled ON auth_settings TYPE option<bool>;
         DEFINE FIELD IF NOT EXISTS network_lan     ON auth_settings TYPE option<bool>;
         DEFINE FIELD IF NOT EXISTS network_port    ON auth_settings TYPE option<int>;
+        DEFINE FIELD IF NOT EXISTS network_https   ON auth_settings TYPE option<bool>;
     ",
     )
     .await?

@@ -6,7 +6,7 @@ Janus supports several accounts on one installation (issue #94). Each account ow
 
 - Table `users`: `username` (unique, lowercase), role `admin` or `member`, argon2id `passphrase_hash`, a hashed recovery key, failed-attempt counter and lockout time, `must_change` (set when an admin created the account with a temporary passphrase), timestamps.
 - Table `sessions`: the **SHA-256 hash** of a random session token, user, device label, `trusted`, last seen, expiry.
-- Table `auth_settings` (single row `main`): `signup_mode` (`open` or `admin_only`) and the network settings (`network_enabled`, `network_lan`, `network_port`).
+- Table `auth_settings` (single row `main`): `signup_mode` (`open` or `admin_only`) and the network settings (`network_enabled`, `network_lan`, `network_port`, `network_https`).
 - The **first** account created is the admin. Nobody has to configure anything.
 
 Rules (in `auth/mod.rs` and `auth/service.rs`):
@@ -54,6 +54,6 @@ pub enum Actor { Legacy, User(UserInfo) }
 
 ## Sessions over HTTP
 
-The browser holds the token in an `HttpOnly; SameSite=Strict; Path=/` cookie it cannot read. `web::util::AuthedUser` resolves it with `auth::service::authenticate`; `ActiveUser` additionally refuses an account that still has `must_change` set. Plain HTTP means the cookie cannot be `Secure`, which is why the docs limit browser access to trusted networks.
+The browser holds the token in an `HttpOnly; SameSite=Strict; Path=/` cookie it cannot read. `web::util::AuthedUser` resolves it with `auth::service::authenticate`; `ActiveUser` additionally refuses an account that still has `must_change` set. The cookie gets `Secure` only when the server itself speaks HTTPS (`WebState::https`); on plain HTTP a browser would refuse to store it, which is why the docs limit plain-HTTP browser access to trusted networks.
 
 See {doc}`browser-server` for the HTTP side and the {doc}`/reference/http-api`.

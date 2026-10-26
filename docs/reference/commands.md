@@ -1941,13 +1941,14 @@ Returns `Result<WebStatus, MythicError>`
 
 ### `web_set_network`
 
-Admin only: turns browser access on or off, chooses loopback-only or LAN, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned.
+Admin only: turns browser access on or off, chooses loopback-only or LAN, turns HTTPS (a self-signed certificate Janus makes) on or off, and sets the port (1024 or higher). Restarts the server; if the port cannot be bound it stays off and the error is returned.
 
 | Argument | Type |
 |---|---|
 | `enabled` | `bool` |
 | `lan` | `bool` |
 | `port` | `u16` |
+| `https` | `bool` |
 
 Returns `Result<WebStatus, MythicError>`
 

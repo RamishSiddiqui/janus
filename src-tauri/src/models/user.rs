@@ -139,6 +139,9 @@ pub struct NetworkSettings {
     pub enabled: bool,
     pub lan: bool,
     pub port: u16,
+    /// Serve over HTTPS with a certificate Janus makes itself.
+    #[serde(default)]
+    pub https: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -149,4 +152,8 @@ pub struct WebStatus {
     pub bound: Option<String>,
     /// This computer's addresses on the local network (works offline), best first, for the "open this on your phone" hint.
     pub lan_ips: Vec<String>,
+    /// This computer's Tailscale address, when Tailscale is running here.
+    pub tailscale_ip: Option<String>,
+    /// The running HTTPS certificate's SHA-256 fingerprint, for checking it by eye.
+    pub cert_fingerprint: Option<String>,
 }
