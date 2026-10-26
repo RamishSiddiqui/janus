@@ -208,3 +208,24 @@ async fn a_backup_carries_the_encrypted_key_not_the_real_one() {
     assert!(!text.contains("0123456789abcdef"));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn a_backup_restored_on_the_same_computer_brings_the_keys_back_working() {
+    let (dir_a, dir_b) = (temp_dir("from"), temp_dir("to"));
+    let a = init_database(&dir_a).await.unwrap();
+    let created = make(&a, KEY).await;
+    let id = key_of(&created.id);
+    let file = dir_a.join("backup.surql");
+    export_to_file(&a, &file).await.unwrap();
+
+    let b = init_database(&dir_b).await.unwrap();
+    janus_lib::db::backup::import_from_file(&b, &file)
+        .await
+        .unwrap();
+    let restored = ProviderRepo::get(&b, &id).await.unwrap();
+    assert_eq!(restored.config["api_key"], json!(KEY));
+    assert!(restored.config.get("api_key_unreadable").is_none());
+
+    let _ = std::fs::remove_dir_all(dir_a);
+    let _ = std::fs::remove_dir_all(dir_b);
+}
