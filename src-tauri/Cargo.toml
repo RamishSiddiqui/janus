@@ -121,10 +121,10 @@ tokio-stream = "0.1"
 # ABI, just loaded dynamically instead of linked statically.
 ort = { version = "2.0.0-rc.15", default-features = false, features = ["load-dynamic"] }
 ndarray = "0.17"
-ndarray-npy = { version = "0.10", default-features = false, features = ["npz"] }
+ndarray-npy = { version = "0.11", default-features = false, features = ["npz"] }
 misaki-rs = { version = "0.6", default-features = false }
 hound = "3.5"
-zip = { version = "4", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # Current process's own CPU/memory usage, surfaced in Settings so
 # resource-heavy features (starting with native TTS above) can be visually
